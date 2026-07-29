@@ -1755,3 +1755,98 @@ check had silently become "did it survive the rebuild" instead of "did we find
 it". `RIFTTEST` hit that exact trap and left a comment naming it. The comment was
 read, and the mistake was made anyway — which is the argument for the comment
 being an assertion wherever it can be.
+
+## 28. The Grand Commission
+
+Shipped from `docs/HORIZON-3-COMMISSION.md`. Four stages of the survey authority
+acknowledging you — ON FILE, CORROBORATED, COMMENDED, COMMISSIONED — read off
+ledger keys the player was already filling, claimed at one desk on the Anchor.
+
+**It is recognition, not a quest.** Every line the Commission prints is a
+statement of record — `44 OF 60 SURVEYS ON FILE` — never an instruction. The
+grammar enforces itself: stage names are statuses rather than tasks, so a
+description written in the imperative clashes audibly with the name directly
+above it. `PYXIS_GSATEST`'s `NO IMPERATIVE` checks the copy as data, on the FIRST
+word of each description, because English imperatives lead with their verb and a
+contains-check would also ban "a first *survey* packet", where the same word is a
+noun. A structural rule nothing checks is worth nothing.
+
+**There is no HUD tracker, and there never will be.** `hud.band_controls()` is
+the complete inventory of centre-anchored plates and `BANDS CLEAR` measures
+against it, so adding a tracker row would have to go through that inventory —
+which makes the prohibition mechanically checkable rather than a promise.
+
+### The two fields, and why they are shaped differently
+
+`commission_claimed` is run state and top-level. It was nearly a seventh
+`DEFAULT_LEDGER` key; the argument against is that the ledger's load merge is
+`maxi(0, int(...))` — a floor with no ceiling — so a hand-edited `99` would reach
+`STAGES[99]` and crash *at a dock*, and the SAVETEST write leg assigns a literal
+six-key dict, so a seventh key would round-trip untested. It is the shape
+`captains_log` already shipped as, for the same reasons.
+
+`commissioned` is persistent, and is a strict monotone derivative of "stage 4 was
+ever claimed". It is read by exactly three things: the title screen's registry
+line, the accent lock, and the beacons. **The claim counter must never read it,**
+or stage 4 becomes unclaimable on every run after the first.
+
+### The accent lock could not live in `set_livery`
+
+`player_ship.gd` reads `Palette.livery_accent(GameState.livery_index("accent"))`
+directly and never asks `set_livery` anything, and a hand-edited save never calls
+it at all — so a refusal there would guard nothing while also rewriting a
+legitimately earned livery every time a save restored one. The lock is at the
+**load path** and at the **purchase layer**, and `GSATEST` asserts it against
+fixtures at `accent: 8` and `accent: 17`, because `posmod` wraps and 17 is the
+same attack wearing a different number.
+
+That also closed the one unbounded int left in `load_game`. The livery indices
+had no clamp; `posmod` was doing the containing, which is not protection but a
+rename — `accent: 8` silently became amber rather than being corrected.
+
+### The note the arc ends on
+
+COMMISSIONED requires reaching THE QUIET. The beacons answer back once you are
+commissioned — for bands 1–3 only. **Band 4 stays silent, and that is deliberate:
+the one band the Commission requires you to reach is the one that will never
+acknowledge it.** `GUARD_DESIGNATION[4]` is already *"UNREADABLE — IT DOES NOT
+ANSWER"*, so the data agrees with the fiction. Do not "finish" that entry.
+
+The commissioned text lives inside `BROADCASTS` as optional
+`from_commissioned`/`body_commissioned` keys with a fallback, not as a parallel
+array — a second array would be a second bounds contract that could disagree with
+the first, and "band 4 is unchanged" would become a size mismatch instead of a
+stated property. `BEACON PARITY` asserts that `broadcast_for(band, false)` is
+string-identical to what shipped, which is what stops the rewrite quietly editing
+the uncommissioned text.
+
+### Two orderings that are load-bearing
+
+`claim_commission` increments **before** it pays. `add_salvage` emits
+`salvage_changed`, and `PortPanel._ready` wires that straight back into
+`_refresh()` — so a claim that paid first would rebuild the sheet reading the
+pre-claim stage and redraw the button it had just honoured.
+
+`_apply_paint` checks eligibility **above** `spend_salvage`. It used to spend
+first and apply second, which was harmless only for as long as nothing could be
+refused; the locked ninth swatch is exactly the refusal that would have charged
+800 for nothing. §12's rule: a hidden bad bet is a con.
+
+### What the harness had to learn to see this
+
+Two assertions in `GSATEST` were written, passed, and were worth nothing until
+they were verified in the failing direction:
+
+- `EVERY SERVICE HAS A BUILDER` renders each tab and compares it to the
+  outfitter's, because `port_panel`'s `match _tab` catch-all *is* the outfitter —
+  a `TAB_LABELS` entry without a matching arm renders a plausible second
+  outfitter with no error and no crash. The first version walked `_body`'s
+  children without skipping ones queued for deletion; `_refresh` frees the old
+  rows and builds the new ones in the same frame, so every fingerprint came out
+  unique and the assertion passed on every possible input.
+- `STATE BEFORE MONEY` uses a one-element Array as its box. GDScript lambdas
+  capture locals **by value**, so the first version's `int` was written inside
+  the closure and read from the untouched original — an assertion that could not
+  fail.
+
+Both are the §8 rule biting: an assertion is only worth what it can see.

@@ -50,6 +50,12 @@ const LIVERY_ACCENTS := [
 	{"name": "LIME", "color": Color(0.55, 1.0, 0.45)},
 	{"name": "VIOLET", "color": Color(0.70, 0.50, 1.0)},
 	{"name": "WHITE HOT", "color": WHITE_HOT},
+	# v13. The ninth accent is not for sale at any price. It is the only cosmetic
+	# in the game that is EARNED -- claiming COMMISSIONED, which requires reaching
+	# THE QUIET -- and it is deliberately the palest, coldest trim in the set: the
+	# colour of a register entry rather than of a paint counter. See
+	# GameState.REGISTRY_ACCENT, which is what both renderers gate on.
+	{"name": "REGISTRY", "color": Color(0.90, 0.88, 0.70)},
 ]
 
 

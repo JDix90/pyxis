@@ -25,6 +25,7 @@ const TAB_LABELS := {
 	"lab": "LAB",
 	"storage": "STORAGE",
 	"forge": "FORGE",
+	"commission": "COMMISSION",
 }
 const DEFAULT_SERVICES := ["market", "outfitter", "contracts"]
 
@@ -421,6 +422,8 @@ func _refresh() -> void:
 			_build_storage()
 		"forge":
 			_build_forge()
+		"commission":
+			_build_commission()
 		_:
 			_body.add_child(_reactor_row())
 			for id in _port_def.get("stock", []):
@@ -839,7 +842,10 @@ func _swatch_grid(label: String, entries: Array, current: int, price: int, is_hu
 	box.add_child(title)
 
 	var grid := GridContainer.new()
-	grid.columns = 8
+	# Nine, not eight: the earned REGISTRY accent is a ninth swatch, and at eight
+	# columns it wraps onto a row of its own -- which reads as a rendering fault
+	# rather than as the rarest thing on the screen.
+	grid.columns = 9
 	grid.add_theme_constant_override("h_separation", 5)
 	grid.add_theme_constant_override("v_separation", 5)
 	box.add_child(grid)
@@ -847,9 +853,19 @@ func _swatch_grid(label: String, entries: Array, current: int, price: int, is_hu
 	for i in range(entries.size()):
 		var entry: Dictionary = entries[i]
 		var worn := i == posmod(current, entries.size())
+		var locked := not _can_wear(i, is_hull)
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(32, 32)
+		# A locked swatch says what it is and what it costs -- which is not money.
+		# Naming the requirement is the difference between a reward and a tease.
 		b.tooltip_text = String(entry["name"])
+		if locked:
+			b.tooltip_text += " — EARNED AT COMMISSIONED"
+			# Drawn, not disabled. `b.disabled = true` renders through the
+			# disabled stylebox, and the point of the ninth swatch is that you can
+			# SEE the colour you have not earned; a control that greys out to
+			# nothing removes the reason to want it.
+			b.modulate = Color(1, 1, 1, 0.45)
 
 		# Four distinct boxes. All four states used to share one instance, so a
 		# swatch gave no hover feedback at all and a disabled one was
@@ -878,6 +894,122 @@ func _swatch_grid(label: String, entries: Array, current: int, price: int, is_hu
 	return box
 
 
+# --- the Grand Commission ----------------------------------------------------
+
+func _build_commission() -> void:
+	# The survey authority's file on you. Every line here is a STATEMENT OF
+	# RECORD, never an instruction -- "44 OF 60 SURVEYS ON FILE", not "sell 16
+	# more surveys". The distinction is the whole design: the Commission is the
+	# GSA describing what you have done, and the moment it starts telling you
+	# what to do next it is a quest board with a nicer font. There is no HUD
+	# tracker for it anywhere, for the same reason.
+	var head := Label.new()
+	head.text = "GRAND COMMISSION — REGISTRY OF SURVEY"
+	head.add_theme_font_size_override("font_size", 15)
+	head.add_theme_color_override("font_color", Palette.GOLD)
+	_body.add_child(head)
+
+	var claimed := GameState.commission_claimed
+	for i in range(CommissionDB.count()):
+		var st: Dictionary = CommissionDB.stage(i)
+		var row := VBoxContainer.new()
+		row.add_theme_constant_override("separation", 1)
+
+		var name_label := Label.new()
+		var done := i < claimed
+		name_label.text = ("✓ " if done else "") + String(st["name"])
+		name_label.add_theme_font_size_override("font_size", 13)
+		name_label.add_theme_color_override("font_color",
+			Palette.GOLD if done else (Palette.AMBER if i == claimed else Palette.AMBER_DIM))
+		row.add_child(name_label)
+
+		var desc := Label.new()
+		desc.text = String(st["desc"])
+		desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		desc.custom_minimum_size = Vector2(280, 0)
+		desc.add_theme_font_size_override("font_size", 10)
+		desc.add_theme_color_override("font_color", Color(0.6, 0.6, 0.66))
+		row.add_child(desc)
+
+		# Only the stage actually up for claiming shows its shortfall. Printing
+		# all four turns the page into a checklist of everything you have not
+		# done, which is the posture this system exists to avoid.
+		if i == claimed:
+			for line in CommissionDB.shortfalls(i, GameState.ledger):
+				var sf := Label.new()
+				sf.text = line
+				sf.add_theme_font_size_override("font_size", 11)
+				sf.add_theme_color_override("font_color", Palette.AMBER_DIM)
+				row.add_child(sf)
+		_body.add_child(row)
+
+	_body.add_child(_spacer_row(6))
+
+	if GameState.commission_complete():
+		var closed := Label.new()
+		closed.text = "THE FILE IS CLOSED. THE REGISTRY CARRIES YOUR NAME."
+		closed.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		closed.custom_minimum_size = Vector2(280, 0)
+		closed.add_theme_font_size_override("font_size", 11)
+		closed.add_theme_color_override("font_color", Palette.GOLD)
+		_body.add_child(closed)
+		return
+
+	var stage := GameState.commission_stage()
+	var pays := int(CommissionDB.stage(stage).get("pays", 0))
+	if GameState.commission_ready():
+		var b := UIKit.button("CLAIM %s — %d" % [String(CommissionDB.stage(stage)["name"]), pays],
+			Palette.GOLD, 14)
+		b.pressed.connect(func() -> void: _claim_commission())
+		_body.add_child(b)
+	else:
+		var pending := Label.new()
+		pending.text = "%s — %d ON ACKNOWLEDGEMENT" % [
+			String(CommissionDB.stage(stage)["name"]), pays]
+		pending.add_theme_font_size_override("font_size", 11)
+		pending.add_theme_color_override("font_color", Color(0.6, 0.6, 0.66))
+		_body.add_child(pending)
+
+
+func _claim_commission() -> void:
+	# GameState.claim_commission re-checks the stage and the thresholds itself
+	# and increments BEFORE it pays, because add_salvage emits salvage_changed
+	# and _ready wires that straight back into _refresh() -- so a claim that paid
+	# first would rebuild this sheet reading the pre-claim stage and redraw the
+	# button it had just honoured.
+	var result := GameState.claim_commission()
+	if result.is_empty():
+		_reject()
+		return
+
+	# The one moment in the game where the authority answers. Everything fires at
+	# once on purpose: this is the payoff for a whole run, and it is the only
+	# place shake, haptics, a burst and a count-up all land together.
+	Sfx.play("equip", -2.0, 0.85)
+	Sfx.haptic("heavy")
+	var main := get_tree().get_first_node_in_group("main")
+	if main:
+		var rig := get_tree().get_first_node_in_group("camera_rig")
+		if rig:
+			rig.shake(0.09)
+			rig.punch_zoom(0.7)
+		if _port != null:
+			FX.burst(_port.get_parent(), _port.global_position, Palette.GOLD, 46, 7.0, 0.26, 0.9)
+			FX.ring_pulse(_port.get_parent(), _port.global_position, Palette.GOLD, 3.4, 0.7)
+		# The HUD salvage readout is not wired to salvage_changed -- every payer
+		# in this file sets it by hand.
+		if main.hud:
+			main.hud.set_value(GameState.salvage)
+			main.hud.show_toast("%s — GSA REGISTRY" % String(result["name"]), Palette.GOLD)
+	_refresh()
+
+
+func _spacer_row(h: int) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(0, h)
+	return c
+
+
 func _can_wear(index: int, is_hull: bool) -> bool:
 	# The gate for earned cosmetics, at the purchase layer rather than inside
 	# GameState.set_livery -- set_livery is also how a save restores a colour, and
@@ -885,8 +1017,8 @@ func _can_wear(index: int, is_hull: bool) -> bool:
 	# on load. Today every hull and the first eight accents are always wearable;
 	# this exists so the Commission's ninth accent has exactly one place to say no.
 	if is_hull:
-		return true
-	return index < Palette.LIVERY_ACCENTS.size()
+		return index < Palette.LIVERY_HULLS.size()
+	return index < Palette.LIVERY_ACCENTS.size() and GameState.accent_unlocked(index)
 
 
 func _swatch_box(color: Color, worn: bool, lift: float, fade := 1.0) -> StyleBoxFlat:

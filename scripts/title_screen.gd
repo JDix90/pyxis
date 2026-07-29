@@ -15,6 +15,7 @@ var _title: Label
 var _tagline: Label
 var _buttons: VBoxContainer
 var _ledger_line: Label
+var _registry_line: Label
 var _continue_button: Button
 var _mute_button: Button
 var _t := 0.0
@@ -59,6 +60,8 @@ func _apply_layout() -> void:
 
 	_ledger_line.position = Vector2(0, title_y + h * 0.155)
 	_ledger_line.size = Vector2(w, h * 0.04)
+	_registry_line.position = Vector2(0, title_y + h * 0.185)
+	_registry_line.size = Vector2(w, h * 0.04)
 
 	# get_combined_minimum_size is valid immediately; `size` is still zero on the
 	# first layout pass, which drops the buttons off the bottom of the screen.
@@ -120,6 +123,17 @@ func _build() -> void:
 	_ledger_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ledger_line.visible = false
 	_root.add_child(_ledger_line)
+
+	# v13. The registry line: the GSA acknowledging you, in the authority's own
+	# voice, on the front door. Gold rather than teal because it is the one line
+	# here that was earned rather than counted.
+	_registry_line = Label.new()
+	_registry_line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_registry_line.add_theme_font_size_override("font_size", 11)
+	_registry_line.add_theme_color_override("font_color", Palette.GOLD)
+	_registry_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_registry_line.visible = false
+	_root.add_child(_registry_line)
 
 	_buttons = VBoxContainer.new()
 	_buttons.custom_minimum_size = Vector2(240, 0)
@@ -198,6 +212,11 @@ func open(has_save: bool) -> void:
 	_ledger_line.visible = has_save
 	if has_save:
 		_ledger_line.text = title_summary()
+	# Same has_save rule as the ledger line above, or the registry line renders
+	# over empty space where a summary should have been.
+	_registry_line.visible = has_save and GameState.commissioned
+	if _registry_line.visible:
+		_registry_line.text = registry_line()
 	_refresh_mute()
 	_root.modulate.a = 0.0
 	_scrim.modulate.a = 0.0
@@ -205,6 +224,14 @@ func open(has_save: bool) -> void:
 	tw.set_parallel(true)
 	tw.tween_property(_root, "modulate:a", 1.0, FADE_TIME)
 	tw.tween_property(_scrim, "modulate:a", 1.0, FADE_TIME)
+
+
+func registry_line() -> String:
+	# The in-universe acknowledgement, not a stat. It names the ship rather than
+	# the player and states a fact about a file rather than a score, because the
+	# whole point of the Commission is that the authority is describing you --
+	# `commission_claimed` deliberately never appears on this screen.
+	return "%s — COMMISSIONED, GALACTIC SURVEY AUTHORITY" % GameState.ship_name
 
 
 func title_summary() -> String:

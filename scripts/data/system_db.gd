@@ -72,7 +72,14 @@ const SYSTEMS := {
 			"bias": {},
 			# PAINT lives at the primary ports (and the Cantina), so a livery is
 			# never more than one dock away wherever the player happens to be.
-			"services": ["market", "outfitter", "repair", "contracts", "paint", "storage"],
+			#
+			# COMMISSION is APPENDED, never prepended: port_panel.gd's open_for
+			# makes services()[0] the landing tab, so putting the registry first
+			# would open every dock at the Anchor on a page about paperwork
+			# instead of on the market. It lives only here — one desk, in the
+			# system you start in, which is what makes filing feel like going
+			# somewhere rather than like opening a menu.
+			"services": ["market", "outfitter", "repair", "contracts", "paint", "storage", "commission"],
 			"stock": ["pulse_2", "util_tractor", "util_cargo", "drive_vector",
 				"drive_cruise_2", "util_tractor_2", "util_repair", "rig_hauler"],
 		},

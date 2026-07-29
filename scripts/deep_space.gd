@@ -103,15 +103,28 @@ const BROADCASTS := [
 	{
 		"from": "GALACTIC SURVEY AUTHORITY — AUTOMATED BEACON",
 		"body": "You are leaving charted space. Security patrols do not operate beyond this marker and cannot be dispatched to assist. Salvage, navigation and rescue are unsupported. Proceed at your own risk.",
+		# v13. What the same beacon says once the register knows your name. "On
+		# file" was stage one of the Commission, and this is the callback.
+		"from_commissioned": "GALACTIC SURVEY AUTHORITY — REGISTERED VESSEL",
+		"body_commissioned": "Charts on file. This marker stands on your readings. Patrols still do not operate beyond it, and the authority still cannot be dispatched to assist — but the bearing is yours, and it is written down.",
 	},
 	{
 		"from": "GSA RELAY — LAST REPEATER",
 		"body": "This is the final beacon on this bearing. No vessel has filed a return from beyond it this cycle. Contacts logged out here are not registered to any fleet.",
+		"from_commissioned": "GSA RELAY — LAST REPEATER",
+		"body_commissioned": "This is the final beacon on this bearing. One vessel has filed a return from beyond it. The file is open and the readings are yours.",
 	},
 	{
 		"from": "GSA RELAY — SIGNAL DEGRADED",
 		"body": "Carrier lost. This transmission is a recording. Whatever is out here was not surveyed, is not catalogued, and is not ours.",
+		"from_commissioned": "GSA RELAY — SIGNAL DEGRADED",
+		"body_commissioned": "Carrier lost. This transmission is a recording. Whatever is out here was not surveyed by us. It has been surveyed.",
 	},
+	# Band 4 carries NO commissioned keys, and that is the note the whole arc ends
+	# on rather than an oversight. COMMISSIONED requires reaching THE QUIET, and
+	# THE QUIET is the one band that will never acknowledge it — GUARD_DESIGNATION
+	# for this band is already "UNREADABLE — IT DOES NOT ANSWER", so the data and
+	# the fiction agree. Do not "finish" this entry.
 	{
 		"from": "· · · —— · · ·",
 		"body": "The beacon net does not reach this far. Nothing is transmitting. Nothing is listening.",
@@ -119,10 +132,20 @@ const BROADCASTS := [
 ]
 
 
-static func broadcast_for(band: int) -> Dictionary:
+static func broadcast_for(band: int, commissioned := false) -> Dictionary:
+	# Optional keys with a fallback rather than a parallel three-entry array: a
+	# second array would be a second bounds contract that could disagree with the
+	# first, and "band 4 is unchanged" would become a size mismatch instead of a
+	# stated property of the data.
 	if band <= 0 or band >= BROADCASTS.size():
 		return {}
-	return BROADCASTS[band]
+	var entry: Dictionary = BROADCASTS[band]
+	if not commissioned:
+		return entry
+	return {
+		"from": String(entry.get("from_commissioned", entry.get("from", ""))),
+		"body": String(entry.get("body_commissioned", entry.get("body", ""))),
+	}
 
 
 # --- rigged hulks ------------------------------------------------------------

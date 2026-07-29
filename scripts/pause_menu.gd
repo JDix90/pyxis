@@ -284,6 +284,7 @@ func _build_settings() -> void:
 	_body.add_child(_toggle("SCREEN SHAKE", "shake"))
 	_body.add_child(_toggle("REDUCE MOTION", "reduce_motion"))
 	_body.add_child(_toggle("HAPTICS", "haptics"))
+	_body.add_child(_toggle("SHARE PLAY DATA", "telemetry"))
 	_body.add_child(_spacer(4))
 	_body.add_child(_action("BACK", Palette.TEAL, func() -> void:
 		_page = "root"

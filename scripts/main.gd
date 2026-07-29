@@ -445,6 +445,14 @@ func _ready() -> void:
 		_run_feel_test()
 		return
 
+	if OS.get_environment("PYXIS_GSATEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_gsa_test()
+		return
+
 	if OS.get_environment("PYXIS_UITEST") != "":
 		GameState.lock_saving()
 		state = State.PLAYING
@@ -736,7 +744,11 @@ func _tick_broadcast(depth: float) -> void:
 	if band <= _broadcast_band:
 		return
 	_broadcast_band = band
-	var msg := DeepSpace.broadcast_for(band)
+	# Read at fire time and cached nowhere, so a player who claims COMMISSIONED at
+	# the Anchor hears the answer on their next trip out rather than on their next
+	# launch -- which is the right beat: the beacon is where the acknowledgement
+	# lands, not the dock where the paperwork was filed.
+	var msg := DeepSpace.broadcast_for(band, GameState.commissioned)
 	if msg.is_empty() or hud == null:
 		return
 	hud.show_broadcast(String(msg["from"]), String(msg["body"]),
@@ -5676,9 +5688,22 @@ func _run_livery_test() -> void:
 	print("[livery] %d hulls x %d accents = %d liveries" % [
 		Palette.LIVERY_HULLS.size(), Palette.LIVERY_ACCENTS.size(),
 		Palette.LIVERY_HULLS.size() * Palette.LIVERY_ACCENTS.size()])
-	print("[livery] SWATCHES 8 hulls and 8 accents -> %s" % [
-		"PASS" if Palette.LIVERY_HULLS.size() == 8 and Palette.LIVERY_ACCENTS.size() == 8
+	# Nine accents since v13: eight bought and one EARNED. The count is asserted
+	# rather than derived because the ninth is load-bearing in two other places --
+	# GameState.REGISTRY_ACCENT indexes it, and port_panel's swatch grid is nine
+	# columns wide so it does not wrap as an orphan.
+	print("[livery] SWATCHES 8 hulls and 9 accents (8 bought + REGISTRY) -> %s" % [
+		"PASS" if Palette.LIVERY_HULLS.size() == 8 and Palette.LIVERY_ACCENTS.size() == 9
 			else "FAIL"])
+	# The earned one is the LAST entry, which is what makes "index >= 8 is locked"
+	# a rule rather than a coincidence. Insert a bought accent after it and this
+	# goes red, which is the point.
+	var registry_last: bool = GameState.REGISTRY_ACCENT == Palette.LIVERY_ACCENTS.size() - 1 \
+		and String((Palette.LIVERY_ACCENTS[GameState.REGISTRY_ACCENT] as Dictionary)["name"]) == "REGISTRY"
+	print("[livery] EARNED ACCENT IS LAST index %d of %d is '%s' -> %s" % [
+		GameState.REGISTRY_ACCENT, Palette.LIVERY_ACCENTS.size() - 1,
+		String((Palette.LIVERY_ACCENTS[Palette.LIVERY_ACCENTS.size() - 1] as Dictionary)["name"]),
+		"PASS" if registry_last else "FAIL"])
 
 	# 1. Setting a livery repaints the ship. Read straight off the material, so
 	#    this cannot pass on a stored value the mesh never used.
@@ -8455,6 +8480,70 @@ func _run_save_test() -> void:
 		print("[savetest] v11->v12 LOG EMPTY NOT MISSING empty=%s, writable=%s, everything else kept=%s -> %s" % [
 			str(log_empty), str(writable), str(kept11),
 			"PASS" if ok11 and log_empty and writable and kept11 else "FAIL"])
+	elif mode == "migrate12":
+		# The migration THIS horizon introduces. v12 has neither commission key,
+		# so the whole of the fix is two `data.get` defaults -- the policy
+		# load_game has held since v1. What must be proved is that a save written
+		# before the Commission existed arrives UNCOMMISSIONED with nothing
+		# claimed, rather than arriving with a truthy default and handing a
+		# returning player the ninth accent and a registry line they never earned.
+		#
+		# The v13 round trip lives HERE and not in PYXIS_GSATEST for a structural
+		# reason: save_game() early-returns on `not save_enabled`, lock_saving()
+		# is one-way, and GSATEST locks. A locked harness asserting a round trip
+		# measures in-memory state that never left the process -- the
+		# assertion-that-cannot-fail this codebase has a written rule about.
+		var v12 := {
+			"version": 12,
+			"salvage": 31415,
+			"owned": ["pulse_1", "drive_cruise"],
+			"fit": {"0": "pulse_1", "2": "drive_cruise"},
+			"current_system": "pyx02",
+			"ship_name": "THE LONG WATCH",
+			"captains_log": ["CROSSED INTO THE DRIFT"],
+			"ledger": {"deepest_depth": 505, "distance_flown": 9001,
+				"hulks_cracked": 7, "posts_cleared": 3, "chart_data_sold": 44,
+				"tolls_paid": 1},
+			# Accent 2 is a bought colour and must survive untouched: the lock
+			# refuses the EARNED index, not every index, and a migration that
+			# reset everyone to amber would be a worse bug than the one it fixes.
+			"livery": {"hull": 1, "accent": 2},
+			"tutorial_step": -1,
+		}
+		var f12 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f12.store_string(JSON.stringify(v12))
+		f12.close()
+		var ok12 := GameState.load_game()
+		var fresh: bool = GameState.commission_claimed == 0 and not GameState.commissioned
+		var kept12: bool = GameState.salvage == 31415 \
+			and GameState.ship_name == "THE LONG WATCH" \
+			and GameState.livery_index("accent") == 2 \
+			and int(GameState.ledger.get("chart_data_sold", -1)) == 44 \
+			and GameState.log_lines().size() == 1
+		print("[savetest] v12->v13 UNCOMMISSIONED claimed=%d commissioned=%s, accent %d kept, everything else kept=%s -> %s" % [
+			GameState.commission_claimed, str(GameState.commissioned),
+			GameState.livery_index("accent"), str(kept12),
+			"PASS" if ok12 and fresh and kept12 else "FAIL"])
+
+		# The round trip, through the real file layer. Claiming all four is what
+		# sets `commissioned`, and both fields have to come back.
+		GameState.ledger["chart_data_sold"] = 100000
+		GameState.ledger["hulks_cracked"] = 100000
+		GameState.ledger["posts_cleared"] = 100000
+		GameState.ledger["deepest_depth"] = 100000
+		for _i in range(CommissionDB.count()):
+			GameState.claim_commission()
+		GameState.set_livery(0, GameState.REGISTRY_ACCENT)
+		GameState.save_game()
+		GameState.commission_claimed = 0
+		GameState.commissioned = false
+		GameState.load_game()
+		var round_ok: bool = GameState.commissioned \
+			and GameState.commission_claimed == CommissionDB.count() \
+			and GameState.livery_index("accent") == GameState.REGISTRY_ACCENT
+		print("[savetest] v13 ROUND TRIP claimed=%d commissioned=%s accent=%d (earned, must survive) -> %s" % [
+			GameState.commission_claimed, str(GameState.commissioned),
+			GameState.livery_index("accent"), "PASS" if round_ok else "FAIL"])
 	elif mode == "partial6":
 		# A v6 save written before a later setting existed must still get that
 		# setting's default rather than a missing key — the reason load merges
@@ -8896,3 +8985,290 @@ func _collect_buttons(root: Node) -> Array:
 			out.append(c)
 		out.append_array(_collect_buttons(c))
 	return out
+
+
+# --- the Grand Commission ----------------------------------------------------
+
+func _run_gsa_test() -> void:
+	# The Commission is the first system in the game whose state is PERSISTENT
+	# and read by unrelated screens, so most of what follows is about the seams:
+	# the load path, the claim ordering, and the copy rule that keeps it from
+	# becoming a quest board.
+	#
+	# Every assertion here pins GameState.commissioned explicitly. GameState boots
+	# from the developer's real save, so the moment this flag exists, any harness
+	# that reads band text or the accent lock passes or fails depending on whether
+	# whoever ran it happened to finish the Commission.
+	await get_tree().create_timer(0.3).timeout
+
+	# --- 1. the copy rule, as data -------------------------------------------
+	# The structural rule is that a stage DESCRIBES; the moment one instructs,
+	# the Commission has become a quest. A rule nothing checks is worth nothing.
+	# Checked on the FIRST word, not on vocabulary anywhere in the line. English
+	# imperatives lead with their verb -- "Survey the Drift" instructs, while "A
+	# first survey packet" uses the same word as a noun and states a fact. A
+	# contains-check would ban the noun too, and the rule is about mood.
+	var imperative_found := ""
+	for st_v in CommissionDB.STAGES:
+		var st: Dictionary = st_v
+		var words: PackedStringArray = String(st["desc"]).to_lower() \
+			.replace(",", " ").replace(".", " ").split(" ", false)
+		if words.size() > 0 and CommissionDB.IMPERATIVES.has(words[0]):
+			imperative_found = "%s: '%s'" % [String(st["name"]), words[0]]
+	print("[gsa] NO IMPERATIVE %d descriptions, none open on a verb (offender: %s) -> %s" % [
+		CommissionDB.STAGES.size(), imperative_found if imperative_found != "" else "none",
+		"PASS" if imperative_found == "" else "FAIL"])
+
+	# Names state a STATUS rather than a task. Three are past participles; ON
+	# FILE is a prepositional phrase, which is the same grammatical move -- what
+	# the register says about you -- and is the phrase the finale calls back to.
+	# What matters is that none of them is something to go and do.
+	var status_names := true
+	for st_v in CommissionDB.STAGES:
+		var first := String((st_v as Dictionary)["name"]).to_lower().split(" ")[0]
+		if CommissionDB.IMPERATIVES.has(first):
+			status_names = false
+	print("[gsa] STAGE COUNT %d stages (clamps use STAGES.size()), no name is a task=%s -> %s" % [
+		CommissionDB.count(), str(status_names),
+		"PASS" if CommissionDB.count() == 4 and status_names else "FAIL"])
+
+	# --- 2. the load path clamps ---------------------------------------------
+	var probe := "user://gsa_probe.json"
+	var real_path := GameState.save_path
+	GameState.save_path = probe
+
+	var high := _gsa_fixture({"commission_claimed": 99})
+	GameState.load_game()
+	var clamped_high := GameState.commission_claimed
+	_gsa_fixture({"commission_claimed": -5})
+	GameState.load_game()
+	var clamped_low := GameState.commission_claimed
+	print("[gsa] LOAD CLAMPS 99 -> %d (want %d), -5 -> %d (want 0) -> %s" % [
+		clamped_high, CommissionDB.count(), clamped_low,
+		"PASS" if clamped_high == CommissionDB.count() and clamped_low == 0 else "FAIL"])
+
+	# --- 3. the accent lock, against the SHIP MATERIAL ------------------------
+	# Not against the stored int. player_ship.gd reads
+	# Palette.livery_accent(livery_index("accent")) directly and never asks
+	# set_livery anything, so the stored value is not what the player sees.
+	# posmod wraps, so 8 and 17 are the same attack wearing different numbers.
+	var locked_ok := true
+	var seen: Array = []
+	for bad in [GameState.REGISTRY_ACCENT, 17]:
+		_gsa_fixture({"commissioned": false, "livery": {"hull": 0, "accent": bad}})
+		GameState.load_game()
+		seen.append(GameState.livery_index("accent"))
+		if GameState.livery_index("accent") >= GameState.REGISTRY_ACCENT:
+			locked_ok = false
+	print("[gsa] ACCENT LOCKED AT THE LOAD PATH uncommissioned accents [8, 17] -> %s -> %s" % [
+		str(seen), "PASS" if locked_ok else "FAIL"])
+
+	# And an earned one must survive, or the lock has eaten a real reward.
+	_gsa_fixture({"commissioned": true, "livery": {"hull": 0, "accent": GameState.REGISTRY_ACCENT}})
+	GameState.load_game()
+	var kept: bool = GameState.livery_index("accent") == GameState.REGISTRY_ACCENT
+	print("[gsa] ACCENT KEPT WHEN EARNED commissioned accent 8 -> %d -> %s" % [
+		GameState.livery_index("accent"), "PASS" if kept else "FAIL"])
+
+	# The clamp underneath it: these were the only unbounded ints in load_game.
+	_gsa_fixture({"commissioned": true, "livery": {"hull": 999, "accent": 3}})
+	GameState.load_game()
+	var hull_ok: bool = GameState.livery_index("hull") < Palette.LIVERY_HULLS.size()
+	print("[gsa] LIVERY CLAMPS hull 999 -> %d (max %d) -> %s" % [
+		GameState.livery_index("hull"), Palette.LIVERY_HULLS.size() - 1,
+		"PASS" if hull_ok else "FAIL"])
+
+	GameState.save_path = real_path
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(probe))
+
+	# --- 4. claim ordering and re-entrancy -----------------------------------
+	GameState.commissioned = false
+	GameState.commission_claimed = 0
+	GameState.ledger = GameState.DEFAULT_LEDGER.duplicate()
+	for k in ["chart_data_sold", "hulks_cracked", "posts_cleared", "deepest_depth"]:
+		GameState.ledger[k] = 100000
+	GameState.salvage = 0
+
+	# STATE BEFORE MONEY. add_salvage emits salvage_changed, and PortPanel wires
+	# that straight back into _refresh() -- so a claim that paid before it
+	# incremented would rebuild the sheet reading the pre-claim stage and redraw
+	# the button it had just honoured.
+	# The box is an Array because GDScript lambdas capture locals BY VALUE: a
+	# plain int written inside the closure updates the closure's own copy and the
+	# assertion reads the untouched original, which is an assertion that cannot
+	# fail. An Array is a reference and survives the capture.
+	var box: Array = [-1]
+	var once := func(_v: int) -> void:
+		if int(box[0]) < 0:
+			box[0] = GameState.commission_claimed
+	GameState.salvage_changed.connect(once)
+	var first := GameState.claim_commission()
+	GameState.salvage_changed.disconnect(once)
+	print("[gsa] STATE BEFORE MONEY salvage_changed saw claimed=%d (want 1) -> %s" % [
+		int(box[0]), "PASS" if int(box[0]) == 1 else "FAIL"])
+	print("[gsa] CLAIM PAYS stage '%s' paid %d, salvage now %d -> %s" % [
+		String(first.get("name", "")), int(first.get("pays", 0)), GameState.salvage,
+		"PASS" if int(first.get("pays", 0)) == GameState.salvage and GameState.salvage > 0 else "FAIL"])
+
+	# CLAIM GUARDS ITSELF: called directly, not through a button, because the
+	# harness is exactly the second caller survey_mast.gd's comment warns about.
+	var before_second := GameState.salvage
+	var stage_before := GameState.commission_claimed
+	GameState.claim_commission()
+	GameState.claim_commission()
+	print("[gsa] CLAIM GUARDS ITSELF three more direct calls from stage %d -> stage %d, salvage %d -> %d -> %s" % [
+		stage_before, GameState.commission_claimed, before_second, GameState.salvage,
+		"PASS" if GameState.commission_claimed == stage_before + 2 else "FAIL"])
+
+	# CLAIM IS ORDERED: you cannot skip to stage 3 with every threshold met.
+	GameState.commission_claimed = 1
+	var ordered: bool = GameState.commission_stage() == 1
+	print("[gsa] CLAIM IS ORDERED at claimed=1 the next stage is %d (want 1), not the highest met -> %s" % [
+		GameState.commission_stage(), "PASS" if ordered else "FAIL"])
+
+	# Thresholds actually gate: an empty ledger claims nothing.
+	GameState.commission_claimed = 0
+	GameState.ledger = GameState.DEFAULT_LEDGER.duplicate()
+	var empty := GameState.claim_commission()
+	print("[gsa] THRESHOLDS GATE empty ledger claims nothing (got %s), shortfalls %d -> %s" % [
+		"{}" if empty.is_empty() else str(empty),
+		CommissionDB.shortfalls(0, GameState.ledger).size(),
+		"PASS" if empty.is_empty() else "FAIL"])
+
+	# --- 5. the persistent flag ----------------------------------------------
+	GameState.commissioned = false
+	GameState.commission_claimed = 0
+	for k in ["chart_data_sold", "hulks_cracked", "posts_cleared", "deepest_depth"]:
+		GameState.ledger[k] = 100000
+	for _i in range(CommissionDB.count()):
+		GameState.claim_commission()
+	var earned: bool = GameState.commissioned and GameState.commission_complete()
+	# RESET WITH RUN: the counter is run state, the flag is not.
+	GameState.reset_to_starter()
+	var survived: bool = GameState.commissioned and GameState.commission_claimed == 0
+	print("[gsa] RESET WITH RUN after 4 claims commissioned=%s; after reset claimed=%d commissioned=%s -> %s" % [
+		str(earned), GameState.commission_claimed, str(GameState.commissioned),
+		"PASS" if earned and survived else "FAIL"])
+
+	# NOT A TALLY: the Commission is the authority describing you, so the front
+	# door carries a registry line, never a progress count.
+	GameState.commissioned = true
+	var summary := title_screen.title_summary()
+	var registry := title_screen.registry_line()
+	var clean: bool = not summary.contains("COMMISSION") and not summary.contains("/4") \
+		and registry.contains("COMMISSIONED")
+	print("[gsa] NOT A TALLY summary '%s' carries no stage count; registry '%s' -> %s" % [
+		summary, registry, "PASS" if clean else "FAIL"])
+
+	# --- 6. beacon parity ----------------------------------------------------
+	# The clause that matters: broadcast_for(band, false) must be string-identical
+	# to what shipped, or the rewrite has quietly edited the uncommissioned text.
+	var uncommissioned_intact := true
+	for band in range(DeepSpace.BROADCASTS.size()):
+		var raw: Dictionary = DeepSpace.BROADCASTS[band]
+		var got := DeepSpace.broadcast_for(band, false)
+		if band <= 0:
+			continue
+		if String(got.get("from", "")) != String(raw.get("from", "")) \
+				or String(got.get("body", "")) != String(raw.get("body", "")):
+			uncommissioned_intact = false
+	var bands_answer := true
+	for band in [1, 2, 3]:
+		var c := DeepSpace.broadcast_for(band, true)
+		var u := DeepSpace.broadcast_for(band, false)
+		if String(c.get("body", "")) == String(u.get("body", "")):
+			bands_answer = false
+	# Band 4 stays silent, and that is the note the arc ends on: COMMISSIONED
+	# requires reaching THE QUIET, the one band that will never acknowledge it.
+	var quiet_silent: bool = String(DeepSpace.broadcast_for(4, true).get("body", "")) \
+		== String(DeepSpace.broadcast_for(4, false).get("body", ""))
+	print("[gsa] BEACON PARITY %d bands, uncommissioned text unchanged=%s, bands 1-3 answer=%s, band 4 silent=%s -> %s" % [
+		DeepSpace.BROADCASTS.size(), str(uncommissioned_intact), str(bands_answer), str(quiet_silent),
+		"PASS" if DeepSpace.BROADCASTS.size() == 5 and uncommissioned_intact \
+			and bands_answer and quiet_silent else "FAIL"])
+
+	# --- 7. every service renders its own body -------------------------------
+	# Finding 5: port_panel's `match _tab` catch-all IS the outfitter, so a
+	# TAB_LABELS entry without a matching arm renders a plausible-looking second
+	# outfitter with no error and no crash. The hole is load-bearing, so it
+	# cannot be replaced with a warning -- only checked.
+	# Checked by RENDERING each tab and comparing the result to the outfitter's,
+	# not by guessing method names -- "contracts" builds through
+	# _build_contract_board, so a has_method("_build_contracts") check reports a
+	# working screen as missing. What the rule actually says is that every
+	# service shows its own body, and the only way to know that is to draw it.
+	var port_node: Port = null
+	for n in get_tree().get_nodes_in_group("dockable"):
+		port_node = n as Port
+		break
+	var shadows: Array = []
+	if port_node != null:
+		port_node.def = SystemDB.port_def_by_id("anchor").duplicate(true)
+		port_node.def["services"] = PortPanel.TAB_LABELS.keys()
+		port_panel.open_for(port_node)
+		await get_tree().process_frame
+		# Nodes queued for deletion are SKIPPED. _refresh queue_frees the old body
+		# and builds the new one in the same frame, and queue_free is deferred --
+		# so a naive child walk reads the previous tab's rows alongside this
+		# tab's, every fingerprint comes out unique, and the assertion passes on
+		# every possible input. That is the assertion-that-cannot-fail this
+		# codebase has a written rule about.
+		var fingerprint := func(tab: String) -> String:
+			port_panel._tab = tab
+			port_panel._refresh()
+			var live: Array = []
+			for c in port_panel._body.get_children():
+				if not c.is_queued_for_deletion():
+					live.append(c)
+			var out := "%d|" % live.size()
+			for c in live:
+				if c is Label:
+					out += String((c as Label).text).substr(0, 40) + ";"
+			return out
+		var outfitter: String = await fingerprint.call("outfitter")
+		for key_v in PortPanel.TAB_LABELS:
+			var key := String(key_v)
+			if key == "outfitter":
+				continue
+			var body: String = await fingerprint.call(key)
+			if body == outfitter:
+				shadows.append(key)
+		port_panel.close_panel()
+	print("[gsa] EVERY SERVICE HAS A BUILDER %d labels, rendering as a second outfitter: %s -> %s" % [
+		PortPanel.TAB_LABELS.size(), str(shadows) if not shadows.is_empty() else "none",
+		"PASS" if port_node != null and shadows.is_empty() else "FAIL"])
+
+	# The Anchor offers it, and does NOT lead with it: services()[0] is the
+	# landing tab, so a prepended registry would open every dock on paperwork.
+	var anchor := SystemDB.port_def_by_id("anchor")
+	var svc: Array = anchor.get("services", [])
+	print("[gsa] COMMISSION APPENDED anchor services %s, first=%s -> %s" % [
+		str(svc), String(svc[0]) if not svc.is_empty() else "none",
+		"PASS" if svc.has("commission") and String(svc[0]) != "commission" else "FAIL"])
+
+	# --- 8. the swatch grid fits the ninth ------------------------------------
+	print("[gsa] ACCENT ROW %d accents, grid columns %d -> %s" % [
+		Palette.LIVERY_ACCENTS.size(), 9,
+		"PASS" if Palette.LIVERY_ACCENTS.size() == 9 else "FAIL"])
+
+	get_tree().quit()
+
+
+func _gsa_fixture(overrides: Dictionary) -> Dictionary:
+	# A minimal valid v13 save with the fields under test overridden. Written
+	# rather than hand-edited in memory, because the whole point of these
+	# assertions is what happens on the LOAD PATH.
+	var data := {
+		"version": GameState.SAVE_VERSION,
+		"salvage": 0,
+		"current_system": SystemDB.START_SYSTEM,
+		"livery": {"hull": 0, "accent": 0},
+		"commission_claimed": 0,
+		"commissioned": false,
+	}
+	for k in overrides:
+		data[k] = overrides[k]
+	var f := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+	f.store_string(JSON.stringify(data, "\t"))
+	f.close()
+	return data
