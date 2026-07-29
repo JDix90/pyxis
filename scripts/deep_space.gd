@@ -264,6 +264,13 @@ var _k_last := -1.0
 # empty cell is re-planned on every frame it stays in the window.
 var _cells := {}
 var _cell_last := Vector2i(0x7fffffff, 0x7fffffff)
+# Cells registered but not yet dressed. See _stream for the split and why.
+var _build_queue: Array[Vector2i] = []
+# Per-frame budget for building meshes. About a third of a 60Hz frame, which
+# leaves room for everything else that happens on a frame where the player
+# crossed a boundary -- and cells are drained nearest-first, so the budget
+# spends itself on what is in front of the ship.
+const BUILD_BUDGET_USEC := 5000
 
 # Nests that are seeded but have not been walked into yet, keyed by cell.
 # Guard posts. The tree and the ownership record are different things — the same
@@ -580,22 +587,96 @@ func _stream(around: Vector3) -> void:
 		return
 	_cell_last = here
 
+	# Two passes, and the split between them is the whole point.
+	#
+	# Everything the GAME needs from a cell -- that it exists, where its collision
+	# spheres are, whether a nest is armed -- is derived from plan_cell, which is
+	# pure arithmetic and costs nothing. That happens now, for the whole window,
+	# exactly as it always did.
+	#
+	# Everything the EYE needs -- meshes, a Derelict, a Port -- is queued. That is
+	# where the time actually goes: measured by PYXIS_STREAMTEST, a single
+	# crossing spiked to 44ms building one row of five when one of them held a
+	# station, which is roughly three dropped frames in the middle of flying.
+	#
+	# Determinism is untouched. plan_cell is still the only source of truth and is
+	# still called in exactly the same order; only the moment a mesh appears
+	# moves, and nothing reads a mesh to decide anything.
 	for cz in range(here.y - WINDOW, here.y + WINDOW + 1):
 		for cx in range(here.x - WINDOW, here.x + WINDOW + 1):
 			var key := Vector2i(cx, cz)
 			if not _cells.has(key):
-				_cells[key] = _spawn_cell(cx, cz)
+				_cells[key] = _register_cell(cx, cz)
 				var pack: Dictionary = plan_cell(cx, cz)["pack"]
 				if not pack.is_empty() and not _sprung.has(key):
 					_armed[key] = pack
+				if _cells[key] != null:
+					_build_queue.append(key)
 
 	for key_v in _cells.keys():
 		var key: Vector2i = key_v
 		if absi(key.x - here.x) > KEEP or absi(key.y - here.y) > KEEP:
 			_despawn_cell(key)
 
+	# Nearest first, so what the player is flying toward is dressed before what
+	# they are flying away from.
+	var origin := here
+	_build_queue.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return (a - origin).length_squared() < (b - origin).length_squared())
 
-func _spawn_cell(cx: int, cz: int):
+
+# Cells dressed on the most recent frame that dressed any. This, not a
+# stopwatch, is what the budget actually guarantees -- and unlike wall-clock
+# milliseconds it means the same thing on a loaded build machine as on a phone.
+var built_last_frame := 0
+
+
+func build_backlog() -> int:
+	# Read-back for PYXIS_STREAMTEST. Whether the queue actually empties is the
+	# question that decides if amortising was correct or merely quieter.
+	return _build_queue.size()
+
+
+func _drain_queue() -> void:
+	# At least one cell per frame, so the queue provably empties even if a single
+	# cell exceeds the whole budget -- which is exactly the case that made this
+	# necessary, and a budget that could refuse everything would stall forever.
+	if _build_queue.is_empty():
+		return
+	var started := Time.get_ticks_usec()
+	var built := 0
+	while not _build_queue.is_empty():
+		var key: Vector2i = _build_queue.pop_front()
+		var node = _cells.get(key)
+		if node == null or not is_instance_valid(node):
+			continue
+		_populate_cell(key.x, key.y, node)
+		built += 1
+		if Time.get_ticks_usec() - started >= BUILD_BUDGET_USEC:
+			break
+	built_last_frame = built
+
+
+func stream_now(around: Vector3) -> void:
+	# The escape hatch. Arriving somewhere must never show a frame of empty space
+	# where a station is, and first entry was measured at 6.4ms for the whole
+	# window -- comfortably inside the warp flash that already covers it. Used by
+	# warps and by the capture harnesses, which frame compositions by hand and
+	# cannot wait for a queue.
+	_stream(around)
+	while not _build_queue.is_empty():
+		var key: Vector2i = _build_queue.pop_front()
+		var node = _cells.get(key)
+		if node != null and is_instance_valid(node):
+			_populate_cell(key.x, key.y, node)
+
+
+func _register_cell(cx: int, cz: int):
+	# The cheap half: the container plus every collision sphere, all derived from
+	# plan_cell. Runs synchronously for the whole window on the frame the player
+	# crosses a boundary, so the world is solid before it is visible -- flying
+	# through a rock that has not been dressed yet would be a far worse bug than
+	# seeing it appear a frame late.
 	var plan := plan_cell(cx, cz)
 	var rocks: Array = plan["rocks"]
 	var hulk: Dictionary = plan["hulk"]
@@ -610,6 +691,35 @@ func _spawn_cell(cx: int, cz: int):
 
 	for r_v in rocks:
 		var r: Dictionary = r_v
+		var s: Vector3 = r["scale"]
+		Obstacles.add(r["pos"], minf(s.x, s.z) * 0.82, tag)
+
+	if not hulk.is_empty():
+		# Derived from rot_y rather than read off the node's basis, because the
+		# node does not exist yet. Same vector either way: the Derelict's only
+		# rotation is this yaw, applied right after add_child in _populate_cell.
+		var fwd := Vector3(0.0, 0.0, 1.0).rotated(Vector3.UP, deg_to_rad(float(hulk["rot_y"])))
+		var at: Vector3 = hulk["pos"]
+		Obstacles.add(at - fwd * 2.6, 1.9, tag)
+		Obstacles.add(at + fwd * 2.6, 1.9, tag)
+
+	if not station.is_empty():
+		var arch0 := DeepPortDB.by_id(String(station["archetype"]))
+		if not arch0.is_empty():
+			Obstacles.add(station["pos"], Port.HULL_OBSTACLE_RADIUS, tag)
+	return node
+
+
+func _populate_cell(cx: int, cz: int, node: Node3D) -> void:
+	# The expensive half: meshes, a Derelict with its own kitbash, a Port with
+	# six silhouettes' worth of construction. Drained under a frame budget.
+	var plan := plan_cell(cx, cz)
+	var rocks: Array = plan["rocks"]
+	var hulk: Dictionary = plan["hulk"]
+	var station: Dictionary = plan["station"]
+
+	for r_v in rocks:
+		var r: Dictionary = r_v
 		var rock := MeshInstance3D.new()
 		var sm := SphereMesh.new()
 		sm.radius = 1.0
@@ -621,8 +731,6 @@ func _spawn_cell(cx: int, cz: int):
 		node.add_child(rock)
 		rock.global_position = r["pos"]
 		rock.scale = r["scale"]
-		var s: Vector3 = r["scale"]
-		Obstacles.add(r["pos"], minf(s.x, s.z) * 0.82, tag)
 
 	if not hulk.is_empty():
 		var d := Derelict.new()
@@ -640,11 +748,6 @@ func _spawn_cell(cx: int, cz: int):
 		d.rotation_degrees.y = float(hulk["rot_y"])
 		# After add_child: arm_trap restyles the beacon, which _ready builds.
 		d.arm_trap(hulk.get("trap", {}))
-		# Same two spine spheres SystemBuilder registers, tucked in the same way so
-		# the collision volume never encroaches on the breach affordance.
-		var fwd := d.global_transform.basis.z
-		Obstacles.add(d.global_position - fwd * 2.6, 1.9, tag)
-		Obstacles.add(d.global_position + fwd * 2.6, 1.9, tag)
 		_build_post(Vector2i(cx, cz), hulk.get("guards", {}))
 
 		# The survey mast rides the STERN, opposite the prow breach beacon. Eleven
@@ -682,9 +785,6 @@ func _spawn_cell(cx: int, cz: int):
 			p.bay_key = cell_key(_id, cx, cz)
 			node.add_child(p)
 			p.global_position = station["pos"]
-			Obstacles.add(p.global_position, Port.HULL_OBSTACLE_RADIUS, tag)
-
-	return node
 
 
 func _check_encounters(at: Vector3) -> void:
@@ -860,6 +960,11 @@ func post_standing(key: Vector2i) -> int:
 func _despawn_cell(key: Vector2i) -> void:
 	var node = _cells.get(key)
 	_cells.erase(key)
+	# A cell that leaves the window before it was ever dressed drops out of the
+	# queue with it. Without this the drain would later reach a key whose node is
+	# gone -- harmless, because it checks, but it would also mean flying fast
+	# enough could keep a stale backlog growing behind the player forever.
+	_build_queue.erase(key)
 	# The nest goes back to being a seed. It is not lost — plan_cell will produce
 	# the identical pack if the player ever comes back — it is simply no longer
 	# armed, because there is no cell here any more to walk into.
@@ -893,10 +998,12 @@ func rebuild() -> void:
 	# and the world is a pure function of (system, cell), so what comes back is
 	# identical apart from the tint.
 	_despawn_all()
+	_build_queue.clear()
 	_cell_last = Vector2i(9999, 9999)      # force the next _stream to run
 
 
 func _despawn_all() -> void:
+	_build_queue.clear()
 	for key_v in _cells.keys():
 		_despawn_cell(key_v)
 	_armed.clear()
@@ -928,6 +1035,9 @@ func content_cell_count() -> int:
 			n += 1
 	return n
 func _process(_delta: float) -> void:
+	# Ahead of the early return: cells already registered still owe their meshes
+	# whether or not there is a rig to follow this frame.
+	_drain_queue()
 	var rig: Node3D = get_tree().get_first_node_in_group("camera_rig")
 	if rig == null or _stars == null:
 		return

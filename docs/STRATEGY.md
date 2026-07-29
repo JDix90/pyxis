@@ -1971,3 +1971,74 @@ not reach would have no route back to the screen that would fix it. Two actions
 may never share a key — `NO SHARED KEY` asserts the old owner loses it — and no
 action may be left with nothing bound, because an unreachable action is worse
 than a shared one: nothing reveals it until the moment it is needed.
+
+## 31. The streaming hitch, measured before it was fixed
+
+The 5×5 cell window was built synchronously on every boundary crossing, and the
+suspicion was that this hitched. Suspicion is not a reason to add a queue, an
+escape hatch and a determinism risk to the one system in this game whose purity
+is load-bearing — so `PYXIS_STREAMTEST` measured it first.
+
+It did hitch, and not where expected. **First entry is cheap** — the whole window
+at once, near the chart edge, is a few milliseconds, because shallow cells are
+mostly empty. **Steady crossings spiked to 44ms**, roughly three dropped frames,
+because the tables that make deep cells interesting (`STATION_CHANCE`,
+`PACK_CHANCE`) all climb with depth. The expensive case was the one that happens
+while the player is flying, with nothing on screen to hide behind.
+
+The split is **what the game needs versus what the eye needs**:
+
+- `_register_cell` — the container node and every collision sphere, all derived
+  from `plan_cell`, which is pure arithmetic. Runs synchronously for the whole
+  window. The world is solid before it is visible, because flying through a rock
+  that has not been dressed yet is a far worse bug than watching one appear.
+- `_populate_cell` — meshes, the `Derelict`, its guard post, the `Port`. Queued
+  nearest-first and drained under a 5ms budget, with a floor of one cell per
+  frame so the queue provably empties even when a single cell exceeds the whole
+  budget — which is the exact case that motivated this.
+
+Worst frame after: **10.3ms**, inside a 60Hz frame.
+
+Determinism is untouched. `plan_cell` is still the only source of truth, still
+called in the same order; only the moment a mesh appears moves, and nothing reads
+a mesh to decide anything. `DEEPTEST`'s 44 assertions pass unmodified, which is
+the check that matters — they measure obstacles and cell counts, both of which
+stayed synchronous precisely so they would.
+
+### Three things this got wrong first
+
+**Guards went in the cheap half.** They are gameplay, so it seemed right — but a
+guard post is several `Hostile` nodes each building a mesh, which is the single
+most expensive thing a cell can hold. Putting them in `_register_cell` moved the
+cost rather than deferring it. They stand around a hulk the player cannot reach
+without crossing another cell, so a frame's delay costs nothing.
+
+**The measurement timed the crossing, not the frame.** With the build amortised a
+crossing deliberately spans several frames, so timing the whole crossing counts
+the amortisation as if it were the cost — and reported the fix as a regression
+from 44ms to 107ms. A hitch is one long frame; that is what the assertion
+measures now.
+
+**The equivalence check compared a live window against a fresh one.** `KEEP` is 3
+and `WINDOW` is 2, so the live state legitimately carries cells the fresh stream
+has not got. Both sides now start from a clean `rebuild()`, and `SAME WORLD
+EITHER WAY` confirms the amortised path lands on the same 17 cells and the same
+86 obstacles the synchronous one does.
+
+### Do not gate a harness on wall-clock frame time
+
+The first version of `NO HITCH` asserted `worst < 16.67ms`. It passed run alone
+and failed inside the full sweep — 10.3ms versus 23.5ms for identical code, on a
+build machine doing other work. A stopwatch assertion measures the machine, and a
+test that fails for reasons that are not defects trains you to ignore it.
+
+`§8`'s rule applies: assert the rule, not the rendering. The machine-independent
+rule is that construction is **deferred** — a crossing leaves cells registered and
+undressed for a later frame to drain. `WORK IS DEFERRED` checks the backlog was
+non-empty and `QUEUE DRAINS` checks it reaches zero; between them a queue that has
+become a no-op cannot pass. Note that "the row always splits across frames" is
+*not* the rule and asserting it was also wrong: a cheap row legitimately finishes
+inside one frame's budget, and only expensive rows are meant to split.
+
+The timing survives as a reported number with a deliberately loose bound (40ms).
+It would still catch the original 44ms spike; it will not fail on a busy box.

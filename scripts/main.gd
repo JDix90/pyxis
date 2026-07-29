@@ -445,6 +445,14 @@ func _ready() -> void:
 		_run_feel_test()
 		return
 
+	if OS.get_environment("PYXIS_STREAMTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_stream_test()
+		return
+
 	if OS.get_environment("PYXIS_ACCESSTEST") != "":
 		GameState.lock_saving()
 		state = State.PLAYING
@@ -9577,3 +9585,125 @@ func _simulate(c: Color, mode: int) -> Color:
 				0.000 * c.r + 0.433 * c.g + 0.567 * c.b,
 				0.000 * c.r + 0.475 * c.g + 0.525 * c.b)
 	return c
+
+
+# --- streaming cost ----------------------------------------------------------
+
+func _run_stream_test() -> void:
+	# MEASURES BEFORE IT JUDGES. The 5x5 cell window is built synchronously on
+	# every cell-boundary crossing, and that is either a hitch worth amortising
+	# or it is not -- and "it looks like it might be expensive" is not a reason to
+	# add a budgeted queue, an escape hatch and a determinism risk to the one
+	# system in this game whose purity is load-bearing.
+	#
+	# The budget is a 60Hz frame: 16.67ms. A build that fits inside one is not a
+	# hitch, it is a frame.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	await get_tree().create_timer(0.4).timeout
+
+	var edge := chart_edge()
+	# FIRST ENTRY and a STEADY CROSSING are different problems and are measured
+	# apart. Arriving in the expanse builds all 25 cells at once; sliding the
+	# window one row adds 5. Only the second one happens while the player is
+	# flying, and only the second one has nothing on screen to hide behind --
+	# first entry already has a warp flash over it.
+	var first := 0.0
+	var worst := 0.0
+	var total := 0.0
+	var samples := 0
+	# Walk outward across cell boundaries, timing the frame each crossing lands
+	# on. Sampled across bands on purpose: PACK_CHANCE, STATION_CHANCE and the
+	# rest all climb with depth, so a shallow-only measurement would measure the
+	# cheapest cells in the game.
+	# Measured PER FRAME, not per crossing, because a hitch is a single long
+	# frame -- and with the build amortised, a crossing deliberately spans
+	# several. Timing the whole crossing would count the amortisation as if it
+	# were the cost, which is exactly backwards.
+	#
+	# Six frames per step, which is a tenth of a second at 60Hz: the queue has to
+	# be empty well inside that or the ship outruns its own scenery.
+	var worst_batch := 0
+	var peak_backlog := 0
+	for step in range(1, 26):
+		var out := edge + float(step) * DeepSpace.CELL
+		player.teleport_to(Vector3(0.0, 0.0, out))
+		for f in range(6):
+			peak_backlog = maxi(peak_backlog, deep_space.build_backlog())
+			var t0 := Time.get_ticks_usec()
+			await get_tree().process_frame
+			var ms := float(Time.get_ticks_usec() - t0) / 1000.0
+			if step == 1:
+				first = maxf(first, ms)    # cold: the whole window at once
+			else:
+				worst = maxf(worst, ms)    # warm: one row of five
+				worst_batch = maxi(worst_batch, deep_space.built_last_frame)
+				total += ms
+				samples += 1
+
+	var mean := total / maxf(float(samples), 1.0)
+	# ONE-TIME, and not a crossing: this is the frame `generating` flips on, which
+	# bakes the two MultiMesh star layers and the cold shell as well as building
+	# the first window. It predates the amortisation -- the earlier single-frame
+	# sample simply was not looking at this frame -- and it happens under the warp
+	# arrival sequence, which already holds the screen. Bounded rather than
+	# ignored, so a regression that doubles it is still caught.
+	print("[stream] FIRST ENTRY one-time expanse init, worst frame %.2fms (under the arrival sequence) -> %s" % [
+		first, "PASS" if first < 250.0 else "FAIL"])
+	# ASSERTED ON THE RULE, NOT THE STOPWATCH. Wall-clock frame time measures the
+	# machine -- the same code came out at 10ms run alone and 23ms inside the full
+	# sweep on a loaded box -- so gating on it makes a test that fails for reasons
+	# that are not defects.
+	#
+	# The machine-independent rule is that construction is DEFERRED: a crossing
+	# leaves cells registered and undressed, to be drained later. A cheap row may
+	# legitimately finish inside one frame's budget, so "the row always splits" is
+	# NOT the rule and asserting it fails on cheap rows -- but a backlog that is
+	# never non-empty means the queue is a no-op and the hitch is back.
+	print("[stream] WORK IS DEFERRED peak backlog %d cells after a crossing, worst frame dressed %d -> %s" % [
+		peak_backlog, worst_batch, "PASS" if peak_backlog > 0 else "FAIL"])
+	# Timing kept as a reported number with a loose regression bound. It caught
+	# the original 44ms spike and would catch its return; it is not tight enough
+	# to fail on a busy machine.
+	print("[stream] FRAME TIME %d frames, mean %.2fms, worst %.2fms (60Hz = 16.67ms, bound 40) -> %s" % [
+		samples, mean, worst, "PASS" if worst < 40.0 else "FAIL"])
+
+	# Amortising is only correct if it finishes. A queue that never drains is not
+	# a smoother frame, it is a ship flying through undressed space.
+	player.teleport_to(Vector3(0.0, 0.0, edge + 40.0 * DeepSpace.CELL))
+	var frames := 0
+	while deep_space.build_backlog() > 0 and frames < 60:
+		await get_tree().process_frame
+		frames += 1
+	print("[stream] QUEUE DRAINS backlog empty after %d frames (cap 60) -> %s" % [
+		frames, "PASS" if deep_space.build_backlog() == 0 else "FAIL"])
+
+	# And the amortised path must land in exactly the same place the synchronous
+	# one does -- or the optimisation has changed the world rather than the
+	# schedule. BOTH SIDES START FROM A CLEAN REBUILD: comparing the live state
+	# against a fresh stream would compare a window plus its KEEP hysteresis
+	# against just the window, and report a difference that is only history.
+	var where := player.global_position
+	deep_space.rebuild()
+	deep_space.stream_now(where)
+	var sync_cells := deep_space.content_cell_count()
+	var sync_obstacles := Obstacles.count()
+
+	deep_space.rebuild()
+	await get_tree().process_frame          # _stream registers the window
+	while deep_space.build_backlog() > 0:
+		await get_tree().process_frame      # the queue dresses it
+	print("[stream] SAME WORLD EITHER WAY synchronous %d cells / %d obstacles, amortised %d / %d -> %s" % [
+		sync_cells, sync_obstacles, deep_space.content_cell_count(), Obstacles.count(),
+		"PASS" if sync_cells == deep_space.content_cell_count() \
+			and sync_obstacles == Obstacles.count() else "FAIL"])
+
+	# The registry has to give everything back. A leak here is an invisible wall
+	# left in empty space, and it compounds for the whole session.
+	var out_there := Obstacles.count()
+	player.teleport_to(PlayerShip.SPAWN_POINT)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	print("[stream] REGISTRY RETURNS %d obstacles out there -> %d at home -> %s" % [
+		out_there, Obstacles.count(), "PASS" if Obstacles.count() < out_there else "FAIL"])
+
+	get_tree().quit()
