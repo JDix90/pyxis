@@ -266,6 +266,10 @@ var _cells := {}
 var _cell_last := Vector2i(0x7fffffff, 0x7fffffff)
 # Cells registered but not yet dressed. See _stream for the split and why.
 var _build_queue: Array[Vector2i] = []
+# cell -> { seam index: true }. A dict of dicts rather than the flat set
+# _cracked and _surveyed use, because a cell holds at most one hulk but can hold
+# a seam on every rock in it.
+var _mined := {}
 # Per-frame budget for building meshes. About a third of a 60Hz frame, which
 # leaves room for everything else that happens on a frame where the player
 # crossed a boundary -- and cells are drained nearest-first, so the budget
@@ -585,7 +589,76 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 	# only ever be added at the end, and one that needs randomness of its own
 	# takes a separate seed rather than a slice of this one.
 	out["landmark"] = landmark_at(cx, cz, band)
+	# APPENDED AFTER THE LANDMARK, on its own salted stream, for the reason
+	# written directly above. This one looks riskier than it is: it READS
+	# out["rocks"], which the shared sequence produced, but it must never DRAW
+	# from `rng` -- a seam roll on the shared stream would move every rock, hulk,
+	# nest and station in the game by one draw. PYXIS_MINETEST's WORLD
+	# FINGERPRINT is the check, against a hash recorded before seams existed.
+	out["seams"] = seams_for(cx, cz, band, out["rocks"])
 	return out
+
+
+# --- seams -------------------------------------------------------------------
+# Ore lives on the surface of rocks that were already there. Thin and poor near
+# home, thick and rich outward -- and that gradient is not flavour, it is the
+# anti-farm mechanism. `_mined` is SESSION state (see note_mined), so a warp
+# re-rolls the expanse; what makes that safe is that the band you can reach in
+# one warp is the band that pays worst. Band 1 works out at roughly 195 credits
+# a minute against a combat baseline of about 2,000.
+const SEAM_CHANCE := [0.0, 0.22, 0.30, 0.38, 0.45]
+const SEAM_UNITS := [0, 3, 4, 4, 5]
+# How far outside the rock's own collision sphere the seam node sits. A seam
+# measured from the ROCK's centre would be unreachable on a big one: a QUIET
+# boulder's obstacle radius reaches 6.56 and MineableSeam.MINE_RANGE is 6.0, so
+# the ship would be pushed out past its own hold range and the seam could never
+# be worked. system_builder.gd:288 records this exact bug being shipped once.
+const SEAM_STANDOFF := 0.6
+
+
+func seams_for(cx: int, cz: int, band: int, rocks: Array) -> Array:
+	var out: Array = []
+	if band <= 0 or rocks.is_empty():
+		return out
+	var table: Array = CommodityDB.seam_yields(band)
+	if table.is_empty():
+		return out
+	var srng := RandomNumberGenerator.new()
+	srng.seed = hash("%s|%d|%d|seam" % [_id, cx, cz])
+	for i in range(rocks.size()):
+		if srng.randf() >= SEAM_CHANCE[band]:
+			continue
+		var r: Dictionary = rocks[i]
+		var sc: Vector3 = r["scale"]
+		var radius := minf(sc.x, sc.z) * 0.82
+		# On the rock's flank, on the play plane. The rock itself sits at y -3,
+		# below the plane the ship flies on, so the seam is what the player
+		# actually approaches.
+		var ang := srng.randf_range(0.0, TAU)
+		out.append({
+			"rock": i,
+			"pos": Vector3(r["pos"].x, 0.0, r["pos"].z)
+				+ Vector3(cos(ang), 0.0, sin(ang)) * (radius + SEAM_STANDOFF),
+			"good": String(table[srng.randi() % table.size()]),
+			"units": SEAM_UNITS[band],
+			"band": band,
+		})
+	return out
+
+
+func note_mined(cell: Vector2i, index: int) -> void:
+	# SESSION state, like _cracked and _surveyed. 17 refuses a persistent
+	# visited-cells array because it grows every minute the player flies, and
+	# rocks are the most numerous thing out there -- a saved one would grow
+	# faster than surveys would. What stops this being a farm is the band
+	# gradient, not a save. See PYXIS_MINETEST's WARP FARM.
+	if not _mined.has(cell):
+		_mined[cell] = {}
+	(_mined[cell] as Dictionary)[index] = true
+
+
+func is_mined(cell: Vector2i, index: int) -> bool:
+	return _mined.has(cell) and (_mined[cell] as Dictionary).has(index)
 
 
 # --- landmarks ---------------------------------------------------------------
@@ -746,6 +819,9 @@ func _register_cell(cx: int, cz: int):
 	# and the landmark never spawns -- which would silently thin them out in
 	# exactly the sparse cells where one is most worth having.
 	var mark: Dictionary = plan.get("landmark", {})
+	# Seams only exist where rocks do, so they cannot make an otherwise-empty
+	# cell contentful -- but naming them here keeps the check honest if that ever
+	# stops being true.
 	if rocks.is_empty() and hulk.is_empty() and station.is_empty() and mark.is_empty():
 		return null
 
@@ -782,6 +858,21 @@ func _populate_cell(cx: int, cz: int, node: Node3D) -> void:
 	var rocks: Array = plan["rocks"]
 	var hulk: Dictionary = plan["hulk"]
 	var station: Dictionary = plan["station"]
+
+	for seam_v in (plan.get("seams", []) as Array):
+		var sd: Dictionary = seam_v
+		var seam := MineableSeam.new()
+		seam.good = String(sd["good"])
+		seam.units = int(sd["units"])
+		seam.band = int(sd["band"])
+		seam.mine_time = 4.0 + 0.6 * float(int(sd["band"]) - 1)
+		seam.cell = Vector2i(cx, cz)
+		seam.seam_index = int(sd["rock"])
+		# Set BEFORE add_child, the ordering the mast and the derelict already
+		# rely on: _ready is what applies the already-worked state.
+		seam.mined = is_mined(Vector2i(cx, cz), int(sd["rock"]))
+		node.add_child(seam)
+		seam.global_position = sd["pos"]
 
 	# Scenery, so it dresses with the meshes and registers no collision -- a
 	# landmark you can bump into is an obstacle, and these exist to be looked at
@@ -826,17 +917,38 @@ func _populate_cell(cx: int, cz: int, node: Node3D) -> void:
 		d.arm_trap(hulk.get("trap", {}))
 		_build_post(Vector2i(cx, cz), hulk.get("guards", {}))
 
-		# The survey mast rides the STERN, opposite the prow breach beacon. Eleven
-		# units of separation is what lets CameraRig._pick tell two verbs on one
-		# wreck apart, and it puts the reading stand-off outside the guard ring,
-		# which is what makes surveying a guarded hulk the quiet option.
+		# The survey mast rides the STERN, opposite the prow breach beacon, at the
+		# beacon's own offset mirrored: -6.6 forward, +6.6 aft.
+		#
+		# It used to sit at 4.5, which put the dish INSIDE the hull. Not partly --
+		# the dish's worst-case box is x +/-0.52, y 1.445..2.455, z 3.98..5.02,
+		# and _build_mesh's stern block spans x +/-0.7, y -0.75..2.75, z 2.5..5.5.
+		# Inside on all three axes. What reached the screen was the fraction of
+		# the ring that happened to clear a silhouette edge at one spin phase, on
+		# an affordance the player is supposed to fly to and hold on.
+		#
+		# 6.6 clears it twice over: aft of the stern block (which ends at 5.5) and
+		# above the spine roof (y 1.0, and the dish sits at 1.45 and up). The
+		# stalk still passes THROUGH the spine, which is what a mast bolted to a
+		# hull should look like.
+		#
+		# The old 4.5 was chosen for a separation figure, and the figure survives:
+		# 13.2 units between the two anchors, against a CameraRig._pick radius of
+		# 60 SCREEN pixels -- which the pair clears by roughly 5x at every legal
+		# zoom. Moving aft also moves AWAY from the guard ring, so the "quiet
+		# option" stand-off argument only gets stronger.
+		#
+		# It fixes a second bug for free. CRACK_RANGE and SURVEY_RANGE are 6.5
+		# each, so at 11.1 apart the two in-range spheres OVERLAPPED: both wrote
+		# hud.prompt's single slot, and leaving one cleared the other's still-
+		# valid prompt. 13.2 > 13.0, so the lens is gone.
 		var mast := SurveyMast.new()
 		mast.band = int(plan["band"])
 		mast.survey_time = 3.0 + 0.5 * float(int(plan["band"]) - 1)
 		mast.cell = Vector2i(cx, cz)
 		mast.surveyed = _surveyed.has(Vector2i(cx, cz))
 		node.add_child(mast)
-		mast.global_position = d.global_position + d.global_transform.basis.z * 4.5
+		mast.global_position = d.global_position + d.global_transform.basis.z * SurveyMast.HULL_OFFSET
 
 	if not station.is_empty():
 		var arch := DeepPortDB.by_id(String(station["archetype"]))
@@ -1080,6 +1192,7 @@ func rebuild() -> void:
 
 func _despawn_all() -> void:
 	_build_queue.clear()
+	_mined.clear()
 	for key_v in _cells.keys():
 		_despawn_cell(key_v)
 	_armed.clear()

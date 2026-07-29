@@ -80,6 +80,16 @@ func _ready() -> void:
 	_crack_player = Sfx.attached_loop(self, "crack", -6.0)
 
 
+func hull_aabbs() -> Array:
+	# Every solid box of the hull, in WORLD space. Companion to
+	# SurveyMast.dish_aabb(); see MAST IS CLEAR.
+	var out: Array = []
+	for mi in _hull_parts:
+		if is_instance_valid(mi):
+			out.append(mi.global_transform * mi.get_aabb())
+	return out
+
+
 func pick_anchor() -> Vector3:
 	return breach_point
 

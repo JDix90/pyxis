@@ -68,6 +68,7 @@ class RadarLayer:
 	const TIER_PORT := 1
 	const TIER_SITE := 2
 	const TIER_HOSTILE := 3
+	const TIER_SEAM := 4
 
 	# Contact alpha falls off over this many units — at which point a marker sits
 	# at its floor and everything further away looks identical. Sixty is right
@@ -137,6 +138,11 @@ class RadarLayer:
 			["dockable", TIER_PORT, Palette.TEAL, SIZE_NORMAL],
 			["crackable", TIER_SITE, Palette.AMBER, SIZE_NORMAL],
 			["hostiles", TIER_HOSTILE, Palette.THREAT, SIZE_NORMAL],
+		# Below hostiles on purpose. found.sort_custom is ascending and
+		# MAX_MARKERS is 12, so when a nest springs the rocks fall off the board
+		# first -- which is correct, and free. TIER_SEAM is appended at the
+		# bottom of the tier list so nothing above it was renumbered.
+		["mineable", TIER_SEAM, Palette.HULL, SIZE_NORMAL],
 		]:
 			for node in get_tree().get_nodes_in_group(String(spec[0])):
 				var n := node as Node3D

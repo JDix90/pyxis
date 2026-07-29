@@ -16,6 +16,74 @@ const WARP_ARRIVE := 0.8
 const APEX_WAKE_DELAY := 6.0        # after arriving in an already-breached system
 const APEX_BREACH_DELAY := 9.0      # the aftershock, after breaching the derelict
 
+# --- harness state pinning ---------------------------------------------------
+# Every name the dispatch below tests, minus the capture modes. A harness whose
+# name is missing here still runs -- it just inherits whatever the developer's
+# save happens to hold, which is the defect this exists to close.
+#
+# GameState._ready() loads the real save before Main ever runs, so until this
+# landed EVERY harness was measuring against one person's savegame. It went
+# unnoticed for as long as nobody had actually played the build on the machine
+# running the sweep. The first real play session turned three assertions red
+# across CARTTEST and FORGETEST -- a scanner reported as a dead stat because the
+# save's fit already filled the reactor and equip refused it, a deep-station
+# assertion that found no station because the save was parked in a different
+# system, and a hold that "moved" because the slot under test already held a
+# cargo module. All three were correct code and a wrong baseline.
+#
+# lock_saving() already says a harness may never WRITE the player's save. This
+# is the other half: it may not READ it either.
+const HARNESS_VARS := [
+	"PYXIS_ACCESSTEST",
+	"PYXIS_APEXTEST",
+	"PYXIS_BALANCE",
+	"PYXIS_BOSSTEST",
+	"PYXIS_CARTTEST",
+	"PYXIS_COLLISIONTEST",
+	"PYXIS_CONTRACTTEST",
+	"PYXIS_DEEPTEST",
+	"PYXIS_DEMO",
+	"PYXIS_DOCKTEST",
+	"PYXIS_ECONDEMO",
+	"PYXIS_ENVTEST",
+	"PYXIS_FEELTEST",
+	"PYXIS_FORGETEST",
+	"PYXIS_GSATEST",
+	"PYXIS_HOLDTEST",
+	"PYXIS_INPUTTEST",
+	"PYXIS_LAYOUTTEST",
+	"PYXIS_LIVERYTEST",
+	"PYXIS_LOGTEST",
+	"PYXIS_MARKETTEST",
+	"PYXIS_MUSICTEST",
+	"PYXIS_PACINGTEST",
+	"PYXIS_PAUSETEST",
+	"PYXIS_RADARTEST",
+	"PYXIS_RAIDTEST",
+	"PYXIS_RIFTTEST",
+	"PYXIS_SALVAGETEST",
+	"PYXIS_SAVETEST",
+	"PYXIS_SHIPTEST",
+	"PYXIS_SMUGTEST",
+	"PYXIS_SPILLTEST",
+	"PYXIS_STATIONTEST",
+	"PYXIS_STORETEST",
+	"PYXIS_STREAMTEST",
+	"PYXIS_TITLETEST",
+	"PYXIS_TORPTEST",
+	"PYXIS_TUTORIALTEST",
+	"PYXIS_UITEST",
+	"PYXIS_WORLDTOUR",
+]
+
+
+static func harness_running() -> bool:
+	for v in HARNESS_VARS:
+		if OS.get_environment(String(v)) != "":
+			return true
+	return false
+
+
 # --- economy pacing target (PYXIS_PACINGTEST) -------------------------------
 # The eight-minute "standard loop" the economy is tuned against, as an activity
 # budget rather than a wall-clock replay. Two reasons it is not a literal eight
@@ -204,6 +272,25 @@ func _ready() -> void:
 	title_screen.continue_pressed.connect(continue_game)
 
 	Sfx.set_muted(GameState.audio_muted)
+
+	# PIN THE STATE BEFORE ANY HARNESS READS IT, and before the first
+	# _load_system below. GameState._ready() has already loaded the developer's
+	# real save by the time we get here, so without this every assertion in the
+	# suite is measured against whatever that person last did. See HARNESS_VARS.
+	#
+	# Deliberately NOT inside GameState: an autoload that behaved differently
+	# under a test flag would be a second code path through the thing every
+	# assertion trusts. This resets the same way starting a new game does.
+	# Reset only -- NOT lock_saving(). The lock is deliberately one-way, and
+	# PYXIS_SAVETEST and PYXIS_LIVERYTEST both need the real file layer: they
+	# redirect save_path to a probe file and then write it. Locking here would
+	# make SAVETEST=write silently produce no fixture, and the bare read that
+	# consumes it would fail five assertions about perfectly good code.
+	#
+	# Write-protection is unchanged: every harness still calls lock_saving()
+	# itself as its first act, and reset_to_starter() does not queue a save.
+	if harness_running():
+		GameState.reset_to_starter()
 
 	# Every harness drives the game directly and must not sit behind a menu.
 	# This has to be decided BEFORE the first _load_system: the builder checks
@@ -443,6 +530,14 @@ func _ready() -> void:
 		_load_system(GameState.current_system)
 		_enter_playing()
 		_run_feel_test()
+		return
+
+	if OS.get_environment("PYXIS_MINETEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_mine_test()
 		return
 
 	if OS.get_environment("PYXIS_ENVTEST") != "":
@@ -3116,6 +3211,12 @@ func _run_hold_test() -> void:
 func _run_cart_test() -> void:
 	var player: PlayerShip = get_tree().get_first_node_in_group("player")
 	player.invulnerable = true
+
+	# State is pinned for every harness in _ready -- see HARNESS_VARS. This one
+	# is worth naming as the case that found it: SURVEY SPEED equips a scanner to
+	# prove the module's stat is live, and a save whose fit already fills the
+	# reactor makes equip REFUSE it, so the assertion printed the same number
+	# twice and reported a dead stat that was perfectly alive.
 	_wave_timer = 1.0e9
 	_apex_wake_timer = -1.0
 	await get_tree().create_timer(0.4).timeout
@@ -3247,6 +3348,61 @@ func _run_cart_test() -> void:
 				too_close = "%s" % d.port_id
 	print("[cart] MASTS %d in the streaming window, none within 12u of a dock ring -> %s %s" % [
 		masts.size(), "PASS" if too_close == "" else "FAIL", too_close])
+
+	# 8b. THE MAST IS ACTUALLY VISIBLE. It was not: at the old offset of 4.5 the
+	#     dish sat INSIDE hull box #3, and the only thing that reached the screen
+	#     was the sliver of ring that cleared a silhouette edge at one spin
+	#     phase. Every other assertion about the mast passed the whole time --
+	#     it surveyed, it yielded, it deferred on a full hold, it stayed clear of
+	#     dock rings -- because nothing measured whether a player could SEE the
+	#     thing they are asked to fly to and hold on.
+	#
+	#     Measured against the real meshes at eight spin phases rather than
+	#     against the numbers that produced them, so it follows a change to the
+	#     hull, the dish or the offset.
+	var geo_hulk := Derelict.new()
+	system_root.add_child(geo_hulk)
+	geo_hulk.global_position = Vector3(400.0, 0.0, 400.0)
+	# Yaw ZERO, deliberately, so world space IS hull-local space. The hull and
+	# the mast rotate together rigidly, so their relative geometry is identical at
+	# every yaw -- but `transform * AABB` returns an axis-aligned bound AROUND a
+	# rotated box, which for a 14-unit spine yawed 37 degrees is a box roughly
+	# five times too wide. The first version of this assertion did that and
+	# reported the mast buried when it was clear.
+	geo_hulk.rotation_degrees.y = 0.0
+	var geo_mast := SurveyMast.new()
+	geo_mast.band = 2
+	system_root.add_child(geo_mast)
+	geo_mast.global_position = geo_hulk.global_position \
+		+ geo_hulk.global_transform.basis.z * SurveyMast.HULL_OFFSET
+	await get_tree().process_frame
+	var buried := ""
+	var boxes: Array = geo_hulk.hull_aabbs()
+	for phase in range(8):
+		geo_mast._spin = TAU * float(phase) / 8.0
+		geo_mast._process(0.0)
+		await get_tree().process_frame
+		var dish: AABB = geo_mast.dish_aabb()
+		for b_v in boxes:
+			if (b_v as AABB).intersects(dish):
+				buried = "phase %d" % phase
+	print("[cart] MAST IS CLEAR dish vs %d hull boxes at 8 spin phases, offset %.1f, buried at: %s -> %s" % [
+		boxes.size(), SurveyMast.HULL_OFFSET, buried if buried != "" else "never",
+		"PASS" if buried == "" and boxes.size() > 0 else "FAIL"])
+
+	# 8c. AND THE TWO PROMPTS DO NOT OVERLAP. Both the breach point and the mast
+	#     write hud.prompt's single slot on an in-range edge transition, so while
+	#     the two in-range spheres intersected, whichever boundary was crossed
+	#     last won and leaving one CLEARED the other's still-valid prompt. The
+	#     separation has to exceed the sum of the two ranges, and at the old 11.1
+	#     against 6.5 + 6.5 it did not.
+	var reach := Derelict.CRACK_RANGE + SurveyMast.SURVEY_RANGE
+	var apart := geo_mast.global_position.distance_to(geo_hulk.pick_anchor())
+	print("[cart] PROMPT RANGES DISJOINT anchors %.1fu apart vs CRACK %.1f + SURVEY %.1f = %.1f -> %s" % [
+		apart, Derelict.CRACK_RANGE, SurveyMast.SURVEY_RANGE, reach,
+		"PASS" if apart > reach else "FAIL"])
+	geo_mast.queue_free()
+	geo_hulk.queue_free()
 
 	# 9. DOCKING A DEEP STATION IS SURVEYING IT — through the real dock path, not
 	#    a synthetic grant, so the cell key, the band lookup and the once-per-
@@ -6841,6 +6997,17 @@ func _run_pause_test() -> void:
 	_set_boss_active(true)
 	toggle_pause()
 	await get_tree().create_timer(0.3).timeout
+	# Granted, then compared against itself. This used to assert `salvage > 0`
+	# without ever paying the player any, so what it really asked was "did a wave
+	# happen to spawn and a kill happen to land in the preceding half second" --
+	# it read 90 on one run and 0 on the next with no code change between them.
+	# It only ever looked stable because it was reading the developer's save.
+	# §8: when a value holds by luck, assert the invariant, not the instance. The
+	# invariant is that abandoning PRESERVES the run, and that needs a known
+	# number on both sides of the call.
+	GameState.add_salvage(4242)
+	var keep_salvage := GameState.salvage
+	var keep_system := GameState.current_system
 	abandon_to_title()
 	await get_tree().create_timer(0.5).timeout
 	var clean := state == State.ATTRACT \
@@ -6856,9 +7023,15 @@ func _run_pause_test() -> void:
 		str(title_screen.visible), "PASS" if clean else "FAIL"])
 	# The run itself is untouched: abandoning is leaving the cockpit, not
 	# discarding progress.
-	print("[pause] ABANDON KEEPS RUN salvage=%d system=%s -> %s" % [
-		GameState.salvage, GameState.current_system,
-		"PASS" if GameState.salvage > 0 and GameState.current_system != "" else "FAIL"])
+	# Both halves, and the first half matters: `before == after` alone is vacuous
+	# when both are zero, which is exactly the state a pinned harness starts in.
+	# Requiring something to have been there is what makes this measure
+	# preservation rather than absence.
+	print("[pause] ABANDON KEEPS RUN salvage %d -> %d (had some=%s), system '%s' -> '%s' -> %s" % [
+		keep_salvage, GameState.salvage, str(keep_salvage > 0),
+		keep_system, GameState.current_system,
+		"PASS" if keep_salvage > 0 and GameState.salvage == keep_salvage \
+			and GameState.current_system == keep_system else "FAIL"])
 
 	# Pausing behind the title screen is meaningless and must be refused.
 	toggle_pause()
@@ -9114,6 +9287,66 @@ func _run_ui_test() -> void:
 		str(GameState.setting("haptics")), str(GameState.setting("reduce_motion")),
 		"PASS" if kept else "FAIL"])
 
+	# --- 7. DEPART is a control, not a seventh tab ---------------------------
+	# It used to be the last child of the same HFlowContainer as the services,
+	# wearing the same stock-grey chrome and differing only by a teal label --
+	# so it read as a tab, which is both easy to miss when you want it and easy
+	# to hit when you do not.
+	var dock_port: Port = null
+	for n in get_tree().get_nodes_in_group("dockable"):
+		dock_port = n as Port
+		break
+	port_panel.open_for(dock_port)
+	await get_tree().process_frame
+	var depart_btn := port_panel._tabs["depart"] as Button
+	var in_row: bool = depart_btn.get_parent() == port_panel._tab_row
+	var depart_box := depart_btn.get_theme_stylebox("normal")
+	var depart_styled: bool = depart_box != null and not (depart_box is StyleBoxEmpty)
+	print("[ui] DEPART IS A CONTROL in the tab row=%s (want false), has a stylebox=%s -> %s" % [
+		str(in_row), str(depart_styled),
+		"PASS" if not in_row and depart_styled else "FAIL"])
+
+	# --- 8. two clicks outside the sheet leave -------------------------------
+	# Deliberately a DOUBLE press: the world behind the sheet is live and the rig
+	# still pans while docked, so one stray click undocking would be worse than
+	# the mis-tap this whole change is about.
+	_complete_dock(dock_port)
+	await get_tree().process_frame
+	var was_docked: bool = docked_port != null
+	var outside := Vector2(20.0, 20.0)         # top-left; the sheet is the bottom 66%
+	var single := InputEventMouseButton.new()
+	single.button_index = MOUSE_BUTTON_LEFT
+	single.pressed = true
+	single.position = outside
+	port_panel._unhandled_input(single)
+	await get_tree().process_frame
+	var survived_single: bool = docked_port != null
+	var second := InputEventMouseButton.new()
+	second.button_index = MOUSE_BUTTON_LEFT
+	second.pressed = true
+	second.position = outside
+	port_panel._unhandled_input(second)
+	await get_tree().process_frame
+	print("[ui] DOUBLE CLICK DEPARTS docked=%s, survives one click=%s, gone after two=%s -> %s" % [
+		str(was_docked), str(survived_single), str(docked_port == null),
+		"PASS" if was_docked and survived_single and docked_port == null else "FAIL"])
+
+	# --- 9. and the sheet can be reached again -------------------------------
+	# CameraRig._cancel closes the panel without undocking and request_dock
+	# refuses while docked_port is set, so before this the escape ladder was
+	# one-way: a player who pressed Escape was clamped to a station with no way
+	# back to its counters.
+	_complete_dock(dock_port)
+	await get_tree().process_frame
+	port_panel.close_panel()
+	await get_tree().process_frame
+	var stranded: bool = docked_port != null and not port_panel.is_open
+	dock_port.on_tapped()
+	await get_tree().process_frame
+	print("[ui] REOPEN AFTER ESCAPE closed while docked=%s, tapping the port reopens=%s -> %s" % [
+		str(stranded), str(port_panel.is_open),
+		"PASS" if stranded and port_panel.is_open else "FAIL"])
+
 	get_tree().quit()
 
 
@@ -9893,3 +10126,321 @@ func _find_world_env(n: Node) -> WorldEnvironment:
 		if found != null:
 			return found
 	return null
+
+
+# --- mining ------------------------------------------------------------------
+
+func _world_fingerprint() -> String:
+	# Everything plan_cell produces EXCEPT seams, hashed over a fixed block of
+	# cells. This exists to prove one thing: that appending the seam roll did not
+	# move a single rock, hulk, nest or station in the game.
+	#
+	# plan_cell's rolls are one linear RNG sequence, so a draw inserted anywhere
+	# but the last line shifts every draw after it and silently reshuffles the
+	# whole expanse. The guard/landmark rolls already dodge this by taking their
+	# own salted streams; the seam roll must too, and this is what checks it.
+	#
+	# The constant it is compared against was recorded BEFORE seams existed. A
+	# fingerprint taken afterwards would agree with whatever it was given.
+	var acc := ""
+	for cx in range(-5, 6):
+		for cz in range(-5, 6):
+			var plan := deep_space.plan_cell(cx, cz)
+			acc += "%d,%d|" % [cx, cz]
+			for r_v in (plan["rocks"] as Array):
+				var r: Dictionary = r_v
+				acc += "r%.3f,%.3f,%.3f;" % [r["pos"].x, r["pos"].z, r["scale"].x]
+			var h: Dictionary = plan["hulk"]
+			if not h.is_empty():
+				acc += "h%.3f,%.3f,%.3f,%d;" % [h["pos"].x, h["pos"].z, h["rot_y"], int(h["loot"])]
+			var pk: Dictionary = plan["pack"]
+			if not pk.is_empty():
+				acc += "p%.3f,%.3f,%d;" % [pk["pos"].x, pk["pos"].z, int(pk["count"])]
+			var st: Dictionary = plan["station"]
+			if not st.is_empty():
+				acc += "s%.3f,%.3f,%s;" % [st["pos"].x, st["pos"].z, String(st["archetype"])]
+			acc += "\n"
+	return str(acc.hash())
+
+
+# Recorded BEFORE the seam roll existed, by running this harness with only the
+# fingerprint line in it. A constant captured afterwards would agree with
+# whatever it was given and prove nothing.
+const WORLD_FINGERPRINT_BEFORE_SEAMS := "3836096557"
+
+
+func _run_mine_test() -> void:
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	player.invulnerable = true
+	_wave_timer = 1.0e9
+	_apex_wake_timer = -1.0
+	await get_tree().create_timer(0.3).timeout
+
+	# --- 1. the collision guard ----------------------------------------------
+	# is_salvage() is literally has("band") and salvage_for_band() returns the
+	# FIRST dict-order match, so an ore carrying `band` would shadow a salvage
+	# grade -- and spawn_loot's 22% regrade would start minting it out of
+	# ordinary combat crates, feeding ARCHEOLOGY off rock.
+	var ore := CommodityDB.ore_ids()
+	var shadowing := ""
+	for id_v in ore:
+		var g := CommodityDB.get_good(String(id_v))
+		if g.has("band") or g.has("chart_band") or g.has("parent"):
+			shadowing = String(id_v)
+	var grades_intact := true
+	for band in range(0, 5):
+		if not CommodityDB.is_salvage(CommodityDB.salvage_for_band(band)):
+			grades_intact = false
+	print("[mine] NOT SALVAGE, NOT CHART %d ore goods, none carries band/chart_band/parent (%s), all 5 grades still resolve=%s -> %s" % [
+		ore.size(), shadowing if shadowing != "" else "none", str(grades_intact),
+		"PASS" if ore.size() == 8 and shadowing == "" and grades_intact else "FAIL"])
+
+	# --- 2. ore is not loot ---------------------------------------------------
+	var minted := ""
+	for i in range(300):
+		var cube := spawn_loot(system_root, Vector3(0, 0, 6), "alloys")
+		if CommodityDB.is_ore(String(cube.commodity)):
+			minted = String(cube.commodity)
+		cube.queue_free()
+	print("[mine] ORE IS NOT LOOT 300 crates through spawn_loot minted ore: %s -> %s" % [
+		minted if minted != "" else "none", "PASS" if minted == "" else "FAIL"])
+
+	# --- 3. one step, and every ore is sellable somewhere ---------------------
+	var bad := ""
+	for band in range(1, 5):
+		for gid_v in CommodityDB.seam_yields(band):
+			var gid := String(gid_v)
+			if not CommodityDB.is_ore(gid) or CommodityDB.no_retail(gid) \
+					or CommodityDB.base_price(gid) <= 0:
+				bad = gid
+	print("[mine] SEAM YIELDS ORE, ONE STEP every seam output is ore, retail and priced (offender: %s) -> %s" % [
+		bad if bad != "" else "none", "PASS" if bad == "" else "FAIL"])
+
+	# --- 4. richer outward ----------------------------------------------------
+	# The gradient IS the anti-farm mechanism, so it is asserted rather than
+	# trusted: the expanse resets on a warp, and what makes that safe is that the
+	# band you can reach in one warp is the band that pays worst.
+	var means: Array = []
+	for band in range(1, 5):
+		var total := 0.0
+		var table: Array = CommodityDB.seam_yields(band)
+		for gid_v in table:
+			total += float(CommodityDB.base_price(String(gid_v)))
+		means.append(snappedf(total / maxf(float(table.size()), 1.0) * float(DeepSpace.SEAM_UNITS[band]), 1.0))
+	var rising := true
+	for i in range(means.size() - 1):
+		if float(means[i + 1]) <= float(means[i]):
+			rising = false
+	print("[mine] RICHER OUTWARD mean seam value by band %s, strictly increasing=%s -> %s" % [
+		str(means), str(rising), "PASS" if rising else "FAIL"])
+
+	# --- 5. every band offers both categories --------------------------------
+	var lopsided := ""
+	for band in range(1, 5):
+		var kinds := {}
+		for gid_v in CommodityDB.seam_yields(band):
+			kinds[CommodityDB.ore_class(String(gid_v))] = true
+		if not (kinds.has("metal") and kinds.has("mineral")):
+			lopsided = "band %d" % band
+	print("[mine] BOTH CATEGORIES EVERYWHERE no band is metal-only or mineral-only (%s) -> %s" % [
+		lopsided if lopsided != "" else "none", "PASS" if lopsided == "" else "FAIL"])
+
+	# --- 6. the roll is append-only ------------------------------------------
+	# plan_cell's rolls are one linear sequence: a draw inserted anywhere but the
+	# last line shifts every draw after it and reshuffles the whole expanse.
+	var fp := _world_fingerprint()
+	print("[mine] WORLD FINGERPRINT %s vs %s recorded before seams existed -> %s" % [
+		fp, WORLD_FINGERPRINT_BEFORE_SEAMS,
+		"PASS" if fp == WORLD_FINGERPRINT_BEFORE_SEAMS else "FAIL"])
+
+	# --- 7. and seams themselves are deterministic ---------------------------
+	var drift := true
+	var seen := 0
+	for cx in range(4, 14):
+		for cz in range(4, 14):
+			var a := var_to_str(deep_space.plan_cell(cx, cz)["seams"])
+			var b := var_to_str(deep_space.plan_cell(cx, cz)["seams"])
+			if a != b:
+				drift = false
+			seen += (deep_space.plan_cell(cx, cz)["seams"] as Array).size()
+	print("[mine] DETERMINISM 100 cells rolled twice, %d seams, identical=%s -> %s" % [
+		seen, str(drift), "PASS" if drift and seen > 0 else "FAIL"])
+
+	# --- 8. a seam is reachable ----------------------------------------------
+	# The bug this prevents has shipped in this codebase once already
+	# (system_builder.gd:288): a hold measured from a big rock's CENTRE puts the
+	# stand-off inside its own collision sphere and the thing can never be
+	# worked. Seams stand off the sphere, so one range constant is correct at
+	# every rock size.
+	var unreachable := 0
+	var checked := 0
+	for cx in range(4, 24):
+		for cz in range(4, 24):
+			var plan := deep_space.plan_cell(cx, cz)
+			var rocks: Array = plan["rocks"]
+			for sd_v in (plan["seams"] as Array):
+				var sd: Dictionary = sd_v
+				var r: Dictionary = rocks[int(sd["rock"])]
+				var sc: Vector3 = r["scale"]
+				var rock_radius := minf(sc.x, sc.z) * 0.82
+				var flat := Vector3(r["pos"].x, 0.0, r["pos"].z)
+				checked += 1
+				# The ship is pushed to the sphere's surface; the seam must be
+				# inside MINE_RANGE of that, not of the rock's middle.
+				if (sd["pos"] as Vector3).distance_to(flat) - rock_radius > MineableSeam.MINE_RANGE:
+					unreachable += 1
+	print("[mine] SEAM IS REACHABLE %d seams checked, %d outside MINE_RANGE %.1f of the rock's surface -> %s" % [
+		checked, unreachable, MineableSeam.MINE_RANGE,
+		"PASS" if checked > 0 and unreachable == 0 else "FAIL"])
+
+	# --- 9. warp farming pays badly ------------------------------------------
+	# _mined is session state, so a warp re-rolls the expanse. The defence is
+	# arithmetic, not a save: band 1 is deliberately the poorest band.
+	var b1_seams := 0.0
+	var b1_value := 0.0
+	var cells := 0
+	# Band 1 is a thin SHELL, not a region: depth 0..160 past a chart edge of 40
+	# is a radius of 40..200, which at CELL 64 is roughly |c| <= 3. Scanning
+	# outward from the origin finds none of it, which is how the first version of
+	# this assertion measured zero cells and reported a farm rate of nothing.
+	for cx in range(-6, 7):
+		for cz in range(-6, 7):
+			var plan := deep_space.plan_cell(cx, cz)
+			if DeepSpace.band_of(deep_space.depth_at(DeepSpace.cell_centre(cx, cz))) != 1:
+				continue
+			cells += 1
+			for sd_v in (plan["seams"] as Array):
+				var sd: Dictionary = sd_v
+				b1_seams += 1.0
+				b1_value += float(CommodityDB.base_price(String(sd["good"]))) * float(sd["units"])
+	var per_cell := b1_value / maxf(float(cells), 1.0)
+	# One 64u cell at the hull's base speed of 5.75 is 11.1s, so credits/min is
+	# per_cell * (60 / 11.1).
+	var per_min := per_cell * (60.0 / 11.1)
+	print("[mine] WARP FARM band 1: %d cells, %.2f seams, %.0f credits/cell = %.0f/min vs a ~2000/min combat baseline -> %s" % [
+		cells, b1_seams, per_cell, per_min, "PASS" if cells > 0 and per_min < 600.0 else "FAIL"])
+
+	# --- 10. the pick order ---------------------------------------------------
+	# _pick is screen-space with no raycast and plan_cell has no keep-out between
+	# rocks and hulks, so the two can land within a tap of each other. A hulk is
+	# one-time; a rock is one of many.
+	var rig := get_tree().get_first_node_in_group("camera_rig") as CameraRig
+	var hulk_probe := Derelict.new()
+	system_root.add_child(hulk_probe)
+	hulk_probe.global_position = Vector3(300.0, 0.0, 300.0)
+	var seam_probe := MineableSeam.new()
+	seam_probe.good = "ore_ferrite"
+	system_root.add_child(seam_probe)
+	await get_tree().process_frame
+	# Placed so the two ANCHORS are 0.6 units apart, not the two nodes: the seam
+	# lifts its anchor 1.1 up out of the rock silhouette, so offsetting the nodes
+	# would put the anchors further apart than intended. 0.6 world units is about
+	# 37 screen pixels at the default zoom, comfortably inside PICK_PX 60 -- which
+	# is the point. At 2.0 the seam was ~123px away and simply out of reach, so
+	# the "contested" tap was never contested and the assertion could not fail.
+	# Derived from BEACON_LOCAL rather than read off pick_anchor(). breach_point
+	# is refreshed in Derelict._process, and `await process_frame` does not
+	# guarantee that a given node's _process has run before the coroutine
+	# resumes -- so reading it here returned the value captured at _ready, when
+	# the hulk was still at the origin, and put the seam 400 units away. The
+	# assertion then reported a contest that never happened.
+	var breach := hulk_probe.global_position \
+		+ hulk_probe.global_transform.basis * Derelict.BEACON_LOCAL
+	seam_probe.global_position = breach + Vector3(0.6, -1.1, 0.0)
+	await get_tree().process_frame
+	var cam := get_viewport().get_camera_3d()
+	# The leash pulls the rig back to the SHIP every frame, so a rig parked over
+	# the probes snaps home and unprojects them from 400 units away. Off, the way
+	# the capture harnesses do it.
+	rig.leash_enabled = false
+	rig.global_position = Vector3(300.0, 0.0, 300.0)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var at := cam.unproject_position(hulk_probe.pick_anchor())
+	# Driven through _try_begin_hold, the real entry point, and read off what it
+	# actually latched onto. The first version of this called _pick("crackable")
+	# and asserted it returned the hulk -- which is true no matter which group
+	# _try_begin_hold consults first, so it could not fail.
+	rig._hold_target = null
+	rig._try_begin_hold(at)
+	var latched = rig._hold_target
+	var both_in_reach: bool = rig._pick(at, "mineable") == seam_probe
+	var gap_px := cam.unproject_position(seam_probe.pick_anchor()).distance_to(at)
+	print("[mine] PICK PRECEDENCE anchors %.1fpx apart (PICK_PX %.0f), seam reachable=%s: the hold went to %s -> %s" % [
+		gap_px, CameraRig.PICK_PX, str(both_in_reach),
+		"the hulk" if latched == hulk_probe else "the seam",
+		"PASS" if latched == hulk_probe and both_in_reach else "FAIL"])
+	rig._release_hold()
+	rig.leash_enabled = true
+	seam_probe.queue_free()
+	hulk_probe.queue_free()
+
+	# --- 11. all or nothing on a full hold -----------------------------------
+	# SurveyMast calls load_cargo and reverts only when it took ZERO -- but
+	# load_cargo is PARTIAL, so a mast worked with one space free takes 1 of its
+	# 2 units and marks itself surveyed, destroying half the reading. With a
+	# five-unit seam that is five times worse.
+	GameState.cargo = {}
+	var cap := GameState.cargo_capacity()
+	GameState.load_cargo("alloys", int(floor(float(cap - 2) / 2.0)))   # leaves 2 space
+	var free_before := GameState.cargo_free()
+	var full_seam := MineableSeam.new()
+	full_seam.good = "ore_tungsten"          # space 2, so 4 units needs 8
+	full_seam.units = 4
+	system_root.add_child(full_seam)
+	await get_tree().process_frame
+	full_seam._complete()
+	print("[mine] HOLD FULL DEFERS %d space free, a 4x space-2 cut took %d and left the seam workable=%s -> %s" % [
+		free_before, free_before - GameState.cargo_free(), str(not full_seam.mined),
+		"PASS" if not full_seam.mined and GameState.cargo_free() == free_before else "FAIL"])
+	full_seam.queue_free()
+
+	# --- 12. and a cut that fits lands whole ---------------------------------
+	GameState.cargo = {}
+	var good_seam := MineableSeam.new()
+	good_seam.good = "ore_platinum"
+	good_seam.units = 5
+	good_seam.cell = Vector2i(7, 7)
+	good_seam.seam_index = 0
+	system_root.add_child(good_seam)
+	await get_tree().process_frame
+	good_seam._complete()
+	print("[mine] CUT LANDS WHOLE %d of 5 PLATINUM in the hold, seam spent=%s, remembered=%s -> %s" % [
+		GameState.cargo_count("ore_platinum"), str(good_seam.mined),
+		str(deep_space.is_mined(Vector2i(7, 7), 0)),
+		"PASS" if GameState.cargo_count("ore_platinum") == 5 and good_seam.mined \
+			and deep_space.is_mined(Vector2i(7, 7), 0) else "FAIL"])
+	good_seam.queue_free()
+
+	# --- 13. mined stays mined across a rebuild ------------------------------
+	var live := 0
+	for n in get_tree().get_nodes_in_group("mineable"):
+		live += 1
+	print("[mine] MINED STAYS MINED cell (7,7) seam 0 recorded=%s, a rebuilt seam there would spawn spent -> %s" % [
+		str(deep_space.is_mined(Vector2i(7, 7), 0)),
+		"PASS" if deep_space.is_mined(Vector2i(7, 7), 0) else "FAIL"])
+
+	# --- 14. and the session resets, deliberately ----------------------------
+	deep_space.rebuild()
+	await get_tree().process_frame
+	print("[mine] SESSION RESET mined before a rebuild=true, after=%s (deliberate; see 17) -> %s" % [
+		str(deep_space.is_mined(Vector2i(7, 7), 0)),
+		"PASS" if not deep_space.is_mined(Vector2i(7, 7), 0) else "FAIL"])
+
+	# --- 15. a prospector is not invisible -----------------------------------
+	# 17: there is no range at which a full hold is safe. Zero-weight ore would
+	# make interdiction inert for a whole playstyle, which is the trap chart data
+	# was caught in.
+	var zero_weight := ""
+	for id_v in ore:
+		if CommodityDB.interdiction_weight(String(id_v)) <= 0.0:
+			zero_weight = String(id_v)
+	GameState.cargo = {}
+	GameState.load_cargo("ore_platinum", 30)
+	var rich_hold := GameState.hold_value(true)
+	print("[mine] PROSPECTOR IS NOT INVISIBLE no zero-weight ore (%s); 30 PLATINUM weighs %d vs RAID_MIN_HOLD %d -> %s" % [
+		zero_weight if zero_weight != "" else "none", rich_hold, RAID_MIN_HOLD,
+		"PASS" if zero_weight == "" and rich_hold >= RAID_MIN_HOLD else "FAIL"])
+	GameState.cargo = {}
+
+	get_tree().quit()

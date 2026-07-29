@@ -252,6 +252,102 @@ const GOODS := {
 		"desc": "A place with a shape, and no name, and no record of anyone else.",
 		"chart_band": 4, "no_retail": true, "interdiction_weight": 0.5,
 	},
+
+	# --- v14 ore: metals and minerals ----------------------------------------
+	# THE MARKER KEY IS `ore`, NEVER `band`, for exactly the reason written above
+	# the chart goods: is_salvage() is has("band") and salvage_for_band() takes
+	# the FIRST dict-order match, so an ore carrying `band` would shadow a
+	# salvage grade and Main.spawn_loot's 22% regrade would start minting ore out
+	# of ordinary combat crates -- and, worse, feed ARCHEOLOGY off it. `ore` is
+	# also a String rather than an int, so the two cannot be confused by a reader
+	# or by a get() with the wrong default.
+	#
+	# ONE STEP. A seam yields the finished tradeable directly; there is no raw
+	# ore and no refinery. A second inventory layer would be a second budget, and
+	# 9 rule 1 allows exactly one.
+	#
+	# Priced BETWEEN the existing goods and every one of them under Intact Relics
+	# (260). This is bulk industry, not treasure: the deep pays a prospector in
+	# volume and density, never in one fat unit. The order below is the price
+	# ladder, alternating mineral and metal so neither category is the rich one.
+	#
+	# interdiction_weight runs 0.7 -> 1.3 and is never 0 (17's weightless-data
+	# trap): gravel genuinely is not worth stopping for, and a hold of Platinum
+	# Sponge is exactly what a raider wants. That gradient puts 19's "the most
+	# valuable haul is the most dangerous to carry" into a new loop with no new
+	# mechanic.
+	"ore_silicate": {
+		"name": "Silicate Gravel", "short": "SILICA",
+		"base": 60, "space": 2, "color": Color(0.68, 0.64, 0.56),
+		"desc": "Crushed rock with just enough glass in it to be worth the cut.",
+		"ore": "mineral", "interdiction_weight": 0.7,
+		"trade_only_at": ["anchor", "cinderworks", "depot", "bastion"],
+	},
+	"ore_ferrite": {
+		"name": "Ferrite Ingots", "short": "FERRITE",
+		"base": 70, "space": 2, "color": Color(0.58, 0.62, 0.66),
+		"desc": "Cut, cooled and stacked. Every yard on the chart takes these.",
+		"ore": "metal", "interdiction_weight": 0.7,
+		"trade_only_at": ["anchor", "cinderworks", "depot", "bastion"],
+	},
+	"ore_hydrate": {
+		"name": "Hydrate Ice", "short": "HYDRATE",
+		"base": 95, "space": 2, "color": Color(0.56, 0.84, 0.86),
+		"desc": "Volatiles locked in rock. Warm it and it stops being cargo.",
+		"ore": "mineral", "interdiction_weight": 0.8,
+		"trade_only_at": ["anchor", "cinderworks", "depot", "bastion"],
+	},
+	"ore_tungsten": {
+		"name": "Tungsten Billets", "short": "TUNGSTEN",
+		"base": 110, "space": 2, "color": Color(0.44, 0.52, 0.60),
+		"desc": "Dense enough that the hold notices. So does anything scanning it.",
+		"ore": "metal", "interdiction_weight": 0.8,
+		"trade_only_at": ["anchor", "cinderworks", "depot", "bastion"],
+	},
+	"ore_phosphor": {
+		"name": "Phosphor Salts", "short": "PHOSPHOR",
+		"base": 150, "space": 1, "color": Color(0.86, 0.72, 0.40),
+		"desc": "Glows faintly in the dark of the hold. The crew stops noticing.",
+		"ore": "mineral", "interdiction_weight": 1.1,
+		"trade_only_at": ["anchor", "cinderworks", "depot", "bastion"],
+	},
+	"ore_platinum": {
+		"name": "Platinum Sponge", "short": "PLATINUM",
+		"base": 175, "space": 1, "color": Color(0.88, 0.90, 0.94),
+		"desc": "Porous, grey, and worth more than the ship that carries it.",
+		"ore": "metal", "interdiction_weight": 1.1,
+		"trade_only_at": ["anchor", "cinderworks", "depot", "bastion"],
+	},
+	"ore_corundum": {
+		"name": "Corundum Rough", "short": "CORUNDUM",
+		"base": 220, "space": 1, "color": Color(0.80, 0.52, 0.74),
+		"desc": "Uncut and unsorted. Somebody downstream decides what it becomes.",
+		"ore": "mineral", "interdiction_weight": 1.3,
+		"trade_only_at": ["anchor", "cinderworks", "depot", "bastion"],
+	},
+	"ore_iridium": {
+		"name": "Iridium Matte", "short": "IRIDIUM",
+		"base": 240, "space": 1, "color": Color(0.74, 0.70, 0.60),
+		"desc": "Smelted where it was found, by whoever found it first.",
+		"ore": "metal", "interdiction_weight": 1.3,
+		"trade_only_at": ["anchor", "cinderworks", "depot", "bastion"],
+	},
+}
+
+# What a seam of each band can hold. The depth axis lives in a TABLE, mirroring
+# READS_AS, rather than in a second marker key on each good -- so `ore` stays the
+# one new field and nothing has to be kept in sync with it.
+#
+# Every band carries at least one metal and one mineral, so neither category is
+# a band you have to reach before you can see it. Mean seam value climbs
+# 195 / 425 / 530 / 981 across the bands, which is the anti-farm gradient: the
+# expanse resets on a warp, and the band you can reach in one warp is the band
+# that pays worst.
+const SEAM_YIELDS := {
+	1: ["ore_ferrite", "ore_silicate"],
+	2: ["ore_ferrite", "ore_tungsten", "ore_hydrate", "ore_phosphor"],
+	3: ["ore_tungsten", "ore_hydrate", "ore_platinum", "ore_phosphor"],
+	4: ["ore_platinum", "ore_iridium", "ore_phosphor", "ore_corundum"],
 }
 
 # What each grade of salvage can be READ AS. The player picks from this list —
@@ -340,6 +436,28 @@ static func chart_for_band(band: int) -> String:
 
 static func is_salvage(id: String) -> bool:
 	return get_good(id).has("band")
+
+
+static func is_ore(id: String) -> bool:
+	return get_good(id).has("ore")
+
+
+static func ore_class(id: String) -> String:
+	# "metal", "mineral", or "" for everything else. The category a market tab
+	# would group by.
+	return String(get_good(id).get("ore", ""))
+
+
+static func ore_ids() -> Array:
+	var out: Array = []
+	for id in GOODS:
+		if GOODS[id].has("ore"):
+			out.append(String(id))
+	return out
+
+
+static func seam_yields(band: int) -> Array:
+	return SEAM_YIELDS.get(band, [])
 
 
 static func is_component(id: String) -> bool:
