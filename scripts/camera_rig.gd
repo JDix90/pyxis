@@ -333,7 +333,14 @@ func _pick(screen_pos: Vector2, group: String) -> Node3D:
 
 
 func _try_begin_hold(screen_pos: Vector2) -> void:
+	# crackable FIRST, then mineable. The order is the whole reason seams are a
+	# separate group: _pick is screen-space with no raycast, and plan_cell has no
+	# keep-out between rocks and hulks, so the two can land within a tap of each
+	# other. A hulk is one-time and a rock is one of many, so a contested tap
+	# resolves to the hulk rather than to a coin flip.
 	var target := _pick(screen_pos, "crackable")
+	if target == null:
+		target = _pick(screen_pos, "mineable")
 	if target and target.has_method("hold_begin"):
 		_hold_target = target
 		target.hold_begin()
@@ -370,6 +377,15 @@ func _select(screen_pos: Vector2) -> bool:
 	if crackable and crackable.has_method("on_tapped"):
 		Sfx.play("tap", -4.0, 0.92)
 		crackable.on_tapped()
+		return true
+
+	# Between crackable and dockable, and for the same reason it sits second in
+	# _try_begin_hold: a hulk outranks a rock, and a dock ring outranks nothing
+	# because a seam can never sit on one (rocks keep STATION_CLEARANCE).
+	var seam := _pick(screen_pos, "mineable")
+	if seam and seam.has_method("on_tapped"):
+		Sfx.play("tap", -4.0, 0.86)
+		seam.on_tapped()
 		return true
 
 	var port := _pick(screen_pos, "dockable")

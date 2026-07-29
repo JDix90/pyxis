@@ -390,9 +390,16 @@ const MODULES := {
 		"power": 4,
 		"price": 13000,
 		"desc": "Cutting gear and ore sorters. Everything else gives way to it.",
-		# The mining answer: this game's "mining" is salvage yield, so a
-		# prospector is a salvage specialist that pays for it in reach and punch.
-		"stats": {"salvage_mult": 0.85, "magnet_range": 8.0, "cargo_space": 12.0,
+		# This comment used to read "this game's mining IS salvage yield, so a
+		# prospector is a salvage specialist" -- an honest description of a game
+		# that had no mining verb. It does now (see mineable_seam.gd), so the rig
+		# is the mining rig, and hauling more salvage is the second thing it does
+		# rather than the whole of it. It pays for both in reach and punch.
+		#
+		# mining_rate is a new stat key and needed no schema change: compute_stats
+		# sums unknown keys additively, exactly as survey_speed already relies on.
+		"stats": {"mining_rate": 0.55,
+			"salvage_mult": 0.85, "magnet_range": 8.0, "cargo_space": 12.0,
 			"max_speed": -1.1, "weapon_range_bonus": -1.5, "shield_max": -20.0},
 	},
 	"rig_strike": {

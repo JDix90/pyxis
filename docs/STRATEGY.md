@@ -2161,3 +2161,101 @@ does, using the same function.
 is only worth what it can see, *and only as much as it controls.* A harness that
 has never been told what to assume will quietly assume whatever the last session
 left behind — and it will keep passing until the day someone plays the game.
+
+Pinning immediately exposed a second one. `ABANDON KEEPS RUN` asserted
+`salvage > 0` while never paying the player anything, so what it actually asked
+was "did a wave happen to spawn and a kill happen to land in the preceding half
+second." It read 90 on one run and 0 on the next with no code change between
+them, and had only ever looked stable because it was reading a save with money
+in it. It now grants a known amount and compares it across the call, which is
+the invariant it always meant: abandoning preserves the run.
+
+## 34. Mining — stage 1, the verb
+
+Ore on the flank of a rock. Fly to it, hold on it, cut it out. **Metals and
+Minerals**, four each, priced 60–240 and every one under Intact Relics (260) —
+this is bulk industry, not treasure. The deep pays a prospector in volume and
+density, never in one fat unit.
+
+The user's four decisions frame the whole thing: mining is an **alternative
+loop** rather than extra income (`PACING_LOOP` sits at 96% of its ceiling, so
+there is no room for a seventh earner); **one step**, so a seam yields the
+finished tradeable and there is no refinery; seams in **both** charted and
+expanse weighted outward; and mined rocks stay mined.
+
+### Four traps this had to walk around, all of them already documented
+
+**The marker key is `ore`, never `band`.** `is_salvage()` is literally
+`has("band")` and `salvage_for_band()` returns the first dict-order match, so an
+ore carrying `band` would shadow a salvage grade — and `Main.spawn_loot`'s 22%
+regrade would start minting ore out of ordinary combat crates, *feeding
+ARCHEOLOGY off rock*. It is a String rather than an int so the two cannot be
+confused by a reader or by a `get()` with the wrong default.
+
+**Mining never calls `spawn_loot`.** Same reason, from the other direction: that
+funnel is where the regrade lives, so routing a seam through it would make
+cutting rock level a reading skill.
+
+**The seam roll is appended, on its own salted stream.** `plan_cell`'s rolls are
+one linear sequence and a draw inserted anywhere but the last line reshuffles
+every cell in the game. `WORLD FINGERPRINT` hashes every rock, hulk, nest and
+station across 121 cells against a constant **recorded before seams existed** —
+a hash taken afterwards would agree with whatever it was given.
+
+**A seam is a separate node standing 0.6u off the rock's collision sphere, not a
+flag on the rock.** A QUIET boulder's obstacle radius reaches 6.56 against a
+6.0 hold range, so a seam measured from the rock's centre would push the ship
+outside its own reach and could never be worked at all. `system_builder.gd:288`
+records this exact bug shipping once already.
+
+### Its own group, and the order matters
+
+Seams join `"mineable"`, not `"crackable"`, for two measured reasons.
+`MAX_MARKERS` is 12 and a Drift window holds about ten seams, so in `crackable`
+they would routinely evict the hulk and the survey mast — the two things the trip
+was for. And `_pick` is screen-space with no raycast, with no keep-out between
+rocks and hulks, so both in one group makes a contested tap a coin flip between
+cutting and breaching. `_try_begin_hold` checks **crackable first**: a hulk is
+one-time, a rock is one of many.
+
+### All or nothing, which the survey mast is not
+
+`load_cargo` is **partial**. `SurveyMast._complete()` calls it and reverts only
+when it took zero, so a mast worked with one space free takes 1 of its 2 units
+and marks itself surveyed — half the reading destroyed, silently. With a
+five-unit seam that would be five times worse. `MineableSeam` checks
+`can_load()` first, which is the mast's own stated intent ("the trip is not
+wasted, only deferred") actually implemented. Fixing the mast is a companion
+one-liner and belongs with stage 3.
+
+### The anti-farm defence is arithmetic, not a save
+
+`_mined` is session state, matching `_cracked` and `_surveyed`, because §17
+refuses a persistent visited-cells array and rocks are the most numerous thing
+out there. What makes a warp-reset safe is the gradient: mean seam value runs
+**195 / 425 / 530 / 981** across the bands, and band 1 — the only band reachable
+without flying back out — measures **329 credits a minute against a combat
+baseline of about 2,000**. Warp-farming the Shoals is six times worse than just
+fighting. `WARP FARM` asserts the number so that anyone who later raises
+`SEAM_CHANCE[1]` sees it collapse.
+
+Band 1 is a thin *shell*, not a region — depth 0–160 past a chart edge of 40 is
+a radius of 40–200, roughly `|c| <= 3` at `CELL 64`. The first version of that
+assertion scanned outward from the origin, found no band-1 cells at all, and
+reported a farm rate of zero.
+
+### Three assertions that were worth nothing until they were made to fail
+
+- `PICK PRECEDENCE` called `_pick("crackable")` and asserted it returned the
+  hulk — true regardless of which group `_try_begin_hold` consults first. It now
+  drives the real entry point and reads what latched. Then it *still* proved
+  nothing, twice: the probes were 123 screen pixels apart (outside `PICK_PX 60`,
+  so never contested), and the seam was being placed from a `breach_point` that
+  `Derelict._process` had not refreshed yet — `await process_frame` does not
+  guarantee a given node's `_process` has run — which put it 400 units away.
+  It derives the beacon position from `BEACON_LOCAL` now.
+- `WORLD FINGERPRINT` was first injected with a draw *after* the seam roll,
+  which changes nothing downstream. The hazard is a draw *before* the other
+  rolls, and that is what it is verified against.
+- `HOLD FULL DEFERS` was the one that worked first time, and it is the one that
+  found the mast's latent partial-load bug.

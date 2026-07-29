@@ -75,13 +75,13 @@ first:
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --import
 ```
 
-Current baseline: **345 PASS / 0 FAIL / 0 script errors** across 46 runs, save
+Current baseline: **360 PASS / 0 FAIL / 0 script errors** across 47 runs, save
 format **v13** — the 268 that shipped, plus `PYXIS_FEELTEST` (13),
 `PYXIS_UITEST` (14), `PYXIS_GSATEST` (17), `PYXIS_ACCESSTEST` (11),
-`PYXIS_ENVTEST` (9), `PYXIS_STREAMTEST` (6), two more in `MUSICTEST` for the
-score's depth axis, two more in `CARTTEST` for the mast's clearance, one more in
-`LIVERYTEST` for the earned ninth accent, and two in `SAVETEST=migrate12` for
-the v12→v13 migration.
+`PYXIS_MINETEST` (15), `PYXIS_ENVTEST` (9), `PYXIS_STREAMTEST` (6), two more in
+`MUSICTEST` for the score's depth axis, two more in `CARTTEST` for the mast's
+clearance, one more in `LIVERYTEST` for the earned ninth accent, and two in
+`SAVETEST=migrate12` for the v12→v13 migration.
 
 Harness state is **pinned**: `Main._ready()` calls `reset_to_starter()` whenever
 any name in `HARNESS_VARS` is set. Before that, every assertion was measured
