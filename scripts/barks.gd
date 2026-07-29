@@ -1,0 +1,48 @@
+class_name Barks
+extends Object
+# Diegetic ship-AI lines used as onboarding. Each fires once ever (persisted in
+# the save), so a returning player is never re-taught. There is no tutorial
+# mode and no modal — the ship just tells you things.
+
+const LINES := {
+	"first_launch": "SURVEY VESSEL ONLINE — TAP A BEARING TO MOVE",
+	"first_hostiles": "CONTACTS INBOUND — TAP A CONTACT TO ENGAGE",
+	"first_kill": "SALVAGE ADRIFT — FLY THROUGH IT TO COLLECT",
+	"refit_available": "SURPLUS SALVAGE — REFIT CONSOLE ONLINE",
+	"first_breach_range": "DERELICT IN RANGE — HOLD ON THE BREACH POINT",
+	"chart_unlocked": "NEW BEARING CHARTED — OPEN THE CHART",
+	"first_warp": "TRANSIT COMPLETE — UNFAMILIAR SPACE",
+	"apex_out_of_range": "SHOTS BREAKING ON THE SURVEY FIELD — CLOSE IN",
+	"first_dock_range": "DOCKING CLAMPS AVAILABLE — TAP THE PORT",
+	"first_docked": "CLAMPED ON. NOTHING REACHES YOU HERE",
+	"first_trade": "CARGO IS WORTH WHAT THE NEXT PORT WILL PAY",
+	"first_salvage": "UNREADABLE SALVAGE ABOARD — REFIT CAN READ WHAT YOU KNOW",
+	"hold_full": "HOLD AT CAPACITY — CRATES ARE BEING SCRAPPED",
+}
+
+const HOLD_TIME := 3.2
+
+
+static func begin(tree_node: Node) -> void:
+	# Slight delay so the line lands after the scene settles in.
+	tree_node.get_tree().create_timer(1.2).timeout.connect(func() -> void:
+		fire("first_launch")
+	)
+
+
+static func fire(key: String) -> void:
+	if not LINES.has(key) or GameState.has_seen_bark(key):
+		return
+	GameState.mark_bark(key)
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return
+	var hud := tree.get_first_node_in_group("hud")
+	if hud == null or not hud.has_method("prompt"):
+		return
+	hud.prompt(LINES[key])
+	tree.create_timer(HOLD_TIME).timeout.connect(func() -> void:
+		var h := tree.get_first_node_in_group("hud")
+		if h and h.has_method("clear_prompt_if"):
+			h.clear_prompt_if(LINES[key])
+	)
