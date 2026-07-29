@@ -1850,3 +1850,55 @@ they were verified in the failing direction:
   fail.
 
 Both are the §8 rule biting: an assertion is only worth what it can see.
+
+## 29. The score's second axis
+
+The music had one axis — threat — and the game's central fiction is the other
+one. Going further out changed the colour of the sky, the radar span, the spawn
+tables and the beacon text, and did not change a single thing you could hear.
+THE SHOALS and THE REACHES sounded identical.
+
+There are now four stems, not two: `music_calm`, `music_combat`, `music_deep`,
+`music_quiet`. All four are **the same eight bars at the same sample count**,
+started in the same frame and never stopped, which is the rule the original two
+were built on and the reason `gen_sfx.py` fails the build if their lengths
+diverge. Depth is a mix position, never a key change — the beds are crossfaded
+against each other while all of them are playing, so any harmonic difference
+between them would be audible as a lurch every time a band edge was crossed.
+
+**The two axes are orthogonal, and that is the whole design.** Threat picks
+between the calm pair and the combat layer; depth picks which *bed* that pair is
+heard over. Collapsing them into one "intensity" dial would make deep space
+permanently tense and shallow space permanently safe, which is a statement about
+the map rather than about what is happening to the player. Being jumped in THE
+QUIET has to sound like being jumped, so the combat layer is never attenuated by
+depth. `AXES ORTHOGONAL` asserts exactly that: at depth 1200 the threat blend
+still swings 0 → 1 while the depth blend holds at 1.
+
+Depth maps **piecewise across the band anchors** (0, 160, 440, 1100), not
+linearly across the range. The bands are not evenly spaced, so a linear map would
+put three quarters of the audible change inside THE REACHES and leave the first
+two bands sounding the same. Piecewise, each band edge lands on an even third:
+`[0, 160, 440, 1100, 2000]u` measures `[0.0, 0.33, 0.67, 1.0, 1.0]`.
+
+`music_quiet` is deliberately almost nothing — one sustained low partial, two
+sines detuned by 0.0009 so they beat against each other over about eleven
+seconds. THE QUIET is the band where the beacons stop answering and the guard
+designation is already *"UNREADABLE — IT DOES NOT ANSWER"*. The score agrees with
+the fiction rather than scoring over it.
+
+### Two things this pass had to be careful about
+
+**`gen_sfx.py`'s `SOUNDS` dict is append-only**, for the same reason
+`DeepSpace.plan_cell`'s roll order is. `random.seed(7)` is set once before the
+loop, so the RNG stream is shared across every sound in insertion order — a new
+entry anywhere but the end re-rolls the noise in every sound after it, and
+`explode.wav`'s sixty crackle grains would come back different. Verified by
+md5-ing `explode`, `ambient` and `music_calm` before and after: byte-identical.
+
+**The harness must fly the ship, not call `set_depth`.** `main._process` polls
+`deep_depth()` every frame and pushes it at `Music`, so a hand-set target is
+overwritten on the next frame and the assertion measures nothing. Flying the ship
+out also makes the assertion cover the whole chain — position through
+`deep_depth` through the mix — rather than the arithmetic at the end of it. The
+first version of `DEPTH AXIS` was green-on-broken-code for precisely this reason.

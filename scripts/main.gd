@@ -874,6 +874,10 @@ func _process(delta: float) -> void:
 	var depth := deep_depth()
 	if hud:
 		hud.set_deep_tag(DeepSpace.band_name(depth) if depth > 0.0 else "", depth)
+	# The score's second axis, fed from the same poll that already drives the
+	# wayfinding label and the beacons. Music smooths it internally, so this is a
+	# raw value every frame rather than something this function has to rate-limit.
+	Music.set_depth(depth)
 	_tick_broadcast(depth)
 	# The captain's log's one frame-adjacent source, and the only one that needs
 	# an argument for why it is still discrete. It reads the RUN's high-water mark
@@ -6939,10 +6943,18 @@ func _run_music_test() -> void:
 	# generator.
 	var calm := load("res://audio/music_calm.wav") as AudioStreamWAV
 	var combat := load("res://audio/music_combat.wav") as AudioStreamWAV
-	var same := calm != null and combat != null and calm.data.size() == combat.data.size()
-	print("[music] LOOP ALIGN calm %d frames vs combat %d frames -> %s" % [
-		calm.data.size() / 2 if calm else -1, combat.data.size() / 2 if combat else -1,
-		"PASS" if same else "FAIL"])
+	# All FOUR stems, in frames rather than in bytes. The old version compared
+	# two byte counts to each other, which is why it stayed green while both
+	# loop points were computed from compressed QOA bytes as if they were PCM
+	# frames -- see PYXIS_FEELTEST's COMPRESSED STREAM.
+	var deep := load("res://audio/music_deep.wav") as AudioStreamWAV
+	var quiet := load("res://audio/music_quiet.wav") as AudioStreamWAV
+	var frames: Array = []
+	for st in [calm, combat, deep, quiet]:
+		frames.append(Sfx.frame_count(st) if st != null else -1)
+	var same: bool = frames.size() == 4 and frames.count(frames[0]) == 4 and int(frames[0]) > 0
+	print("[music] LOOP ALIGN calm/combat/deep/quiet frames %s -> %s" % [
+		str(frames), "PASS" if same else "FAIL"])
 
 	# Calm with nothing around.
 	await get_tree().create_timer(Music.FADE_OUT + 0.6).timeout
@@ -6967,6 +6979,61 @@ func _run_music_test() -> void:
 	print("[music] RELEASE blend %.2f (must be ~0)" % cooled)
 	print("[music] ADAPTIVE calm<0.1 && threat>0.9 && release<0.1 -> %s" % [
 		"PASS" if calm_blend < 0.1 and hot_blend > 0.9 and cooled < 0.1 else "FAIL"])
+
+	# --- the depth axis ------------------------------------------------------
+	# The band system drove colour, radar span, spawn tables and beacon text, and
+	# nothing audible: the Shoals and the Reaches sounded identical. These assert
+	# that depth moves the mix, that it moves MONOTONICALLY (so a band edge is a
+	# gradient rather than a step), and that it is orthogonal to threat.
+	# Driven by FLYING THE SHIP OUT, not by calling set_depth directly. main's
+	# per-frame poll would overwrite a hand-set target on the very next frame, so
+	# a direct call measures nothing -- and this way the assertion covers the
+	# whole chain, position through deep_depth through the mix, rather than just
+	# the arithmetic at the end of it.
+	var edge := chart_edge()
+	var depth_seen: Array = []
+	for units in [0.0, 160.0, 440.0, 1100.0, 2000.0]:
+		player.teleport_to(Vector3(0.0, 0.0, edge + units + 1.0))
+		# Long enough for DEPTH_FADE to settle from wherever the previous sample
+		# left it, since the smoothing is deliberately slow.
+		await get_tree().create_timer(1.6).timeout
+		depth_seen.append(snappedf(Music.depth_blend(), 0.01))
+	var rising := true
+	for i in range(depth_seen.size() - 1):
+		if float(depth_seen[i + 1]) < float(depth_seen[i]) - 0.001:
+			rising = false
+	var spans: bool = float(depth_seen[0]) < 0.05 and float(depth_seen[depth_seen.size() - 1]) > 0.95
+	print("[music] DEPTH AXIS blend at [0, 160, 440, 1100, 2000]u = %s, monotonic=%s, spans 0..1=%s -> %s" % [
+		str(depth_seen), str(rising), str(spans),
+		"PASS" if rising and spans else "FAIL"])
+
+	# Orthogonality. Being jumped in THE QUIET must sound like being jumped: the
+	# threat blend cannot be a function of how far out the player is, or deep
+	# space becomes permanently tense and shallow space permanently safe --
+	# a statement about the map rather than about what is happening.
+	player.teleport_to(Vector3(0.0, 0.0, edge + 1200.0))
+	await get_tree().create_timer(1.6).timeout
+	var deep_calm := Music.blend()
+	var bogey2 := SwarmHostile.new()
+	bogey2.difficulty = 0.0
+	bogey2.hp_scale = 40.0
+	system_root.add_child(bogey2)
+	bogey2.global_position = player.global_position + Vector3(0, 0, Music.THREAT_RADIUS * 0.4)
+	bogey2.dock_at(bogey2.global_position)
+	await get_tree().create_timer(Music.FADE_IN + 0.8).timeout
+	var deep_hot := Music.blend()
+	var deep_depth_held := Music.depth_blend()
+	bogey2.queue_free()
+	print("[music] AXES ORTHOGONAL in THE QUIET: threat %.2f -> %.2f while depth holds %.2f -> %s" % [
+		deep_calm, deep_hot, deep_depth_held,
+		"PASS" if deep_calm < 0.1 and deep_hot > 0.9 and deep_depth_held > 0.95 else "FAIL"])
+
+	# Fly home and let the threat hold expire before the checks below. They
+	# measure the CALM layer's volume, and with two axes that layer is silent for
+	# two different reasons now -- leaving either one raised would fail the dock
+	# duck for a reason that has nothing to do with docking.
+	player.teleport_to(PlayerShip.SPAWN_POINT)
+	await get_tree().create_timer(Music.THREAT_HOLD + Music.FADE_OUT + 2.0).timeout
 
 	# Per-system tint is applied to the calm layer only.
 	var idx := AudioServer.get_bus_index(Sfx.BUS_MUSIC_CALM)
