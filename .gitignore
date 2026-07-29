@@ -1,0 +1,16 @@
+# Godot's import cache and editor state. Regenerated on first open, machine
+# specific, and 1.5MB of churn that would show up in every diff.
+.godot/
+*.translation
+
+# Godot export artefacts
+export_presets.cfg
+build/
+*.apk
+*.aab
+*.ipa
+*.pck
+*.zip
+
+# macOS
+.DS_Store
