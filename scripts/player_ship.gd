@@ -12,6 +12,9 @@ const CHAIN_RADIUS := 4.5
 const CHAIN_FALLOFF := 0.5
 const CRIT_MULT := 2.0
 const SHIELD_CALM_DELAY := 4.0
+# Slow enough that a single hit stays readable, fast enough that the ghost is
+# gone before the next exchange so two hits never read as one.
+const SHIELD_GHOST_DRAIN := 3.2
 const WARP_TIME := 1.6
 const OFFLINE_TIME := 1.4
 const WARP_GRACE := 2.5
@@ -117,17 +120,38 @@ var _engine_mat: StandardMaterial3D
 var _dock_tween: Tween = null
 var _thruster: CPUParticles3D
 var _shield_bar: MeshInstance3D
+var _shield_ghost: MeshInstance3D
 var _shield_bar_root: Node3D
+# Trails the real fraction downward only, at SHIELD_GHOST_DRAIN per second.
+var _shield_ghost_frac := 1.0
 var _aegis_bubble: MeshInstance3D
 
 
 func _ready() -> void:
 	add_to_group("player")
+	# The ship integrates on the fixed tick, so it is one of the few nodes in the
+	# game that benefits from physics interpolation -- and the only one the eye
+	# tracks continuously. Most of Pyxis moves in _process (ports, sentries, the
+	# boss, every FX tween), where interpolation would quantize smooth motion to
+	# 60Hz and add a frame of lag, so the project setting is opted into here
+	# rather than inherited. See project.godot's [physics] comment.
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
 	_parts = Node3D.new()
 	add_child(_parts)
 	GameState.fit_changed.connect(_on_fit_changed)
 	_apply_fit(GameState.stats)
 	shield = shield_max
+
+
+func teleport_to(pos: Vector3, face := Vector3.ZERO) -> void:
+	# Every jump goes through here. An interpolated node that is repositioned
+	# without resetting draws one frame smeared across the line between where it
+	# was and where it now is -- from deep space to the spawn point, that streak
+	# crosses the entire map. Warps already flash white over the swap, which is
+	# exactly the kind of cover that would have hidden this bug for months.
+	global_position = pos
+	rotation = face
+	reset_physics_interpolation()
 
 
 func _on_fit_changed(stats: Dictionary) -> void:
@@ -437,6 +461,19 @@ func _build_shield_bar() -> void:
 	bg.mesh = bgm
 	bg.material_override = Palette.emissive(Color(0.05, 0.2, 0.2, 0.8), 1.0)
 	_shield_bar_root.add_child(bg)
+
+	# The ghost sits between the background and the fill and chases it down, so a
+	# hit leaves a pale bar that drains over the next half second. It reads as
+	# "that is what that cost you" -- the size of the hit stays legible after the
+	# frame it landed on, which a bar that simply jumps to its new length cannot
+	# do. Added before the fill so the fill draws over it.
+	_shield_ghost = MeshInstance3D.new()
+	var gm := BoxMesh.new()
+	gm.size = Vector3(1.1, 0.08, 0.02)
+	_shield_ghost.mesh = gm
+	_shield_ghost.position.z = -0.005
+	_shield_ghost.material_override = Palette.emissive(Palette.WHITE_HOT, 1.6)
+	_shield_bar_root.add_child(_shield_ghost)
 
 	_shield_bar = MeshInstance3D.new()
 	var fm := BoxMesh.new()
@@ -890,6 +927,12 @@ func shield_fraction() -> float:
 	return clampf(shield / maxf(shield_max, 1.0), 0.0, 1.0)
 
 
+func shield_ghost_fraction() -> float:
+	# Read-back for PYXIS_FEELTEST: the ghost is a world-space mesh scale, which
+	# a headless run cannot observe any other way.
+	return _shield_ghost_frac
+
+
 func repair_full() -> void:
 	# Instant, and only ever called from a docked repair bay. The slow recovery
 	# in _tick_shield is the free option; this is the one you pay to skip.
@@ -938,8 +981,19 @@ func _tick_shield(delta: float) -> void:
 	if _shield_bar_root:
 		var frac := clampf(shield / maxf(shield_max, 1.0), 0.0, 1.0)
 		_shield_bar_root.visible = frac < 0.999 and not _warping
+		# The fill itself is never smoothed. Damage has to be on screen the frame
+		# it happens or the bar is lying about the thing it exists to report.
 		_shield_bar.scale.x = maxf(frac, 0.001)
 		_shield_bar.position.x = -1.1 * (1.0 - frac) * 0.5
+		# The ghost only ever trails downward; regen is the fill's job to show, and
+		# a ghost that also chased upward would just be a second, laggier bar.
+		if frac >= _shield_ghost_frac:
+			_shield_ghost_frac = frac
+		else:
+			_shield_ghost_frac = Smoothing.toward(_shield_ghost_frac, frac, SHIELD_GHOST_DRAIN, delta)
+		_shield_ghost.visible = _shield_ghost_frac - frac > 0.004
+		_shield_ghost.scale.x = maxf(_shield_ghost_frac, 0.001)
+		_shield_ghost.position.x = -1.1 * (1.0 - _shield_ghost_frac) * 0.5
 		var cam := get_viewport().get_camera_3d()
 		if cam:
 			_shield_bar_root.global_transform.basis = cam.global_transform.basis
@@ -1096,6 +1150,7 @@ func take_hit(amount: float, source: Node3D = null) -> void:
 	_time_since_hit = 0.0
 	FX.flash(get_parent(), global_position + Vector3(0, 0.2, 0), Palette.THREAT, 0.9, 0.15)
 	Sfx.play("hit", -8.0, 0.85)
+	Sfx.haptic("light")
 	var rig := get_tree().get_first_node_in_group("camera_rig")
 	if rig:
 		rig.shake(0.035)
@@ -1186,8 +1241,7 @@ func _emergency_warp() -> void:
 	var tw := create_tween()
 	tw.tween_property(self, "scale", Vector3(0.3, 0.3, 3.5), WARP_TIME * 0.4).set_ease(Tween.EASE_IN)
 	tw.tween_callback(func() -> void:
-		global_position = SPAWN_POINT
-		rotation = Vector3.ZERO
+		teleport_to(SPAWN_POINT)
 		FX.flash(parent, SPAWN_POINT, Palette.TEAL, 2.0, 0.35)
 	)
 	tw.tween_interval(OFFLINE_TIME)

@@ -49,12 +49,12 @@ func _make_player(stream_name: String, bus: String) -> AudioStreamPlayer:
 	var path := "res://audio/%s.wav" % stream_name
 	if not ResourceLoader.exists(path):
 		return null
-	var stream := load(path)
-	if stream is AudioStreamWAV:
-		var w := stream as AudioStreamWAV
-		w.loop_mode = AudioStreamWAV.LOOP_FORWARD
-		w.loop_begin = 0
-		w.loop_end = w.data.size() / 2   # 16-bit mono: two bytes per frame
+	# Loop points come from Sfx so the two layers and the ambient drone all use
+	# one definition of "how long is this file". The old inline `data.size() / 2`
+	# assumed uncompressed 16-bit frames while the importer writes QOA, which put
+	# the loop point about a third of the way in. PYXIS_MUSICTEST's LOOP ALIGN
+	# check compares the layers to each other, so it stayed green throughout.
+	var stream: AudioStream = Sfx.loopify(load(path))
 	var p := AudioStreamPlayer.new()
 	p.process_mode = Node.PROCESS_MODE_ALWAYS
 	p.stream = stream

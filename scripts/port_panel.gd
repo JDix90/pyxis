@@ -846,23 +846,68 @@ func _swatch_grid(label: String, entries: Array, current: int, price: int, is_hu
 
 	for i in range(entries.size()):
 		var entry: Dictionary = entries[i]
+		var worn := i == posmod(current, entries.size())
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(32, 32)
 		b.tooltip_text = String(entry["name"])
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = entry["color"]
-		sb.set_corner_radius_all(5)
-		# The one you are wearing is ringed, so the current choice is readable
-		# without reading the label above.
-		sb.set_border_width_all(3 if i == posmod(current, entries.size()) else 1)
-		sb.border_color = Palette.GOLD if i == posmod(current, entries.size()) \
-			else Color(1, 1, 1, 0.18)
-		for state in ["normal", "hover", "pressed", "disabled"]:
-			b.add_theme_stylebox_override(state, sb)
+
+		# Four distinct boxes. All four states used to share one instance, so a
+		# swatch gave no hover feedback at all and a disabled one was
+		# indistinguishable from an available one -- on the single screen in the
+		# game whose entire job is comparing sixteen things that differ only by
+		# colour.
+		var normal := _swatch_box(entry["color"], worn, 0.0)
+		b.add_theme_stylebox_override("normal", normal)
+		# Hover brightens the ring rather than the paint: the swatch has to keep
+		# showing the colour truthfully, because that is what is being bought.
+		b.add_theme_stylebox_override("hover", _swatch_box(entry["color"], worn, 0.45))
+		b.add_theme_stylebox_override("pressed", _swatch_box(entry["color"], worn, 0.8))
+		b.add_theme_stylebox_override("disabled", _swatch_box(entry["color"], worn, 0.0, 0.35))
+
+		# Scale on hover, about the centre. pivot_offset has to be set after the
+		# control has a size, hence the deferred connect rather than reading
+		# b.size here, which is still zero during the build.
+		b.mouse_entered.connect(func() -> void: _swatch_scale(b, UIKit.HOVER_SCALE))
+		b.mouse_exited.connect(func() -> void: _swatch_scale(b, 1.0))
+
 		var index := i
-		b.pressed.connect(func() -> void: _apply_paint(index, is_hull, price))
+		b.pressed.connect(func() -> void:
+			UIKit.press_pop(b)
+			_apply_paint(index, is_hull, price))
 		grid.add_child(b)
 	return box
+
+
+func _can_wear(index: int, is_hull: bool) -> bool:
+	# The gate for earned cosmetics, at the purchase layer rather than inside
+	# GameState.set_livery -- set_livery is also how a save restores a colour, and
+	# a lock that lives there would silently rewrite a legitimately earned livery
+	# on load. Today every hull and the first eight accents are always wearable;
+	# this exists so the Commission's ninth accent has exactly one place to say no.
+	if is_hull:
+		return true
+	return index < Palette.LIVERY_ACCENTS.size()
+
+
+func _swatch_box(color: Color, worn: bool, lift: float, fade := 1.0) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(color.r, color.g, color.b, fade)
+	sb.set_corner_radius_all(5)
+	# The one you are wearing is ringed, so the current choice is readable
+	# without reading the label above.
+	sb.set_border_width_all(3 if worn else (2 if lift > 0.0 else 1))
+	var base := Palette.GOLD if worn else Color(1, 1, 1, 0.18)
+	sb.border_color = base.lerp(Palette.WHITE_HOT, lift)
+	return sb
+
+
+func _swatch_scale(b: Button, to: float) -> void:
+	if GameState.reduce_motion():
+		return
+	b.pivot_offset = b.size * 0.5
+	var tw := b.create_tween()
+	tw.tween_property(b, "scale", Vector2.ONE * to, UIKit.T_INSTANT) \
+		.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
 
 
 func _apply_paint(index: int, is_hull: bool, price: int) -> void:
@@ -870,6 +915,13 @@ func _apply_paint(index: int, is_hull: bool, price: int) -> void:
 	if index == current:
 		# Charging for the colour already on the hull would be a trap, not a
 		# purchase. Refuse quietly.
+		_reject()
+		return
+	# Decide, then charge, then apply. The old order spent first and applied
+	# second, so any refusal added between the two -- which is exactly what the
+	# Commission's locked ninth accent is -- would take the salvage and leave the
+	# hull its old colour. Nothing between these two lines may fail.
+	if not _can_wear(index, is_hull):
 		_reject()
 		return
 	if not GameState.spend_salvage(price):
@@ -880,6 +932,7 @@ func _apply_paint(index: int, is_hull: bool, price: int) -> void:
 	else:
 		GameState.set_livery(GameState.livery_index("hull"), index)
 	Sfx.play("equip", -5.0, 1.05)
+	Sfx.haptic("light")
 	var main := get_tree().get_first_node_in_group("main")
 	if main and main.hud:
 		main.hud.set_value(GameState.salvage)

@@ -8,6 +8,7 @@ const PITCH_DEG := -55.0
 const ZOOM_MIN := 9.0
 const ZOOM_MAX := 34.0
 const ZOOM_LERP := 9.0
+const ZOOM_PUNCH_DECAY := 7.0
 const PAN_INERTIA_DECAY := 26.0
 
 # The camera is leashed to the SHIP, not to the world origin.
@@ -76,8 +77,12 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	_zoom_punch = lerpf(_zoom_punch, 0.0, 7.0 * delta)
-	zoom = lerpf(zoom, _target_zoom, ZOOM_LERP * delta)
+	# Exponential, not `lerp(a, b, k * delta)`. The rig runs on the render tick,
+	# so delta is whatever the display gives us, and the old form made the whole
+	# camera feel different at 120Hz than at 60 -- and inverted below ~9 FPS,
+	# where ZOOM_LERP * delta passes 1.0. See scripts/smoothing.gd.
+	_zoom_punch = Smoothing.decay(_zoom_punch, ZOOM_PUNCH_DECAY, delta)
+	zoom = Smoothing.toward(zoom, _target_zoom, ZOOM_LERP, delta)
 	_camera.position.z = zoom + _zoom_punch
 
 	if is_instance_valid(_hold_target) and _hold_target.has_method("hold_tick"):
@@ -130,7 +135,10 @@ func _follow(delta: float) -> void:
 	if to_ship.length() <= FOLLOW_DEADZONE:
 		return
 	var pull := to_ship - to_ship.normalized() * FOLLOW_DEADZONE
-	global_position += pull * clampf(FOLLOW_SPEED * delta, 0.0, 1.0)
+	# The clamp here was already correct in the sense that it could not overshoot,
+	# but the fraction still varied with frame time, so the follow lagged further
+	# behind at low frame rates. 1 - exp(-k*dt) is the same curve at every rate.
+	global_position += pull * (1.0 - Smoothing.factor(FOLLOW_SPEED, delta))
 
 
 func _update_shake(delta: float) -> void:
@@ -139,7 +147,10 @@ func _update_shake(delta: float) -> void:
 		_camera.v_offset = 0.0
 		return
 	_shake_t += delta
-	_shake_amp = maxf(_shake_amp - SHAKE_DECAY * _shake_amp * delta, 0.0)
+	# Was `amp - SHAKE_DECAY * amp * delta`, the Euler step of this exact decay.
+	# A long frame could drive it negative, which maxf() caught by cutting the
+	# shake dead mid-effect rather than letting it ring out.
+	_shake_amp = Smoothing.decay(_shake_amp, SHAKE_DECAY, delta)
 	_camera.h_offset = sin(_shake_t * SHAKE_FREQ) * _shake_amp * randf_range(0.6, 1.0)
 	_camera.v_offset = cos(_shake_t * SHAKE_FREQ * 1.31) * _shake_amp * randf_range(0.6, 1.0)
 
@@ -152,7 +163,24 @@ func shake(amount: float) -> void:
 	_shake_amp = maxf(_shake_amp, amount)
 
 
+func shake_amp() -> float:
+	# Read-backs for PYXIS_FEELTEST. An assertion is only worth what it can see,
+	# and the shake setting is otherwise only observable as camera offsets that
+	# a headless run never renders.
+	return _shake_amp
+
+
+func zoom_punch() -> float:
+	return _zoom_punch
+
+
 func punch_zoom(amount: float) -> void:
+	# Gated for the same reason shake() is, and it was not: a punch is a camera
+	# lurch the player did not ask for, which is exactly what someone turning
+	# screen shake off is turning off. Every punch site also shakes, so leaving
+	# this open meant the setting visibly did half its job.
+	if not GameState.shake_enabled():
+		return
 	_zoom_punch = maxf(_zoom_punch, amount)
 
 

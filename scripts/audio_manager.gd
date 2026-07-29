@@ -76,6 +76,29 @@ func set_bus_volume(bus_name: String, linear: float) -> void:
 	AudioServer.set_bus_volume_db(idx, linear_to_db(maxf(v, 0.001)))
 
 
+# --- haptics -----------------------------------------------------------------
+# Lives on Sfx because a haptic is a sound you feel: every call site already
+# reaches for this autoload to acknowledge the same moment, and pairing them here
+# means a new effect gets both or neither rather than remembering one.
+#
+# Gated at this single entry point for the reason CameraRig.shake() is -- roughly
+# a dozen callers, and any one of them could otherwise forget the setting exists.
+const HAPTIC_MS := {"light": 10, "medium": 25, "heavy": 60}
+
+# Incremented before the platform call, so a headless harness can assert the gate
+# without a device. Vibration is otherwise entirely unobservable in a test.
+var haptic_count := 0
+var haptic_last := ""
+
+
+func haptic(kind := "light") -> void:
+	if not GameState.haptics_enabled():
+		return
+	haptic_count += 1
+	haptic_last = kind
+	Input.vibrate_handheld(int(HAPTIC_MS.get(kind, 10)))
+
+
 func set_muted(v: bool) -> void:
 	AudioServer.set_bus_mute(AudioServer.get_bus_index("Master"), v)
 
@@ -106,13 +129,48 @@ func play_streak(name: String, volume_db := 0.0, step := 0.055) -> void:
 	play(name, volume_db, 1.0 + step * _streak, 0.02)
 
 
+static func frame_count(stream: AudioStreamWAV) -> int:
+	# `data.size() / 2` was the old arithmetic here and in music.gd, on the stated
+	# assumption of 16-bit mono at two bytes per frame. The importer sets
+	# compress/mode=2 (QOA), so `data` holds compressed bytes and that number came
+	# out roughly 3x short -- every loop restarted about a third of the way in.
+	# Length in seconds is format-agnostic, so this stays correct if the import
+	# mode ever changes again.
+	return int(round(stream.get_length() * stream.mix_rate))
+
+
+static func loopify(stream: AudioStream) -> AudioStream:
+	# Idempotent: the whole file, front to back, forever.
+	if stream is AudioStreamWAV:
+		var w := stream as AudioStreamWAV
+		w.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		w.loop_begin = 0
+		w.loop_end = frame_count(w)
+	return stream
+
+
+func attached_loop(owner: Node, name: String, volume_db := -6.0) -> AudioStreamPlayer:
+	# For loops that belong to one object rather than to the mix -- the crack
+	# players on derelicts and apex wrecks. Both used to build their own
+	# AudioStreamPlayer inline and neither set `bus`, so they played on Master and
+	# the EFFECTS slider silently did not apply to them. A factory is the only
+	# version of this that a third caller cannot get wrong.
+	var p := AudioStreamPlayer.new()
+	p.bus = BUS_SFX
+	p.volume_db = volume_db
+	if _streams.has(name):
+		# Looped because the hold it scores outruns the sample: crack.wav is 2.2s
+		# and a Reaches hulk takes 2.6s, so the deepest wrecks used to fall silent
+		# just before they gave way.
+		p.stream = loopify(_streams[name])
+	owner.add_child(p)
+	return p
+
+
 func loop_start(name: String, volume_db := -6.0) -> void:
 	if not _streams.has(name) or _loops.has(name):
 		return
-	var stream: AudioStream = _streams[name]
-	if stream is AudioStreamWAV:
-		(stream as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD
-		(stream as AudioStreamWAV).loop_end = (stream as AudioStreamWAV).data.size() / 2
+	var stream: AudioStream = loopify(_streams[name])
 	var p := AudioStreamPlayer.new()
 	p.process_mode = Node.PROCESS_MODE_ALWAYS
 	p.stream = stream

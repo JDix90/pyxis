@@ -19,6 +19,15 @@ const DEFAULT_SETTINGS := {
 	"sfx_vol": 0.90,
 	"shake": true,
 	"ui_scale": 1.0,
+	# On by default: this is a phone game whose loudest moments (a hull giving
+	# way, a claim at a dock) are otherwise carried by colour and a camera lurch,
+	# both of which someone may have turned off or be unable to use.
+	"haptics": true,
+	# Separate from "shake" on purpose. Shake predates this and some players turn
+	# it off because they dislike shake specifically, not because they want every
+	# transition in the game to stop moving. Merging the two would silently
+	# reinterpret a preference they already expressed.
+	"reduce_motion": false,
 }
 const DEFAULT_LIVERY := {
 	"hull": 0,
@@ -208,7 +217,17 @@ func apply_settings() -> void:
 
 
 func shake_enabled() -> bool:
-	return bool(setting("shake"))
+	# Reduced motion subsumes shake: someone who asked for less movement is not
+	# asking to keep the camera lurching. The reverse is not true.
+	return bool(setting("shake")) and not reduce_motion()
+
+
+func haptics_enabled() -> bool:
+	return bool(setting("haptics"))
+
+
+func reduce_motion() -> bool:
+	return bool(setting("reduce_motion"))
 
 
 # --- v6 livery --------------------------------------------------------------

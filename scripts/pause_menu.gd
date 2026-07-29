@@ -133,9 +133,24 @@ func resume() -> void:
 	if not is_open:
 		return
 	is_open = false
-	visible = false
+	# Unpause immediately, fade the sheet out after. The game has to be running
+	# again on the frame the player asked for it -- a menu that stays modal
+	# through its own exit animation is the single most common way a pause screen
+	# feels cheap. So the fade is decoration over a game already in motion, which
+	# is why it is half the length of the fade in.
 	get_tree().paused = false
 	Sfx.play("tap", -12.0, 1.1)
+	if GameState.reduce_motion():
+		visible = false
+		return
+	var tw := create_tween()
+	tw.tween_property(_root, "modulate:a", 0.0, UIKit.T_QUICK)
+	tw.tween_callback(func() -> void:
+		# Guarded: open() can win the race if the player re-pauses inside 0.12s,
+		# and hiding the sheet out from under a fresh open would leave the game
+		# paused with nothing on screen.
+		if not is_open:
+			visible = false)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -220,12 +235,45 @@ func _build_log() -> void:
 		# The title screen's own rule: with nothing to summarise, say so rather
 		# than printing a column of blanks.
 		_body.add_child(_sub("NOTHING LOGGED THIS SURVEY YET"))
+	# Revealed one at a time rather than built as a block. Ten lines arriving at
+	# once is a wall of text; arriving in sequence they read as a record being
+	# played back, which is the only thing this page is for. The stagger is short
+	# enough (0.035s) that the whole log is legible in under half a second -- this
+	# is a texture on the page appearing, not a cutscene to sit through.
+	var entries: Array = []
 	for line in lines:
-		_body.add_child(_sub(String(line)))
+		var l := _sub(String(line))
+		entries.append(l)
+		_body.add_child(l)
+	UIKit.reveal_list(entries, GameState.reduce_motion())
 	_body.add_child(_spacer(4))
 	_body.add_child(_action("BACK", Palette.TEAL, func() -> void:
 		_page = "root"
 		_refresh()))
+
+
+func show_log() -> void:
+	# The log page, opened directly. Exists so PYXIS_UITEST can reach the reveal
+	# without driving the menu through two synthetic button presses -- the page is
+	# the thing under test, not the route to it.
+	if not is_open:
+		open()
+	_page = "log"
+	_refresh()
+
+
+func log_entries() -> Array:
+	# The rendered log lines, in order. The reveal is a per-label tween on
+	# modulate:a, which is otherwise invisible to a headless run.
+	var out: Array = []
+	var seen_heading := false
+	for c in _body.get_children():
+		if c is Label:
+			if not seen_heading:
+				seen_heading = true      # skip the CAPTAIN'S LOG heading itself
+				continue
+			out.append(c)
+	return out
 
 
 func _build_settings() -> void:
@@ -234,6 +282,8 @@ func _build_settings() -> void:
 	_body.add_child(_slider("EFFECTS", "sfx_vol", 0.0, 1.0, 0.05))
 	_body.add_child(_slider("UI SCALE", "ui_scale", 0.7, 1.6, 0.05))
 	_body.add_child(_toggle("SCREEN SHAKE", "shake"))
+	_body.add_child(_toggle("REDUCE MOTION", "reduce_motion"))
+	_body.add_child(_toggle("HAPTICS", "haptics"))
 	_body.add_child(_spacer(4))
 	_body.add_child(_action("BACK", Palette.TEAL, func() -> void:
 		_page = "root"
@@ -269,12 +319,13 @@ func _spacer(h: int) -> Control:
 
 
 func _action(text: String, accent: Color, cb: Callable) -> Button:
-	var b := Button.new()
-	b.text = text
-	b.custom_minimum_size = Vector2(0, 42)
-	b.add_theme_font_size_override("font_size", 14)
-	b.add_theme_color_override("font_color", accent)
-	b.pressed.connect(cb)
+	# Was a bare Button with only a font colour set, which meant the most-used
+	# menu in the game rendered in stock Godot grey while the title screen -- the
+	# one screen a player sees least -- was the only styled surface in the build.
+	var b := UIKit.button(text, accent, 14)
+	b.pressed.connect(func() -> void:
+		UIKit.press_pop(b)
+		cb.call())
 	return b
 
 

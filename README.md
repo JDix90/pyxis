@@ -49,9 +49,31 @@ The house rules, learned the hard way and enforced by review:
 
 ### The sweep
 
-Run every harness in sequence and md5 `save.json` before and after to prove no
-harness wrote to the real save. `SAVETEST` is stateful: `=write` and the bare
-read must run in that order and as a pair.
+```bash
+tools/run_harness.sh              # every harness
+tools/run_harness.sh DEEPTEST     # just these tags
+```
 
-Current baseline: **268 PASS / 0 FAIL / 0 script errors** across 34 harnesses,
-save format v12.
+It runs every harness in sequence, counts PASS/FAIL and script errors — a
+crashed run prints fewer PASS lines but no FAIL, so counting PASS alone would
+call it clean — and md5s `save.json` before and after to prove no harness wrote
+the real save. `SAVETEST` is stateful: `=write` and the bare read run in that
+order and as a pair, which the script's ordering guarantees. Exit status is 0
+only if all three checks pass.
+
+Not in the sweep, on purpose: `PYXIS_WORLDTOUR`, `PYXIS_DEMO`, `PYXIS_ECONDEMO`
+and the `*SHOTS` modes assert nothing, and WORLDTOUR never calls `quit()` unless
+`PYXIS_SHOTS` is set. `PYXIS_TITLETEST`, `TUTORIALTEST`, `INPUTTEST`, `DOCKTEST`
+and `MARKETTEST` print `[tag]` observations for reading rather than PASS lines;
+they run, but contribute 0 to the count.
+
+A fresh clone or worktree has no `.godot/` import cache, and several harnesses
+running at once will race to build one and fail to load every WAV. Import once
+first:
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . --import
+```
+
+Current baseline: **292 PASS / 0 FAIL / 0 script errors**, save format v12 —
+the 268 that shipped, plus `PYXIS_FEELTEST` (13) and `PYXIS_UITEST` (11).

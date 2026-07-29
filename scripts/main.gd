@@ -135,6 +135,16 @@ var live_rift: Rift = null
 func _ready() -> void:
 	add_to_group("main")
 
+	# Physics interpolation is opt-IN in this game, and this is the line that
+	# makes it so. The project setting has to be on for any node to interpolate
+	# at all, but leaving the default INHERIT in place meant the whole tree
+	# inherited ON from the root -- including the camera and every _process
+	# mover, which resampled their already-smooth motion at 60Hz and made the
+	# engine warn about the Camera3D on every boot. Turning Main off pushes the
+	# default back to "no", and the four nodes that integrate on the fixed tick
+	# (PlayerShip, SwarmHostile, SweepArm, LootCube) set themselves to ON.
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+
 	# Scale the 2D layer before any UI is built, then track window resizes. 3D is
 	# unaffected — the world always renders at full window resolution.
 	UILayout.apply_scale(get_window())
@@ -427,6 +437,22 @@ func _ready() -> void:
 		_run_layout_test()
 		return
 
+	if OS.get_environment("PYXIS_FEELTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_feel_test()
+		return
+
+	if OS.get_environment("PYXIS_UITEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_ui_test()
+		return
+
 	var title_test := OS.get_environment("PYXIS_TITLETEST") != ""
 	state = State.PLAYING if headless_mode else State.ATTRACT
 
@@ -523,8 +549,7 @@ func start_new_game() -> void:
 	hud.refresh_cargo()
 	var player: PlayerShip = get_tree().get_first_node_in_group("player")
 	if player:
-		player.global_position = Vector3(0, 0, 6)
-		player.rotation = Vector3.ZERO
+		player.teleport_to(Vector3(0, 0, 6))
 	# The rig has to come home too. Nothing moved it before because the old world
 	# clamp guaranteed it was already near the origin; with space endless, a new
 	# game started from 900 units out would open on empty sky.
@@ -587,8 +612,7 @@ func abandon_to_title() -> void:
 	# abandoning from deep space must not leave it sitting over nothing.
 	var player: PlayerShip = get_tree().get_first_node_in_group("player")
 	if player:
-		player.global_position = PlayerShip.SPAWN_POINT
-		player.rotation = Vector3.ZERO
+		player.teleport_to(PlayerShip.SPAWN_POINT)
 	var rig := get_tree().get_first_node_in_group("camera_rig")
 	if rig:
 		rig.global_position = Vector3(0, 0, 2)
@@ -689,8 +713,7 @@ func _warp_sequence(id: String) -> void:
 	# 3. Swap the world while the flash covers it.
 	_load_system(id)
 	if player:
-		player.global_position = Vector3(0, 0, 6)
-		player.rotation = Vector3.ZERO
+		player.teleport_to(Vector3(0, 0, 6))
 		player.warp_streak_in()
 	if rig:
 		rig.global_position = Vector3(0, 0, 2)
@@ -776,9 +799,8 @@ func _recall_sequence() -> void:
 	await get_tree().create_timer(WARP_STREAK * 0.45).timeout
 
 	if player:
-		player.global_position = PlayerShip.SPAWN_POINT
+		player.teleport_to(PlayerShip.SPAWN_POINT)
 		player.velocity = Vector3.ZERO
-		player.rotation = Vector3.ZERO
 		player.clear_target()
 		player.warp_streak_in()
 	if rig:
@@ -1457,6 +1479,7 @@ func _complete_dock(port: Port) -> void:
 					hud.refresh_cargo()
 
 	Sfx.play("dock", -3.0)
+	Sfx.haptic("medium")
 	FX.ring_pulse(self, port.dock_point, Palette.TEAL, 2.2, 0.7)
 	var rig := get_tree().get_first_node_in_group("camera_rig")
 	if rig:
@@ -1557,8 +1580,7 @@ func disengage_apex(return_home := true) -> bool:
 	if return_home:
 		var player: PlayerShip = get_tree().get_first_node_in_group("player")
 		if player:
-			player.global_position = PlayerShip.SPAWN_POINT
-			player.rotation = Vector3.ZERO
+			player.teleport_to(PlayerShip.SPAWN_POINT)
 			player.velocity = Vector3.ZERO
 			player.warp_streak_in()
 		var rig := get_tree().get_first_node_in_group("camera_rig")
@@ -1613,8 +1635,8 @@ func spill_unread(at: Vector3) -> int:
 			# leaving the system would be salvage stored in a place the save knows
 			# nothing about.
 			system_root.add_child(cube)
-			cube.global_position = at + Vector3(randf_range(-1.6, 1.6), 0.0,
-				randf_range(-1.6, 1.6))
+			cube.place_at(at + Vector3(randf_range(-1.6, 1.6), 0.0,
+				randf_range(-1.6, 1.6)))
 			spilled += 1
 
 	if spilled > 0:
@@ -1700,7 +1722,7 @@ func spawn_loot(parent: Node3D, pos: Vector3, good := "", value_mult := 1.0) -> 
 	cube.commodity = good
 	cube.repeat_mult = value_mult
 	parent.add_child(cube)
-	cube.global_position = pos
+	cube.place_at(pos)
 	return cube
 
 
@@ -8542,3 +8564,335 @@ func _run_save_test() -> void:
 			str(GameState.warehouse.keys()),
 			"PASS" if chart_ok and deep_ok and bogus_dropped else "FAIL"])
 	get_tree().quit()
+
+
+# --- feel and audio correctness ---------------------------------------------
+
+func _run_feel_test() -> void:
+	# Guards the frame-rate independence work and the four audio defects fixed
+	# alongside it. Everything here is about behaviour that is invisible at 60Hz
+	# on a desktop and wrong everywhere else, which is exactly the category that
+	# needs a harness rather than an eye.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	var rig: CameraRig = get_tree().get_first_node_in_group("camera_rig")
+	await get_tree().create_timer(0.3).timeout
+
+	# --- 1. the smoothing itself ---------------------------------------------
+	# The whole point: subdividing a timestep must not change where you land.
+	# The old lerp(a, b, k*delta) form fails this by ~8% per step at these rates,
+	# which is why the camera felt different on a 120Hz phone.
+	var one_step := Smoothing.toward(0.0, 1.0, 9.0, 1.0 / 60.0)
+	var two_half := Smoothing.toward(Smoothing.toward(0.0, 1.0, 9.0, 1.0 / 120.0), 1.0, 9.0, 1.0 / 120.0)
+	var invariant: float = absf(one_step - two_half)
+	print("[feel] STEP INVARIANCE 1x1/60=%.9f vs 2x1/120=%.9f delta=%.9f -> %s" % [
+		one_step, two_half, invariant, "PASS" if invariant < 1.0e-6 else "FAIL"])
+
+	# Four subdivisions, to prove it is the exponential and not a coincidence at
+	# two. Also covers the vector overload, which shares the factor() call.
+	var quarter := Vector3.ZERO
+	for i in range(4):
+		quarter = Smoothing.toward_vec3(quarter, Vector3(10, 0, 0), 9.0, 1.0 / 240.0)
+	var whole := Smoothing.toward_vec3(Vector3.ZERO, Vector3(10, 0, 0), 9.0, 1.0 / 60.0)
+	var vec_gap: float = quarter.distance_to(whole)
+	print("[feel] VEC3 INVARIANCE 4x1/240 vs 1x1/60 gap=%.9f -> %s" % [
+		vec_gap, "PASS" if vec_gap < 1.0e-5 else "FAIL"])
+
+	# A frame long enough to make the old `rate * delta` exceed 1.0 -- the case
+	# that used to overshoot and oscillate instead of settling.
+	var stalled := Smoothing.toward(0.0, 1.0, 9.0, 2.0)
+	var old_form: float = lerpf(0.0, 1.0, 9.0 * 2.0)
+	print("[feel] NO OVERSHOOT 2s frame: exp=%.4f (in 0..1) vs old lerp=%.1f -> %s" % [
+		stalled, old_form, "PASS" if stalled >= 0.0 and stalled <= 1.0 and old_form > 1.0 else "FAIL"])
+
+	# --- 2. the shake setting covers everything that moves the camera --------
+	GameState.set_setting("shake", false)
+	rig.shake(0.5)
+	rig.punch_zoom(4.0)
+	var shake_off: bool = rig.shake_amp() <= 0.0001 and rig.zoom_punch() <= 0.0001
+	GameState.set_setting("shake", true)
+	rig.shake(0.5)
+	rig.punch_zoom(4.0)
+	var shake_on: bool = rig.shake_amp() > 0.0 and rig.zoom_punch() > 0.0
+	print("[feel] MOTION GATE off:shake+punch silent=%s  on:both fire=%s -> %s" % [
+		str(shake_off), str(shake_on), "PASS" if shake_off and shake_on else "FAIL"])
+
+	# --- 3. loop lengths, in frames rather than in bytes ----------------------
+	# `data.size() / 2` assumed uncompressed 16-bit frames; the importer writes
+	# QOA. Asserting the two disagree is what keeps this honest: if the import
+	# mode ever changes back, this line goes red and says so.
+	var amb := load("res://audio/ambient.wav") as AudioStreamWAV
+	var real_frames := Sfx.frame_count(amb)
+	var byte_guess: int = amb.data.size() / 2
+	print("[feel] COMPRESSED STREAM frames=%d vs data.size()/2=%d -> %s" % [
+		real_frames, byte_guess, "PASS" if real_frames != byte_guess else "FAIL"])
+
+	Sfx.loop_start("ambient", -40.0)
+	var amb_end: int = (Sfx._streams["ambient"] as AudioStreamWAV).loop_end
+	print("[feel] LOOP END ambient loop_end=%d frames=%d -> %s" % [
+		amb_end, real_frames, "PASS" if amb_end == real_frames else "FAIL"])
+	Sfx.loop_stop("ambient", 0.01)
+
+	var calm := load("res://audio/music_calm.wav") as AudioStreamWAV
+	var calm_ok: bool = calm.loop_end == Sfx.frame_count(calm) and calm.loop_mode == AudioStreamWAV.LOOP_FORWARD
+	print("[feel] MUSIC LOOP calm loop_end=%d frames=%d mode=%d -> %s" % [
+		calm.loop_end, Sfx.frame_count(calm), calm.loop_mode, "PASS" if calm_ok else "FAIL"])
+
+	# --- 4. per-object loops obey the effects slider -------------------------
+	# Both crack players used to build their own AudioStreamPlayer without a bus,
+	# so they played on Master and the EFFECTS slider did nothing to them.
+	var wreck := Derelict.new()
+	system_root.add_child(wreck)
+	await get_tree().process_frame
+	var probe := Sfx.attached_loop(self, "crack", -6.0)
+	var bus_ok: bool = probe.bus == Sfx.BUS_SFX
+	var crack_stream := probe.stream as AudioStreamWAV
+	var loops_ok: bool = crack_stream != null and crack_stream.loop_mode == AudioStreamWAV.LOOP_FORWARD
+	# The deepest hulks hold for 1.8 + 0.2 * band seconds; the sample is 2.2s, so
+	# without looping the audio stopped before the wreck gave way.
+	var longest_hold := 1.8 + 0.2 * 4.0
+	print("[feel] CRACK BUS bus=%s (must be %s) -> %s" % [
+		probe.bus, Sfx.BUS_SFX, "PASS" if bus_ok else "FAIL"])
+	print("[feel] CRACK OUTLASTS HOLD sample=%.2fs deepest hold=%.2fs looped=%s -> %s" % [
+		crack_stream.get_length() if crack_stream else -1.0, longest_hold, str(loops_ok),
+		"PASS" if loops_ok else "FAIL"])
+	probe.queue_free()
+	wreck.queue_free()
+
+	# --- 5. the blade is audible ---------------------------------------------
+	# sweep.wav was generated, imported and loaded on every boot since the first
+	# audio pass, and never played once.
+	var arm := SweepArm.new()
+	system_root.add_child(arm)
+	await get_tree().process_frame
+	arm.active = true
+	await get_tree().process_frame
+	var arm_audible: bool = arm.audio_playing()
+	arm.active = false
+	await get_tree().process_frame
+	var arm_silent: bool = not arm.audio_playing()
+	print("[feel] SWEEP AUDIBLE active=%s inactive silent=%s -> %s" % [
+		str(arm_audible), str(arm_silent), "PASS" if arm_audible and arm_silent else "FAIL"])
+	arm.queue_free()
+
+	# --- 6. the shield ghost trails damage, and only downward ----------------
+	player.invulnerable = false
+	player.shield = player.shield_max
+	await get_tree().create_timer(0.2).timeout
+	player.take_hit(player.shield_max * 0.4, null)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var frac_after: float = player.shield_fraction()
+	var ghost_after: float = player.shield_ghost_fraction()
+	var trails: bool = ghost_after > frac_after + 0.05
+	# And it must converge, or it is not a ghost, it is a second bar.
+	await get_tree().create_timer(2.0).timeout
+	var converged: bool = absf(player.shield_ghost_fraction() - player.shield_fraction()) < 0.02
+	print("[feel] SHIELD GHOST after hit ghost=%.2f > fill=%.2f =%s, converges=%s -> %s" % [
+		ghost_after, frac_after, str(trails), str(converged),
+		"PASS" if trails and converged else "FAIL"])
+
+	# --- 7. teleports land exactly where they were told to ------------------
+	# The interpolation reset is invisible headless, but a teleport that does not
+	# assign cleanly would show up here first.
+	player.teleport_to(Vector3(120.0, 0.0, -40.0))
+	var landed: bool = player.global_position.distance_to(Vector3(120.0, 0.0, -40.0)) < 0.001
+	player.teleport_to(PlayerShip.SPAWN_POINT)
+	var home: bool = player.global_position.distance_to(PlayerShip.SPAWN_POINT) < 0.001
+	print("[feel] TELEPORT exact out=%s back=%s -> %s" % [
+		str(landed), str(home), "PASS" if landed and home else "FAIL"])
+
+	# --- 8. only fixed-tick movers interpolate -------------------------------
+	# Most of Pyxis moves in _process; interpolating those would cost a frame of
+	# lag. This asserts the split is what the project.godot comment claims.
+	# Asserted on the RESOLVED state, not the declared mode. The first version of
+	# this checked physics_interpolation_mode and passed while the rig was
+	# actually interpolating: the rig's mode was INHERIT, which resolved to ON
+	# from the root, and the engine was warning about the Camera3D every boot.
+	# A property that can be INHERIT is not the property worth asserting on.
+	var ship_on: bool = player.is_physics_interpolated()
+	var rig_off: bool = not rig.is_physics_interpolated()
+	var cam_off: bool = not get_viewport().get_camera_3d().is_physics_interpolated()
+	var world_off: bool = not system_root.is_physics_interpolated()
+	print("[feel] INTERP SPLIT ship=%s rig=%s camera=%s world=%s (want on/off/off/off) -> %s" % [
+		str(ship_on), str(not rig_off), str(not cam_off), str(not world_off),
+		"PASS" if ship_on and rig_off and cam_off and world_off else "FAIL"])
+
+	get_tree().quit()
+
+
+# --- controls, micro-interactions and haptics --------------------------------
+
+func _run_ui_test() -> void:
+	# Guards the parts of the UI pass that are mechanical rather than aesthetic:
+	# that every state of every control is actually distinct, that the paint
+	# counter cannot take salvage without delivering paint, and that the two new
+	# accessibility settings reach the things they claim to gate.
+	await get_tree().create_timer(0.3).timeout
+
+	# --- 1. the pause menu is styled at all ----------------------------------
+	# Every action button used to be a bare Button with a font colour and no
+	# StyleBox, so the most-opened screen in the game rendered in Godot's default
+	# grey while the title screen was the only styled surface in the build.
+	pause_menu.open()
+	await get_tree().process_frame
+	var actions := _collect_buttons(pause_menu)
+	var styled := 0
+	var distinct := 0
+	for b_v in actions:
+		var b := b_v as Button
+		var n := b.get_theme_stylebox("normal")
+		var h := b.get_theme_stylebox("hover")
+		var d := b.get_theme_stylebox("disabled")
+		if n != null and not (n is StyleBoxEmpty):
+			styled += 1
+		# Distinct INSTANCES, not just distinct values: the swatch bug was one
+		# StyleBox assigned to all four states, so any later edit to one state
+		# silently edited the others too.
+		if n != h and h != d and n != d:
+			distinct += 1
+	print("[ui] PAUSE STYLED %d/%d buttons have a normal box, %d/%d have distinct states -> %s" % [
+		styled, actions.size(), distinct, actions.size(),
+		"PASS" if actions.size() > 0 and styled == actions.size() and distinct == actions.size() else "FAIL"])
+
+	# --- 2. the log reveals rather than appearing ----------------------------
+	# Ten lines arriving at once is a wall of text. Asserted as "starts
+	# transparent and finishes opaque" rather than by sampling the tween, because
+	# the rule is that the entries animate, not that they animate a certain way.
+	GameState.note_log("SHOOK DOWN THE HARNESS")
+	GameState.note_log("CROSSED INTO THE DRIFT")
+	GameState.set_setting("reduce_motion", false)
+	pause_menu.show_log()
+	await get_tree().process_frame
+	var revealing := pause_menu.log_entries()
+	var started_hidden := revealing.size() > 0
+	for l_v in revealing:
+		if (l_v as Control).modulate.a > 0.9:
+			started_hidden = false
+	await get_tree().create_timer(1.2).timeout
+	var ended_visible := true
+	for l_v in pause_menu.log_entries():
+		if (l_v as Control).modulate.a < 0.99:
+			ended_visible = false
+	print("[ui] LOG REVEAL %d entries start faded=%s, end opaque=%s -> %s" % [
+		revealing.size(), str(started_hidden), str(ended_visible),
+		"PASS" if started_hidden and ended_visible else "FAIL"])
+
+	# Reduced motion is the END STATE IMMEDIATELY, not the same animation played
+	# faster. An accommodation that still animates is not an accommodation.
+	GameState.set_setting("reduce_motion", true)
+	pause_menu.show_log()
+	await get_tree().process_frame
+	var instant := true
+	var reduced := pause_menu.log_entries()
+	for l_v in reduced:
+		if (l_v as Control).modulate.a < 0.99:
+			instant = false
+	print("[ui] LOG REDUCED MOTION %d entries opaque on frame one=%s -> %s" % [
+		reduced.size(), str(instant), "PASS" if instant and reduced.size() > 0 else "FAIL"])
+	GameState.set_setting("reduce_motion", false)
+	pause_menu.resume()
+
+	# --- 3. the haptic gate --------------------------------------------------
+	GameState.set_setting("haptics", false)
+	var before := Sfx.haptic_count
+	Sfx.haptic("heavy")
+	var silent := Sfx.haptic_count == before
+	GameState.set_setting("haptics", true)
+	Sfx.haptic("heavy")
+	var fired := Sfx.haptic_count == before + 1
+	print("[ui] HAPTIC GATE off:silent=%s on:fires=%s kind=%s -> %s" % [
+		str(silent), str(fired), Sfx.haptic_last, "PASS" if silent and fired else "FAIL"])
+
+	# Reduced motion must also stop the camera, through the shake gate rather
+	# than through a second check every effect would have to remember.
+	GameState.set_setting("shake", true)
+	GameState.set_setting("reduce_motion", true)
+	var motion_off := not GameState.shake_enabled()
+	GameState.set_setting("reduce_motion", false)
+	var motion_on := GameState.shake_enabled()
+	print("[ui] REDUCE MOTION subsumes shake: on->%s off->%s -> %s" % [
+		str(not motion_off), str(motion_on), "PASS" if motion_off and motion_on else "FAIL"])
+
+	# --- 4. paint is ordered: decide, charge, apply --------------------------
+	# The old order spent first and applied second, so any refusal added between
+	# the two would take the salvage and leave the hull its old colour.
+	GameState.set_livery(0, 0)
+	GameState.salvage = 100000
+	var rich := GameState.salvage
+	port_panel._apply_paint(3, true, PortPanel.PAINT_PRICE)
+	var applied: bool = GameState.livery_index("hull") == 3
+	var charged: bool = GameState.salvage == rich - PortPanel.PAINT_PRICE
+	print("[ui] PAINT APPLIES hull=%d (want 3), salvage %d -> %d -> %s" % [
+		GameState.livery_index("hull"), rich, GameState.salvage,
+		"PASS" if applied and charged else "FAIL"])
+
+	# Too poor: nothing may change, in either direction.
+	GameState.salvage = PortPanel.PAINT_PRICE - 1
+	var poor := GameState.salvage
+	port_panel._apply_paint(5, true, PortPanel.PAINT_PRICE)
+	print("[ui] PAINT REFUSED broke: hull stayed %d (want 3), salvage stayed %d -> %s" % [
+		GameState.livery_index("hull"), GameState.salvage,
+		"PASS" if GameState.livery_index("hull") == 3 and GameState.salvage == poor else "FAIL"])
+
+	# Repainting the colour already worn is refused before it is charged.
+	GameState.salvage = 100000
+	var same_before := GameState.salvage
+	port_panel._apply_paint(3, true, PortPanel.PAINT_PRICE)
+	print("[ui] PAINT NO-OP repaint of worn colour costs nothing: %d -> %d -> %s" % [
+		same_before, GameState.salvage,
+		"PASS" if GameState.salvage == same_before else "FAIL"])
+
+	# The ordering itself: a refusal that is NOT the already-worn one. An accent
+	# index past the end of the table is what _can_wear rejects today, and it
+	# stands in for the Commission's locked ninth accent -- the case the old
+	# spend-then-apply order would have charged for and then declined to deliver.
+	GameState.set_livery(0, 0)
+	GameState.salvage = 100000
+	var locked_before := GameState.salvage
+	var accent_before := GameState.livery_index("accent")
+	port_panel._apply_paint(Palette.LIVERY_ACCENTS.size(), false, PortPanel.PAINT_PRICE)
+	var unpaid: bool = GameState.salvage == locked_before
+	var unworn: bool = GameState.livery_index("accent") == accent_before
+	print("[ui] PAINT ORDERED refused accent %d: salvage %d (unchanged=%s), accent %d (unchanged=%s) -> %s" % [
+		Palette.LIVERY_ACCENTS.size(), GameState.salvage, str(unpaid),
+		GameState.livery_index("accent"), str(unworn),
+		"PASS" if unpaid and unworn else "FAIL"])
+
+	# --- 5. swatch states are distinct instances ------------------------------
+	var grid := port_panel._swatch_grid("HULL", Palette.LIVERY_HULLS, 0, PortPanel.PAINT_PRICE, true)
+	var swatches := _collect_buttons(grid)
+	var all_distinct := swatches.size() == Palette.LIVERY_HULLS.size()
+	for b_v in swatches:
+		var b := b_v as Button
+		if b.get_theme_stylebox("normal") == b.get_theme_stylebox("hover"):
+			all_distinct = false
+	print("[ui] SWATCH STATES %d swatches, hover box differs from normal on all=%s -> %s" % [
+		swatches.size(), str(all_distinct), "PASS" if all_distinct else "FAIL"])
+	grid.queue_free()
+
+	# --- 6. settings round-trip ----------------------------------------------
+	# Both new keys have to survive a save/load, or the accessibility toggles are
+	# decorative.
+	GameState.set_setting("haptics", false)
+	GameState.set_setting("reduce_motion", true)
+	var probe := {}
+	for k in GameState.DEFAULT_SETTINGS:
+		probe[k] = GameState.setting(k)
+	GameState.settings = GameState.DEFAULT_SETTINGS.duplicate()
+	for k in probe:
+		GameState.settings[k] = probe[k]
+	var kept: bool = GameState.setting("haptics") == false and GameState.setting("reduce_motion") == true
+	print("[ui] SETTINGS ROUND TRIP haptics=%s reduce_motion=%s -> %s" % [
+		str(GameState.setting("haptics")), str(GameState.setting("reduce_motion")),
+		"PASS" if kept else "FAIL"])
+
+	get_tree().quit()
+
+
+func _collect_buttons(root: Node) -> Array:
+	var out: Array = []
+	for c in root.get_children():
+		if c is Button:
+			out.append(c)
+		out.append_array(_collect_buttons(c))
+	return out

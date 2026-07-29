@@ -181,8 +181,22 @@ amber-cartography identity is the mitigation.
 - Feel-critical tunables live as named constants at the top of their script
   under a `FEEL CONSTANTS` comment.
 - All colors come from `scripts/palette.gd`. No literal colors in gameplay code.
+- All type sizes, control styling and transition timings come from
+  `scripts/ui_kit.gd` — the same rule as Palette, applied to the control voice.
+  A `Button.new()` with hand-rolled theme overrides is the defect this prevents:
+  it produced three unrelated button idioms, one of which (the pause menu, the
+  most-opened screen in the game) had no `StyleBox` at all and rendered in stock
+  Godot grey.
 - One-shot visual effects go through `scripts/fx.gd`; audio through the `Sfx`
   autoload.
+- **Smoothing toward a target uses `scripts/smoothing.gd`, never
+  `lerp(a, b, k * delta)`.** That form is not frame-rate independent — one step
+  at 1/60 lands somewhere different from two at 1/120, so the camera felt
+  different on a 120Hz phone than on the machine it was tuned on — and it
+  overshoots and oscillates whenever `k * delta` exceeds 1.0, which a long frame
+  produces. `Smoothing.toward` is the analytic solution, `target + (current -
+  target) * exp(-rate * delta)`, which subdivides exactly and can never cross the
+  target. Asserted by `PYXIS_FEELTEST`.
 - Audio is synthesized by `tools/gen_sfx.py` (pure stdlib Python) — original,
   license-free, and regenerable. Tune the numbers and re-run.
 - Meshes are kitbashed from primitives in code, which keeps asset cost near zero
@@ -190,9 +204,24 @@ amber-cartography identity is the mitigation.
 - Audio buses (Master / SFX / Music / MusicCalm) are built in code at boot for
   the same reason: the project stays reproducible from source with no binary
   resources to keep in sync.
+- **Accessibility settings are gated at one entry point each, never at the call
+  sites.** `CameraRig.shake()` established the rule; `CameraRig.punch_zoom()`
+  and `Sfx.haptic()` follow it. There are roughly twenty shake callers and a
+  dozen haptic ones, and any of them could forget a setting exists — none of
+  them can forget a function that checks for them. `punch_zoom` is the proof
+  this matters: it was the one motion effect gated nowhere, so turning screen
+  shake off visibly did half its job for as long as it shipped.
+- **Reduced motion means the end state immediately, not the same animation
+  faster.** An accommodation that still animates is not an accommodation.
+  `reduce_motion` also subsumes `shake_enabled()` — someone asking for less
+  movement is not asking to keep the camera lurching — but the two settings stay
+  separate, because turning shake off is a statement about shake and reading it
+  as a statement about every transition in the game would silently reinterpret a
+  preference the player already expressed.
 - Every major system gets an env-var harness in `main.gd` printing tagged,
   greppable assertion lines (`[station] NO ROUND-TRIP PROFIT ... -> PASS`). Run
-  them; do not eyeball the game and call it verified.
+  them; do not eyeball the game and call it verified. `tools/run_harness.sh`
+  runs the whole sweep and checks the real save is untouched.
 - **Harnesses must never be able to write the player's save.** They call
   `GameState.lock_saving()`, which is deliberately ONE-WAY. Assigning
   `save_enabled = false` is not enough: `start_new_game()` assigns it back to

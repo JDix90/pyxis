@@ -37,7 +37,20 @@ var repeat_mult := 1.0
 var spill := false
 
 
+func place_at(pos: Vector3) -> void:
+	# Cubes are added to the tree first and positioned after, so _ready runs at
+	# the origin. Without the reset an interpolated cube spends its first frame
+	# drawn somewhere along the line from the system centre to where it actually
+	# spawned -- most visible in exactly the moment cubes matter, a hold breach
+	# scattering a dozen of them at once.
+	global_position = pos
+	reset_physics_interpolation()
+
+
 func _ready() -> void:
+	# Magnets toward the ship on the fixed tick, and usually does it in clusters
+	# the eye is already tracking. See project.godot's [physics] comment.
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
 	var system_mult := 1.0
 	var main := get_tree().get_first_node_in_group("main")
 	if main and main.has_method("loot_mult"):
