@@ -445,6 +445,14 @@ func _ready() -> void:
 		_run_feel_test()
 		return
 
+	if OS.get_environment("PYXIS_ENVTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_env_test()
+		return
+
 	if OS.get_environment("PYXIS_STREAMTEST") != "":
 		GameState.lock_saving()
 		state = State.PLAYING
@@ -919,6 +927,12 @@ func _process(delta: float) -> void:
 	# wayfinding label and the beacons. Music smooths it internally, so this is a
 	# raw value every frame rather than something this function has to rate-limit.
 	Music.set_depth(depth)
+	# The light's two axes, from the same poll and the same anchors as the score,
+	# so the sky and the mix change at the same places rather than a beat apart.
+	var air := get_tree().get_first_node_in_group("atmosphere") as Atmosphere
+	if air != null:
+		air.set_depth(depth)
+		air.set_threat(1.0 if _threat_near_player() else 0.0)
 	_tick_broadcast(depth)
 	# The captain's log's one frame-adjacent source, and the only one that needs
 	# an argument for why it is still discrete. It reads the RUN's high-water mark
@@ -1796,6 +1810,23 @@ func deep_radius() -> float:
 	if p == null:
 		return 0.0
 	return Vector2(p.global_position.x, p.global_position.z).length()
+
+
+func _threat_near_player() -> bool:
+	# The same question Music asks, asked once here and handed to both -- the
+	# lighting and the score must never disagree about whether you are in a
+	# fight, and two independent scans would eventually drift apart.
+	if boss_active:
+		return true
+	var player: Node3D = get_tree().get_first_node_in_group("player")
+	if player == null or bool(player.get("docked")):
+		return false
+	var r2: float = Music.THREAT_RADIUS * Music.THREAT_RADIUS
+	for n in get_tree().get_nodes_in_group("hostiles"):
+		var h := n as Node3D
+		if is_instance_valid(h) and h.global_position.distance_squared_to(player.global_position) <= r2:
+			return true
+	return false
 
 
 func deep_depth() -> float:
@@ -9707,3 +9738,158 @@ func _run_stream_test() -> void:
 		out_there, Obstacles.count(), "PASS" if Obstacles.count() < out_there else "FAIL"])
 
 	get_tree().quit()
+
+
+# --- the world's two responses -----------------------------------------------
+
+func _run_env_test() -> void:
+	# The lighting model and the landmark pass. Both are about the same claim:
+	# that the expanse is designed rather than uniform, and that the two axes the
+	# game is about are visible in it.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	# Same two lines PYXIS_MUSICTEST needs and for the same reason: waves keep
+	# refilling the system, and arriving in an already-breached system arms the
+	# apex -- a live engine is a threat by definition, which is correct and would
+	# otherwise pin the lighting to "in a fight" for the whole harness.
+	_wave_timer = 1.0e9
+	_apex_wake_timer = -1.0
+	await get_tree().create_timer(0.4).timeout
+
+	var air := get_tree().get_first_node_in_group("atmosphere") as Atmosphere
+	print("[env] ATMOSPHERE BOUND one owner for the Environment, present=%s -> %s" % [
+		str(air != null), "PASS" if air != null else "FAIL"])
+
+	# --- 1. depth is visible -------------------------------------------------
+	var edge := chart_edge()
+	var seen: Array = []
+	for units in [0.0, 160.0, 440.0, 1100.0]:
+		player.teleport_to(Vector3(0.0, 0.0, edge + units + 1.0))
+		await get_tree().create_timer(2.2).timeout
+		seen.append(snappedf(air.depth_level(), 0.01))
+	var rising := true
+	for i in range(seen.size() - 1):
+		if float(seen[i + 1]) < float(seen[i]) - 0.001:
+			rising = false
+	print("[env] DEPTH LIGHTING level at [0, 160, 440, 1100]u = %s, monotonic=%s, spans=%s -> %s" % [
+		str(seen), str(rising), str(float(seen[0]) < 0.05 and float(seen[3]) > 0.9),
+		"PASS" if rising and float(seen[0]) < 0.05 and float(seen[3]) > 0.9 else "FAIL"])
+
+	# The sky must actually change, not just the number. Asserted against the
+	# live Environment, because a level that moves while nothing renders
+	# differently is a level that is not wired to anything.
+	var we := _find_world_env(system_root)
+	var deep_glow := we.environment.glow_intensity if we else -1.0
+	player.teleport_to(PlayerShip.SPAWN_POINT)
+	await get_tree().create_timer(2.5).timeout
+	var home_glow := we.environment.glow_intensity if we else -1.0
+	print("[env] SKY RESPONDS glow %.3f in THE QUIET vs %.3f at home -> %s" % [
+		deep_glow, home_glow, "PASS" if we != null and deep_glow < home_glow else "FAIL"])
+
+	# --- 2. threat is visible, and does not fight depth ----------------------
+	# Driven by an ACTUAL HOSTILE, not by calling set_threat. main polls the threat
+	# every frame and pushes it at Atmosphere, so a hand-set value is overwritten
+	# on the next frame -- the first version of this measured a 0.004 wobble and
+	# called it a pass. Spawning the contact also covers the wiring: the poll, the
+	# radius test, and the easing.
+	# The baseline has to be genuinely calm, and at the spawn point it is not:
+	# PYX-01 has sentries standing inside THREAT_RADIUS, so the first version of
+	# this measured a glow that was ALREADY lifted and then compared it against
+	# itself. Clear the field and let the slow fall finish first.
+	for n in get_tree().get_nodes_in_group("hostiles"):
+		n.queue_free()
+	await get_tree().create_timer(4.0).timeout
+	var calm_glow := we.environment.glow_intensity
+	var quiet_first: bool = not _threat_near_player()
+	var bogey := SwarmHostile.new()
+	bogey.difficulty = 0.0
+	bogey.hp_scale = 40.0
+	system_root.add_child(bogey)
+	bogey.global_position = player.global_position + Vector3(0, 0, Music.THREAT_RADIUS * 0.4)
+	bogey.dock_at(bogey.global_position)
+	await get_tree().create_timer(1.5).timeout
+	var hot_glow := we.environment.glow_intensity
+	bogey.queue_free()
+	await get_tree().create_timer(4.0).timeout
+	var cooled := we.environment.glow_intensity
+	# A real lift, not a rounding wobble: THREAT_GLOW_LIFT is 30%, so anything
+	# under a few percent means the signal never reached the Environment.
+	var lifted: bool = hot_glow > calm_glow * 1.05
+	print("[env] THREAT LIGHTING calm field=%s, glow %.3f -> %.3f -> %.3f (lifts >5%% then returns) -> %s" % [
+		str(quiet_first), calm_glow, hot_glow, cooled,
+		"PASS" if quiet_first and lifted and absf(cooled - calm_glow) < 0.02 else "FAIL"])
+
+	# Asymmetric on purpose, and in the same direction as the score's: a threat
+	# arrives faster than it leaves, because a fight starts on one frame and ends
+	# raggedly over several.
+	print("[env] THREAT IS ASYMMETRIC rise %.1f > fall %.1f -> %s" % [
+		Atmosphere.THREAT_RISE, Atmosphere.THREAT_FALL,
+		"PASS" if Atmosphere.THREAT_RISE > Atmosphere.THREAT_FALL else "FAIL"])
+
+	# --- 3. landmarks are placed, not scattered ------------------------------
+	# One per supercell, deterministic, and none in charted space.
+	var counts := {}
+	var total := 0
+	for sx in range(0, 8):
+		for sz in range(0, 8):
+			var cell := DeepSpace.landmark_cell(system_id, sx, sz)
+			# Deterministic: the same supercell must elect the same cell twice.
+			if DeepSpace.landmark_cell(system_id, sx, sz) != cell:
+				counts["nondeterministic"] = true
+			if DeepSpace.supercell_of(cell.x, cell.y) != Vector2i(sx, sz):
+				counts["outside"] = true
+			var plan := deep_space.plan_cell(cell.x, cell.y)
+			var mark: Dictionary = plan.get("landmark", {})
+			if not mark.is_empty():
+				total += 1
+				counts[String(mark["kind"])] = int(counts.get(String(mark["kind"]), 0)) + 1
+	print("[env] LANDMARK PLACEMENT %d across 64 supercells, kinds %s, elected cell inside its own supercell=%s -> %s" % [
+		total, str(counts), str(not counts.has("outside")),
+		"PASS" if total > 0 and not counts.has("outside") and not counts.has("nondeterministic") else "FAIL"])
+
+	# At most one per supercell -- that is the whole reason for the second scale.
+	var doubled := false
+	for sx in range(0, 6):
+		for sz in range(0, 6):
+			var found := 0
+			for dx in range(DeepSpace.SUPERCELL):
+				for dz in range(DeepSpace.SUPERCELL):
+					var c := Vector2i(sx * DeepSpace.SUPERCELL + dx, sz * DeepSpace.SUPERCELL + dz)
+					if not (deep_space.plan_cell(c.x, c.y).get("landmark", {}) as Dictionary).is_empty():
+						found += 1
+			if found > 1:
+				doubled = true
+	print("[env] ONE PER SUPERCELL no supercell carries two=%s -> %s" % [
+		str(not doubled), "PASS" if not doubled else "FAIL"])
+
+	# Charted space gets none: a landmark inside the survey volume is a landmark
+	# on a map that already has one.
+	var in_chart := false
+	for c in range(0, 3):
+		if not (deep_space.plan_cell(c, c).get("landmark", {}) as Dictionary).is_empty():
+			in_chart = true
+	print("[env] NONE IN CHARTED SPACE band 0 carries no landmark=%s -> %s" % [
+		str(not in_chart), "PASS" if not in_chart else "FAIL"])
+
+	# Each band gets its OWN silhouette. A second tell that is also colour tells
+	# you nothing new, which is the same argument as the HUD's band glyphs.
+	var kinds := {}
+	for band in range(1, DeepSpace.LANDMARKS.size()):
+		var built := Landmarks.build(String(DeepSpace.LANDMARKS[band]), band)
+		if built != null:
+			kinds[String(DeepSpace.LANDMARKS[band])] = built.get_child_count()
+			built.queue_free()
+	print("[env] BAND SILHOUETTES %s distinct kinds, all build=%s -> %s" % [
+		str(kinds), str(kinds.size() == DeepSpace.LANDMARKS.size() - 1),
+		"PASS" if kinds.size() == DeepSpace.LANDMARKS.size() - 1 else "FAIL"])
+
+	get_tree().quit()
+
+
+func _find_world_env(n: Node) -> WorldEnvironment:
+	for c in n.get_children():
+		if c is WorldEnvironment:
+			return c
+		var found := _find_world_env(c)
+		if found != null:
+			return found
+	return null

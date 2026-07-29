@@ -578,7 +578,67 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 				"drop": PACK_DROP[band],
 				"escort": band >= PACK_ESCORT_FROM,
 			}
+
+	# APPENDED, after every existing roll and on its own salted stream, exactly
+	# like the guards. The roll ORDER above is load-bearing -- a roll inserted
+	# anywhere in it reshuffles every cell in the game -- so a new feature may
+	# only ever be added at the end, and one that needs randomness of its own
+	# takes a separate seed rather than a slice of this one.
+	out["landmark"] = landmark_at(cx, cz, band)
 	return out
+
+
+# --- landmarks ---------------------------------------------------------------
+# The expanse was uniform noise: every cell rolled the same four things with the
+# same tables, so flying out felt like more of the same rather than like going
+# somewhere. Landmarks are the second layer -- one per SUPERCELL of 4x4 cells,
+# themed by band, so there is roughly one deliberate object every 256 units and
+# what it is tells you where you are without reading the label.
+#
+# This is what "designed rather than random" means here: not less randomness,
+# but randomness at two scales, with the coarse one carrying meaning. A single
+# scale is noise however you tune it.
+const SUPERCELL := 4
+# What stands in each band. Band 0 is charted space and gets nothing -- a
+# landmark inside the survey volume would be a landmark on a map that already
+# has one.
+const LANDMARKS := ["", "pylon", "frame", "monolith", "marker"]
+
+
+static func supercell_of(cx: int, cz: int) -> Vector2i:
+	# Floor division, not truncation: -1 / 4 truncates toward zero and puts the
+	# cells either side of the origin in the same supercell, which would double
+	# the landmark density in exactly the region the player crosses first.
+	return Vector2i(floori(float(cx) / float(SUPERCELL)), floori(float(cz) / float(SUPERCELL)))
+
+
+static func landmark_cell(id: String, sx: int, sz: int) -> Vector2i:
+	# Which cell of the supercell carries it. Pure, salted, and independent of
+	# every other roll, so adding or removing landmarks cannot move a rock.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("%s|%d|%d|landmark" % [id, sx, sz])
+	return Vector2i(sx * SUPERCELL + rng.randi_range(0, SUPERCELL - 1),
+		sz * SUPERCELL + rng.randi_range(0, SUPERCELL - 1))
+
+
+func landmark_at(cx: int, cz: int, band: int) -> Dictionary:
+	if band <= 0 or band >= LANDMARKS.size():
+		return {}
+	var sc := supercell_of(cx, cz)
+	if landmark_cell(_id, sc.x, sc.y) != Vector2i(cx, cz):
+		return {}
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("%s|%d|%d|landmark_at" % [_id, cx, cz])
+	var base := Vector3(float(cx) * CELL, 0.0, float(cz) * CELL)
+	var at := base + Vector3(CELL * 0.5, 0.0, CELL * 0.5)
+	if depth_at(at) < CONTENT_MIN_DEPTH:
+		return {}
+	return {
+		"kind": String(LANDMARKS[band]),
+		"pos": at,
+		"rot_y": rng.randf_range(0.0, 360.0),
+		"band": band,
+	}
 
 
 func _stream(around: Vector3) -> void:
@@ -681,7 +741,12 @@ func _register_cell(cx: int, cz: int):
 	var rocks: Array = plan["rocks"]
 	var hulk: Dictionary = plan["hulk"]
 	var station: Dictionary = plan["station"]
-	if rocks.is_empty() and hulk.is_empty() and station.is_empty():
+	# A landmark counts as content. Without it here, a supercell whose elected
+	# cell happens to roll no rocks, no hulk and no station is discarded as empty
+	# and the landmark never spawns -- which would silently thin them out in
+	# exactly the sparse cells where one is most worth having.
+	var mark: Dictionary = plan.get("landmark", {})
+	if rocks.is_empty() and hulk.is_empty() and station.is_empty() and mark.is_empty():
 		return null
 
 	var tag := _owner_tag(cx, cz)
@@ -717,6 +782,17 @@ func _populate_cell(cx: int, cz: int, node: Node3D) -> void:
 	var rocks: Array = plan["rocks"]
 	var hulk: Dictionary = plan["hulk"]
 	var station: Dictionary = plan["station"]
+
+	# Scenery, so it dresses with the meshes and registers no collision -- a
+	# landmark you can bump into is an obstacle, and these exist to be looked at
+	# from a distance rather than flown to.
+	var mark: Dictionary = plan.get("landmark", {})
+	if not mark.is_empty():
+		var node_mark := Landmarks.build(String(mark["kind"]), int(mark["band"]))
+		if node_mark != null:
+			node.add_child(node_mark)
+			node_mark.global_position = mark["pos"]
+			node_mark.rotation_degrees.y = float(mark["rot_y"])
 
 	for r_v in rocks:
 		var r: Dictionary = r_v

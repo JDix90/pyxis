@@ -2042,3 +2042,80 @@ inside one frame's budget, and only expensive rows are meant to split.
 
 The timing survives as a reported number with a deliberately loose bound (40ms).
 It would still catch the original 44ms spike; it will not fail on a busy box.
+
+## 32. The light responds; the expanse has landmarks
+
+Two things the world was missing, both about the same claim: that the two axes
+this game is actually about — how far out you are, and whether something is
+hunting you — should be visible in the picture and not only in the numbers.
+
+### One owner for the Environment
+
+`scripts/atmosphere.gd`. `SystemBuilder` writes the system's baseline into it
+once at build time and nothing else assigns to the `Environment` after that. Two
+writers and the last one per frame wins, which is how a lighting bug that was
+"fixed" comes back six months later wearing different clothes.
+
+Everything is expressed as a **multiple of the system's own values**, so a system
+authored dim stays dim. Depth pulls the sky toward `DEEP_COLD` (not toward black
+— black reads as the renderer stopping rather than as somewhere), takes ambient
+and the sun down with it, and drops glow to 42% by THE QUIET. Threat is a **lift,
+not a tint**: deep space is already a colour statement and a red wash on top
+would fight the band gradient, so a contact raises the bloom and pulls ambient
+slightly toward `THREAT`, which reads as the room getting harder. The two
+compose — being jumped in THE QUIET still brightens the room, from a much lower
+floor.
+
+Depth uses `DeepSpace.BAND_EDGES`, the same anchors the score uses, so the sky
+and the mix change at the same places rather than a beat apart. Threat rises fast
+and falls slow, matching the music's asymmetry for the same reason: a fight
+starts on one frame and ends raggedly over several. Both are fed from a single
+`_threat_near_player()` in `main`, so the lighting and the score can never
+disagree about whether you are in a fight.
+
+### Landmarks: randomness at two scales
+
+The expanse was uniform noise — every cell rolled the same four things from the
+same tables, so flying out felt like more of the same rather than like going
+somewhere. There is now one deliberate object per **supercell** of 4×4 cells,
+roughly every 256 units, themed by band.
+
+That is what "designed rather than random" means here: not less randomness, but
+randomness at two scales with the coarse one carrying meaning. A single scale is
+noise however you tune it.
+
+Each band gets a **different silhouette**, not the same shape in a different
+colour — colour already tells you the band, and a second tell that is also colour
+tells you nothing new. Read outward they are one story: a shattered survey pylon
+the authority built and stopped maintaining; the frame of a colony with two lit
+windows; a monolith nobody built, scarred where a nest grew on it; and a GSA
+boundary marker with its lamps stripped out. That last one is the only landmark
+that does not emit — you see it because it occludes stars. THE QUIET is the band
+whose beacons do not answer, and a marker with a working light would contradict
+that.
+
+They are **scenery**: no loot, no collision, nothing to hold on. The expanse
+already has four things to do in it; what it lacked was somewhere to *be*, and an
+object that pays out stops being a landmark and becomes another errand.
+
+The roll is **appended** to `plan_cell` after every existing one, on its own
+salted stream — `§17`'s rule, the same one `gen_sfx.py`'s `SOUNDS` dict follows.
+`DEEPTEST`'s 44 assertions pass unmodified, which is the proof it held.
+
+### Three assertions that passed while measuring nothing
+
+Worth recording together, because they are the same mistake in three costumes and
+`§8`'s rule caught all three:
+
+- `THREAT LIGHTING` called `air.set_threat(1.0)` directly. `main` polls the threat
+  every frame and overwrites it, so the test measured a 0.004 wobble and called
+  it a lift. It now spawns an actual hostile, which also covers the poll and the
+  radius test.
+- Its *baseline* was then wrong too: PYX-01 has sentries inside `THREAT_RADIUS`,
+  so "calm" glow was already lifted and was being compared against itself. The
+  field is cleared first, and `calm field=true` is now part of the assertion.
+- And the waves refilled it anyway, so `_wave_timer` has to be pinned — the same
+  two lines `MUSICTEST` already needed, for the same reason.
+
+The pattern: **a harness that sets a value the game also sets every frame is
+measuring the game's value, not its own.** Drive the system, do not poke it.

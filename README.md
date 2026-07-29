@@ -75,12 +75,12 @@ first:
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --import
 ```
 
-Current baseline: **331 PASS / 0 FAIL / 0 script errors** across 45 runs, save
+Current baseline: **340 PASS / 0 FAIL / 0 script errors** across 46 runs, save
 format **v13** — the 268 that shipped, plus `PYXIS_FEELTEST` (13),
 `PYXIS_UITEST` (11), `PYXIS_GSATEST` (17), `PYXIS_ACCESSTEST` (11),
-`PYXIS_STREAMTEST` (6), two more in `MUSICTEST` for the score's depth axis, one
-more in `LIVERYTEST` for the earned ninth accent, and two in
-`SAVETEST=migrate12` for the v12→v13 migration.
+`PYXIS_ENVTEST` (9), `PYXIS_STREAMTEST` (6), two more in `MUSICTEST` for the
+score's depth axis, one more in `LIVERYTEST` for the earned ninth accent, and
+two in `SAVETEST=migrate12` for the v12→v13 migration.
 
 `PYXIS_BALANCE` fights the apex to a conclusion with three fits and has taken
 anywhere from five to eleven minutes depending on how the fights go; the runner's
