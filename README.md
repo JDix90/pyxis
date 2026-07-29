@@ -53,5 +53,5 @@ Run every harness in sequence and md5 `save.json` before and after to prove no
 harness wrote to the real save. `SAVETEST` is stateful: `=write` and the bare
 read must run in that order and as a pair.
 
-Current baseline: **267 PASS / 0 FAIL / 0 script errors** across 34 harnesses,
+Current baseline: **268 PASS / 0 FAIL / 0 script errors** across 34 harnesses,
 save format v12.
