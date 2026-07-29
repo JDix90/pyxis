@@ -826,17 +826,38 @@ func _populate_cell(cx: int, cz: int, node: Node3D) -> void:
 		d.arm_trap(hulk.get("trap", {}))
 		_build_post(Vector2i(cx, cz), hulk.get("guards", {}))
 
-		# The survey mast rides the STERN, opposite the prow breach beacon. Eleven
-		# units of separation is what lets CameraRig._pick tell two verbs on one
-		# wreck apart, and it puts the reading stand-off outside the guard ring,
-		# which is what makes surveying a guarded hulk the quiet option.
+		# The survey mast rides the STERN, opposite the prow breach beacon, at the
+		# beacon's own offset mirrored: -6.6 forward, +6.6 aft.
+		#
+		# It used to sit at 4.5, which put the dish INSIDE the hull. Not partly --
+		# the dish's worst-case box is x +/-0.52, y 1.445..2.455, z 3.98..5.02,
+		# and _build_mesh's stern block spans x +/-0.7, y -0.75..2.75, z 2.5..5.5.
+		# Inside on all three axes. What reached the screen was the fraction of
+		# the ring that happened to clear a silhouette edge at one spin phase, on
+		# an affordance the player is supposed to fly to and hold on.
+		#
+		# 6.6 clears it twice over: aft of the stern block (which ends at 5.5) and
+		# above the spine roof (y 1.0, and the dish sits at 1.45 and up). The
+		# stalk still passes THROUGH the spine, which is what a mast bolted to a
+		# hull should look like.
+		#
+		# The old 4.5 was chosen for a separation figure, and the figure survives:
+		# 13.2 units between the two anchors, against a CameraRig._pick radius of
+		# 60 SCREEN pixels -- which the pair clears by roughly 5x at every legal
+		# zoom. Moving aft also moves AWAY from the guard ring, so the "quiet
+		# option" stand-off argument only gets stronger.
+		#
+		# It fixes a second bug for free. CRACK_RANGE and SURVEY_RANGE are 6.5
+		# each, so at 11.1 apart the two in-range spheres OVERLAPPED: both wrote
+		# hud.prompt's single slot, and leaving one cleared the other's still-
+		# valid prompt. 13.2 > 13.0, so the lens is gone.
 		var mast := SurveyMast.new()
 		mast.band = int(plan["band"])
 		mast.survey_time = 3.0 + 0.5 * float(int(plan["band"]) - 1)
 		mast.cell = Vector2i(cx, cz)
 		mast.surveyed = _surveyed.has(Vector2i(cx, cz))
 		node.add_child(mast)
-		mast.global_position = d.global_position + d.global_transform.basis.z * 4.5
+		mast.global_position = d.global_position + d.global_transform.basis.z * SurveyMast.HULL_OFFSET
 
 	if not station.is_empty():
 		var arch := DeepPortDB.by_id(String(station["archetype"]))

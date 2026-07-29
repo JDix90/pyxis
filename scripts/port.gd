@@ -441,9 +441,16 @@ func player_in_range() -> bool:
 
 
 func on_tapped() -> void:
-	if docked:
-		return
 	var main := get_tree().get_first_node_in_group("main")
+	if docked:
+		# Tapping the port you are ALREADY clamped to brings the sheet back.
+		# Without this the escape ladder is one-way: CameraRig._cancel closes the
+		# panel without undocking, request_dock refuses while docked_port is set,
+		# and the player is left clamped to a station with no way to reach its
+		# counters short of departing and flying back in.
+		if main and main.port_panel and not main.port_panel.is_open:
+			main.port_panel.open_for(self)
+		return
 	if main and main.has_method("request_dock"):
 		main.request_dock(self)
 

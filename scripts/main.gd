@@ -16,6 +16,74 @@ const WARP_ARRIVE := 0.8
 const APEX_WAKE_DELAY := 6.0        # after arriving in an already-breached system
 const APEX_BREACH_DELAY := 9.0      # the aftershock, after breaching the derelict
 
+# --- harness state pinning ---------------------------------------------------
+# Every name the dispatch below tests, minus the capture modes. A harness whose
+# name is missing here still runs -- it just inherits whatever the developer's
+# save happens to hold, which is the defect this exists to close.
+#
+# GameState._ready() loads the real save before Main ever runs, so until this
+# landed EVERY harness was measuring against one person's savegame. It went
+# unnoticed for as long as nobody had actually played the build on the machine
+# running the sweep. The first real play session turned three assertions red
+# across CARTTEST and FORGETEST -- a scanner reported as a dead stat because the
+# save's fit already filled the reactor and equip refused it, a deep-station
+# assertion that found no station because the save was parked in a different
+# system, and a hold that "moved" because the slot under test already held a
+# cargo module. All three were correct code and a wrong baseline.
+#
+# lock_saving() already says a harness may never WRITE the player's save. This
+# is the other half: it may not READ it either.
+const HARNESS_VARS := [
+	"PYXIS_ACCESSTEST",
+	"PYXIS_APEXTEST",
+	"PYXIS_BALANCE",
+	"PYXIS_BOSSTEST",
+	"PYXIS_CARTTEST",
+	"PYXIS_COLLISIONTEST",
+	"PYXIS_CONTRACTTEST",
+	"PYXIS_DEEPTEST",
+	"PYXIS_DEMO",
+	"PYXIS_DOCKTEST",
+	"PYXIS_ECONDEMO",
+	"PYXIS_ENVTEST",
+	"PYXIS_FEELTEST",
+	"PYXIS_FORGETEST",
+	"PYXIS_GSATEST",
+	"PYXIS_HOLDTEST",
+	"PYXIS_INPUTTEST",
+	"PYXIS_LAYOUTTEST",
+	"PYXIS_LIVERYTEST",
+	"PYXIS_LOGTEST",
+	"PYXIS_MARKETTEST",
+	"PYXIS_MUSICTEST",
+	"PYXIS_PACINGTEST",
+	"PYXIS_PAUSETEST",
+	"PYXIS_RADARTEST",
+	"PYXIS_RAIDTEST",
+	"PYXIS_RIFTTEST",
+	"PYXIS_SALVAGETEST",
+	"PYXIS_SAVETEST",
+	"PYXIS_SHIPTEST",
+	"PYXIS_SMUGTEST",
+	"PYXIS_SPILLTEST",
+	"PYXIS_STATIONTEST",
+	"PYXIS_STORETEST",
+	"PYXIS_STREAMTEST",
+	"PYXIS_TITLETEST",
+	"PYXIS_TORPTEST",
+	"PYXIS_TUTORIALTEST",
+	"PYXIS_UITEST",
+	"PYXIS_WORLDTOUR",
+]
+
+
+static func harness_running() -> bool:
+	for v in HARNESS_VARS:
+		if OS.get_environment(String(v)) != "":
+			return true
+	return false
+
+
 # --- economy pacing target (PYXIS_PACINGTEST) -------------------------------
 # The eight-minute "standard loop" the economy is tuned against, as an activity
 # budget rather than a wall-clock replay. Two reasons it is not a literal eight
@@ -204,6 +272,25 @@ func _ready() -> void:
 	title_screen.continue_pressed.connect(continue_game)
 
 	Sfx.set_muted(GameState.audio_muted)
+
+	# PIN THE STATE BEFORE ANY HARNESS READS IT, and before the first
+	# _load_system below. GameState._ready() has already loaded the developer's
+	# real save by the time we get here, so without this every assertion in the
+	# suite is measured against whatever that person last did. See HARNESS_VARS.
+	#
+	# Deliberately NOT inside GameState: an autoload that behaved differently
+	# under a test flag would be a second code path through the thing every
+	# assertion trusts. This resets the same way starting a new game does.
+	# Reset only -- NOT lock_saving(). The lock is deliberately one-way, and
+	# PYXIS_SAVETEST and PYXIS_LIVERYTEST both need the real file layer: they
+	# redirect save_path to a probe file and then write it. Locking here would
+	# make SAVETEST=write silently produce no fixture, and the bare read that
+	# consumes it would fail five assertions about perfectly good code.
+	#
+	# Write-protection is unchanged: every harness still calls lock_saving()
+	# itself as its first act, and reset_to_starter() does not queue a save.
+	if harness_running():
+		GameState.reset_to_starter()
 
 	# Every harness drives the game directly and must not sit behind a menu.
 	# This has to be decided BEFORE the first _load_system: the builder checks
@@ -3116,6 +3203,12 @@ func _run_hold_test() -> void:
 func _run_cart_test() -> void:
 	var player: PlayerShip = get_tree().get_first_node_in_group("player")
 	player.invulnerable = true
+
+	# State is pinned for every harness in _ready -- see HARNESS_VARS. This one
+	# is worth naming as the case that found it: SURVEY SPEED equips a scanner to
+	# prove the module's stat is live, and a save whose fit already fills the
+	# reactor makes equip REFUSE it, so the assertion printed the same number
+	# twice and reported a dead stat that was perfectly alive.
 	_wave_timer = 1.0e9
 	_apex_wake_timer = -1.0
 	await get_tree().create_timer(0.4).timeout
@@ -3247,6 +3340,61 @@ func _run_cart_test() -> void:
 				too_close = "%s" % d.port_id
 	print("[cart] MASTS %d in the streaming window, none within 12u of a dock ring -> %s %s" % [
 		masts.size(), "PASS" if too_close == "" else "FAIL", too_close])
+
+	# 8b. THE MAST IS ACTUALLY VISIBLE. It was not: at the old offset of 4.5 the
+	#     dish sat INSIDE hull box #3, and the only thing that reached the screen
+	#     was the sliver of ring that cleared a silhouette edge at one spin
+	#     phase. Every other assertion about the mast passed the whole time --
+	#     it surveyed, it yielded, it deferred on a full hold, it stayed clear of
+	#     dock rings -- because nothing measured whether a player could SEE the
+	#     thing they are asked to fly to and hold on.
+	#
+	#     Measured against the real meshes at eight spin phases rather than
+	#     against the numbers that produced them, so it follows a change to the
+	#     hull, the dish or the offset.
+	var geo_hulk := Derelict.new()
+	system_root.add_child(geo_hulk)
+	geo_hulk.global_position = Vector3(400.0, 0.0, 400.0)
+	# Yaw ZERO, deliberately, so world space IS hull-local space. The hull and
+	# the mast rotate together rigidly, so their relative geometry is identical at
+	# every yaw -- but `transform * AABB` returns an axis-aligned bound AROUND a
+	# rotated box, which for a 14-unit spine yawed 37 degrees is a box roughly
+	# five times too wide. The first version of this assertion did that and
+	# reported the mast buried when it was clear.
+	geo_hulk.rotation_degrees.y = 0.0
+	var geo_mast := SurveyMast.new()
+	geo_mast.band = 2
+	system_root.add_child(geo_mast)
+	geo_mast.global_position = geo_hulk.global_position \
+		+ geo_hulk.global_transform.basis.z * SurveyMast.HULL_OFFSET
+	await get_tree().process_frame
+	var buried := ""
+	var boxes: Array = geo_hulk.hull_aabbs()
+	for phase in range(8):
+		geo_mast._spin = TAU * float(phase) / 8.0
+		geo_mast._process(0.0)
+		await get_tree().process_frame
+		var dish: AABB = geo_mast.dish_aabb()
+		for b_v in boxes:
+			if (b_v as AABB).intersects(dish):
+				buried = "phase %d" % phase
+	print("[cart] MAST IS CLEAR dish vs %d hull boxes at 8 spin phases, offset %.1f, buried at: %s -> %s" % [
+		boxes.size(), SurveyMast.HULL_OFFSET, buried if buried != "" else "never",
+		"PASS" if buried == "" and boxes.size() > 0 else "FAIL"])
+
+	# 8c. AND THE TWO PROMPTS DO NOT OVERLAP. Both the breach point and the mast
+	#     write hud.prompt's single slot on an in-range edge transition, so while
+	#     the two in-range spheres intersected, whichever boundary was crossed
+	#     last won and leaving one CLEARED the other's still-valid prompt. The
+	#     separation has to exceed the sum of the two ranges, and at the old 11.1
+	#     against 6.5 + 6.5 it did not.
+	var reach := Derelict.CRACK_RANGE + SurveyMast.SURVEY_RANGE
+	var apart := geo_mast.global_position.distance_to(geo_hulk.pick_anchor())
+	print("[cart] PROMPT RANGES DISJOINT anchors %.1fu apart vs CRACK %.1f + SURVEY %.1f = %.1f -> %s" % [
+		apart, Derelict.CRACK_RANGE, SurveyMast.SURVEY_RANGE, reach,
+		"PASS" if apart > reach else "FAIL"])
+	geo_mast.queue_free()
+	geo_hulk.queue_free()
 
 	# 9. DOCKING A DEEP STATION IS SURVEYING IT — through the real dock path, not
 	#    a synthetic grant, so the cell key, the band lookup and the once-per-
@@ -9113,6 +9261,66 @@ func _run_ui_test() -> void:
 	print("[ui] SETTINGS ROUND TRIP haptics=%s reduce_motion=%s -> %s" % [
 		str(GameState.setting("haptics")), str(GameState.setting("reduce_motion")),
 		"PASS" if kept else "FAIL"])
+
+	# --- 7. DEPART is a control, not a seventh tab ---------------------------
+	# It used to be the last child of the same HFlowContainer as the services,
+	# wearing the same stock-grey chrome and differing only by a teal label --
+	# so it read as a tab, which is both easy to miss when you want it and easy
+	# to hit when you do not.
+	var dock_port: Port = null
+	for n in get_tree().get_nodes_in_group("dockable"):
+		dock_port = n as Port
+		break
+	port_panel.open_for(dock_port)
+	await get_tree().process_frame
+	var depart_btn := port_panel._tabs["depart"] as Button
+	var in_row: bool = depart_btn.get_parent() == port_panel._tab_row
+	var depart_box := depart_btn.get_theme_stylebox("normal")
+	var depart_styled: bool = depart_box != null and not (depart_box is StyleBoxEmpty)
+	print("[ui] DEPART IS A CONTROL in the tab row=%s (want false), has a stylebox=%s -> %s" % [
+		str(in_row), str(depart_styled),
+		"PASS" if not in_row and depart_styled else "FAIL"])
+
+	# --- 8. two clicks outside the sheet leave -------------------------------
+	# Deliberately a DOUBLE press: the world behind the sheet is live and the rig
+	# still pans while docked, so one stray click undocking would be worse than
+	# the mis-tap this whole change is about.
+	_complete_dock(dock_port)
+	await get_tree().process_frame
+	var was_docked: bool = docked_port != null
+	var outside := Vector2(20.0, 20.0)         # top-left; the sheet is the bottom 66%
+	var single := InputEventMouseButton.new()
+	single.button_index = MOUSE_BUTTON_LEFT
+	single.pressed = true
+	single.position = outside
+	port_panel._unhandled_input(single)
+	await get_tree().process_frame
+	var survived_single: bool = docked_port != null
+	var second := InputEventMouseButton.new()
+	second.button_index = MOUSE_BUTTON_LEFT
+	second.pressed = true
+	second.position = outside
+	port_panel._unhandled_input(second)
+	await get_tree().process_frame
+	print("[ui] DOUBLE CLICK DEPARTS docked=%s, survives one click=%s, gone after two=%s -> %s" % [
+		str(was_docked), str(survived_single), str(docked_port == null),
+		"PASS" if was_docked and survived_single and docked_port == null else "FAIL"])
+
+	# --- 9. and the sheet can be reached again -------------------------------
+	# CameraRig._cancel closes the panel without undocking and request_dock
+	# refuses while docked_port is set, so before this the escape ladder was
+	# one-way: a player who pressed Escape was clamped to a station with no way
+	# back to its counters.
+	_complete_dock(dock_port)
+	await get_tree().process_frame
+	port_panel.close_panel()
+	await get_tree().process_frame
+	var stranded: bool = docked_port != null and not port_panel.is_open
+	dock_port.on_tapped()
+	await get_tree().process_frame
+	print("[ui] REOPEN AFTER ESCAPE closed while docked=%s, tapping the port reopens=%s -> %s" % [
+		str(stranded), str(port_panel.is_open),
+		"PASS" if stranded and port_panel.is_open else "FAIL"])
 
 	get_tree().quit()
 

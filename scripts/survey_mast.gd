@@ -11,11 +11,20 @@ extends Node3D
 # joining "crackable" costs zero lines anywhere else — and buys the radar marker
 # for free, since RadarLayer scans the same group.
 #
-# On a hulk this sits at the STERN while the breach beacon sits at the prow, ~11
-# units apart. That separation is doing two jobs: it gives `_pick` room to tell
-# two verbs on one wreck apart, and it puts the survey stand-off outside the ring
-# of guard posts that ring the breach point. Surveying a guarded hulk is the
-# sneak play; cracking it is what contests the post.
+# On a hulk this sits at the STERN while the breach beacon sits at the prow, 13.2
+# units apart. That separation is doing three jobs: it gives `_pick` room to tell
+# two verbs on one wreck apart, it puts the survey stand-off outside the ring of
+# guard posts that ring the breach point, and -- since it exceeds CRACK_RANGE +
+# SURVEY_RANGE -- it keeps the two in-range prompts from overlapping and fighting
+# over hud.prompt's single slot. Surveying a guarded hulk is the sneak play;
+# cracking it is what contests the post.
+
+# Where the mast rides on a hulk, along the hull's forward axis. The breach
+# beacon sits at Derelict.BEACON_LOCAL.z (-6.6); this is that mirrored, which is
+# both why the wreck reads as symmetrical and why the dish clears the stern
+# block. See the comment at the placement site in deep_space.gd for the geometry
+# it used to be buried in.
+const HULL_OFFSET := 6.6
 
 const SURVEY_RANGE := 6.5
 const DECAY_RATE := 1.6
@@ -66,6 +75,17 @@ func _build() -> void:
 	_dish_mat = Palette.emissive(Palette.band_color(band), 2.0)
 	_dish.material_override = _dish_mat
 	add_child(_dish)
+
+
+func dish_aabb() -> AABB:
+	# The dish's box in WORLD space, at its current spin. Read-back for
+	# PYXIS_CARTTEST's MAST IS CLEAR: the thing that went wrong here was purely
+	# geometric, so the assertion measures the geometry rather than the number
+	# that produced it -- change the hull, the offset or the dish and it follows.
+	if _dish == null:
+		return AABB()
+	var local := _dish.get_aabb()
+	return _dish.global_transform * local
 
 
 func pick_anchor() -> Vector3:

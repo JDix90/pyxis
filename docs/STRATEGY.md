@@ -2119,3 +2119,45 @@ Worth recording together, because they are the same mistake in three costumes an
 
 The pattern: **a harness that sets a value the game also sets every frame is
 measuring the game's value, not its own.** Drive the system, do not poke it.
+
+## 33. A harness may not read the player's save either
+
+`lock_saving()` has said since Horizon 1 that a harness must never *write* the
+player's save. The other half was missing, and it cost three false failures the
+first time anyone actually played this build on the machine that runs the sweep.
+
+`GameState._ready()` loads `user://save.json` before `Main` exists. Every
+harness therefore started from one person's savegame. Three assertions went red
+on correct code:
+
+- **`SURVEY SPEED`** equips a scanner to prove the module's stat is live. The
+  save's fit already drew all 12 of a Mk I reactor's power, so `equip` refused
+  the scanner, the assertion printed the same number twice, and it reported a
+  dead stat that was perfectly alive.
+- **`DOCK GRANTS`** needs a deep station in the streaming window. The expanse is
+  a pure function of the system id, and the save was parked in PYX-03 rather
+  than the PYX-01 the assertion was authored against, so it rolled a different
+  world.
+- **`FITTED EFFECT LIVE`** asserts that equipping a craftable does not move the
+  hold. The save had a Cargo Bay in the slot under test, so equipping over it
+  dropped the hold from 50 to 24 — a real change, of a thing the assertion
+  exists to prove never changes.
+
+None of these is a bug in the game. All three are a harness with no baseline.
+
+**The fix is one gate, not thirty.** `Main._ready()` checks `harness_running()`
+— any name in `HARNESS_VARS`, which is the dispatch's own list of `PYXIS_*`
+variables minus the capture modes — and calls `reset_to_starter()` before the
+first `_load_system`. Three harnesses (`PACINGTEST`, `SAVETEST`, and now
+`CARTTEST`) already did this by hand; the other twenty-seven did not, and had
+simply never been run against a divergent save.
+
+It is deliberately in `Main` and not in `GameState`. An autoload that behaved
+differently under a test flag would put a second code path through the one
+object every assertion trusts; `Main` resets it the same way starting a new game
+does, using the same function.
+
+**The general rule, and it is the sharper half of §8's doctrine:** an assertion
+is only worth what it can see, *and only as much as it controls.* A harness that
+has never been told what to assume will quietly assume whatever the last session
+left behind — and it will keep passing until the day someone plays the game.

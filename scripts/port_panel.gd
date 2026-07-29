@@ -50,6 +50,7 @@ var _sheet: Panel
 var _title: Label
 var _salvage_label: Label
 var _tab_row: HFlowContainer
+var _depart_button: Button
 var _body: VBoxContainer
 var _cargo_track: ColorRect
 var _cargo_fill: ColorRect
@@ -125,10 +126,24 @@ func _build() -> void:
 	_salvage_label.add_theme_color_override("font_color", Palette.GOLD)
 	_salvage_label.add_theme_font_size_override("font_size", 16)
 	header.add_child(_salvage_label)
+
+	# DEPART lives HERE, not in the tab row below, and it carries a real
+	# StyleBox. In the row it was the last child of an HFlowContainer wearing the
+	# same stock-grey chrome as every service tab and differing only by a teal
+	# label -- so it read as a seventh tab, which is both easy to miss when you
+	# want it and easy to hit when you do not. Leaving is not a service; it is
+	# the way out, and it belongs beside the readouts rather than among the
+	# things you came here to do.
+	_depart_button = UIKit.button("DEPART", Palette.TEAL, UIKit.SIZE_LABEL, Vector2(0, 30))
+	_depart_button.pressed.connect(func() -> void:
+		UIKit.press_pop(_depart_button)
+		_on_tab("depart"))
+	header.add_child(_depart_button)
 	col.add_child(header)
 
-	# HFlow, not HBox: a smuggler's den fields five tabs plus DEPART, which is
-	# more than fits across a 720-wide portrait screen in one row.
+	# HFlow, not HBox: a smuggler's den fields five service tabs, which is more
+	# than fits across a 720-wide portrait screen in one row. (DEPART used to
+	# ride here too and was the sixth; it moved to the header above.)
 	_tab_row = HFlowContainer.new()
 	_tab_row.add_theme_constant_override("h_separation", 6)
 	_tab_row.add_theme_constant_override("v_separation", 4)
@@ -204,13 +219,10 @@ func _build_tabs() -> void:
 		_tab_row.add_child(b)
 		_tabs[key] = b
 
-	var depart := Button.new()
-	depart.text = "DEPART"
-	depart.add_theme_font_size_override("font_size", 12)
-	depart.add_theme_color_override("font_color", Palette.TEAL)
-	depart.pressed.connect(func() -> void: _on_tab("depart"))
-	_tab_row.add_child(depart)
-	_tabs["depart"] = depart
+	# DEPART is deliberately absent from this row -- it is built once, in the
+	# header, and never rebuilt with the tabs. Still registered here so
+	# _refresh's `if b.toggle_mode` skip keeps working unchanged.
+	_tabs["depart"] = _depart_button
 
 
 func open_for(port: Port) -> void:
@@ -249,6 +261,59 @@ func close_panel() -> void:
 	var tw := create_tween()
 	tw.tween_method(_set_slide, 0.0, _sheet_height(), SLIDE_TIME).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_CUBIC)
 	tw.tween_callback(func() -> void: visible = false)
+
+
+# --- click-outside-to-leave ---------------------------------------------------
+# Two presses outside the sheet depart. On desktop and in a browser the sheet is
+# a modal-looking thing floating over a live world, and the reflex when you are
+# done with a modal is to click away from it -- so the reflex should work.
+#
+# Deliberately a DOUBLE press, not a single one. A single click outside is
+# already a meaningful input: the world behind the sheet is live, the rig still
+# pans and zooms while docked, and one stray click undocking you would be worse
+# than the mis-tap this whole change is about. Two presses inside a third of a
+# second is nothing anyone does by accident.
+#
+# No scrim, for the same reason -- a full-rect blocker would kill the panning
+# that works today.
+const OUTSIDE_DOUBLE_PX := 14.0        # same slop as CameraRig.TAP_MAX_PX
+
+var _outside_last_time := 0.0
+var _outside_last_pos := Vector2.ZERO
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not is_open:
+		return
+	var press: Vector2
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
+			return
+		press = mb.position
+	elif event is InputEventScreenTouch:
+		var st := event as InputEventScreenTouch
+		if not st.pressed:
+			return
+		press = st.position
+	else:
+		return
+
+	# Inside the sheet the sheet has already handled it -- this only runs for
+	# what fell through, but check anyway so a future scrim cannot change the
+	# meaning of this function silently.
+	if _sheet.get_global_rect().has_point(press):
+		return
+
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - _outside_last_time <= UIKit.T_PANEL \
+			and press.distance_to(_outside_last_pos) <= OUTSIDE_DOUBLE_PX:
+		_outside_last_time = 0.0
+		_on_tab("depart")
+		get_viewport().set_input_as_handled()
+		return
+	_outside_last_time = now
+	_outside_last_pos = press
 
 
 func _on_tab(key: String) -> void:
