@@ -28,6 +28,8 @@ var _scroll: ScrollContainer
 var _body: VBoxContainer
 var _page := "root"
 var _confirming_abandon := false
+# Action awaiting a key press on the controls page, "" when not capturing.
+var _capturing := ""
 
 
 func _ready() -> void:
@@ -159,6 +161,19 @@ func _unhandled_input(event: InputEvent) -> void:
 	# place — handling it in both places would close a console and pause at once.
 	if not is_open:
 		return
+	# Ahead of the cancel ladder on purpose: while a row is armed, the very next
+	# key IS the binding. Escape included -- otherwise Escape is the one key that
+	# cannot be bound, and it would close the page instead.
+	if _capturing != "":
+		var key := event as InputEventKey
+		if key != null and key.pressed and not key.echo:
+			var action := _capturing
+			_capturing = ""
+			if not GameState.rebind(action, key.physical_keycode):
+				Sfx.play("tap", -14.0, 0.7)
+			_refresh()
+			get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("cancel"):
 		if _page != "root":
 			_page = "root"
@@ -175,6 +190,8 @@ func _refresh() -> void:
 		c.queue_free()
 	if _page == "settings":
 		_build_settings()
+	elif _page == "controls":
+		_build_controls()
 	elif _page == "log":
 		_build_log()
 	else:
@@ -285,6 +302,11 @@ func _build_settings() -> void:
 	_body.add_child(_toggle("REDUCE MOTION", "reduce_motion"))
 	_body.add_child(_toggle("HAPTICS", "haptics"))
 	_body.add_child(_toggle("SHARE PLAY DATA", "telemetry"))
+	_body.add_child(_cycler("COLOUR VISION", "colorblind", VISION_NAMES))
+	_body.add_child(_spacer(4))
+	_body.add_child(_action("CONTROLS", Palette.AMBER, func() -> void:
+		_page = "controls"
+		_refresh()))
 	_body.add_child(_spacer(4))
 	_body.add_child(_action("BACK", Palette.TEAL, func() -> void:
 		_page = "root"
@@ -365,6 +387,65 @@ func _slider(label: String, key: String, lo: float, hi: float, step: float) -> C
 func _percent(v: float, key: String) -> String:
 	# UI scale reads as a multiplier; volumes read as percentages.
 	return ("%.2fx" % v) if key == "ui_scale" else ("%d%%" % int(round(v * 100.0)))
+
+
+# Named in the player's terms rather than in the palette's. "DEUTERANOPIA" is
+# the correct word and the wrong label: most people who need this setting know
+# what they cannot tell apart, not what it is called.
+const VISION_NAMES := ["OFF", "RED-GREEN (A)", "RED-GREEN (B)", "BLUE-YELLOW"]
+
+
+func _cycler(label: String, key: String, names: Array) -> Button:
+	# A cycling button rather than a dropdown: this is a portrait phone UI with
+	# no other popup anywhere in it, and four options do not earn a new widget.
+	var b := UIKit.button("", Palette.AMBER, 12)
+	b.custom_minimum_size = Vector2(0, 36)
+	var sync := func() -> void:
+		var i := clampi(int(GameState.setting(key)), 0, names.size() - 1)
+		b.text = "%s   %s" % [label, String(names[i])]
+	sync.call()
+	b.pressed.connect(func() -> void:
+		var i := (int(GameState.setting(key)) + 1) % names.size()
+		GameState.set_setting(key, i)
+		sync.call())
+	return b
+
+
+func _build_controls() -> void:
+	_body.add_child(_heading("CONTROLS"))
+	_body.add_child(_sub("TAP AN ACTION, THEN PRESS A KEY."))
+	for action in GameState.REBINDABLE:
+		_body.add_child(_binding_row(String(action)))
+	_body.add_child(_spacer(4))
+	# Escape is not in REBINDABLE and this is why: it is the way out of every
+	# console and out of this page. A player who bound it to a key they cannot
+	# reach would have no route back to the screen that could fix it.
+	_body.add_child(_sub("CANCEL IS ALWAYS ESCAPE."))
+	_body.add_child(_action("RESET TO DEFAULTS", Palette.AMBER, func() -> void:
+		GameState.reset_bindings()
+		_refresh()))
+	_body.add_child(_action("BACK", Palette.TEAL, func() -> void:
+		_page = "settings"
+		_refresh()))
+
+
+func _binding_row(action: String) -> Button:
+	var b := UIKit.button("", Palette.AMBER, 12)
+	b.custom_minimum_size = Vector2(0, 34)
+	b.text = "%s   %s" % [action.to_upper().replace("_", " "), _binding_name(action)]
+	b.pressed.connect(func() -> void:
+		_capturing = action
+		b.text = "%s   PRESS A KEY" % action.to_upper().replace("_", " ")
+		b.add_theme_color_override("font_color", Palette.GOLD))
+	return b
+
+
+func _binding_name(action: String) -> String:
+	for ev in InputMap.action_get_events(action):
+		var k := ev as InputEventKey
+		if k != null:
+			return OS.get_keycode_string(DisplayServer.keyboard_get_keycode_from_physical(k.physical_keycode))
+	return "—"
 
 
 func _toggle(label: String, key: String) -> Button:

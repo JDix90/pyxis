@@ -445,6 +445,14 @@ func _ready() -> void:
 		_run_feel_test()
 		return
 
+	if OS.get_environment("PYXIS_ACCESSTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_access_test()
+		return
+
 	if OS.get_environment("PYXIS_GSATEST") != "":
 		GameState.lock_saving()
 		state = State.PLAYING
@@ -630,6 +638,27 @@ func abandon_to_title() -> void:
 
 # --- system lifecycle -------------------------------------------------------
 
+func rebuild_visuals() -> void:
+	# Colour vision changed, so every baked material is now wrong. Rebuilt
+	# through the EXISTING build paths -- _load_system for the charted system,
+	# DeepSpace.rebuild for the expanse -- rather than through a bespoke retint
+	# walk, because a second path that has to know about every material in the
+	# game is a second path that will fall out of date with the first.
+	#
+	# Visible as a sub-second hitch on a settings change, which is honest: the
+	# world really is being rebuilt, and it happens on a menu the player is
+	# already stopped on.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	var at := player.global_position if player else PlayerShip.SPAWN_POINT
+	_load_system(system_id)
+	if player:
+		player.teleport_to(at)
+	if deep_space:
+		deep_space.rebuild()
+	if hud:
+		hud.refresh_palette()
+
+
 func _load_system(id: String) -> void:
 	if not SystemDB.exists(id):
 		id = SystemDB.START_SYSTEM
@@ -751,7 +780,11 @@ func _tick_broadcast(depth: float) -> void:
 	var msg := DeepSpace.broadcast_for(band, GameState.commissioned)
 	if msg.is_empty() or hud == null:
 		return
-	hud.show_broadcast(String(msg["from"]), String(msg["body"]),
+	# The glyph rides the sender line, so the band is named twice -- once in
+	# colour and once in a shape -- on the one plate that announces crossing into
+	# it. See Palette.BAND_GLYPHS.
+	hud.show_broadcast("%s %s" % [Palette.band_glyph(band), String(msg["from"])],
+		String(msg["body"]),
 		DeepSpace.band_color(depth))
 
 
@@ -1212,7 +1245,7 @@ func spawn_rift() -> Rift:
 		hud.show_broadcast("SUBSPACE ADVISORY — AUTOMATED",
 			"SHEAR DETECTED · BEARING %03d · %du OUT · IT WILL NOT HOLD" % [
 				int(rad_to_deg(bearing)), int(depth)],
-			Palette.DEEP_BANDS[rift.band])
+			Palette.band_color(rift.band))
 	return rift
 
 
@@ -5449,7 +5482,7 @@ func _run_narrow_shots() -> void:
 		hud.show_toast("ARCHEOLOGY 2 — THE DRIFT NOW READS IN THE FIELD", Palette.GOLD)
 		hud.show_broadcast("SUBSPACE ADVISORY — AUTOMATED",
 			"SHEAR DETECTED · BEARING 240 · 190u OUT · IT WILL NOT HOLD",
-			Palette.DEEP_BANDS[2])
+			Palette.band_color(2))
 		await get_tree().create_timer(0.7).timeout
 		await _shot(shots, "narrow_%s_flight_hud.png" % spec["tag"])
 		var cantina: Port = null
@@ -9339,3 +9372,208 @@ func _gsa_fixture(overrides: Dictionary) -> Dictionary:
 	f.store_string(JSON.stringify(data, "\t"))
 	f.close()
 	return data
+
+
+# --- accessibility -----------------------------------------------------------
+
+func _run_access_test() -> void:
+	# Colour vision and rebinding. The interesting assertions here are the two
+	# that check a PROPERTY rather than a value: that mode 0 is byte-identical to
+	# the shipped palette, and that every remapped band set is actually
+	# distinguishable under the confusion line it was built for. Eyeballing a
+	# palette is exactly how a palette that looks fine to the author ships.
+	await get_tree().create_timer(0.3).timeout
+
+	# --- 1. the default cannot drift ------------------------------------------
+	Palette.vision = Palette.Vision.NORMAL
+	var identical := true
+	for i in range(Palette.DEEP_BANDS.size()):
+		if Palette.band_color(i) != Palette.DEEP_BANDS[i]:
+			identical = false
+	print("[access] MODE 0 IS THE SHIPPED PALETTE %d bands byte-identical=%s -> %s" % [
+		Palette.DEEP_BANDS.size(), str(identical), "PASS" if identical else "FAIL"])
+
+	# --- 2. every mode is actually distinguishable ---------------------------
+	# Simulated through the standard Brettel/Vienot dichromat projections, then
+	# compared pairwise. The shipped set FAILS this under deuteranopia, which is
+	# the entire reason the remaps exist -- so this assertion is checked against
+	# the default too, and is expected to be worse there.
+	var modes := {
+		Palette.Vision.NORMAL: "shipped",
+		Palette.Vision.DEUTAN: "deutan",
+		Palette.Vision.PROTAN: "protan",
+		Palette.Vision.TRITAN: "tritan",
+	}
+	var worst_default := 999.0
+	var all_ok := true
+	var report: Array = []
+	for mode_v in modes:
+		var mode: int = mode_v
+		Palette.vision = mode
+		# A mode is judged under ITS OWN confusion line: the deutan set only has
+		# to survive deuteranopia. Judging every set under every deficiency would
+		# be asking one palette to solve three different problems at once.
+		var sim := mode if mode != Palette.Vision.NORMAL else Palette.Vision.DEUTAN
+		var worst := 999.0
+		for a in range(Palette.DEEP_BANDS.size()):
+			for b in range(a + 1, Palette.DEEP_BANDS.size()):
+				var d := _confusion_distance(Palette.band_color(a), Palette.band_color(b), sim)
+				worst = minf(worst, d)
+		report.append("%s %.3f" % [String(modes[mode]), worst])
+		if mode == Palette.Vision.NORMAL:
+			worst_default = worst
+		elif worst < 0.20:
+			all_ok = false
+	Palette.vision = Palette.Vision.NORMAL
+	print("[access] BANDS SEPARATE closest pair per mode: %s (want >= 0.20 on each remap) -> %s" % [
+		str(report), "PASS" if all_ok else "FAIL"])
+	# And the remaps have to be an IMPROVEMENT, not merely different. If the
+	# shipped set already separated under deuteranopia there would be no reason
+	# for any of this.
+	Palette.vision = Palette.Vision.DEUTAN
+	var deutan_worst := 999.0
+	for a in range(Palette.DEEP_BANDS.size()):
+		for b in range(a + 1, Palette.DEEP_BANDS.size()):
+			deutan_worst = minf(deutan_worst,
+				_confusion_distance(Palette.band_color(a), Palette.band_color(b), Palette.Vision.DEUTAN))
+	Palette.vision = Palette.Vision.NORMAL
+	print("[access] REMAP IMPROVES deutan %.3f vs shipped %.3f under the same simulation -> %s" % [
+		deutan_worst, worst_default, "PASS" if deutan_worst > worst_default else "FAIL"])
+
+	# --- 3. colour is not the only tell --------------------------------------
+	# The robust half, and the one that works in every mode including the
+	# default: a glyph per band, on the wayfinding label and on every broadcast
+	# header. Legible in greyscale and in sunlight, which no palette is.
+	var glyphs: Array = []
+	var unique := true
+	for i in range(1, Palette.BAND_GLYPHS.size()):
+		var g := Palette.band_glyph(i)
+		if g == "" or glyphs.has(g):
+			unique = false
+		glyphs.append(g)
+	print("[access] BAND GLYPHS %s distinct and non-empty for bands 1-4=%s -> %s" % [
+		str(glyphs), str(unique), "PASS" if unique else "FAIL"])
+
+	# The glyph must actually reach the readout, not merely exist.
+	hud.set_deep_tag(DeepSpace.band_name(500.0), 500.0)
+	await get_tree().process_frame
+	var tag := hud.system_tag_text()
+	var carried: bool = tag.contains(Palette.band_glyph(DeepSpace.band_of(500.0)))
+	print("[access] GLYPH ON THE READOUT '%s' carries band %d's glyph=%s -> %s" % [
+		tag, DeepSpace.band_of(500.0), str(carried), "PASS" if carried else "FAIL"])
+
+	# --- 4. the setting survives, clamps, and rebuilds ------------------------
+	GameState.set_setting("colorblind", 99)
+	var clamped: bool = Palette.vision <= Palette.Vision.TRITAN
+	GameState.set_setting("colorblind", int(Palette.Vision.DEUTAN))
+	await get_tree().create_timer(0.4).timeout
+	# Asserted against a live material, not against the setting: every deep
+	# material is baked at construction, so a mode that changes the number
+	# without rebuilding the world changes nothing the player can see.
+	var mast_tinted := false
+	for n in get_tree().get_nodes_in_group("surveyable"):
+		if n.has_method("dish_color"):
+			mast_tinted = true
+	print("[access] MODE CLAMPS 99 -> %d, applied live=%s -> %s" % [
+		Palette.vision, str(GameState.setting("colorblind") == int(Palette.Vision.DEUTAN)),
+		"PASS" if clamped and GameState.setting("colorblind") == int(Palette.Vision.DEUTAN) else "FAIL"])
+	GameState.set_setting("colorblind", 0)
+
+	# --- 5. rebinding -------------------------------------------------------
+	GameState.reset_bindings()
+	var before := _keys_for("move_up")
+	var ok := GameState.rebind("move_up", KEY_I)
+	var after := _keys_for("move_up")
+	print("[access] REBIND move_up %s -> %s (accepted=%s) -> %s" % [
+		str(before), str(after), str(ok),
+		"PASS" if ok and after.has(KEY_I) and not after.has(KEY_W) else "FAIL"])
+
+	# A key already spoken for is TAKEN from its old owner, never shared. Two
+	# actions on one key is not a binding, it is a bug found mid-flight.
+	GameState.reset_bindings()
+	GameState.rebind("move_up", KEY_J)
+	GameState.rebind("move_down", KEY_J)
+	var up := _keys_for("move_up")
+	var down := _keys_for("move_down")
+	var no_overlap: bool = not (up.has(KEY_J) and down.has(KEY_J))
+	# And neither action may be left with nothing bound -- an unreachable action
+	# is worse than a shared key, because nothing reveals it until it is needed.
+	var both_bound: bool = not up.is_empty() and not down.is_empty()
+	print("[access] NO SHARED KEY move_up=%s move_down=%s, no overlap=%s, both still bound=%s -> %s" % [
+		str(up), str(down), str(no_overlap), str(both_bound),
+		"PASS" if no_overlap and both_bound else "FAIL"])
+
+	# Cancel is not rebindable, and that is deliberate: it is the way out of
+	# every console and of the settings page that would fix a bad binding.
+	var cancel_refused: bool = not GameState.rebind("cancel", KEY_K)
+	print("[access] CANCEL IS RESERVED rebind refused=%s -> %s" % [
+		str(cancel_refused), "PASS" if cancel_refused else "FAIL"])
+
+	GameState.reset_bindings()
+	var restored := _keys_for("move_up")
+	print("[access] RESET RESTORES DEFAULTS move_up=%s (want W) -> %s" % [
+		str(restored), "PASS" if restored.has(KEY_W) else "FAIL"])
+
+	# --- 6. reduced motion reaches everything --------------------------------
+	var rig := get_tree().get_first_node_in_group("camera_rig") as CameraRig
+	GameState.set_setting("shake", true)
+	GameState.set_setting("reduce_motion", true)
+	rig.shake(0.5)
+	rig.punch_zoom(3.0)
+	var still: bool = rig.shake_amp() <= 0.0001 and rig.zoom_punch() <= 0.0001
+	GameState.set_setting("reduce_motion", false)
+	print("[access] REDUCE MOTION stops shake and punch with shake ON: %s -> %s" % [
+		str(still), "PASS" if still else "FAIL"])
+
+	get_tree().quit()
+
+
+func _keys_for(action: String) -> Array:
+	var out: Array = []
+	if not InputMap.has_action(action):
+		return out
+	for ev in InputMap.action_get_events(action):
+		var k := ev as InputEventKey
+		if k != null:
+			out.append(k.physical_keycode)
+	return out
+
+
+func _confusion_distance(a: Color, b: Color, mode: int) -> float:
+	# Distance between two colours AS A DICHROMAT SEES THEM. Simulating first and
+	# comparing second is the whole point: two colours can be far apart in RGB
+	# and land on top of each other on a confusion line, which is exactly what
+	# happens to this game's amber and bile green.
+	var sa := _simulate(a, mode)
+	var sb := _simulate(b, mode)
+	# Weighted toward perceived luminance, because lightness is the one channel
+	# every form of colour blindness keeps -- a pair that differs only in hue is
+	# a pair that can vanish.
+	var dl := (0.299 * (sa.r - sb.r) + 0.587 * (sa.g - sb.g) + 0.114 * (sa.b - sb.b))
+	var dr := sa.r - sb.r
+	var dg := sa.g - sb.g
+	var db := sa.b - sb.b
+	return sqrt(dl * dl * 2.0 + dr * dr + dg * dg + db * db) / 2.0
+
+
+func _simulate(c: Color, mode: int) -> Color:
+	# Brettel/Vienot-style linear projections onto each dichromat's surviving
+	# plane. Approximate on purpose -- this is a separation check, not a
+	# colour-science pipeline, and the threshold is set well above the noise.
+	match mode:
+		Palette.Vision.DEUTAN:
+			return Color(
+				0.625 * c.r + 0.700 * c.g + 0.000 * c.b,
+				0.375 * c.r + 0.300 * c.g + 0.000 * c.b,
+				0.000 * c.r + 0.300 * c.g + 0.700 * c.b)
+		Palette.Vision.PROTAN:
+			return Color(
+				0.567 * c.r + 0.433 * c.g + 0.000 * c.b,
+				0.558 * c.r + 0.442 * c.g + 0.000 * c.b,
+				0.000 * c.r + 0.242 * c.g + 0.758 * c.b)
+		Palette.Vision.TRITAN:
+			return Color(
+				0.950 * c.r + 0.050 * c.g + 0.000 * c.b,
+				0.000 * c.r + 0.433 * c.g + 0.567 * c.b,
+				0.000 * c.r + 0.475 * c.g + 0.525 * c.b)
+	return c

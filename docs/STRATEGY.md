@@ -1902,3 +1902,72 @@ overwritten on the next frame and the assertion measures nothing. Flying the shi
 out also makes the assertion cover the whole chain — position through
 `deep_depth` through the mix — rather than the arithmetic at the end of it. The
 first version of `DEPTH AXIS` was green-on-broken-code for precisely this reason.
+
+## 30. Accessibility, and what it cost to do honestly
+
+Four settings shipped in this pass: **haptics**, **reduce motion**, **colour
+vision**, and **rebindable controls**. Two rules held the whole way through.
+
+**Gate at one entry point, never at the call sites.** `CameraRig.shake()`
+established it; `punch_zoom()` and `Sfx.haptic()` now follow it. There are ~20
+shake callers and a dozen haptic ones, and any of them could forget a setting —
+none of them can forget a function that checks. `punch_zoom` is the proof: it was
+the one motion effect gated nowhere, so "screen shake off" visibly did half its
+job for as long as it shipped.
+
+**Reduced motion means the end state immediately.** An accommodation that still
+animates is not an accommodation, so `UIKit.reveal_list` and the pause fade take
+the branch that skips straight to the finished frame rather than a faster tween.
+
+### Colour vision: the band set was the whole problem
+
+`§17` says colour is the only band tell that reads at a glance on a phone, and
+the shipped set — amber, rose, violet, bile green — is close to a worst case.
+Under deuteranopia the amber and the bile collapse toward each other and so do
+the rose and the violet: four bands become two.
+
+Two independent fixes, because they fail differently.
+
+**Redundancy first.** Every band carries a glyph (`◈ ▲ ● ◆`) on the wayfinding
+readout and on every broadcast header. This works in *every* mode including the
+default, in greyscale, with the saturation turned down, and on a phone in
+sunlight. Remapping only ever helps the modes it was tuned for; a glyph helps
+everyone, so it is the one that is always on.
+
+**Remapping second,** through `Palette.band_color()` — the single accessor every
+tint now goes through. The consts are never touched and mode 0 returns them
+byte-identically, asserted, so the default look cannot drift as a side effect of
+the feature existing.
+
+The palettes were **not chosen by eye**, and the first ones that were are the
+reason this paragraph exists. `BANDS SEPARATE` simulates each dichromacy and
+measures the *minimum pairwise distance between the simulated colours* — the only
+measurement that matters, since two colours can be far apart in RGB and land on
+top of each other on a confusion line. The hand-picked "colourblind-safe" sets
+scored **0.066 / 0.048 / 0.077**, materially *worse* than the shipped set's
+0.173. They looked obviously distinct on the author's monitor and were not. The
+shipped sets are the best of 60,000 candidates from a constrained grid search and
+score **0.307 / 0.317 / 0.333**, with `REMAP IMPROVES` asserting that each one
+actually beats the default under the same simulation rather than merely differing
+from it.
+
+Constraints on the search worth keeping: a luminance floor, because these are
+emissive against a near-black sky and a dark "safe" colour is one nobody can see;
+and THE QUIET stays near-white in every mode, because "no colour left at all" is
+what that band *is* and recolouring it would win a number and lose the fiction.
+
+Materials are baked at construction, so a mode change calls
+`main.rebuild_visuals()`, which goes through the **existing** build paths —
+`_load_system` and `DeepSpace.rebuild` — rather than a bespoke retint walk. A
+second path that has to know about every material in the game is a second path
+that will fall out of date with the first. It only fires on an actual change,
+because `apply_settings` runs on every frame of a slider drag.
+
+### Rebinding
+
+`cancel` is deliberately **not** rebindable. It is the way out of every console
+and out of the settings page itself, so a player who bound it to a key they could
+not reach would have no route back to the screen that would fix it. Two actions
+may never share a key — `NO SHARED KEY` asserts the old owner loses it — and no
+action may be left with nothing bound, because an unreachable action is worse
+than a shared one: nothing reveals it until the moment it is needed.

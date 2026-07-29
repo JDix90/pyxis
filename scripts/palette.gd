@@ -24,6 +24,85 @@ const DEEP_BANDS := [AMBER, THREAT, DEEP_DRIFT, DEEP_REACHES, DEEP_QUIET]
 const DEEP_COLD := Color(0.10, 0.12, 0.22)      # replaces the system's haze
 
 
+# --- colour vision -----------------------------------------------------------
+# The band set above is the one place in this game where colour carries
+# information nothing else carries, and it is close to a worst case: amber,
+# rose, violet, bile green. Under deuteranopia the amber and the bile collapse
+# toward each other and so do the rose and the violet, which turns four
+# distinguishable bands into two. Under protanopia the rose darkens until it
+# reads as the violet. There is no arrangement of "nice" colours that survives
+# all three confusion lines, so each mode gets its own set chosen to stay
+# separated along the axis that mode still has.
+#
+# The CONSTS ABOVE ARE NEVER TOUCHED. Mode 0 returns them byte-identically --
+# asserted -- so the default look cannot drift as a side effect of this feature
+# existing, and every other palette token stays exactly what it always was.
+enum Vision {NORMAL, DEUTAN, PROTAN, TRITAN}
+
+const BAND_SETS := {
+	# NOT chosen by eye. Each set is the best of 60,000 candidates from a grid,
+	# scored by the minimum pairwise distance BETWEEN THE SIMULATED COLOURS --
+	# which is the only measurement that matters, because two colours can be far
+	# apart in RGB and land on top of each other on a confusion line. That is
+	# precisely what happens to the shipped amber and bile green.
+	#
+	# Constrained to stay emissive-legible: a luminance floor of 0.30 and a peak
+	# channel of at least 0.68, because these glow against a near-black sky and a
+	# dark "safe" colour is a colour nobody can see at all.
+	#
+	# The last entry stays near-white in every mode. THE QUIET is the band with
+	# "no colour left at all", and recolouring it would win a number and lose the
+	# thing the band is about.
+	#
+	# Scores against PYXIS_ACCESSTEST's threshold of 0.20, with the shipped set
+	# measuring 0.173 under deuteranopia -- which is the whole reason for this.
+	Vision.DEUTAN: [                    # closest pair 0.307
+		Color(0.85, 0.32, 0.15),
+		Color(0.15, 0.85, 0.98),
+		Color(0.85, 0.98, 0.15),
+		Color(0.15, 0.32, 0.68),
+		Color(0.95, 0.97, 1.00),
+	],
+	Vision.PROTAN: [                    # closest pair 0.317
+		Color(0.98, 0.85, 0.15),
+		Color(0.15, 0.85, 0.15),
+		Color(0.32, 0.98, 0.85),
+		Color(0.15, 0.32, 0.98),
+		Color(0.95, 0.97, 1.00),
+	],
+	Vision.TRITAN: [                    # closest pair 0.333
+		Color(0.15, 0.85, 0.15),
+		Color(0.15, 0.85, 0.85),
+		Color(0.85, 0.85, 0.32),
+		Color(0.85, 0.15, 0.15),
+		Color(0.95, 0.97, 1.00),
+	],
+}
+
+# THE REAL FIX, and the one that works in every mode including the default:
+# colour stops being the only tell. Each band carries a glyph on the wayfinding
+# label and on every broadcast header, so the bands are legible in greyscale, to
+# a player who has turned the saturation down, and on a phone in sunlight.
+# Redundancy beats remapping -- remapping only helps the modes it was tuned for.
+const BAND_GLYPHS := ["", "◈", "▲", "●", "◆"]
+
+static var vision := Vision.NORMAL
+
+
+static func band_color(index: int) -> Color:
+	# The one accessor. Everything that tints by band goes through here so a mode
+	# change reaches all of it -- DeepSpace's dressing and broadcasts, SurveyMast's
+	# dish, Rift's tear, and the HUD.
+	var i := clampi(index, 0, DEEP_BANDS.size() - 1)
+	if vision == Vision.NORMAL or not BAND_SETS.has(vision):
+		return DEEP_BANDS[i]
+	return (BAND_SETS[vision] as Array)[i]
+
+
+static func band_glyph(index: int) -> String:
+	return BAND_GLYPHS[clampi(index, 0, BAND_GLYPHS.size() - 1)]
+
+
 # --- ship liveries (save v6) -------------------------------------------------
 # Eight hulls and eight accents, all derived from the tokens above rather than
 # invented, so a painted ship still looks like it belongs in this game. Hulls are

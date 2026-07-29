@@ -33,6 +33,14 @@ const DEFAULT_SETTINGS := {
 	# scripts/telemetry.gd -- but a recorder running because the player never
 	# found the switch is not a recorder they consented to.
 	"telemetry": false,
+	# Palette.Vision: 0 normal, 1 deutan, 2 protan, 3 tritan. Materials are baked
+	# at node construction, so changing this rebuilds the world through the
+	# existing build paths rather than retinting in place -- see main.rebuild_visuals.
+	"colorblind": 0,
+	# Rebindable actions, as {action: [physical keycodes]}. Empty means "whatever
+	# project.godot says", so a save written before this existed keeps the
+	# defaults instead of arriving with no controls at all.
+	"bindings": {},
 }
 const DEFAULT_LIVERY := {
 	"hull": 0,
@@ -234,11 +242,22 @@ func apply_settings() -> void:
 	Sfx.set_bus_volume(Sfx.BUS_MUSIC, float(setting("music_vol")))
 	Sfx.set_bus_volume(Sfx.BUS_SFX, float(setting("sfx_vol")))
 	UILayout.user_scale = clampf(float(setting("ui_scale")), 0.7, 1.6)
+	var want_vision := clampi(int(setting("colorblind")), 0, Palette.Vision.size() - 1)
+	var vision_changed: bool = want_vision != Palette.vision
+	Palette.vision = want_vision
+	apply_bindings()
 	var tree := get_tree()
 	if tree != null:
 		var win := tree.root.get_window()
 		if win != null:
 			UILayout.apply_scale(win)
+		if vision_changed:
+			# Only on an actual CHANGE: apply_settings runs on every slider drag,
+			# and rebuilding the world on each frame of a volume tweak would be a
+			# hitch with no cause the player could see.
+			var main := tree.get_first_node_in_group("main")
+			if main != null and main.has_method("rebuild_visuals"):
+				main.rebuild_visuals()
 
 
 # --- v13 the Grand Commission ------------------------------------------------
@@ -301,6 +320,70 @@ func shake_enabled() -> bool:
 	# Reduced motion subsumes shake: someone who asked for less movement is not
 	# asking to keep the camera lurching. The reverse is not true.
 	return bool(setting("shake")) and not reduce_motion()
+
+
+# Actions a player may rebind. Deliberately not every action in the InputMap:
+# `cancel` is the escape hatch out of every console and the pause menu, and a
+# player who binds it to a key they cannot reach has no way back to the settings
+# page that would let them fix it. It stays on Escape.
+const REBINDABLE := ["move_up", "move_down", "move_left", "move_right",
+	"ability", "cycle_target"]
+
+
+func apply_bindings() -> void:
+	# Rebuilt from the saved dict on every settings change and on load, so the
+	# InputMap and the save can never disagree. An action missing from the dict
+	# keeps whatever project.godot gave it.
+	var saved: Dictionary = setting("bindings")
+	if not (saved is Dictionary):
+		return
+	for action in REBINDABLE:
+		if not saved.has(action) or not InputMap.has_action(action):
+			continue
+		var codes: Array = saved[action]
+		if not (codes is Array) or codes.is_empty():
+			continue
+		InputMap.action_erase_events(action)
+		for code in codes:
+			var ev := InputEventKey.new()
+			ev.physical_keycode = int(code)
+			InputMap.action_add_event(action, ev)
+
+
+func rebind(action: String, physical_keycode: int) -> bool:
+	# One key per action, replacing whatever was there. Returns false rather than
+	# silently doing nothing so the UI can say why.
+	if not REBINDABLE.has(action) or physical_keycode == 0:
+		return false
+	# A key already spoken for is TAKEN AWAY from its old owner rather than
+	# shared. Two actions on one key is not a binding, it is a bug the player
+	# discovers mid-flight.
+	var binds: Dictionary = (setting("bindings") as Dictionary).duplicate(true)
+	for other in REBINDABLE:
+		if other == action:
+			continue
+		if binds.has(other):
+			var kept: Array = []
+			for c in binds[other]:
+				if int(c) != physical_keycode:
+					kept.append(int(c))
+			# Never leave an action with nothing bound: an unreachable action is
+			# worse than a shared key, because there is no way to notice it until
+			# the moment it is needed.
+			if not kept.is_empty():
+				binds[other] = kept
+			else:
+				return false
+	binds[action] = [physical_keycode]
+	set_setting("bindings", binds)
+	return true
+
+
+func reset_bindings() -> void:
+	set_setting("bindings", {})
+	# Erasing the overrides is not enough -- InputMap still holds whatever was
+	# applied. load_from_project_settings puts every action back to project.godot.
+	InputMap.load_from_project_settings()
 
 
 func haptics_enabled() -> bool:
@@ -1314,6 +1397,9 @@ func load_game() -> bool:
 	settings["sfx_vol"] = clampf(float(settings["sfx_vol"]), 0.0, 1.0)
 	settings["shake"] = bool(settings["shake"])
 	settings["ui_scale"] = clampf(float(settings["ui_scale"]), 0.7, 1.6)
+	settings["colorblind"] = clampi(int(settings["colorblind"]), 0, Palette.Vision.size() - 1)
+	if not (settings["bindings"] is Dictionary):
+		settings["bindings"] = {}
 
 	livery = DEFAULT_LIVERY.duplicate()
 	var saved_livery: Dictionary = data.get("livery", {})

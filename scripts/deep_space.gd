@@ -312,7 +312,7 @@ static func band_name(depth: float) -> String:
 
 
 static func band_color(depth: float) -> Color:
-	return Palette.DEEP_BANDS[band_of(depth)]
+	return Palette.band_color(band_of(depth))
 
 
 # --- construction -----------------------------------------------------------
@@ -514,7 +514,7 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 					"count": rng.randi_range(TRAP_PACK_MIN[band], TRAP_PACK_MAX[band]),
 					"hp_scale": PACK_HP[band],
 					"difficulty": PACK_DIFFICULTY[band],
-					"tint": Palette.DEEP_BANDS[band],
+					"tint": Palette.band_color(band),
 					"drop": PACK_DROP[band],
 					"escort": band >= TRAP_ESCORT_FROM,
 					"band": band,
@@ -547,7 +547,7 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 						"band": band,
 						"difficulty": GUARD_DIFFICULTY[band],
 						"hp_scale": GUARD_HP_SCALE[band],
-						"tint": Palette.DEEP_BANDS[band],
+						"tint": Palette.band_color(band),
 						"designation": GUARD_DESIGNATION[band],
 						"origin": hp,
 						"posts": guard_posts(hp, rng_rot, gn, grng),
@@ -567,7 +567,7 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 				"count": rng.randi_range(PACK_MIN[band], PACK_MAX[band]),
 				"hp_scale": PACK_HP[band],
 				"difficulty": PACK_DIFFICULTY[band],
-				"tint": Palette.DEEP_BANDS[band],
+				"tint": Palette.band_color(band),
 				"drop": PACK_DROP[band],
 				"escort": band >= PACK_ESCORT_FROM,
 			}
@@ -724,7 +724,7 @@ func _check_hails(at: Vector3) -> void:
 		if hud:
 			hud.show_toast("%s STANDING — %s" % [
 				GUARD_COUNT_WORD[mini(n, GUARD_COUNT_WORD.size() - 1)],
-				GUARD_DESIGNATION[band]], Palette.DEEP_BANDS[band])
+				GUARD_DESIGNATION[band]], Palette.band_color(band))
 
 
 func _spring(key: Vector2i, pack: Dictionary) -> void:
@@ -883,6 +883,17 @@ func _despawn_cell(key: Vector2i) -> void:
 	Obstacles.remove_owner(_owner_tag(key.x, key.y))
 	if node != null and is_instance_valid(node):
 		node.queue_free()
+
+
+func rebuild() -> void:
+	# Drop every live cell and let the stream rebuild them. Used by the colour
+	# vision setting, which changes what band_color returns -- and every deep
+	# material was baked from that at construction, so nothing short of building
+	# them again picks it up. Costs nothing that warping does not already cost,
+	# and the world is a pure function of (system, cell), so what comes back is
+	# identical apart from the tint.
+	_despawn_all()
+	_cell_last = Vector2i(9999, 9999)      # force the next _stream to run
 
 
 func _despawn_all() -> void:

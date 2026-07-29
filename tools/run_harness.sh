@@ -30,7 +30,7 @@ TAGS=(
 	LIVERYTEST STATIONTEST TORPTEST CONTRACTTEST RAIDTEST PAUSETEST
 	RADARTEST MUSICTEST PACINGTEST LAYOUTTEST TITLETEST TUTORIALTEST
 	INPUTTEST DOCKTEST MARKETTEST BALANCE BOSSTEST
-	FEELTEST UITEST GSATEST
+	FEELTEST UITEST GSATEST ACCESSTEST
 )
 
 # Only list tags that main.gd actually dispatches. An unrecognised PYXIS_* var
@@ -38,11 +38,14 @@ TAGS=(
 # added here ahead of its harness hangs the sweep rather than failing it. The
 # timeout below is the backstop for that and for a harness that deadlocks.
 #
-# Generous on purpose: PYXIS_BALANCE fights the apex to a conclusion with three
-# different fits and takes ~90s per fit, so a tight bound reports the slowest
-# real harness as a hang. This is here to catch "never calls quit()", not to
-# police runtime.
-TIMEOUT_S="${PYXIS_HARNESS_TIMEOUT:-600}"
+# Generous on purpose, and then some. PYXIS_BALANCE fights the apex to a
+# conclusion with three different fits, and how long that takes depends on how
+# the fights actually go -- it has run anywhere from five to eleven minutes. A
+# bound tight enough to be interesting would report the slowest real harness as
+# a hang on a bad roll, which is worse than useless: it fails the sweep for a
+# reason that is not a defect. This exists to catch "never calls quit()", not to
+# police runtime, so it is set where no legitimate harness can reach it.
+TIMEOUT_S="${PYXIS_HARNESS_TIMEOUT:-1500}"
 
 # SAVETEST is stateful: =write lays down a fixture the bare read consumes, so
 # the pair must stay adjacent and in this order. The migrate modes are

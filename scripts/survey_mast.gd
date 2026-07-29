@@ -63,8 +63,7 @@ func _build() -> void:
 	_dish.mesh = dm
 	_dish.position.y = 1.95
 	_dish.rotation.x = PI / 2.4
-	_dish_mat = Palette.emissive(Palette.DEEP_BANDS[clampi(band, 0,
-		Palette.DEEP_BANDS.size() - 1)], 2.0)
+	_dish_mat = Palette.emissive(Palette.band_color(band), 2.0)
 	_dish.material_override = _dish_mat
 	add_child(_dish)
 

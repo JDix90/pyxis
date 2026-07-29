@@ -785,6 +785,14 @@ func set_deep_tag(band_name: String, out_distance: float) -> void:
 	_apply_system_tag()
 
 
+func refresh_palette() -> void:
+	# The HUD is code-drawn, so unlike the world it does not need rebuilding --
+	# it needs re-asking, and only in one place. The band tag is the only chrome
+	# holding a band colour in a theme override; the radar reads Palette inside
+	# its own _draw and is already redrawing every frame.
+	_apply_system_tag()
+
+
 func _apply_system_tag() -> void:
 	if _deep_band == "":
 		_system_label.text = "SYS // " + _system_base
@@ -793,9 +801,15 @@ func _apply_system_tag() -> void:
 	# Out here the answer to "where am I" is the band and the range, not the
 	# system's name — but which system's expanse it is still matters, because you
 	# can warp between them, so the short name stays.
-	_system_label.text = "SYS // %s · %s · %du OUT" % [
-		_system_short, _deep_band, int(round(_deep_out))]
-	var c: Color = DeepSpace.band_color(_deep_out)
+	# The glyph carries the band without colour. Colour is still the fastest read
+	# at a glance, but it was the ONLY one -- and the deep set is amber, rose,
+	# violet and bile, which is close to a worst case for the two most common
+	# forms of colour blindness. A glyph works in every vision mode, in
+	# greyscale, and on a phone in direct sunlight, which no palette does.
+	var band := DeepSpace.band_of(_deep_out)
+	_system_label.text = "SYS // %s · %s %s · %du OUT" % [
+		_system_short, Palette.band_glyph(band), _deep_band, int(round(_deep_out))]
+	var c: Color = Palette.band_color(band)
 	_system_label.add_theme_color_override("font_color", Color(c.r, c.g, c.b, 0.75))
 
 
