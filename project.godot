@@ -76,6 +76,26 @@ cancel={
 ]
 }
 
+[physics]
+
+; On globally so the node-level opt-in works at all, but almost nothing in this
+; game inherits it. Pyxis moves ports, sentries, the boss, rifts, derelicts and
+; every FX tween in _process, where they already update at display rate --
+; interpolating those would resample smooth motion at 60Hz and add a frame of
+; lag, which is worse than the problem being solved. The nodes that integrate on
+; the fixed tick opt in for themselves (PlayerShip._ready and friends), because
+; they are the ones that visibly step on a 120Hz display.
+common/physics_interpolation=true
+
 [rendering]
 
 renderer/rendering_method="mobile"
+; The whole game is untextured primitives with deliberately low segment counts,
+; so every silhouette is a hard edge against near-black -- the exact case
+; aliasing is worst in, and the exact case MSAA is cheapest in. 2x is close to
+; free on the tile-based GPUs this renderer targets.
+anti_aliasing/quality/msaa_3d=1
+; Nothing is capped by default: a 120Hz phone should render at 120Hz. The
+; battery-saver cap is a runtime setting (GameState "fps_cap"), not a project
+; default, so the choice belongs to the player rather than to the build.
+

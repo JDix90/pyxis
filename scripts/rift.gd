@@ -46,7 +46,7 @@ func _build() -> void:
 	tm.ring_segments = 48
 	_tear.mesh = tm
 	_tear.scale = Vector3(1.0, 2.6, 0.35)
-	_tear_mat = Palette.emissive(Palette.DEEP_BANDS[_rich_band()], 3.2)
+	_tear_mat = Palette.emissive(Palette.band_color(_rich_band()), 3.2)
 	_tear.material_override = _tear_mat
 	add_child(_tear)
 
@@ -107,7 +107,7 @@ func pulse() -> void:
 
 	var tree := get_tree()
 	Sfx.play("klaxon", -9.0, 1.3)
-	FX.shockwave(get_parent(), global_position, Palette.DEEP_BANDS[_rich_band()], 9.0, 0.8)
+	FX.shockwave(get_parent(), global_position, Palette.band_color(_rich_band()), 9.0, 0.8)
 	var rig := tree.get_first_node_in_group("camera_rig")
 	if rig:
 		rig.shake(0.1)
@@ -120,7 +120,7 @@ func pulse() -> void:
 	var lose := int(ceil(float(standing.size()) * EVAPORATE_SHARE))
 	for i in range(mini(lose, standing.size())):
 		var victim: Node3D = standing[i]
-		FX.flash(get_parent(), victim.global_position, Palette.DEEP_BANDS[_rich_band()], 0.5, 0.2)
+		FX.flash(get_parent(), victim.global_position, Palette.band_color(_rich_band()), 0.5, 0.2)
 		victim.queue_free()
 
 	# And something comes through it. Band-curve pack, leashed like every other
@@ -134,7 +134,7 @@ func pulse() -> void:
 			var s := SwarmHostile.new()
 			s.difficulty = DeepSpace.PACK_DIFFICULTY[band]
 			s.hp_scale = DeepSpace.PACK_HP[band]
-			s.tint = Palette.DEEP_BANDS[band]
+			s.tint = Palette.band_color(band)
 			s.despawn_radius = DeepSpace.HOSTILE_LEASH
 			root.add_child(s)
 			s.global_position = global_position + Vector3(

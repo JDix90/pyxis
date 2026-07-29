@@ -181,8 +181,22 @@ amber-cartography identity is the mitigation.
 - Feel-critical tunables live as named constants at the top of their script
   under a `FEEL CONSTANTS` comment.
 - All colors come from `scripts/palette.gd`. No literal colors in gameplay code.
+- All type sizes, control styling and transition timings come from
+  `scripts/ui_kit.gd` — the same rule as Palette, applied to the control voice.
+  A `Button.new()` with hand-rolled theme overrides is the defect this prevents:
+  it produced three unrelated button idioms, one of which (the pause menu, the
+  most-opened screen in the game) had no `StyleBox` at all and rendered in stock
+  Godot grey.
 - One-shot visual effects go through `scripts/fx.gd`; audio through the `Sfx`
   autoload.
+- **Smoothing toward a target uses `scripts/smoothing.gd`, never
+  `lerp(a, b, k * delta)`.** That form is not frame-rate independent — one step
+  at 1/60 lands somewhere different from two at 1/120, so the camera felt
+  different on a 120Hz phone than on the machine it was tuned on — and it
+  overshoots and oscillates whenever `k * delta` exceeds 1.0, which a long frame
+  produces. `Smoothing.toward` is the analytic solution, `target + (current -
+  target) * exp(-rate * delta)`, which subdivides exactly and can never cross the
+  target. Asserted by `PYXIS_FEELTEST`.
 - Audio is synthesized by `tools/gen_sfx.py` (pure stdlib Python) — original,
   license-free, and regenerable. Tune the numbers and re-run.
 - Meshes are kitbashed from primitives in code, which keeps asset cost near zero
@@ -190,9 +204,24 @@ amber-cartography identity is the mitigation.
 - Audio buses (Master / SFX / Music / MusicCalm) are built in code at boot for
   the same reason: the project stays reproducible from source with no binary
   resources to keep in sync.
+- **Accessibility settings are gated at one entry point each, never at the call
+  sites.** `CameraRig.shake()` established the rule; `CameraRig.punch_zoom()`
+  and `Sfx.haptic()` follow it. There are roughly twenty shake callers and a
+  dozen haptic ones, and any of them could forget a setting exists — none of
+  them can forget a function that checks for them. `punch_zoom` is the proof
+  this matters: it was the one motion effect gated nowhere, so turning screen
+  shake off visibly did half its job for as long as it shipped.
+- **Reduced motion means the end state immediately, not the same animation
+  faster.** An accommodation that still animates is not an accommodation.
+  `reduce_motion` also subsumes `shake_enabled()` — someone asking for less
+  movement is not asking to keep the camera lurching — but the two settings stay
+  separate, because turning shake off is a statement about shake and reading it
+  as a statement about every transition in the game would silently reinterpret a
+  preference the player already expressed.
 - Every major system gets an env-var harness in `main.gd` printing tagged,
   greppable assertion lines (`[station] NO ROUND-TRIP PROFIT ... -> PASS`). Run
-  them; do not eyeball the game and call it verified.
+  them; do not eyeball the game and call it verified. `tools/run_harness.sh`
+  runs the whole sweep and checks the real save is untouched.
 - **Harnesses must never be able to write the player's save.** They call
   `GameState.lock_saving()`, which is deliberately ONE-WAY. Assigning
   `save_enabled = false` is not enough: `start_new_game()` assigns it back to
@@ -1726,3 +1755,367 @@ check had silently become "did it survive the rebuild" instead of "did we find
 it". `RIFTTEST` hit that exact trap and left a comment naming it. The comment was
 read, and the mistake was made anyway — which is the argument for the comment
 being an assertion wherever it can be.
+
+## 28. The Grand Commission
+
+Shipped from `docs/HORIZON-3-COMMISSION.md`. Four stages of the survey authority
+acknowledging you — ON FILE, CORROBORATED, COMMENDED, COMMISSIONED — read off
+ledger keys the player was already filling, claimed at one desk on the Anchor.
+
+**It is recognition, not a quest.** Every line the Commission prints is a
+statement of record — `44 OF 60 SURVEYS ON FILE` — never an instruction. The
+grammar enforces itself: stage names are statuses rather than tasks, so a
+description written in the imperative clashes audibly with the name directly
+above it. `PYXIS_GSATEST`'s `NO IMPERATIVE` checks the copy as data, on the FIRST
+word of each description, because English imperatives lead with their verb and a
+contains-check would also ban "a first *survey* packet", where the same word is a
+noun. A structural rule nothing checks is worth nothing.
+
+**There is no HUD tracker, and there never will be.** `hud.band_controls()` is
+the complete inventory of centre-anchored plates and `BANDS CLEAR` measures
+against it, so adding a tracker row would have to go through that inventory —
+which makes the prohibition mechanically checkable rather than a promise.
+
+### The two fields, and why they are shaped differently
+
+`commission_claimed` is run state and top-level. It was nearly a seventh
+`DEFAULT_LEDGER` key; the argument against is that the ledger's load merge is
+`maxi(0, int(...))` — a floor with no ceiling — so a hand-edited `99` would reach
+`STAGES[99]` and crash *at a dock*, and the SAVETEST write leg assigns a literal
+six-key dict, so a seventh key would round-trip untested. It is the shape
+`captains_log` already shipped as, for the same reasons.
+
+`commissioned` is persistent, and is a strict monotone derivative of "stage 4 was
+ever claimed". It is read by exactly three things: the title screen's registry
+line, the accent lock, and the beacons. **The claim counter must never read it,**
+or stage 4 becomes unclaimable on every run after the first.
+
+### The accent lock could not live in `set_livery`
+
+`player_ship.gd` reads `Palette.livery_accent(GameState.livery_index("accent"))`
+directly and never asks `set_livery` anything, and a hand-edited save never calls
+it at all — so a refusal there would guard nothing while also rewriting a
+legitimately earned livery every time a save restored one. The lock is at the
+**load path** and at the **purchase layer**, and `GSATEST` asserts it against
+fixtures at `accent: 8` and `accent: 17`, because `posmod` wraps and 17 is the
+same attack wearing a different number.
+
+That also closed the one unbounded int left in `load_game`. The livery indices
+had no clamp; `posmod` was doing the containing, which is not protection but a
+rename — `accent: 8` silently became amber rather than being corrected.
+
+### The note the arc ends on
+
+COMMISSIONED requires reaching THE QUIET. The beacons answer back once you are
+commissioned — for bands 1–3 only. **Band 4 stays silent, and that is deliberate:
+the one band the Commission requires you to reach is the one that will never
+acknowledge it.** `GUARD_DESIGNATION[4]` is already *"UNREADABLE — IT DOES NOT
+ANSWER"*, so the data agrees with the fiction. Do not "finish" that entry.
+
+The commissioned text lives inside `BROADCASTS` as optional
+`from_commissioned`/`body_commissioned` keys with a fallback, not as a parallel
+array — a second array would be a second bounds contract that could disagree with
+the first, and "band 4 is unchanged" would become a size mismatch instead of a
+stated property. `BEACON PARITY` asserts that `broadcast_for(band, false)` is
+string-identical to what shipped, which is what stops the rewrite quietly editing
+the uncommissioned text.
+
+### Two orderings that are load-bearing
+
+`claim_commission` increments **before** it pays. `add_salvage` emits
+`salvage_changed`, and `PortPanel._ready` wires that straight back into
+`_refresh()` — so a claim that paid first would rebuild the sheet reading the
+pre-claim stage and redraw the button it had just honoured.
+
+`_apply_paint` checks eligibility **above** `spend_salvage`. It used to spend
+first and apply second, which was harmless only for as long as nothing could be
+refused; the locked ninth swatch is exactly the refusal that would have charged
+800 for nothing. §12's rule: a hidden bad bet is a con.
+
+### What the harness had to learn to see this
+
+Two assertions in `GSATEST` were written, passed, and were worth nothing until
+they were verified in the failing direction:
+
+- `EVERY SERVICE HAS A BUILDER` renders each tab and compares it to the
+  outfitter's, because `port_panel`'s `match _tab` catch-all *is* the outfitter —
+  a `TAB_LABELS` entry without a matching arm renders a plausible second
+  outfitter with no error and no crash. The first version walked `_body`'s
+  children without skipping ones queued for deletion; `_refresh` frees the old
+  rows and builds the new ones in the same frame, so every fingerprint came out
+  unique and the assertion passed on every possible input.
+- `STATE BEFORE MONEY` uses a one-element Array as its box. GDScript lambdas
+  capture locals **by value**, so the first version's `int` was written inside
+  the closure and read from the untouched original — an assertion that could not
+  fail.
+
+Both are the §8 rule biting: an assertion is only worth what it can see.
+
+## 29. The score's second axis
+
+The music had one axis — threat — and the game's central fiction is the other
+one. Going further out changed the colour of the sky, the radar span, the spawn
+tables and the beacon text, and did not change a single thing you could hear.
+THE SHOALS and THE REACHES sounded identical.
+
+There are now four stems, not two: `music_calm`, `music_combat`, `music_deep`,
+`music_quiet`. All four are **the same eight bars at the same sample count**,
+started in the same frame and never stopped, which is the rule the original two
+were built on and the reason `gen_sfx.py` fails the build if their lengths
+diverge. Depth is a mix position, never a key change — the beds are crossfaded
+against each other while all of them are playing, so any harmonic difference
+between them would be audible as a lurch every time a band edge was crossed.
+
+**The two axes are orthogonal, and that is the whole design.** Threat picks
+between the calm pair and the combat layer; depth picks which *bed* that pair is
+heard over. Collapsing them into one "intensity" dial would make deep space
+permanently tense and shallow space permanently safe, which is a statement about
+the map rather than about what is happening to the player. Being jumped in THE
+QUIET has to sound like being jumped, so the combat layer is never attenuated by
+depth. `AXES ORTHOGONAL` asserts exactly that: at depth 1200 the threat blend
+still swings 0 → 1 while the depth blend holds at 1.
+
+Depth maps **piecewise across the band anchors** (0, 160, 440, 1100), not
+linearly across the range. The bands are not evenly spaced, so a linear map would
+put three quarters of the audible change inside THE REACHES and leave the first
+two bands sounding the same. Piecewise, each band edge lands on an even third:
+`[0, 160, 440, 1100, 2000]u` measures `[0.0, 0.33, 0.67, 1.0, 1.0]`.
+
+`music_quiet` is deliberately almost nothing — one sustained low partial, two
+sines detuned by 0.0009 so they beat against each other over about eleven
+seconds. THE QUIET is the band where the beacons stop answering and the guard
+designation is already *"UNREADABLE — IT DOES NOT ANSWER"*. The score agrees with
+the fiction rather than scoring over it.
+
+### Two things this pass had to be careful about
+
+**`gen_sfx.py`'s `SOUNDS` dict is append-only**, for the same reason
+`DeepSpace.plan_cell`'s roll order is. `random.seed(7)` is set once before the
+loop, so the RNG stream is shared across every sound in insertion order — a new
+entry anywhere but the end re-rolls the noise in every sound after it, and
+`explode.wav`'s sixty crackle grains would come back different. Verified by
+md5-ing `explode`, `ambient` and `music_calm` before and after: byte-identical.
+
+**The harness must fly the ship, not call `set_depth`.** `main._process` polls
+`deep_depth()` every frame and pushes it at `Music`, so a hand-set target is
+overwritten on the next frame and the assertion measures nothing. Flying the ship
+out also makes the assertion cover the whole chain — position through
+`deep_depth` through the mix — rather than the arithmetic at the end of it. The
+first version of `DEPTH AXIS` was green-on-broken-code for precisely this reason.
+
+## 30. Accessibility, and what it cost to do honestly
+
+Four settings shipped in this pass: **haptics**, **reduce motion**, **colour
+vision**, and **rebindable controls**. Two rules held the whole way through.
+
+**Gate at one entry point, never at the call sites.** `CameraRig.shake()`
+established it; `punch_zoom()` and `Sfx.haptic()` now follow it. There are ~20
+shake callers and a dozen haptic ones, and any of them could forget a setting —
+none of them can forget a function that checks. `punch_zoom` is the proof: it was
+the one motion effect gated nowhere, so "screen shake off" visibly did half its
+job for as long as it shipped.
+
+**Reduced motion means the end state immediately.** An accommodation that still
+animates is not an accommodation, so `UIKit.reveal_list` and the pause fade take
+the branch that skips straight to the finished frame rather than a faster tween.
+
+### Colour vision: the band set was the whole problem
+
+`§17` says colour is the only band tell that reads at a glance on a phone, and
+the shipped set — amber, rose, violet, bile green — is close to a worst case.
+Under deuteranopia the amber and the bile collapse toward each other and so do
+the rose and the violet: four bands become two.
+
+Two independent fixes, because they fail differently.
+
+**Redundancy first.** Every band carries a glyph (`◈ ▲ ● ◆`) on the wayfinding
+readout and on every broadcast header. This works in *every* mode including the
+default, in greyscale, with the saturation turned down, and on a phone in
+sunlight. Remapping only ever helps the modes it was tuned for; a glyph helps
+everyone, so it is the one that is always on.
+
+**Remapping second,** through `Palette.band_color()` — the single accessor every
+tint now goes through. The consts are never touched and mode 0 returns them
+byte-identically, asserted, so the default look cannot drift as a side effect of
+the feature existing.
+
+The palettes were **not chosen by eye**, and the first ones that were are the
+reason this paragraph exists. `BANDS SEPARATE` simulates each dichromacy and
+measures the *minimum pairwise distance between the simulated colours* — the only
+measurement that matters, since two colours can be far apart in RGB and land on
+top of each other on a confusion line. The hand-picked "colourblind-safe" sets
+scored **0.066 / 0.048 / 0.077**, materially *worse* than the shipped set's
+0.173. They looked obviously distinct on the author's monitor and were not. The
+shipped sets are the best of 60,000 candidates from a constrained grid search and
+score **0.307 / 0.317 / 0.333**, with `REMAP IMPROVES` asserting that each one
+actually beats the default under the same simulation rather than merely differing
+from it.
+
+Constraints on the search worth keeping: a luminance floor, because these are
+emissive against a near-black sky and a dark "safe" colour is one nobody can see;
+and THE QUIET stays near-white in every mode, because "no colour left at all" is
+what that band *is* and recolouring it would win a number and lose the fiction.
+
+Materials are baked at construction, so a mode change calls
+`main.rebuild_visuals()`, which goes through the **existing** build paths —
+`_load_system` and `DeepSpace.rebuild` — rather than a bespoke retint walk. A
+second path that has to know about every material in the game is a second path
+that will fall out of date with the first. It only fires on an actual change,
+because `apply_settings` runs on every frame of a slider drag.
+
+### Rebinding
+
+`cancel` is deliberately **not** rebindable. It is the way out of every console
+and out of the settings page itself, so a player who bound it to a key they could
+not reach would have no route back to the screen that would fix it. Two actions
+may never share a key — `NO SHARED KEY` asserts the old owner loses it — and no
+action may be left with nothing bound, because an unreachable action is worse
+than a shared one: nothing reveals it until the moment it is needed.
+
+## 31. The streaming hitch, measured before it was fixed
+
+The 5×5 cell window was built synchronously on every boundary crossing, and the
+suspicion was that this hitched. Suspicion is not a reason to add a queue, an
+escape hatch and a determinism risk to the one system in this game whose purity
+is load-bearing — so `PYXIS_STREAMTEST` measured it first.
+
+It did hitch, and not where expected. **First entry is cheap** — the whole window
+at once, near the chart edge, is a few milliseconds, because shallow cells are
+mostly empty. **Steady crossings spiked to 44ms**, roughly three dropped frames,
+because the tables that make deep cells interesting (`STATION_CHANCE`,
+`PACK_CHANCE`) all climb with depth. The expensive case was the one that happens
+while the player is flying, with nothing on screen to hide behind.
+
+The split is **what the game needs versus what the eye needs**:
+
+- `_register_cell` — the container node and every collision sphere, all derived
+  from `plan_cell`, which is pure arithmetic. Runs synchronously for the whole
+  window. The world is solid before it is visible, because flying through a rock
+  that has not been dressed yet is a far worse bug than watching one appear.
+- `_populate_cell` — meshes, the `Derelict`, its guard post, the `Port`. Queued
+  nearest-first and drained under a 5ms budget, with a floor of one cell per
+  frame so the queue provably empties even when a single cell exceeds the whole
+  budget — which is the exact case that motivated this.
+
+Worst frame after: **10.3ms**, inside a 60Hz frame.
+
+Determinism is untouched. `plan_cell` is still the only source of truth, still
+called in the same order; only the moment a mesh appears moves, and nothing reads
+a mesh to decide anything. `DEEPTEST`'s 44 assertions pass unmodified, which is
+the check that matters — they measure obstacles and cell counts, both of which
+stayed synchronous precisely so they would.
+
+### Three things this got wrong first
+
+**Guards went in the cheap half.** They are gameplay, so it seemed right — but a
+guard post is several `Hostile` nodes each building a mesh, which is the single
+most expensive thing a cell can hold. Putting them in `_register_cell` moved the
+cost rather than deferring it. They stand around a hulk the player cannot reach
+without crossing another cell, so a frame's delay costs nothing.
+
+**The measurement timed the crossing, not the frame.** With the build amortised a
+crossing deliberately spans several frames, so timing the whole crossing counts
+the amortisation as if it were the cost — and reported the fix as a regression
+from 44ms to 107ms. A hitch is one long frame; that is what the assertion
+measures now.
+
+**The equivalence check compared a live window against a fresh one.** `KEEP` is 3
+and `WINDOW` is 2, so the live state legitimately carries cells the fresh stream
+has not got. Both sides now start from a clean `rebuild()`, and `SAME WORLD
+EITHER WAY` confirms the amortised path lands on the same 17 cells and the same
+86 obstacles the synchronous one does.
+
+### Do not gate a harness on wall-clock frame time
+
+The first version of `NO HITCH` asserted `worst < 16.67ms`. It passed run alone
+and failed inside the full sweep — 10.3ms versus 23.5ms for identical code, on a
+build machine doing other work. A stopwatch assertion measures the machine, and a
+test that fails for reasons that are not defects trains you to ignore it.
+
+`§8`'s rule applies: assert the rule, not the rendering. The machine-independent
+rule is that construction is **deferred** — a crossing leaves cells registered and
+undressed for a later frame to drain. `WORK IS DEFERRED` checks the backlog was
+non-empty and `QUEUE DRAINS` checks it reaches zero; between them a queue that has
+become a no-op cannot pass. Note that "the row always splits across frames" is
+*not* the rule and asserting it was also wrong: a cheap row legitimately finishes
+inside one frame's budget, and only expensive rows are meant to split.
+
+The timing survives as a reported number with a deliberately loose bound (40ms).
+It would still catch the original 44ms spike; it will not fail on a busy box.
+
+## 32. The light responds; the expanse has landmarks
+
+Two things the world was missing, both about the same claim: that the two axes
+this game is actually about — how far out you are, and whether something is
+hunting you — should be visible in the picture and not only in the numbers.
+
+### One owner for the Environment
+
+`scripts/atmosphere.gd`. `SystemBuilder` writes the system's baseline into it
+once at build time and nothing else assigns to the `Environment` after that. Two
+writers and the last one per frame wins, which is how a lighting bug that was
+"fixed" comes back six months later wearing different clothes.
+
+Everything is expressed as a **multiple of the system's own values**, so a system
+authored dim stays dim. Depth pulls the sky toward `DEEP_COLD` (not toward black
+— black reads as the renderer stopping rather than as somewhere), takes ambient
+and the sun down with it, and drops glow to 42% by THE QUIET. Threat is a **lift,
+not a tint**: deep space is already a colour statement and a red wash on top
+would fight the band gradient, so a contact raises the bloom and pulls ambient
+slightly toward `THREAT`, which reads as the room getting harder. The two
+compose — being jumped in THE QUIET still brightens the room, from a much lower
+floor.
+
+Depth uses `DeepSpace.BAND_EDGES`, the same anchors the score uses, so the sky
+and the mix change at the same places rather than a beat apart. Threat rises fast
+and falls slow, matching the music's asymmetry for the same reason: a fight
+starts on one frame and ends raggedly over several. Both are fed from a single
+`_threat_near_player()` in `main`, so the lighting and the score can never
+disagree about whether you are in a fight.
+
+### Landmarks: randomness at two scales
+
+The expanse was uniform noise — every cell rolled the same four things from the
+same tables, so flying out felt like more of the same rather than like going
+somewhere. There is now one deliberate object per **supercell** of 4×4 cells,
+roughly every 256 units, themed by band.
+
+That is what "designed rather than random" means here: not less randomness, but
+randomness at two scales with the coarse one carrying meaning. A single scale is
+noise however you tune it.
+
+Each band gets a **different silhouette**, not the same shape in a different
+colour — colour already tells you the band, and a second tell that is also colour
+tells you nothing new. Read outward they are one story: a shattered survey pylon
+the authority built and stopped maintaining; the frame of a colony with two lit
+windows; a monolith nobody built, scarred where a nest grew on it; and a GSA
+boundary marker with its lamps stripped out. That last one is the only landmark
+that does not emit — you see it because it occludes stars. THE QUIET is the band
+whose beacons do not answer, and a marker with a working light would contradict
+that.
+
+They are **scenery**: no loot, no collision, nothing to hold on. The expanse
+already has four things to do in it; what it lacked was somewhere to *be*, and an
+object that pays out stops being a landmark and becomes another errand.
+
+The roll is **appended** to `plan_cell` after every existing one, on its own
+salted stream — `§17`'s rule, the same one `gen_sfx.py`'s `SOUNDS` dict follows.
+`DEEPTEST`'s 44 assertions pass unmodified, which is the proof it held.
+
+### Three assertions that passed while measuring nothing
+
+Worth recording together, because they are the same mistake in three costumes and
+`§8`'s rule caught all three:
+
+- `THREAT LIGHTING` called `air.set_threat(1.0)` directly. `main` polls the threat
+  every frame and overwrites it, so the test measured a 0.004 wobble and called
+  it a lift. It now spawns an actual hostile, which also covers the poll and the
+  radius test.
+- Its *baseline* was then wrong too: PYX-01 has sentries inside `THREAT_RADIUS`,
+  so "calm" glow was already lifted and was being compared against itself. The
+  field is cleared first, and `calm field=true` is now part of the assertion.
+- And the waves refilled it anyway, so `_wave_timer` has to be pinned — the same
+  two lines `MUSICTEST` already needed, for the same reason.
+
+The pattern: **a harness that sets a value the game also sets every frame is
+measuring the game's value, not its own.** Drive the system, do not poke it.

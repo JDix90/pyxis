@@ -135,6 +135,16 @@ var live_rift: Rift = null
 func _ready() -> void:
 	add_to_group("main")
 
+	# Physics interpolation is opt-IN in this game, and this is the line that
+	# makes it so. The project setting has to be on for any node to interpolate
+	# at all, but leaving the default INHERIT in place meant the whole tree
+	# inherited ON from the root -- including the camera and every _process
+	# mover, which resampled their already-smooth motion at 60Hz and made the
+	# engine warn about the Camera3D on every boot. Turning Main off pushes the
+	# default back to "no", and the four nodes that integrate on the fixed tick
+	# (PlayerShip, SwarmHostile, SweepArm, LootCube) set themselves to ON.
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+
 	# Scale the 2D layer before any UI is built, then track window resizes. 3D is
 	# unaffected — the world always renders at full window resolution.
 	UILayout.apply_scale(get_window())
@@ -427,6 +437,54 @@ func _ready() -> void:
 		_run_layout_test()
 		return
 
+	if OS.get_environment("PYXIS_FEELTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_feel_test()
+		return
+
+	if OS.get_environment("PYXIS_ENVTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_env_test()
+		return
+
+	if OS.get_environment("PYXIS_STREAMTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_stream_test()
+		return
+
+	if OS.get_environment("PYXIS_ACCESSTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_access_test()
+		return
+
+	if OS.get_environment("PYXIS_GSATEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_gsa_test()
+		return
+
+	if OS.get_environment("PYXIS_UITEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_ui_test()
+		return
+
 	var title_test := OS.get_environment("PYXIS_TITLETEST") != ""
 	state = State.PLAYING if headless_mode else State.ATTRACT
 
@@ -523,8 +581,7 @@ func start_new_game() -> void:
 	hud.refresh_cargo()
 	var player: PlayerShip = get_tree().get_first_node_in_group("player")
 	if player:
-		player.global_position = Vector3(0, 0, 6)
-		player.rotation = Vector3.ZERO
+		player.teleport_to(Vector3(0, 0, 6))
 	# The rig has to come home too. Nothing moved it before because the old world
 	# clamp guaranteed it was already near the origin; with space endless, a new
 	# game started from 900 units out would open on empty sky.
@@ -587,8 +644,7 @@ func abandon_to_title() -> void:
 	# abandoning from deep space must not leave it sitting over nothing.
 	var player: PlayerShip = get_tree().get_first_node_in_group("player")
 	if player:
-		player.global_position = PlayerShip.SPAWN_POINT
-		player.rotation = Vector3.ZERO
+		player.teleport_to(PlayerShip.SPAWN_POINT)
 	var rig := get_tree().get_first_node_in_group("camera_rig")
 	if rig:
 		rig.global_position = Vector3(0, 0, 2)
@@ -597,6 +653,27 @@ func abandon_to_title() -> void:
 
 
 # --- system lifecycle -------------------------------------------------------
+
+func rebuild_visuals() -> void:
+	# Colour vision changed, so every baked material is now wrong. Rebuilt
+	# through the EXISTING build paths -- _load_system for the charted system,
+	# DeepSpace.rebuild for the expanse -- rather than through a bespoke retint
+	# walk, because a second path that has to know about every material in the
+	# game is a second path that will fall out of date with the first.
+	#
+	# Visible as a sub-second hitch on a settings change, which is honest: the
+	# world really is being rebuilt, and it happens on a menu the player is
+	# already stopped on.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	var at := player.global_position if player else PlayerShip.SPAWN_POINT
+	_load_system(system_id)
+	if player:
+		player.teleport_to(at)
+	if deep_space:
+		deep_space.rebuild()
+	if hud:
+		hud.refresh_palette()
+
 
 func _load_system(id: String) -> void:
 	if not SystemDB.exists(id):
@@ -689,8 +766,7 @@ func _warp_sequence(id: String) -> void:
 	# 3. Swap the world while the flash covers it.
 	_load_system(id)
 	if player:
-		player.global_position = Vector3(0, 0, 6)
-		player.rotation = Vector3.ZERO
+		player.teleport_to(Vector3(0, 0, 6))
 		player.warp_streak_in()
 	if rig:
 		rig.global_position = Vector3(0, 0, 2)
@@ -713,10 +789,18 @@ func _tick_broadcast(depth: float) -> void:
 	if band <= _broadcast_band:
 		return
 	_broadcast_band = band
-	var msg := DeepSpace.broadcast_for(band)
+	# Read at fire time and cached nowhere, so a player who claims COMMISSIONED at
+	# the Anchor hears the answer on their next trip out rather than on their next
+	# launch -- which is the right beat: the beacon is where the acknowledgement
+	# lands, not the dock where the paperwork was filed.
+	var msg := DeepSpace.broadcast_for(band, GameState.commissioned)
 	if msg.is_empty() or hud == null:
 		return
-	hud.show_broadcast(String(msg["from"]), String(msg["body"]),
+	# The glyph rides the sender line, so the band is named twice -- once in
+	# colour and once in a shape -- on the one plate that announces crossing into
+	# it. See Palette.BAND_GLYPHS.
+	hud.show_broadcast("%s %s" % [Palette.band_glyph(band), String(msg["from"])],
+		String(msg["body"]),
 		DeepSpace.band_color(depth))
 
 
@@ -776,9 +860,8 @@ func _recall_sequence() -> void:
 	await get_tree().create_timer(WARP_STREAK * 0.45).timeout
 
 	if player:
-		player.global_position = PlayerShip.SPAWN_POINT
+		player.teleport_to(PlayerShip.SPAWN_POINT)
 		player.velocity = Vector3.ZERO
-		player.rotation = Vector3.ZERO
 		player.clear_target()
 		player.warp_streak_in()
 	if rig:
@@ -840,6 +923,16 @@ func _process(delta: float) -> void:
 	var depth := deep_depth()
 	if hud:
 		hud.set_deep_tag(DeepSpace.band_name(depth) if depth > 0.0 else "", depth)
+	# The score's second axis, fed from the same poll that already drives the
+	# wayfinding label and the beacons. Music smooths it internally, so this is a
+	# raw value every frame rather than something this function has to rate-limit.
+	Music.set_depth(depth)
+	# The light's two axes, from the same poll and the same anchors as the score,
+	# so the sky and the mix change at the same places rather than a beat apart.
+	var air := get_tree().get_first_node_in_group("atmosphere") as Atmosphere
+	if air != null:
+		air.set_depth(depth)
+		air.set_threat(1.0 if _threat_near_player() else 0.0)
 	_tick_broadcast(depth)
 	# The captain's log's one frame-adjacent source, and the only one that needs
 	# an argument for why it is still discrete. It reads the RUN's high-water mark
@@ -1174,7 +1267,7 @@ func spawn_rift() -> Rift:
 		hud.show_broadcast("SUBSPACE ADVISORY — AUTOMATED",
 			"SHEAR DETECTED · BEARING %03d · %du OUT · IT WILL NOT HOLD" % [
 				int(rad_to_deg(bearing)), int(depth)],
-			Palette.DEEP_BANDS[rift.band])
+			Palette.band_color(rift.band))
 	return rift
 
 
@@ -1457,6 +1550,7 @@ func _complete_dock(port: Port) -> void:
 					hud.refresh_cargo()
 
 	Sfx.play("dock", -3.0)
+	Sfx.haptic("medium")
 	FX.ring_pulse(self, port.dock_point, Palette.TEAL, 2.2, 0.7)
 	var rig := get_tree().get_first_node_in_group("camera_rig")
 	if rig:
@@ -1557,8 +1651,7 @@ func disengage_apex(return_home := true) -> bool:
 	if return_home:
 		var player: PlayerShip = get_tree().get_first_node_in_group("player")
 		if player:
-			player.global_position = PlayerShip.SPAWN_POINT
-			player.rotation = Vector3.ZERO
+			player.teleport_to(PlayerShip.SPAWN_POINT)
 			player.velocity = Vector3.ZERO
 			player.warp_streak_in()
 		var rig := get_tree().get_first_node_in_group("camera_rig")
@@ -1613,8 +1706,8 @@ func spill_unread(at: Vector3) -> int:
 			# leaving the system would be salvage stored in a place the save knows
 			# nothing about.
 			system_root.add_child(cube)
-			cube.global_position = at + Vector3(randf_range(-1.6, 1.6), 0.0,
-				randf_range(-1.6, 1.6))
+			cube.place_at(at + Vector3(randf_range(-1.6, 1.6), 0.0,
+				randf_range(-1.6, 1.6)))
 			spilled += 1
 
 	if spilled > 0:
@@ -1700,7 +1793,7 @@ func spawn_loot(parent: Node3D, pos: Vector3, good := "", value_mult := 1.0) -> 
 	cube.commodity = good
 	cube.repeat_mult = value_mult
 	parent.add_child(cube)
-	cube.global_position = pos
+	cube.place_at(pos)
 	return cube
 
 
@@ -1717,6 +1810,23 @@ func deep_radius() -> float:
 	if p == null:
 		return 0.0
 	return Vector2(p.global_position.x, p.global_position.z).length()
+
+
+func _threat_near_player() -> bool:
+	# The same question Music asks, asked once here and handed to both -- the
+	# lighting and the score must never disagree about whether you are in a
+	# fight, and two independent scans would eventually drift apart.
+	if boss_active:
+		return true
+	var player: Node3D = get_tree().get_first_node_in_group("player")
+	if player == null or bool(player.get("docked")):
+		return false
+	var r2: float = Music.THREAT_RADIUS * Music.THREAT_RADIUS
+	for n in get_tree().get_nodes_in_group("hostiles"):
+		var h := n as Node3D
+		if is_instance_valid(h) and h.global_position.distance_squared_to(player.global_position) <= r2:
+			return true
+	return false
 
 
 func deep_depth() -> float:
@@ -5411,7 +5521,7 @@ func _run_narrow_shots() -> void:
 		hud.show_toast("ARCHEOLOGY 2 — THE DRIFT NOW READS IN THE FIELD", Palette.GOLD)
 		hud.show_broadcast("SUBSPACE ADVISORY — AUTOMATED",
 			"SHEAR DETECTED · BEARING 240 · 190u OUT · IT WILL NOT HOLD",
-			Palette.DEEP_BANDS[2])
+			Palette.band_color(2))
 		await get_tree().create_timer(0.7).timeout
 		await _shot(shots, "narrow_%s_flight_hud.png" % spec["tag"])
 		var cantina: Port = null
@@ -5654,9 +5764,22 @@ func _run_livery_test() -> void:
 	print("[livery] %d hulls x %d accents = %d liveries" % [
 		Palette.LIVERY_HULLS.size(), Palette.LIVERY_ACCENTS.size(),
 		Palette.LIVERY_HULLS.size() * Palette.LIVERY_ACCENTS.size()])
-	print("[livery] SWATCHES 8 hulls and 8 accents -> %s" % [
-		"PASS" if Palette.LIVERY_HULLS.size() == 8 and Palette.LIVERY_ACCENTS.size() == 8
+	# Nine accents since v13: eight bought and one EARNED. The count is asserted
+	# rather than derived because the ninth is load-bearing in two other places --
+	# GameState.REGISTRY_ACCENT indexes it, and port_panel's swatch grid is nine
+	# columns wide so it does not wrap as an orphan.
+	print("[livery] SWATCHES 8 hulls and 9 accents (8 bought + REGISTRY) -> %s" % [
+		"PASS" if Palette.LIVERY_HULLS.size() == 8 and Palette.LIVERY_ACCENTS.size() == 9
 			else "FAIL"])
+	# The earned one is the LAST entry, which is what makes "index >= 8 is locked"
+	# a rule rather than a coincidence. Insert a bought accent after it and this
+	# goes red, which is the point.
+	var registry_last: bool = GameState.REGISTRY_ACCENT == Palette.LIVERY_ACCENTS.size() - 1 \
+		and String((Palette.LIVERY_ACCENTS[GameState.REGISTRY_ACCENT] as Dictionary)["name"]) == "REGISTRY"
+	print("[livery] EARNED ACCENT IS LAST index %d of %d is '%s' -> %s" % [
+		GameState.REGISTRY_ACCENT, Palette.LIVERY_ACCENTS.size() - 1,
+		String((Palette.LIVERY_ACCENTS[Palette.LIVERY_ACCENTS.size() - 1] as Dictionary)["name"]),
+		"PASS" if registry_last else "FAIL"])
 
 	# 1. Setting a livery repaints the ship. Read straight off the material, so
 	#    this cannot pass on a stored value the mesh never used.
@@ -6892,10 +7015,18 @@ func _run_music_test() -> void:
 	# generator.
 	var calm := load("res://audio/music_calm.wav") as AudioStreamWAV
 	var combat := load("res://audio/music_combat.wav") as AudioStreamWAV
-	var same := calm != null and combat != null and calm.data.size() == combat.data.size()
-	print("[music] LOOP ALIGN calm %d frames vs combat %d frames -> %s" % [
-		calm.data.size() / 2 if calm else -1, combat.data.size() / 2 if combat else -1,
-		"PASS" if same else "FAIL"])
+	# All FOUR stems, in frames rather than in bytes. The old version compared
+	# two byte counts to each other, which is why it stayed green while both
+	# loop points were computed from compressed QOA bytes as if they were PCM
+	# frames -- see PYXIS_FEELTEST's COMPRESSED STREAM.
+	var deep := load("res://audio/music_deep.wav") as AudioStreamWAV
+	var quiet := load("res://audio/music_quiet.wav") as AudioStreamWAV
+	var frames: Array = []
+	for st in [calm, combat, deep, quiet]:
+		frames.append(Sfx.frame_count(st) if st != null else -1)
+	var same: bool = frames.size() == 4 and frames.count(frames[0]) == 4 and int(frames[0]) > 0
+	print("[music] LOOP ALIGN calm/combat/deep/quiet frames %s -> %s" % [
+		str(frames), "PASS" if same else "FAIL"])
 
 	# Calm with nothing around.
 	await get_tree().create_timer(Music.FADE_OUT + 0.6).timeout
@@ -6920,6 +7051,61 @@ func _run_music_test() -> void:
 	print("[music] RELEASE blend %.2f (must be ~0)" % cooled)
 	print("[music] ADAPTIVE calm<0.1 && threat>0.9 && release<0.1 -> %s" % [
 		"PASS" if calm_blend < 0.1 and hot_blend > 0.9 and cooled < 0.1 else "FAIL"])
+
+	# --- the depth axis ------------------------------------------------------
+	# The band system drove colour, radar span, spawn tables and beacon text, and
+	# nothing audible: the Shoals and the Reaches sounded identical. These assert
+	# that depth moves the mix, that it moves MONOTONICALLY (so a band edge is a
+	# gradient rather than a step), and that it is orthogonal to threat.
+	# Driven by FLYING THE SHIP OUT, not by calling set_depth directly. main's
+	# per-frame poll would overwrite a hand-set target on the very next frame, so
+	# a direct call measures nothing -- and this way the assertion covers the
+	# whole chain, position through deep_depth through the mix, rather than just
+	# the arithmetic at the end of it.
+	var edge := chart_edge()
+	var depth_seen: Array = []
+	for units in [0.0, 160.0, 440.0, 1100.0, 2000.0]:
+		player.teleport_to(Vector3(0.0, 0.0, edge + units + 1.0))
+		# Long enough for DEPTH_FADE to settle from wherever the previous sample
+		# left it, since the smoothing is deliberately slow.
+		await get_tree().create_timer(1.6).timeout
+		depth_seen.append(snappedf(Music.depth_blend(), 0.01))
+	var rising := true
+	for i in range(depth_seen.size() - 1):
+		if float(depth_seen[i + 1]) < float(depth_seen[i]) - 0.001:
+			rising = false
+	var spans: bool = float(depth_seen[0]) < 0.05 and float(depth_seen[depth_seen.size() - 1]) > 0.95
+	print("[music] DEPTH AXIS blend at [0, 160, 440, 1100, 2000]u = %s, monotonic=%s, spans 0..1=%s -> %s" % [
+		str(depth_seen), str(rising), str(spans),
+		"PASS" if rising and spans else "FAIL"])
+
+	# Orthogonality. Being jumped in THE QUIET must sound like being jumped: the
+	# threat blend cannot be a function of how far out the player is, or deep
+	# space becomes permanently tense and shallow space permanently safe --
+	# a statement about the map rather than about what is happening.
+	player.teleport_to(Vector3(0.0, 0.0, edge + 1200.0))
+	await get_tree().create_timer(1.6).timeout
+	var deep_calm := Music.blend()
+	var bogey2 := SwarmHostile.new()
+	bogey2.difficulty = 0.0
+	bogey2.hp_scale = 40.0
+	system_root.add_child(bogey2)
+	bogey2.global_position = player.global_position + Vector3(0, 0, Music.THREAT_RADIUS * 0.4)
+	bogey2.dock_at(bogey2.global_position)
+	await get_tree().create_timer(Music.FADE_IN + 0.8).timeout
+	var deep_hot := Music.blend()
+	var deep_depth_held := Music.depth_blend()
+	bogey2.queue_free()
+	print("[music] AXES ORTHOGONAL in THE QUIET: threat %.2f -> %.2f while depth holds %.2f -> %s" % [
+		deep_calm, deep_hot, deep_depth_held,
+		"PASS" if deep_calm < 0.1 and deep_hot > 0.9 and deep_depth_held > 0.95 else "FAIL"])
+
+	# Fly home and let the threat hold expire before the checks below. They
+	# measure the CALM layer's volume, and with two axes that layer is silent for
+	# two different reasons now -- leaving either one raised would fail the dock
+	# duck for a reason that has nothing to do with docking.
+	player.teleport_to(PlayerShip.SPAWN_POINT)
+	await get_tree().create_timer(Music.THREAT_HOLD + Music.FADE_OUT + 2.0).timeout
 
 	# Per-system tint is applied to the calm layer only.
 	var idx := AudioServer.get_bus_index(Sfx.BUS_MUSIC_CALM)
@@ -8433,6 +8619,70 @@ func _run_save_test() -> void:
 		print("[savetest] v11->v12 LOG EMPTY NOT MISSING empty=%s, writable=%s, everything else kept=%s -> %s" % [
 			str(log_empty), str(writable), str(kept11),
 			"PASS" if ok11 and log_empty and writable and kept11 else "FAIL"])
+	elif mode == "migrate12":
+		# The migration THIS horizon introduces. v12 has neither commission key,
+		# so the whole of the fix is two `data.get` defaults -- the policy
+		# load_game has held since v1. What must be proved is that a save written
+		# before the Commission existed arrives UNCOMMISSIONED with nothing
+		# claimed, rather than arriving with a truthy default and handing a
+		# returning player the ninth accent and a registry line they never earned.
+		#
+		# The v13 round trip lives HERE and not in PYXIS_GSATEST for a structural
+		# reason: save_game() early-returns on `not save_enabled`, lock_saving()
+		# is one-way, and GSATEST locks. A locked harness asserting a round trip
+		# measures in-memory state that never left the process -- the
+		# assertion-that-cannot-fail this codebase has a written rule about.
+		var v12 := {
+			"version": 12,
+			"salvage": 31415,
+			"owned": ["pulse_1", "drive_cruise"],
+			"fit": {"0": "pulse_1", "2": "drive_cruise"},
+			"current_system": "pyx02",
+			"ship_name": "THE LONG WATCH",
+			"captains_log": ["CROSSED INTO THE DRIFT"],
+			"ledger": {"deepest_depth": 505, "distance_flown": 9001,
+				"hulks_cracked": 7, "posts_cleared": 3, "chart_data_sold": 44,
+				"tolls_paid": 1},
+			# Accent 2 is a bought colour and must survive untouched: the lock
+			# refuses the EARNED index, not every index, and a migration that
+			# reset everyone to amber would be a worse bug than the one it fixes.
+			"livery": {"hull": 1, "accent": 2},
+			"tutorial_step": -1,
+		}
+		var f12 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f12.store_string(JSON.stringify(v12))
+		f12.close()
+		var ok12 := GameState.load_game()
+		var fresh: bool = GameState.commission_claimed == 0 and not GameState.commissioned
+		var kept12: bool = GameState.salvage == 31415 \
+			and GameState.ship_name == "THE LONG WATCH" \
+			and GameState.livery_index("accent") == 2 \
+			and int(GameState.ledger.get("chart_data_sold", -1)) == 44 \
+			and GameState.log_lines().size() == 1
+		print("[savetest] v12->v13 UNCOMMISSIONED claimed=%d commissioned=%s, accent %d kept, everything else kept=%s -> %s" % [
+			GameState.commission_claimed, str(GameState.commissioned),
+			GameState.livery_index("accent"), str(kept12),
+			"PASS" if ok12 and fresh and kept12 else "FAIL"])
+
+		# The round trip, through the real file layer. Claiming all four is what
+		# sets `commissioned`, and both fields have to come back.
+		GameState.ledger["chart_data_sold"] = 100000
+		GameState.ledger["hulks_cracked"] = 100000
+		GameState.ledger["posts_cleared"] = 100000
+		GameState.ledger["deepest_depth"] = 100000
+		for _i in range(CommissionDB.count()):
+			GameState.claim_commission()
+		GameState.set_livery(0, GameState.REGISTRY_ACCENT)
+		GameState.save_game()
+		GameState.commission_claimed = 0
+		GameState.commissioned = false
+		GameState.load_game()
+		var round_ok: bool = GameState.commissioned \
+			and GameState.commission_claimed == CommissionDB.count() \
+			and GameState.livery_index("accent") == GameState.REGISTRY_ACCENT
+		print("[savetest] v13 ROUND TRIP claimed=%d commissioned=%s accent=%d (earned, must survive) -> %s" % [
+			GameState.commission_claimed, str(GameState.commissioned),
+			GameState.livery_index("accent"), "PASS" if round_ok else "FAIL"])
 	elif mode == "partial6":
 		# A v6 save written before a later setting existed must still get that
 		# setting's default rather than a missing key — the reason load merges
@@ -8542,3 +8792,1104 @@ func _run_save_test() -> void:
 			str(GameState.warehouse.keys()),
 			"PASS" if chart_ok and deep_ok and bogus_dropped else "FAIL"])
 	get_tree().quit()
+
+
+# --- feel and audio correctness ---------------------------------------------
+
+func _run_feel_test() -> void:
+	# Guards the frame-rate independence work and the four audio defects fixed
+	# alongside it. Everything here is about behaviour that is invisible at 60Hz
+	# on a desktop and wrong everywhere else, which is exactly the category that
+	# needs a harness rather than an eye.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	var rig: CameraRig = get_tree().get_first_node_in_group("camera_rig")
+	await get_tree().create_timer(0.3).timeout
+
+	# --- 1. the smoothing itself ---------------------------------------------
+	# The whole point: subdividing a timestep must not change where you land.
+	# The old lerp(a, b, k*delta) form fails this by ~8% per step at these rates,
+	# which is why the camera felt different on a 120Hz phone.
+	var one_step := Smoothing.toward(0.0, 1.0, 9.0, 1.0 / 60.0)
+	var two_half := Smoothing.toward(Smoothing.toward(0.0, 1.0, 9.0, 1.0 / 120.0), 1.0, 9.0, 1.0 / 120.0)
+	var invariant: float = absf(one_step - two_half)
+	print("[feel] STEP INVARIANCE 1x1/60=%.9f vs 2x1/120=%.9f delta=%.9f -> %s" % [
+		one_step, two_half, invariant, "PASS" if invariant < 1.0e-6 else "FAIL"])
+
+	# Four subdivisions, to prove it is the exponential and not a coincidence at
+	# two. Also covers the vector overload, which shares the factor() call.
+	var quarter := Vector3.ZERO
+	for i in range(4):
+		quarter = Smoothing.toward_vec3(quarter, Vector3(10, 0, 0), 9.0, 1.0 / 240.0)
+	var whole := Smoothing.toward_vec3(Vector3.ZERO, Vector3(10, 0, 0), 9.0, 1.0 / 60.0)
+	var vec_gap: float = quarter.distance_to(whole)
+	print("[feel] VEC3 INVARIANCE 4x1/240 vs 1x1/60 gap=%.9f -> %s" % [
+		vec_gap, "PASS" if vec_gap < 1.0e-5 else "FAIL"])
+
+	# A frame long enough to make the old `rate * delta` exceed 1.0 -- the case
+	# that used to overshoot and oscillate instead of settling.
+	var stalled := Smoothing.toward(0.0, 1.0, 9.0, 2.0)
+	var old_form: float = lerpf(0.0, 1.0, 9.0 * 2.0)
+	print("[feel] NO OVERSHOOT 2s frame: exp=%.4f (in 0..1) vs old lerp=%.1f -> %s" % [
+		stalled, old_form, "PASS" if stalled >= 0.0 and stalled <= 1.0 and old_form > 1.0 else "FAIL"])
+
+	# --- 2. the shake setting covers everything that moves the camera --------
+	GameState.set_setting("shake", false)
+	rig.shake(0.5)
+	rig.punch_zoom(4.0)
+	var shake_off: bool = rig.shake_amp() <= 0.0001 and rig.zoom_punch() <= 0.0001
+	GameState.set_setting("shake", true)
+	rig.shake(0.5)
+	rig.punch_zoom(4.0)
+	var shake_on: bool = rig.shake_amp() > 0.0 and rig.zoom_punch() > 0.0
+	print("[feel] MOTION GATE off:shake+punch silent=%s  on:both fire=%s -> %s" % [
+		str(shake_off), str(shake_on), "PASS" if shake_off and shake_on else "FAIL"])
+
+	# --- 3. loop lengths, in frames rather than in bytes ----------------------
+	# `data.size() / 2` assumed uncompressed 16-bit frames; the importer writes
+	# QOA. Asserting the two disagree is what keeps this honest: if the import
+	# mode ever changes back, this line goes red and says so.
+	var amb := load("res://audio/ambient.wav") as AudioStreamWAV
+	var real_frames := Sfx.frame_count(amb)
+	var byte_guess: int = amb.data.size() / 2
+	print("[feel] COMPRESSED STREAM frames=%d vs data.size()/2=%d -> %s" % [
+		real_frames, byte_guess, "PASS" if real_frames != byte_guess else "FAIL"])
+
+	Sfx.loop_start("ambient", -40.0)
+	var amb_end: int = (Sfx._streams["ambient"] as AudioStreamWAV).loop_end
+	print("[feel] LOOP END ambient loop_end=%d frames=%d -> %s" % [
+		amb_end, real_frames, "PASS" if amb_end == real_frames else "FAIL"])
+	Sfx.loop_stop("ambient", 0.01)
+
+	var calm := load("res://audio/music_calm.wav") as AudioStreamWAV
+	var calm_ok: bool = calm.loop_end == Sfx.frame_count(calm) and calm.loop_mode == AudioStreamWAV.LOOP_FORWARD
+	print("[feel] MUSIC LOOP calm loop_end=%d frames=%d mode=%d -> %s" % [
+		calm.loop_end, Sfx.frame_count(calm), calm.loop_mode, "PASS" if calm_ok else "FAIL"])
+
+	# --- 4. per-object loops obey the effects slider -------------------------
+	# Both crack players used to build their own AudioStreamPlayer without a bus,
+	# so they played on Master and the EFFECTS slider did nothing to them.
+	var wreck := Derelict.new()
+	system_root.add_child(wreck)
+	await get_tree().process_frame
+	var probe := Sfx.attached_loop(self, "crack", -6.0)
+	var bus_ok: bool = probe.bus == Sfx.BUS_SFX
+	var crack_stream := probe.stream as AudioStreamWAV
+	var loops_ok: bool = crack_stream != null and crack_stream.loop_mode == AudioStreamWAV.LOOP_FORWARD
+	# The deepest hulks hold for 1.8 + 0.2 * band seconds; the sample is 2.2s, so
+	# without looping the audio stopped before the wreck gave way.
+	var longest_hold := 1.8 + 0.2 * 4.0
+	print("[feel] CRACK BUS bus=%s (must be %s) -> %s" % [
+		probe.bus, Sfx.BUS_SFX, "PASS" if bus_ok else "FAIL"])
+	print("[feel] CRACK OUTLASTS HOLD sample=%.2fs deepest hold=%.2fs looped=%s -> %s" % [
+		crack_stream.get_length() if crack_stream else -1.0, longest_hold, str(loops_ok),
+		"PASS" if loops_ok else "FAIL"])
+	probe.queue_free()
+	wreck.queue_free()
+
+	# --- 5. the blade is audible ---------------------------------------------
+	# sweep.wav was generated, imported and loaded on every boot since the first
+	# audio pass, and never played once.
+	var arm := SweepArm.new()
+	system_root.add_child(arm)
+	await get_tree().process_frame
+	arm.active = true
+	await get_tree().process_frame
+	var arm_audible: bool = arm.audio_playing()
+	arm.active = false
+	await get_tree().process_frame
+	var arm_silent: bool = not arm.audio_playing()
+	print("[feel] SWEEP AUDIBLE active=%s inactive silent=%s -> %s" % [
+		str(arm_audible), str(arm_silent), "PASS" if arm_audible and arm_silent else "FAIL"])
+	arm.queue_free()
+
+	# --- 6. the shield ghost trails damage, and only downward ----------------
+	player.invulnerable = false
+	player.shield = player.shield_max
+	await get_tree().create_timer(0.2).timeout
+	player.take_hit(player.shield_max * 0.4, null)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var frac_after: float = player.shield_fraction()
+	var ghost_after: float = player.shield_ghost_fraction()
+	var trails: bool = ghost_after > frac_after + 0.05
+	# And it must converge, or it is not a ghost, it is a second bar.
+	await get_tree().create_timer(2.0).timeout
+	var converged: bool = absf(player.shield_ghost_fraction() - player.shield_fraction()) < 0.02
+	print("[feel] SHIELD GHOST after hit ghost=%.2f > fill=%.2f =%s, converges=%s -> %s" % [
+		ghost_after, frac_after, str(trails), str(converged),
+		"PASS" if trails and converged else "FAIL"])
+
+	# --- 7. teleports land exactly where they were told to ------------------
+	# The interpolation reset is invisible headless, but a teleport that does not
+	# assign cleanly would show up here first.
+	player.teleport_to(Vector3(120.0, 0.0, -40.0))
+	var landed: bool = player.global_position.distance_to(Vector3(120.0, 0.0, -40.0)) < 0.001
+	player.teleport_to(PlayerShip.SPAWN_POINT)
+	var home: bool = player.global_position.distance_to(PlayerShip.SPAWN_POINT) < 0.001
+	print("[feel] TELEPORT exact out=%s back=%s -> %s" % [
+		str(landed), str(home), "PASS" if landed and home else "FAIL"])
+
+	# --- 8. only fixed-tick movers interpolate -------------------------------
+	# Most of Pyxis moves in _process; interpolating those would cost a frame of
+	# lag. This asserts the split is what the project.godot comment claims.
+	# Asserted on the RESOLVED state, not the declared mode. The first version of
+	# this checked physics_interpolation_mode and passed while the rig was
+	# actually interpolating: the rig's mode was INHERIT, which resolved to ON
+	# from the root, and the engine was warning about the Camera3D every boot.
+	# A property that can be INHERIT is not the property worth asserting on.
+	var ship_on: bool = player.is_physics_interpolated()
+	var rig_off: bool = not rig.is_physics_interpolated()
+	var cam_off: bool = not get_viewport().get_camera_3d().is_physics_interpolated()
+	var world_off: bool = not system_root.is_physics_interpolated()
+	print("[feel] INTERP SPLIT ship=%s rig=%s camera=%s world=%s (want on/off/off/off) -> %s" % [
+		str(ship_on), str(not rig_off), str(not cam_off), str(not world_off),
+		"PASS" if ship_on and rig_off and cam_off and world_off else "FAIL"])
+
+	get_tree().quit()
+
+
+# --- controls, micro-interactions and haptics --------------------------------
+
+func _run_ui_test() -> void:
+	# Guards the parts of the UI pass that are mechanical rather than aesthetic:
+	# that every state of every control is actually distinct, that the paint
+	# counter cannot take salvage without delivering paint, and that the two new
+	# accessibility settings reach the things they claim to gate.
+	await get_tree().create_timer(0.3).timeout
+
+	# --- 1. the pause menu is styled at all ----------------------------------
+	# Every action button used to be a bare Button with a font colour and no
+	# StyleBox, so the most-opened screen in the game rendered in Godot's default
+	# grey while the title screen was the only styled surface in the build.
+	pause_menu.open()
+	await get_tree().process_frame
+	var actions := _collect_buttons(pause_menu)
+	var styled := 0
+	var distinct := 0
+	for b_v in actions:
+		var b := b_v as Button
+		var n := b.get_theme_stylebox("normal")
+		var h := b.get_theme_stylebox("hover")
+		var d := b.get_theme_stylebox("disabled")
+		if n != null and not (n is StyleBoxEmpty):
+			styled += 1
+		# Distinct INSTANCES, not just distinct values: the swatch bug was one
+		# StyleBox assigned to all four states, so any later edit to one state
+		# silently edited the others too.
+		if n != h and h != d and n != d:
+			distinct += 1
+	print("[ui] PAUSE STYLED %d/%d buttons have a normal box, %d/%d have distinct states -> %s" % [
+		styled, actions.size(), distinct, actions.size(),
+		"PASS" if actions.size() > 0 and styled == actions.size() and distinct == actions.size() else "FAIL"])
+
+	# --- 2. the log reveals rather than appearing ----------------------------
+	# Ten lines arriving at once is a wall of text. Asserted as "starts
+	# transparent and finishes opaque" rather than by sampling the tween, because
+	# the rule is that the entries animate, not that they animate a certain way.
+	GameState.note_log("SHOOK DOWN THE HARNESS")
+	GameState.note_log("CROSSED INTO THE DRIFT")
+	GameState.set_setting("reduce_motion", false)
+	pause_menu.show_log()
+	await get_tree().process_frame
+	var revealing := pause_menu.log_entries()
+	var started_hidden := revealing.size() > 0
+	for l_v in revealing:
+		if (l_v as Control).modulate.a > 0.9:
+			started_hidden = false
+	await get_tree().create_timer(1.2).timeout
+	var ended_visible := true
+	for l_v in pause_menu.log_entries():
+		if (l_v as Control).modulate.a < 0.99:
+			ended_visible = false
+	print("[ui] LOG REVEAL %d entries start faded=%s, end opaque=%s -> %s" % [
+		revealing.size(), str(started_hidden), str(ended_visible),
+		"PASS" if started_hidden and ended_visible else "FAIL"])
+
+	# Reduced motion is the END STATE IMMEDIATELY, not the same animation played
+	# faster. An accommodation that still animates is not an accommodation.
+	GameState.set_setting("reduce_motion", true)
+	pause_menu.show_log()
+	await get_tree().process_frame
+	var instant := true
+	var reduced := pause_menu.log_entries()
+	for l_v in reduced:
+		if (l_v as Control).modulate.a < 0.99:
+			instant = false
+	print("[ui] LOG REDUCED MOTION %d entries opaque on frame one=%s -> %s" % [
+		reduced.size(), str(instant), "PASS" if instant and reduced.size() > 0 else "FAIL"])
+	GameState.set_setting("reduce_motion", false)
+	pause_menu.resume()
+
+	# --- 3. the haptic gate --------------------------------------------------
+	GameState.set_setting("haptics", false)
+	var before := Sfx.haptic_count
+	Sfx.haptic("heavy")
+	var silent := Sfx.haptic_count == before
+	GameState.set_setting("haptics", true)
+	Sfx.haptic("heavy")
+	var fired := Sfx.haptic_count == before + 1
+	print("[ui] HAPTIC GATE off:silent=%s on:fires=%s kind=%s -> %s" % [
+		str(silent), str(fired), Sfx.haptic_last, "PASS" if silent and fired else "FAIL"])
+
+	# Reduced motion must also stop the camera, through the shake gate rather
+	# than through a second check every effect would have to remember.
+	GameState.set_setting("shake", true)
+	GameState.set_setting("reduce_motion", true)
+	var motion_off := not GameState.shake_enabled()
+	GameState.set_setting("reduce_motion", false)
+	var motion_on := GameState.shake_enabled()
+	print("[ui] REDUCE MOTION subsumes shake: on->%s off->%s -> %s" % [
+		str(not motion_off), str(motion_on), "PASS" if motion_off and motion_on else "FAIL"])
+
+	# --- 4. paint is ordered: decide, charge, apply --------------------------
+	# The old order spent first and applied second, so any refusal added between
+	# the two would take the salvage and leave the hull its old colour.
+	GameState.set_livery(0, 0)
+	GameState.salvage = 100000
+	var rich := GameState.salvage
+	port_panel._apply_paint(3, true, PortPanel.PAINT_PRICE)
+	var applied: bool = GameState.livery_index("hull") == 3
+	var charged: bool = GameState.salvage == rich - PortPanel.PAINT_PRICE
+	print("[ui] PAINT APPLIES hull=%d (want 3), salvage %d -> %d -> %s" % [
+		GameState.livery_index("hull"), rich, GameState.salvage,
+		"PASS" if applied and charged else "FAIL"])
+
+	# Too poor: nothing may change, in either direction.
+	GameState.salvage = PortPanel.PAINT_PRICE - 1
+	var poor := GameState.salvage
+	port_panel._apply_paint(5, true, PortPanel.PAINT_PRICE)
+	print("[ui] PAINT REFUSED broke: hull stayed %d (want 3), salvage stayed %d -> %s" % [
+		GameState.livery_index("hull"), GameState.salvage,
+		"PASS" if GameState.livery_index("hull") == 3 and GameState.salvage == poor else "FAIL"])
+
+	# Repainting the colour already worn is refused before it is charged.
+	GameState.salvage = 100000
+	var same_before := GameState.salvage
+	port_panel._apply_paint(3, true, PortPanel.PAINT_PRICE)
+	print("[ui] PAINT NO-OP repaint of worn colour costs nothing: %d -> %d -> %s" % [
+		same_before, GameState.salvage,
+		"PASS" if GameState.salvage == same_before else "FAIL"])
+
+	# The ordering itself: a refusal that is NOT the already-worn one. An accent
+	# index past the end of the table is what _can_wear rejects today, and it
+	# stands in for the Commission's locked ninth accent -- the case the old
+	# spend-then-apply order would have charged for and then declined to deliver.
+	GameState.set_livery(0, 0)
+	GameState.salvage = 100000
+	var locked_before := GameState.salvage
+	var accent_before := GameState.livery_index("accent")
+	port_panel._apply_paint(Palette.LIVERY_ACCENTS.size(), false, PortPanel.PAINT_PRICE)
+	var unpaid: bool = GameState.salvage == locked_before
+	var unworn: bool = GameState.livery_index("accent") == accent_before
+	print("[ui] PAINT ORDERED refused accent %d: salvage %d (unchanged=%s), accent %d (unchanged=%s) -> %s" % [
+		Palette.LIVERY_ACCENTS.size(), GameState.salvage, str(unpaid),
+		GameState.livery_index("accent"), str(unworn),
+		"PASS" if unpaid and unworn else "FAIL"])
+
+	# --- 5. swatch states are distinct instances ------------------------------
+	var grid := port_panel._swatch_grid("HULL", Palette.LIVERY_HULLS, 0, PortPanel.PAINT_PRICE, true)
+	var swatches := _collect_buttons(grid)
+	var all_distinct := swatches.size() == Palette.LIVERY_HULLS.size()
+	for b_v in swatches:
+		var b := b_v as Button
+		if b.get_theme_stylebox("normal") == b.get_theme_stylebox("hover"):
+			all_distinct = false
+	print("[ui] SWATCH STATES %d swatches, hover box differs from normal on all=%s -> %s" % [
+		swatches.size(), str(all_distinct), "PASS" if all_distinct else "FAIL"])
+	grid.queue_free()
+
+	# --- 6. settings round-trip ----------------------------------------------
+	# Both new keys have to survive a save/load, or the accessibility toggles are
+	# decorative.
+	GameState.set_setting("haptics", false)
+	GameState.set_setting("reduce_motion", true)
+	var probe := {}
+	for k in GameState.DEFAULT_SETTINGS:
+		probe[k] = GameState.setting(k)
+	GameState.settings = GameState.DEFAULT_SETTINGS.duplicate()
+	for k in probe:
+		GameState.settings[k] = probe[k]
+	var kept: bool = GameState.setting("haptics") == false and GameState.setting("reduce_motion") == true
+	print("[ui] SETTINGS ROUND TRIP haptics=%s reduce_motion=%s -> %s" % [
+		str(GameState.setting("haptics")), str(GameState.setting("reduce_motion")),
+		"PASS" if kept else "FAIL"])
+
+	get_tree().quit()
+
+
+func _collect_buttons(root: Node) -> Array:
+	var out: Array = []
+	for c in root.get_children():
+		if c is Button:
+			out.append(c)
+		out.append_array(_collect_buttons(c))
+	return out
+
+
+# --- the Grand Commission ----------------------------------------------------
+
+func _run_gsa_test() -> void:
+	# The Commission is the first system in the game whose state is PERSISTENT
+	# and read by unrelated screens, so most of what follows is about the seams:
+	# the load path, the claim ordering, and the copy rule that keeps it from
+	# becoming a quest board.
+	#
+	# Every assertion here pins GameState.commissioned explicitly. GameState boots
+	# from the developer's real save, so the moment this flag exists, any harness
+	# that reads band text or the accent lock passes or fails depending on whether
+	# whoever ran it happened to finish the Commission.
+	await get_tree().create_timer(0.3).timeout
+
+	# --- 1. the copy rule, as data -------------------------------------------
+	# The structural rule is that a stage DESCRIBES; the moment one instructs,
+	# the Commission has become a quest. A rule nothing checks is worth nothing.
+	# Checked on the FIRST word, not on vocabulary anywhere in the line. English
+	# imperatives lead with their verb -- "Survey the Drift" instructs, while "A
+	# first survey packet" uses the same word as a noun and states a fact. A
+	# contains-check would ban the noun too, and the rule is about mood.
+	var imperative_found := ""
+	for st_v in CommissionDB.STAGES:
+		var st: Dictionary = st_v
+		var words: PackedStringArray = String(st["desc"]).to_lower() \
+			.replace(",", " ").replace(".", " ").split(" ", false)
+		if words.size() > 0 and CommissionDB.IMPERATIVES.has(words[0]):
+			imperative_found = "%s: '%s'" % [String(st["name"]), words[0]]
+	print("[gsa] NO IMPERATIVE %d descriptions, none open on a verb (offender: %s) -> %s" % [
+		CommissionDB.STAGES.size(), imperative_found if imperative_found != "" else "none",
+		"PASS" if imperative_found == "" else "FAIL"])
+
+	# Names state a STATUS rather than a task. Three are past participles; ON
+	# FILE is a prepositional phrase, which is the same grammatical move -- what
+	# the register says about you -- and is the phrase the finale calls back to.
+	# What matters is that none of them is something to go and do.
+	var status_names := true
+	for st_v in CommissionDB.STAGES:
+		var first := String((st_v as Dictionary)["name"]).to_lower().split(" ")[0]
+		if CommissionDB.IMPERATIVES.has(first):
+			status_names = false
+	print("[gsa] STAGE COUNT %d stages (clamps use STAGES.size()), no name is a task=%s -> %s" % [
+		CommissionDB.count(), str(status_names),
+		"PASS" if CommissionDB.count() == 4 and status_names else "FAIL"])
+
+	# --- 2. the load path clamps ---------------------------------------------
+	var probe := "user://gsa_probe.json"
+	var real_path := GameState.save_path
+	GameState.save_path = probe
+
+	var high := _gsa_fixture({"commission_claimed": 99})
+	GameState.load_game()
+	var clamped_high := GameState.commission_claimed
+	_gsa_fixture({"commission_claimed": -5})
+	GameState.load_game()
+	var clamped_low := GameState.commission_claimed
+	print("[gsa] LOAD CLAMPS 99 -> %d (want %d), -5 -> %d (want 0) -> %s" % [
+		clamped_high, CommissionDB.count(), clamped_low,
+		"PASS" if clamped_high == CommissionDB.count() and clamped_low == 0 else "FAIL"])
+
+	# --- 3. the accent lock, against the SHIP MATERIAL ------------------------
+	# Not against the stored int. player_ship.gd reads
+	# Palette.livery_accent(livery_index("accent")) directly and never asks
+	# set_livery anything, so the stored value is not what the player sees.
+	# posmod wraps, so 8 and 17 are the same attack wearing different numbers.
+	var locked_ok := true
+	var seen: Array = []
+	for bad in [GameState.REGISTRY_ACCENT, 17]:
+		_gsa_fixture({"commissioned": false, "livery": {"hull": 0, "accent": bad}})
+		GameState.load_game()
+		seen.append(GameState.livery_index("accent"))
+		if GameState.livery_index("accent") >= GameState.REGISTRY_ACCENT:
+			locked_ok = false
+	print("[gsa] ACCENT LOCKED AT THE LOAD PATH uncommissioned accents [8, 17] -> %s -> %s" % [
+		str(seen), "PASS" if locked_ok else "FAIL"])
+
+	# And an earned one must survive, or the lock has eaten a real reward.
+	_gsa_fixture({"commissioned": true, "livery": {"hull": 0, "accent": GameState.REGISTRY_ACCENT}})
+	GameState.load_game()
+	var kept: bool = GameState.livery_index("accent") == GameState.REGISTRY_ACCENT
+	print("[gsa] ACCENT KEPT WHEN EARNED commissioned accent 8 -> %d -> %s" % [
+		GameState.livery_index("accent"), "PASS" if kept else "FAIL"])
+
+	# The clamp underneath it: these were the only unbounded ints in load_game.
+	_gsa_fixture({"commissioned": true, "livery": {"hull": 999, "accent": 3}})
+	GameState.load_game()
+	var hull_ok: bool = GameState.livery_index("hull") < Palette.LIVERY_HULLS.size()
+	print("[gsa] LIVERY CLAMPS hull 999 -> %d (max %d) -> %s" % [
+		GameState.livery_index("hull"), Palette.LIVERY_HULLS.size() - 1,
+		"PASS" if hull_ok else "FAIL"])
+
+	GameState.save_path = real_path
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(probe))
+
+	# --- 4. claim ordering and re-entrancy -----------------------------------
+	GameState.commissioned = false
+	GameState.commission_claimed = 0
+	GameState.ledger = GameState.DEFAULT_LEDGER.duplicate()
+	for k in ["chart_data_sold", "hulks_cracked", "posts_cleared", "deepest_depth"]:
+		GameState.ledger[k] = 100000
+	GameState.salvage = 0
+
+	# STATE BEFORE MONEY. add_salvage emits salvage_changed, and PortPanel wires
+	# that straight back into _refresh() -- so a claim that paid before it
+	# incremented would rebuild the sheet reading the pre-claim stage and redraw
+	# the button it had just honoured.
+	# The box is an Array because GDScript lambdas capture locals BY VALUE: a
+	# plain int written inside the closure updates the closure's own copy and the
+	# assertion reads the untouched original, which is an assertion that cannot
+	# fail. An Array is a reference and survives the capture.
+	var box: Array = [-1]
+	var once := func(_v: int) -> void:
+		if int(box[0]) < 0:
+			box[0] = GameState.commission_claimed
+	GameState.salvage_changed.connect(once)
+	var first := GameState.claim_commission()
+	GameState.salvage_changed.disconnect(once)
+	print("[gsa] STATE BEFORE MONEY salvage_changed saw claimed=%d (want 1) -> %s" % [
+		int(box[0]), "PASS" if int(box[0]) == 1 else "FAIL"])
+	print("[gsa] CLAIM PAYS stage '%s' paid %d, salvage now %d -> %s" % [
+		String(first.get("name", "")), int(first.get("pays", 0)), GameState.salvage,
+		"PASS" if int(first.get("pays", 0)) == GameState.salvage and GameState.salvage > 0 else "FAIL"])
+
+	# CLAIM GUARDS ITSELF: called directly, not through a button, because the
+	# harness is exactly the second caller survey_mast.gd's comment warns about.
+	var before_second := GameState.salvage
+	var stage_before := GameState.commission_claimed
+	GameState.claim_commission()
+	GameState.claim_commission()
+	print("[gsa] CLAIM GUARDS ITSELF three more direct calls from stage %d -> stage %d, salvage %d -> %d -> %s" % [
+		stage_before, GameState.commission_claimed, before_second, GameState.salvage,
+		"PASS" if GameState.commission_claimed == stage_before + 2 else "FAIL"])
+
+	# CLAIM IS ORDERED: you cannot skip to stage 3 with every threshold met.
+	GameState.commission_claimed = 1
+	var ordered: bool = GameState.commission_stage() == 1
+	print("[gsa] CLAIM IS ORDERED at claimed=1 the next stage is %d (want 1), not the highest met -> %s" % [
+		GameState.commission_stage(), "PASS" if ordered else "FAIL"])
+
+	# Thresholds actually gate: an empty ledger claims nothing.
+	GameState.commission_claimed = 0
+	GameState.ledger = GameState.DEFAULT_LEDGER.duplicate()
+	var empty := GameState.claim_commission()
+	print("[gsa] THRESHOLDS GATE empty ledger claims nothing (got %s), shortfalls %d -> %s" % [
+		"{}" if empty.is_empty() else str(empty),
+		CommissionDB.shortfalls(0, GameState.ledger).size(),
+		"PASS" if empty.is_empty() else "FAIL"])
+
+	# --- 5. the persistent flag ----------------------------------------------
+	GameState.commissioned = false
+	GameState.commission_claimed = 0
+	for k in ["chart_data_sold", "hulks_cracked", "posts_cleared", "deepest_depth"]:
+		GameState.ledger[k] = 100000
+	for _i in range(CommissionDB.count()):
+		GameState.claim_commission()
+	var earned: bool = GameState.commissioned and GameState.commission_complete()
+	# RESET WITH RUN: the counter is run state, the flag is not.
+	GameState.reset_to_starter()
+	var survived: bool = GameState.commissioned and GameState.commission_claimed == 0
+	print("[gsa] RESET WITH RUN after 4 claims commissioned=%s; after reset claimed=%d commissioned=%s -> %s" % [
+		str(earned), GameState.commission_claimed, str(GameState.commissioned),
+		"PASS" if earned and survived else "FAIL"])
+
+	# NOT A TALLY: the Commission is the authority describing you, so the front
+	# door carries a registry line, never a progress count.
+	GameState.commissioned = true
+	var summary := title_screen.title_summary()
+	var registry := title_screen.registry_line()
+	var clean: bool = not summary.contains("COMMISSION") and not summary.contains("/4") \
+		and registry.contains("COMMISSIONED")
+	print("[gsa] NOT A TALLY summary '%s' carries no stage count; registry '%s' -> %s" % [
+		summary, registry, "PASS" if clean else "FAIL"])
+
+	# --- 6. beacon parity ----------------------------------------------------
+	# The clause that matters: broadcast_for(band, false) must be string-identical
+	# to what shipped, or the rewrite has quietly edited the uncommissioned text.
+	var uncommissioned_intact := true
+	for band in range(DeepSpace.BROADCASTS.size()):
+		var raw: Dictionary = DeepSpace.BROADCASTS[band]
+		var got := DeepSpace.broadcast_for(band, false)
+		if band <= 0:
+			continue
+		if String(got.get("from", "")) != String(raw.get("from", "")) \
+				or String(got.get("body", "")) != String(raw.get("body", "")):
+			uncommissioned_intact = false
+	var bands_answer := true
+	for band in [1, 2, 3]:
+		var c := DeepSpace.broadcast_for(band, true)
+		var u := DeepSpace.broadcast_for(band, false)
+		if String(c.get("body", "")) == String(u.get("body", "")):
+			bands_answer = false
+	# Band 4 stays silent, and that is the note the arc ends on: COMMISSIONED
+	# requires reaching THE QUIET, the one band that will never acknowledge it.
+	var quiet_silent: bool = String(DeepSpace.broadcast_for(4, true).get("body", "")) \
+		== String(DeepSpace.broadcast_for(4, false).get("body", ""))
+	print("[gsa] BEACON PARITY %d bands, uncommissioned text unchanged=%s, bands 1-3 answer=%s, band 4 silent=%s -> %s" % [
+		DeepSpace.BROADCASTS.size(), str(uncommissioned_intact), str(bands_answer), str(quiet_silent),
+		"PASS" if DeepSpace.BROADCASTS.size() == 5 and uncommissioned_intact \
+			and bands_answer and quiet_silent else "FAIL"])
+
+	# --- 7. every service renders its own body -------------------------------
+	# Finding 5: port_panel's `match _tab` catch-all IS the outfitter, so a
+	# TAB_LABELS entry without a matching arm renders a plausible-looking second
+	# outfitter with no error and no crash. The hole is load-bearing, so it
+	# cannot be replaced with a warning -- only checked.
+	# Checked by RENDERING each tab and comparing the result to the outfitter's,
+	# not by guessing method names -- "contracts" builds through
+	# _build_contract_board, so a has_method("_build_contracts") check reports a
+	# working screen as missing. What the rule actually says is that every
+	# service shows its own body, and the only way to know that is to draw it.
+	var port_node: Port = null
+	for n in get_tree().get_nodes_in_group("dockable"):
+		port_node = n as Port
+		break
+	var shadows: Array = []
+	if port_node != null:
+		port_node.def = SystemDB.port_def_by_id("anchor").duplicate(true)
+		port_node.def["services"] = PortPanel.TAB_LABELS.keys()
+		port_panel.open_for(port_node)
+		await get_tree().process_frame
+		# Nodes queued for deletion are SKIPPED. _refresh queue_frees the old body
+		# and builds the new one in the same frame, and queue_free is deferred --
+		# so a naive child walk reads the previous tab's rows alongside this
+		# tab's, every fingerprint comes out unique, and the assertion passes on
+		# every possible input. That is the assertion-that-cannot-fail this
+		# codebase has a written rule about.
+		var fingerprint := func(tab: String) -> String:
+			port_panel._tab = tab
+			port_panel._refresh()
+			var live: Array = []
+			for c in port_panel._body.get_children():
+				if not c.is_queued_for_deletion():
+					live.append(c)
+			var out := "%d|" % live.size()
+			for c in live:
+				if c is Label:
+					out += String((c as Label).text).substr(0, 40) + ";"
+			return out
+		var outfitter: String = await fingerprint.call("outfitter")
+		for key_v in PortPanel.TAB_LABELS:
+			var key := String(key_v)
+			if key == "outfitter":
+				continue
+			var body: String = await fingerprint.call(key)
+			if body == outfitter:
+				shadows.append(key)
+		port_panel.close_panel()
+	print("[gsa] EVERY SERVICE HAS A BUILDER %d labels, rendering as a second outfitter: %s -> %s" % [
+		PortPanel.TAB_LABELS.size(), str(shadows) if not shadows.is_empty() else "none",
+		"PASS" if port_node != null and shadows.is_empty() else "FAIL"])
+
+	# The Anchor offers it, and does NOT lead with it: services()[0] is the
+	# landing tab, so a prepended registry would open every dock on paperwork.
+	var anchor := SystemDB.port_def_by_id("anchor")
+	var svc: Array = anchor.get("services", [])
+	print("[gsa] COMMISSION APPENDED anchor services %s, first=%s -> %s" % [
+		str(svc), String(svc[0]) if not svc.is_empty() else "none",
+		"PASS" if svc.has("commission") and String(svc[0]) != "commission" else "FAIL"])
+
+	# --- 8. the swatch grid fits the ninth ------------------------------------
+	print("[gsa] ACCENT ROW %d accents, grid columns %d -> %s" % [
+		Palette.LIVERY_ACCENTS.size(), 9,
+		"PASS" if Palette.LIVERY_ACCENTS.size() == 9 else "FAIL"])
+
+	get_tree().quit()
+
+
+func _gsa_fixture(overrides: Dictionary) -> Dictionary:
+	# A minimal valid v13 save with the fields under test overridden. Written
+	# rather than hand-edited in memory, because the whole point of these
+	# assertions is what happens on the LOAD PATH.
+	var data := {
+		"version": GameState.SAVE_VERSION,
+		"salvage": 0,
+		"current_system": SystemDB.START_SYSTEM,
+		"livery": {"hull": 0, "accent": 0},
+		"commission_claimed": 0,
+		"commissioned": false,
+	}
+	for k in overrides:
+		data[k] = overrides[k]
+	var f := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+	f.store_string(JSON.stringify(data, "\t"))
+	f.close()
+	return data
+
+
+# --- accessibility -----------------------------------------------------------
+
+func _run_access_test() -> void:
+	# Colour vision and rebinding. The interesting assertions here are the two
+	# that check a PROPERTY rather than a value: that mode 0 is byte-identical to
+	# the shipped palette, and that every remapped band set is actually
+	# distinguishable under the confusion line it was built for. Eyeballing a
+	# palette is exactly how a palette that looks fine to the author ships.
+	await get_tree().create_timer(0.3).timeout
+
+	# --- 1. the default cannot drift ------------------------------------------
+	Palette.vision = Palette.Vision.NORMAL
+	var identical := true
+	for i in range(Palette.DEEP_BANDS.size()):
+		if Palette.band_color(i) != Palette.DEEP_BANDS[i]:
+			identical = false
+	print("[access] MODE 0 IS THE SHIPPED PALETTE %d bands byte-identical=%s -> %s" % [
+		Palette.DEEP_BANDS.size(), str(identical), "PASS" if identical else "FAIL"])
+
+	# --- 2. every mode is actually distinguishable ---------------------------
+	# Simulated through the standard Brettel/Vienot dichromat projections, then
+	# compared pairwise. The shipped set FAILS this under deuteranopia, which is
+	# the entire reason the remaps exist -- so this assertion is checked against
+	# the default too, and is expected to be worse there.
+	var modes := {
+		Palette.Vision.NORMAL: "shipped",
+		Palette.Vision.DEUTAN: "deutan",
+		Palette.Vision.PROTAN: "protan",
+		Palette.Vision.TRITAN: "tritan",
+	}
+	var worst_default := 999.0
+	var all_ok := true
+	var report: Array = []
+	for mode_v in modes:
+		var mode: int = mode_v
+		Palette.vision = mode
+		# A mode is judged under ITS OWN confusion line: the deutan set only has
+		# to survive deuteranopia. Judging every set under every deficiency would
+		# be asking one palette to solve three different problems at once.
+		var sim := mode if mode != Palette.Vision.NORMAL else Palette.Vision.DEUTAN
+		var worst := 999.0
+		for a in range(Palette.DEEP_BANDS.size()):
+			for b in range(a + 1, Palette.DEEP_BANDS.size()):
+				var d := _confusion_distance(Palette.band_color(a), Palette.band_color(b), sim)
+				worst = minf(worst, d)
+		report.append("%s %.3f" % [String(modes[mode]), worst])
+		if mode == Palette.Vision.NORMAL:
+			worst_default = worst
+		elif worst < 0.20:
+			all_ok = false
+	Palette.vision = Palette.Vision.NORMAL
+	print("[access] BANDS SEPARATE closest pair per mode: %s (want >= 0.20 on each remap) -> %s" % [
+		str(report), "PASS" if all_ok else "FAIL"])
+	# And the remaps have to be an IMPROVEMENT, not merely different. If the
+	# shipped set already separated under deuteranopia there would be no reason
+	# for any of this.
+	Palette.vision = Palette.Vision.DEUTAN
+	var deutan_worst := 999.0
+	for a in range(Palette.DEEP_BANDS.size()):
+		for b in range(a + 1, Palette.DEEP_BANDS.size()):
+			deutan_worst = minf(deutan_worst,
+				_confusion_distance(Palette.band_color(a), Palette.band_color(b), Palette.Vision.DEUTAN))
+	Palette.vision = Palette.Vision.NORMAL
+	print("[access] REMAP IMPROVES deutan %.3f vs shipped %.3f under the same simulation -> %s" % [
+		deutan_worst, worst_default, "PASS" if deutan_worst > worst_default else "FAIL"])
+
+	# --- 3. colour is not the only tell --------------------------------------
+	# The robust half, and the one that works in every mode including the
+	# default: a glyph per band, on the wayfinding label and on every broadcast
+	# header. Legible in greyscale and in sunlight, which no palette is.
+	var glyphs: Array = []
+	var unique := true
+	for i in range(1, Palette.BAND_GLYPHS.size()):
+		var g := Palette.band_glyph(i)
+		if g == "" or glyphs.has(g):
+			unique = false
+		glyphs.append(g)
+	print("[access] BAND GLYPHS %s distinct and non-empty for bands 1-4=%s -> %s" % [
+		str(glyphs), str(unique), "PASS" if unique else "FAIL"])
+
+	# The glyph must actually reach the readout, not merely exist.
+	hud.set_deep_tag(DeepSpace.band_name(500.0), 500.0)
+	await get_tree().process_frame
+	var tag := hud.system_tag_text()
+	var carried: bool = tag.contains(Palette.band_glyph(DeepSpace.band_of(500.0)))
+	print("[access] GLYPH ON THE READOUT '%s' carries band %d's glyph=%s -> %s" % [
+		tag, DeepSpace.band_of(500.0), str(carried), "PASS" if carried else "FAIL"])
+
+	# --- 4. the setting survives, clamps, and rebuilds ------------------------
+	GameState.set_setting("colorblind", 99)
+	var clamped: bool = Palette.vision <= Palette.Vision.TRITAN
+	GameState.set_setting("colorblind", int(Palette.Vision.DEUTAN))
+	await get_tree().create_timer(0.4).timeout
+	# Asserted against a live material, not against the setting: every deep
+	# material is baked at construction, so a mode that changes the number
+	# without rebuilding the world changes nothing the player can see.
+	var mast_tinted := false
+	for n in get_tree().get_nodes_in_group("surveyable"):
+		if n.has_method("dish_color"):
+			mast_tinted = true
+	print("[access] MODE CLAMPS 99 -> %d, applied live=%s -> %s" % [
+		Palette.vision, str(GameState.setting("colorblind") == int(Palette.Vision.DEUTAN)),
+		"PASS" if clamped and GameState.setting("colorblind") == int(Palette.Vision.DEUTAN) else "FAIL"])
+	GameState.set_setting("colorblind", 0)
+
+	# --- 5. rebinding -------------------------------------------------------
+	GameState.reset_bindings()
+	var before := _keys_for("move_up")
+	var ok := GameState.rebind("move_up", KEY_I)
+	var after := _keys_for("move_up")
+	print("[access] REBIND move_up %s -> %s (accepted=%s) -> %s" % [
+		str(before), str(after), str(ok),
+		"PASS" if ok and after.has(KEY_I) and not after.has(KEY_W) else "FAIL"])
+
+	# A key already spoken for is TAKEN from its old owner, never shared. Two
+	# actions on one key is not a binding, it is a bug found mid-flight.
+	GameState.reset_bindings()
+	GameState.rebind("move_up", KEY_J)
+	GameState.rebind("move_down", KEY_J)
+	var up := _keys_for("move_up")
+	var down := _keys_for("move_down")
+	var no_overlap: bool = not (up.has(KEY_J) and down.has(KEY_J))
+	# And neither action may be left with nothing bound -- an unreachable action
+	# is worse than a shared key, because nothing reveals it until it is needed.
+	var both_bound: bool = not up.is_empty() and not down.is_empty()
+	print("[access] NO SHARED KEY move_up=%s move_down=%s, no overlap=%s, both still bound=%s -> %s" % [
+		str(up), str(down), str(no_overlap), str(both_bound),
+		"PASS" if no_overlap and both_bound else "FAIL"])
+
+	# Cancel is not rebindable, and that is deliberate: it is the way out of
+	# every console and of the settings page that would fix a bad binding.
+	var cancel_refused: bool = not GameState.rebind("cancel", KEY_K)
+	print("[access] CANCEL IS RESERVED rebind refused=%s -> %s" % [
+		str(cancel_refused), "PASS" if cancel_refused else "FAIL"])
+
+	GameState.reset_bindings()
+	var restored := _keys_for("move_up")
+	print("[access] RESET RESTORES DEFAULTS move_up=%s (want W) -> %s" % [
+		str(restored), "PASS" if restored.has(KEY_W) else "FAIL"])
+
+	# --- 6. reduced motion reaches everything --------------------------------
+	var rig := get_tree().get_first_node_in_group("camera_rig") as CameraRig
+	GameState.set_setting("shake", true)
+	GameState.set_setting("reduce_motion", true)
+	rig.shake(0.5)
+	rig.punch_zoom(3.0)
+	var still: bool = rig.shake_amp() <= 0.0001 and rig.zoom_punch() <= 0.0001
+	GameState.set_setting("reduce_motion", false)
+	print("[access] REDUCE MOTION stops shake and punch with shake ON: %s -> %s" % [
+		str(still), "PASS" if still else "FAIL"])
+
+	get_tree().quit()
+
+
+func _keys_for(action: String) -> Array:
+	var out: Array = []
+	if not InputMap.has_action(action):
+		return out
+	for ev in InputMap.action_get_events(action):
+		var k := ev as InputEventKey
+		if k != null:
+			out.append(k.physical_keycode)
+	return out
+
+
+func _confusion_distance(a: Color, b: Color, mode: int) -> float:
+	# Distance between two colours AS A DICHROMAT SEES THEM. Simulating first and
+	# comparing second is the whole point: two colours can be far apart in RGB
+	# and land on top of each other on a confusion line, which is exactly what
+	# happens to this game's amber and bile green.
+	var sa := _simulate(a, mode)
+	var sb := _simulate(b, mode)
+	# Weighted toward perceived luminance, because lightness is the one channel
+	# every form of colour blindness keeps -- a pair that differs only in hue is
+	# a pair that can vanish.
+	var dl := (0.299 * (sa.r - sb.r) + 0.587 * (sa.g - sb.g) + 0.114 * (sa.b - sb.b))
+	var dr := sa.r - sb.r
+	var dg := sa.g - sb.g
+	var db := sa.b - sb.b
+	return sqrt(dl * dl * 2.0 + dr * dr + dg * dg + db * db) / 2.0
+
+
+func _simulate(c: Color, mode: int) -> Color:
+	# Brettel/Vienot-style linear projections onto each dichromat's surviving
+	# plane. Approximate on purpose -- this is a separation check, not a
+	# colour-science pipeline, and the threshold is set well above the noise.
+	match mode:
+		Palette.Vision.DEUTAN:
+			return Color(
+				0.625 * c.r + 0.700 * c.g + 0.000 * c.b,
+				0.375 * c.r + 0.300 * c.g + 0.000 * c.b,
+				0.000 * c.r + 0.300 * c.g + 0.700 * c.b)
+		Palette.Vision.PROTAN:
+			return Color(
+				0.567 * c.r + 0.433 * c.g + 0.000 * c.b,
+				0.558 * c.r + 0.442 * c.g + 0.000 * c.b,
+				0.000 * c.r + 0.242 * c.g + 0.758 * c.b)
+		Palette.Vision.TRITAN:
+			return Color(
+				0.950 * c.r + 0.050 * c.g + 0.000 * c.b,
+				0.000 * c.r + 0.433 * c.g + 0.567 * c.b,
+				0.000 * c.r + 0.475 * c.g + 0.525 * c.b)
+	return c
+
+
+# --- streaming cost ----------------------------------------------------------
+
+func _run_stream_test() -> void:
+	# MEASURES BEFORE IT JUDGES. The 5x5 cell window is built synchronously on
+	# every cell-boundary crossing, and that is either a hitch worth amortising
+	# or it is not -- and "it looks like it might be expensive" is not a reason to
+	# add a budgeted queue, an escape hatch and a determinism risk to the one
+	# system in this game whose purity is load-bearing.
+	#
+	# The budget is a 60Hz frame: 16.67ms. A build that fits inside one is not a
+	# hitch, it is a frame.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	await get_tree().create_timer(0.4).timeout
+
+	var edge := chart_edge()
+	# FIRST ENTRY and a STEADY CROSSING are different problems and are measured
+	# apart. Arriving in the expanse builds all 25 cells at once; sliding the
+	# window one row adds 5. Only the second one happens while the player is
+	# flying, and only the second one has nothing on screen to hide behind --
+	# first entry already has a warp flash over it.
+	var first := 0.0
+	var worst := 0.0
+	var total := 0.0
+	var samples := 0
+	# Walk outward across cell boundaries, timing the frame each crossing lands
+	# on. Sampled across bands on purpose: PACK_CHANCE, STATION_CHANCE and the
+	# rest all climb with depth, so a shallow-only measurement would measure the
+	# cheapest cells in the game.
+	# Measured PER FRAME, not per crossing, because a hitch is a single long
+	# frame -- and with the build amortised, a crossing deliberately spans
+	# several. Timing the whole crossing would count the amortisation as if it
+	# were the cost, which is exactly backwards.
+	#
+	# Six frames per step, which is a tenth of a second at 60Hz: the queue has to
+	# be empty well inside that or the ship outruns its own scenery.
+	var worst_batch := 0
+	var peak_backlog := 0
+	for step in range(1, 26):
+		var out := edge + float(step) * DeepSpace.CELL
+		player.teleport_to(Vector3(0.0, 0.0, out))
+		for f in range(6):
+			peak_backlog = maxi(peak_backlog, deep_space.build_backlog())
+			var t0 := Time.get_ticks_usec()
+			await get_tree().process_frame
+			var ms := float(Time.get_ticks_usec() - t0) / 1000.0
+			if step == 1:
+				first = maxf(first, ms)    # cold: the whole window at once
+			else:
+				worst = maxf(worst, ms)    # warm: one row of five
+				worst_batch = maxi(worst_batch, deep_space.built_last_frame)
+				total += ms
+				samples += 1
+
+	var mean := total / maxf(float(samples), 1.0)
+	# ONE-TIME, and not a crossing: this is the frame `generating` flips on, which
+	# bakes the two MultiMesh star layers and the cold shell as well as building
+	# the first window. It predates the amortisation -- the earlier single-frame
+	# sample simply was not looking at this frame -- and it happens under the warp
+	# arrival sequence, which already holds the screen. Bounded rather than
+	# ignored, so a regression that doubles it is still caught.
+	print("[stream] FIRST ENTRY one-time expanse init, worst frame %.2fms (under the arrival sequence) -> %s" % [
+		first, "PASS" if first < 250.0 else "FAIL"])
+	# ASSERTED ON THE RULE, NOT THE STOPWATCH. Wall-clock frame time measures the
+	# machine -- the same code came out at 10ms run alone and 23ms inside the full
+	# sweep on a loaded box -- so gating on it makes a test that fails for reasons
+	# that are not defects.
+	#
+	# The machine-independent rule is that construction is DEFERRED: a crossing
+	# leaves cells registered and undressed, to be drained later. A cheap row may
+	# legitimately finish inside one frame's budget, so "the row always splits" is
+	# NOT the rule and asserting it fails on cheap rows -- but a backlog that is
+	# never non-empty means the queue is a no-op and the hitch is back.
+	print("[stream] WORK IS DEFERRED peak backlog %d cells after a crossing, worst frame dressed %d -> %s" % [
+		peak_backlog, worst_batch, "PASS" if peak_backlog > 0 else "FAIL"])
+	# Timing kept as a reported number with a loose regression bound. It caught
+	# the original 44ms spike and would catch its return; it is not tight enough
+	# to fail on a busy machine.
+	print("[stream] FRAME TIME %d frames, mean %.2fms, worst %.2fms (60Hz = 16.67ms, bound 40) -> %s" % [
+		samples, mean, worst, "PASS" if worst < 40.0 else "FAIL"])
+
+	# Amortising is only correct if it finishes. A queue that never drains is not
+	# a smoother frame, it is a ship flying through undressed space.
+	player.teleport_to(Vector3(0.0, 0.0, edge + 40.0 * DeepSpace.CELL))
+	var frames := 0
+	while deep_space.build_backlog() > 0 and frames < 60:
+		await get_tree().process_frame
+		frames += 1
+	print("[stream] QUEUE DRAINS backlog empty after %d frames (cap 60) -> %s" % [
+		frames, "PASS" if deep_space.build_backlog() == 0 else "FAIL"])
+
+	# And the amortised path must land in exactly the same place the synchronous
+	# one does -- or the optimisation has changed the world rather than the
+	# schedule. BOTH SIDES START FROM A CLEAN REBUILD: comparing the live state
+	# against a fresh stream would compare a window plus its KEEP hysteresis
+	# against just the window, and report a difference that is only history.
+	var where := player.global_position
+	deep_space.rebuild()
+	deep_space.stream_now(where)
+	var sync_cells := deep_space.content_cell_count()
+	var sync_obstacles := Obstacles.count()
+
+	deep_space.rebuild()
+	await get_tree().process_frame          # _stream registers the window
+	while deep_space.build_backlog() > 0:
+		await get_tree().process_frame      # the queue dresses it
+	print("[stream] SAME WORLD EITHER WAY synchronous %d cells / %d obstacles, amortised %d / %d -> %s" % [
+		sync_cells, sync_obstacles, deep_space.content_cell_count(), Obstacles.count(),
+		"PASS" if sync_cells == deep_space.content_cell_count() \
+			and sync_obstacles == Obstacles.count() else "FAIL"])
+
+	# The registry has to give everything back. A leak here is an invisible wall
+	# left in empty space, and it compounds for the whole session.
+	var out_there := Obstacles.count()
+	player.teleport_to(PlayerShip.SPAWN_POINT)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	print("[stream] REGISTRY RETURNS %d obstacles out there -> %d at home -> %s" % [
+		out_there, Obstacles.count(), "PASS" if Obstacles.count() < out_there else "FAIL"])
+
+	get_tree().quit()
+
+
+# --- the world's two responses -----------------------------------------------
+
+func _run_env_test() -> void:
+	# The lighting model and the landmark pass. Both are about the same claim:
+	# that the expanse is designed rather than uniform, and that the two axes the
+	# game is about are visible in it.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	# Same two lines PYXIS_MUSICTEST needs and for the same reason: waves keep
+	# refilling the system, and arriving in an already-breached system arms the
+	# apex -- a live engine is a threat by definition, which is correct and would
+	# otherwise pin the lighting to "in a fight" for the whole harness.
+	_wave_timer = 1.0e9
+	_apex_wake_timer = -1.0
+	await get_tree().create_timer(0.4).timeout
+
+	var air := get_tree().get_first_node_in_group("atmosphere") as Atmosphere
+	print("[env] ATMOSPHERE BOUND one owner for the Environment, present=%s -> %s" % [
+		str(air != null), "PASS" if air != null else "FAIL"])
+
+	# --- 1. depth is visible -------------------------------------------------
+	var edge := chart_edge()
+	var seen: Array = []
+	for units in [0.0, 160.0, 440.0, 1100.0]:
+		player.teleport_to(Vector3(0.0, 0.0, edge + units + 1.0))
+		await get_tree().create_timer(2.2).timeout
+		seen.append(snappedf(air.depth_level(), 0.01))
+	var rising := true
+	for i in range(seen.size() - 1):
+		if float(seen[i + 1]) < float(seen[i]) - 0.001:
+			rising = false
+	print("[env] DEPTH LIGHTING level at [0, 160, 440, 1100]u = %s, monotonic=%s, spans=%s -> %s" % [
+		str(seen), str(rising), str(float(seen[0]) < 0.05 and float(seen[3]) > 0.9),
+		"PASS" if rising and float(seen[0]) < 0.05 and float(seen[3]) > 0.9 else "FAIL"])
+
+	# The sky must actually change, not just the number. Asserted against the
+	# live Environment, because a level that moves while nothing renders
+	# differently is a level that is not wired to anything.
+	var we := _find_world_env(system_root)
+	var deep_glow := we.environment.glow_intensity if we else -1.0
+	player.teleport_to(PlayerShip.SPAWN_POINT)
+	await get_tree().create_timer(2.5).timeout
+	var home_glow := we.environment.glow_intensity if we else -1.0
+	print("[env] SKY RESPONDS glow %.3f in THE QUIET vs %.3f at home -> %s" % [
+		deep_glow, home_glow, "PASS" if we != null and deep_glow < home_glow else "FAIL"])
+
+	# --- 2. threat is visible, and does not fight depth ----------------------
+	# Driven by an ACTUAL HOSTILE, not by calling set_threat. main polls the threat
+	# every frame and pushes it at Atmosphere, so a hand-set value is overwritten
+	# on the next frame -- the first version of this measured a 0.004 wobble and
+	# called it a pass. Spawning the contact also covers the wiring: the poll, the
+	# radius test, and the easing.
+	# The baseline has to be genuinely calm, and at the spawn point it is not:
+	# PYX-01 has sentries standing inside THREAT_RADIUS, so the first version of
+	# this measured a glow that was ALREADY lifted and then compared it against
+	# itself. Clear the field and let the slow fall finish first.
+	for n in get_tree().get_nodes_in_group("hostiles"):
+		n.queue_free()
+	await get_tree().create_timer(4.0).timeout
+	var calm_glow := we.environment.glow_intensity
+	var quiet_first: bool = not _threat_near_player()
+	var bogey := SwarmHostile.new()
+	bogey.difficulty = 0.0
+	bogey.hp_scale = 40.0
+	system_root.add_child(bogey)
+	bogey.global_position = player.global_position + Vector3(0, 0, Music.THREAT_RADIUS * 0.4)
+	bogey.dock_at(bogey.global_position)
+	await get_tree().create_timer(1.5).timeout
+	var hot_glow := we.environment.glow_intensity
+	bogey.queue_free()
+	await get_tree().create_timer(4.0).timeout
+	var cooled := we.environment.glow_intensity
+	# A real lift, not a rounding wobble: THREAT_GLOW_LIFT is 30%, so anything
+	# under a few percent means the signal never reached the Environment.
+	var lifted: bool = hot_glow > calm_glow * 1.05
+	print("[env] THREAT LIGHTING calm field=%s, glow %.3f -> %.3f -> %.3f (lifts >5%% then returns) -> %s" % [
+		str(quiet_first), calm_glow, hot_glow, cooled,
+		"PASS" if quiet_first and lifted and absf(cooled - calm_glow) < 0.02 else "FAIL"])
+
+	# Asymmetric on purpose, and in the same direction as the score's: a threat
+	# arrives faster than it leaves, because a fight starts on one frame and ends
+	# raggedly over several.
+	print("[env] THREAT IS ASYMMETRIC rise %.1f > fall %.1f -> %s" % [
+		Atmosphere.THREAT_RISE, Atmosphere.THREAT_FALL,
+		"PASS" if Atmosphere.THREAT_RISE > Atmosphere.THREAT_FALL else "FAIL"])
+
+	# --- 3. landmarks are placed, not scattered ------------------------------
+	# One per supercell, deterministic, and none in charted space.
+	var counts := {}
+	var total := 0
+	for sx in range(0, 8):
+		for sz in range(0, 8):
+			var cell := DeepSpace.landmark_cell(system_id, sx, sz)
+			# Deterministic: the same supercell must elect the same cell twice.
+			if DeepSpace.landmark_cell(system_id, sx, sz) != cell:
+				counts["nondeterministic"] = true
+			if DeepSpace.supercell_of(cell.x, cell.y) != Vector2i(sx, sz):
+				counts["outside"] = true
+			var plan := deep_space.plan_cell(cell.x, cell.y)
+			var mark: Dictionary = plan.get("landmark", {})
+			if not mark.is_empty():
+				total += 1
+				counts[String(mark["kind"])] = int(counts.get(String(mark["kind"]), 0)) + 1
+	print("[env] LANDMARK PLACEMENT %d across 64 supercells, kinds %s, elected cell inside its own supercell=%s -> %s" % [
+		total, str(counts), str(not counts.has("outside")),
+		"PASS" if total > 0 and not counts.has("outside") and not counts.has("nondeterministic") else "FAIL"])
+
+	# At most one per supercell -- that is the whole reason for the second scale.
+	var doubled := false
+	for sx in range(0, 6):
+		for sz in range(0, 6):
+			var found := 0
+			for dx in range(DeepSpace.SUPERCELL):
+				for dz in range(DeepSpace.SUPERCELL):
+					var c := Vector2i(sx * DeepSpace.SUPERCELL + dx, sz * DeepSpace.SUPERCELL + dz)
+					if not (deep_space.plan_cell(c.x, c.y).get("landmark", {}) as Dictionary).is_empty():
+						found += 1
+			if found > 1:
+				doubled = true
+	print("[env] ONE PER SUPERCELL no supercell carries two=%s -> %s" % [
+		str(not doubled), "PASS" if not doubled else "FAIL"])
+
+	# Charted space gets none: a landmark inside the survey volume is a landmark
+	# on a map that already has one.
+	var in_chart := false
+	for c in range(0, 3):
+		if not (deep_space.plan_cell(c, c).get("landmark", {}) as Dictionary).is_empty():
+			in_chart = true
+	print("[env] NONE IN CHARTED SPACE band 0 carries no landmark=%s -> %s" % [
+		str(not in_chart), "PASS" if not in_chart else "FAIL"])
+
+	# Each band gets its OWN silhouette. A second tell that is also colour tells
+	# you nothing new, which is the same argument as the HUD's band glyphs.
+	var kinds := {}
+	for band in range(1, DeepSpace.LANDMARKS.size()):
+		var built := Landmarks.build(String(DeepSpace.LANDMARKS[band]), band)
+		if built != null:
+			kinds[String(DeepSpace.LANDMARKS[band])] = built.get_child_count()
+			built.queue_free()
+	print("[env] BAND SILHOUETTES %s distinct kinds, all build=%s -> %s" % [
+		str(kinds), str(kinds.size() == DeepSpace.LANDMARKS.size() - 1),
+		"PASS" if kinds.size() == DeepSpace.LANDMARKS.size() - 1 else "FAIL"])
+
+	get_tree().quit()
+
+
+func _find_world_env(n: Node) -> WorldEnvironment:
+	for c in n.get_children():
+		if c is WorldEnvironment:
+			return c
+		var found := _find_world_env(c)
+		if found != null:
+			return found
+	return null

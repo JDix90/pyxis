@@ -269,6 +269,11 @@ var _gain_label: Label
 var _prompt_label: Label
 var _crack_box: VBoxContainer
 var _crack_fill: ColorRect
+# Drain rate for an abandoned hold. Fast enough not to linger into the next
+# thing the player does, slow enough to read as a decision rather than a bug.
+const CRACK_DRAIN := 9.0
+var _crack_shown := 0.0
+var _crack_releasing := false
 var _crack_label: Label
 var _toast_tween: Tween = null
 var _parley_button: Button
@@ -780,6 +785,14 @@ func set_deep_tag(band_name: String, out_distance: float) -> void:
 	_apply_system_tag()
 
 
+func refresh_palette() -> void:
+	# The HUD is code-drawn, so unlike the world it does not need rebuilding --
+	# it needs re-asking, and only in one place. The band tag is the only chrome
+	# holding a band colour in a theme override; the radar reads Palette inside
+	# its own _draw and is already redrawing every frame.
+	_apply_system_tag()
+
+
 func _apply_system_tag() -> void:
 	if _deep_band == "":
 		_system_label.text = "SYS // " + _system_base
@@ -788,9 +801,15 @@ func _apply_system_tag() -> void:
 	# Out here the answer to "where am I" is the band and the range, not the
 	# system's name — but which system's expanse it is still matters, because you
 	# can warp between them, so the short name stays.
-	_system_label.text = "SYS // %s · %s · %du OUT" % [
-		_system_short, _deep_band, int(round(_deep_out))]
-	var c: Color = DeepSpace.band_color(_deep_out)
+	# The glyph carries the band without colour. Colour is still the fastest read
+	# at a glance, but it was the ONLY one -- and the deep set is amber, rose,
+	# violet and bile, which is close to a worst case for the two most common
+	# forms of colour blindness. A glyph works in every vision mode, in
+	# greyscale, and on a phone in direct sunlight, which no palette does.
+	var band := DeepSpace.band_of(_deep_out)
+	_system_label.text = "SYS // %s · %s %s · %du OUT" % [
+		_system_short, Palette.band_glyph(band), _deep_band, int(round(_deep_out))]
+	var c: Color = Palette.band_color(band)
 	_system_label.add_theme_color_override("font_color", Color(c.r, c.g, c.b, 0.75))
 
 
@@ -957,6 +976,9 @@ func set_panels_locked(locked: bool) -> void:
 
 
 func _process(_delta: float) -> void:
+	# Ahead of the player lookup: an abandoned hold has to finish draining even
+	# on the frames where there is no ship to poll, or it freezes half-full.
+	_tick_crack(_delta)
 	var player: Node3D = get_tree().get_first_node_in_group("player")
 	if not player or not player.has_method("ability_info"):
 		return
@@ -1113,10 +1135,30 @@ func crack_progress(t: float, label := "BREACHING HULL") -> void:
 	if _crack_label:
 		_crack_label.text = label
 	if t < 0.0:
-		_crack_box.visible = false
+		# Releasing drains rather than disappears. The gauge used to vanish on the
+		# frame the finger lifted, which read as the UI glitching rather than as
+		# the hold being abandoned -- and abandoning a hold is a decision the
+		# player made, so it should be something they watch happen.
+		_crack_releasing = _crack_box.visible
 		return
+	_crack_releasing = false
 	_crack_box.visible = true
-	_crack_fill.size.x = 220.0 * clampf(t, 0.0, 1.0)
+	_crack_shown = clampf(t, 0.0, 1.0)
+	_crack_fill.size.x = 220.0 * _crack_shown
+	_crack_box.modulate.a = 1.0
+
+
+func _tick_crack(delta: float) -> void:
+	if not _crack_releasing:
+		return
+	_crack_shown = Smoothing.toward(_crack_shown, 0.0, CRACK_DRAIN, delta)
+	_crack_fill.size.x = 220.0 * _crack_shown
+	_crack_box.modulate.a = clampf(_crack_shown / 0.35, 0.0, 1.0)
+	if _crack_shown <= 0.02:
+		_crack_releasing = false
+		_crack_shown = 0.0
+		_crack_box.visible = false
+		_crack_box.modulate.a = 1.0
 
 
 func _show(v: float) -> void:

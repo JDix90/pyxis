@@ -36,6 +36,12 @@ var _ring_mat: StandardMaterial3D
 var _beacon_mat: StandardMaterial3D
 var _in_range_last := false
 var _spin := 0.0
+# Nav strobes. Three is enough to read as "maintained" and cheap enough that a
+# deep-space window full of stations costs nothing.
+const STROBE_COUNT := 3
+var _strobes: Array[StandardMaterial3D] = []
+var _strobe_phase: Array[float] = []
+var _strobe_rate: Array[float] = []
 
 
 const HULL_OBSTACLE_RADIUS := 3.0
@@ -70,6 +76,7 @@ func _build() -> void:
 		_:
 			_build_station()
 	_build_dock_ring()
+	_build_strobes()
 
 
 func _build_cantina() -> void:
@@ -335,6 +342,37 @@ func _build_military() -> void:
 		add_child(strip)
 
 
+func _build_strobes() -> void:
+	# Nav strobes: three tiny emissive markers on a slow asynchronous blink.
+	#
+	# A station that pulses one ring and nothing else reads as a prop. Real
+	# structures out in the dark are covered in lights that are not synchronised
+	# with each other, and that lack of synchronisation is most of what says
+	# "somebody maintains this". The phase offsets come from the port id, so a
+	# given station always blinks its own way and two of the same archetype in
+	# the same system do not beat in lockstep -- which would look more artificial
+	# than not blinking at all.
+	var seed_rng := RandomNumberGenerator.new()
+	seed_rng.seed = hash(port_id + port_name)
+	for i in range(STROBE_COUNT):
+		var mi := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.09
+		sm.height = 0.18
+		sm.radial_segments = 6
+		sm.rings = 3
+		mi.mesh = sm
+		var mat := Palette.emissive(Palette.AMBER, 1.0)
+		mi.material_override = mat
+		var ang := seed_rng.randf_range(0.0, TAU)
+		var r := seed_rng.randf_range(1.6, 2.8)
+		mi.position = Vector3(cos(ang) * r, seed_rng.randf_range(-0.5, 1.4), sin(ang) * r)
+		add_child(mi)
+		_strobes.append(mat)
+		_strobe_phase.append(seed_rng.randf_range(0.0, TAU))
+		_strobe_rate.append(seed_rng.randf_range(0.55, 0.95))
+
+
 func _build_dock_ring() -> void:
 	# The affordance: a slowly turning amber ring marking where to clamp on.
 	var holder := Node3D.new()
@@ -373,6 +411,13 @@ func _process(delta: float) -> void:
 	var pulse := 2.4 + sin(_spin * 2.6) * 0.8
 	_beacon_mat.emission_energy_multiplier = pulse
 	_ring_mat.emission_energy_multiplier = 1.6 + sin(_spin * 2.6) * 0.5
+
+	# Each strobe on its own clock. Raised to a power so the shape is a blink --
+	# mostly dark with a short bright peak -- rather than a sine that spends half
+	# its time half-lit, which reads as breathing instead of as a signal light.
+	for i in range(_strobes.size()):
+		var w: float = 0.5 + 0.5 * sin(_spin * float(_strobe_rate[i]) * TAU + float(_strobe_phase[i]))
+		(_strobes[i] as StandardMaterial3D).emission_energy_multiplier = 0.25 + pow(w, 6.0) * 5.0
 
 	if docked:
 		return

@@ -32,14 +32,59 @@ var active := false:
 	set(v):
 		active = v
 		visible = v
+		_set_audio(v)
+
+# The blades are the only hazard in the game that reaches you from off screen,
+# and sweep.wav has existed since the first sound pass without ever being
+# played -- generated, imported, loaded into the pool, silent. It loops under the
+# encounter and rides the ship's distance from the hub, so the pressure is
+# audible before it is visible.
+const AUDIO_DB_NEAR := -7.0
+const AUDIO_DB_FAR := -30.0
+const AUDIO_FALLOFF := 26.0          # units out at which the blades stop mattering
+const AUDIO_FADE := 3.0              # per-second approach rate of the level
 
 var _angle := 0.0
 var _tick_timer := 0.0
 var _blade_nodes: Array[Node3D] = []
+var _audio: AudioStreamPlayer = null
 
 
 func _ready() -> void:
+	# Fixed-tick mover, so it interpolates. This one matters more than most: the
+	# blade sweeps fast enough that 60Hz stepping reads as a stutter right where
+	# the player is judging whether they can clear it.
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
+	_audio = Sfx.attached_loop(self, "sweep", AUDIO_DB_FAR)
 	rebuild()
+
+
+func audio_playing() -> bool:
+	return _audio != null and _audio.playing
+
+
+func _set_audio(on: bool) -> void:
+	if _audio == null:
+		return
+	if on:
+		if not _audio.playing:
+			_audio.play()
+	else:
+		_audio.stop()
+
+
+func _tick_audio(delta: float) -> void:
+	# Distance-scaled rather than positional: the camera is a fixed top-down rig,
+	# so true 3D panning would place the sound somewhere the player is not
+	# looking from. Loudness alone carries "how close is the blade".
+	if _audio == null or not _audio.playing:
+		return
+	var player := get_tree().get_first_node_in_group("player") as Node3D
+	var target := AUDIO_DB_FAR
+	if player:
+		var d := global_position.distance_to(player.global_position)
+		target = lerpf(AUDIO_DB_NEAR, AUDIO_DB_FAR, clampf(d / AUDIO_FALLOFF, 0.0, 1.0))
+	_audio.volume_db = Smoothing.toward(_audio.volume_db, target, AUDIO_FADE, delta)
 
 
 func rebuild() -> void:
@@ -87,6 +132,7 @@ func _physics_process(delta: float) -> void:
 	if not active:
 		return
 
+	_tick_audio(delta)
 	_angle = wrapf(_angle + deg_to_rad(speed_deg) * delta, 0.0, TAU)
 	var lead := deg_to_rad(speed_deg) * TELEGRAPH_LEAD
 

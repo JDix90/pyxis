@@ -63,6 +63,10 @@ var _core_mat: StandardMaterial3D
 
 
 func _ready() -> void:
+	# Integrates on the fixed tick like the player, so it opts into interpolation
+	# for the same reason. Its sentry cousins in hostile.gd move in _process and
+	# deliberately do not. See project.godot's [physics] comment.
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
 	add_to_group("hostiles")
 	add_to_group("swarm")
 	hp = MAX_HP * difficulty * hp_scale

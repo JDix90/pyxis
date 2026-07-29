@@ -571,6 +571,51 @@ def s_klaxon():
     return normalize(soft_clip(mix(gain(body, 0.8), gain(sub, 0.7))), 0.8)
 
 
+def s_music_deep():
+    """The same eight bars, heard from further out.
+
+    Not a different piece and not a transposition: the identical bed, an octave
+    lower on the sub, with the bells replaced by a single struck low partial and
+    the top rolled off hard. Depth is a MIX position, not a key change -- the
+    calm and deep layers are crossfaded against each other while both are
+    playing, so any harmonic difference between them would be audible as a
+    lurch every time the player crossed a band edge.
+    """
+    n = n_samples(LOOP_SECONDS)
+    out = _music_bed()
+    # One bell, on the first bar only, an octave below calm's. Sparser as you go
+    # out is the whole gesture: the Shoals still sound like somewhere, and by
+    # the Reaches there is almost nothing left to hear.
+    layer, at = _music_bell(0, 293.66)             # D4, an octave under calm
+    place(out, gain(layer, 0.16), at)
+    # Darker than the bed's own 820Hz. lowpass_loop, not lowpass, for the reason
+    # _music_bed states: this buffer wraps forever and a cold filter clicks.
+    out = lowpass_loop(out, lambda i, nn: 380.0)
+    assert len(out) == n
+    return normalize(out, 0.54)
+
+
+def s_music_quiet():
+    """THE QUIET, which is mostly the absence of the other three.
+
+    A single sustained low partial and nothing else -- no bed, no bells, no
+    movement. This is the band where the beacons stop answering and the guard
+    designation is already "UNREADABLE -- IT DOES NOT ANSWER", so the score
+    agrees with the fiction rather than scoring over it. It is deliberately
+    quiet enough that a player may not notice it is there at all.
+    """
+    n = n_samples(LOOP_SECONDS)
+    out = [0.0] * n
+    # Two very slightly detuned sines, which beat against each other over about
+    # eleven seconds -- slow enough to read as unease rather than as vibrato.
+    for det in (-0.0009, 0.0009):
+        v = apply(tone(73.42, LOOP_SECONDS, "sine", det), env_asr(n, 3.0, 3.0))
+        place(out, gain(v, 0.5), 0)
+    out = lowpass_loop(out, lambda i, nn: 220.0)
+    assert len(out) == n
+    return normalize(out, 0.30)
+
+
 SOUNDS = {
     "music_calm.wav": s_music_calm,
     "music_combat.wav": s_music_combat,
@@ -594,13 +639,20 @@ SOUNDS = {
     "breach.wav": s_breach,
     "vortex.wav": s_vortex,
     "ambient.wav": s_ambient,
+    # APPENDED, never inserted. random.seed(7) is set once before the loop over
+    # this dict, so the RNG stream is shared across every sound in insertion
+    # order -- adding an entry anywhere but the end re-rolls the noise in every
+    # sound after it, and explode.wav's 60 crackle grains would come back
+    # different. Same rule, and the same reason, as DeepSpace.plan_cell.
+    "music_deep.wav": s_music_deep,
+    "music_quiet.wav": s_music_quiet,
 }
 
 
 # Buffers that get looped forever, and so must not click at the wrap. Checked
 # on every regeneration rather than trusted: a seam click is the kind of defect
 # that is obvious once you notice it and invisible until you do.
-SEAMLESS = ("music_calm.wav", "music_combat.wav")
+SEAMLESS = ("music_calm.wav", "music_combat.wav", "music_deep.wav", "music_quiet.wav")
 
 
 if __name__ == "__main__":
@@ -619,8 +671,10 @@ if __name__ == "__main__":
             if not ok:
                 failures.append("%s clicks at its loop point" % name)
 
-    # The two music layers are crossfaded against each other mid-phrase, which
-    # only works while they stay sample-aligned forever.
+    # All four music layers are crossfaded against each other mid-phrase, which
+    # only works while they stay sample-aligned forever. This is a build
+    # failure rather than a warning because a one-sample drift is inaudible on
+    # the first loop and unmistakable on the fiftieth.
     if len(set(lengths.values())) > 1:
         failures.append("music layers differ in length: %s" % lengths)
 

@@ -8,7 +8,7 @@ signal salvage_changed(total: int)
 signal system_unlocked(id: String)
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 12
+const SAVE_VERSION := 13
 const SAVE_DEBOUNCE := 1.0
 
 # v6 defaults. Kept as one dictionary each so a migration only has to merge
@@ -19,6 +19,28 @@ const DEFAULT_SETTINGS := {
 	"sfx_vol": 0.90,
 	"shake": true,
 	"ui_scale": 1.0,
+	# On by default: this is a phone game whose loudest moments (a hull giving
+	# way, a claim at a dock) are otherwise carried by colour and a camera lurch,
+	# both of which someone may have turned off or be unable to use.
+	"haptics": true,
+	# Separate from "shake" on purpose. Shake predates this and some players turn
+	# it off because they dislike shake specifically, not because they want every
+	# transition in the game to stop moving. Merging the two would silently
+	# reinterpret a preference they already expressed.
+	"reduce_motion": false,
+	# OFF by default, and it stays off unless someone deliberately turns it on.
+	# The file never leaves the device and nothing in the game reads it -- see
+	# scripts/telemetry.gd -- but a recorder running because the player never
+	# found the switch is not a recorder they consented to.
+	"telemetry": false,
+	# Palette.Vision: 0 normal, 1 deutan, 2 protan, 3 tritan. Materials are baked
+	# at node construction, so changing this rebuilds the world through the
+	# existing build paths rather than retinting in place -- see main.rebuild_visuals.
+	"colorblind": 0,
+	# Rebindable actions, as {action: [physical keycodes]}. Empty means "whatever
+	# project.godot says", so a save written before this existed keeps the
+	# defaults instead of arriving with no controls at all.
+	"bindings": {},
 }
 const DEFAULT_LIVERY := {
 	"hull": 0,
@@ -140,6 +162,26 @@ var ship_name := DEFAULT_SHIP_NAME
 # same reason `owned`, `breached`, `barks_seen` and `apex_killed` carry the type.
 var captains_log: Array[String] = []
 
+# v13. The Grand Commission.
+#
+# `commission_claimed` is RUN state: how many stages this survey has claimed,
+# cleared by reset_to_starter beside the ledger it reads from. Top-level rather
+# than a seventh DEFAULT_LEDGER key, which was the other candidate: that dict's
+# load merge is `maxi(0, int(...))`, a floor with no ceiling, so a hand-edited 99
+# would reach STAGES[99] and crash AT A DOCK -- and the SAVETEST write leg
+# assigns a literal six-key dict, so a seventh key would round-trip untested.
+# This is the shape captains_log already shipped as, for the same reasons.
+var commission_claimed := 0
+# PERSISTENT, and the only thing here that is. What you earned outlives the run
+# that earned it -- the livery and ship_name precedent.
+#
+# THE RULE, written down so the next reader does not "fix" it: `commissioned` is
+# a strict monotone derivative of "stage 4 was ever claimed", and it is read by
+# exactly three things -- the title screen's registry line, the accent lock, and
+# the beacons. THE CLAIM COUNTER MUST NEVER READ IT, or stage 4 becomes
+# unclaimable on every run after the first.
+var commissioned := false
+
 # Overridable so scripted demos and tests never touch the player's real save.
 var save_path := SAVE_PATH
 # Guarded by _save_locked below: a harness that has said "never write" cannot be
@@ -200,15 +242,156 @@ func apply_settings() -> void:
 	Sfx.set_bus_volume(Sfx.BUS_MUSIC, float(setting("music_vol")))
 	Sfx.set_bus_volume(Sfx.BUS_SFX, float(setting("sfx_vol")))
 	UILayout.user_scale = clampf(float(setting("ui_scale")), 0.7, 1.6)
+	var want_vision := clampi(int(setting("colorblind")), 0, Palette.Vision.size() - 1)
+	var vision_changed: bool = want_vision != Palette.vision
+	Palette.vision = want_vision
+	apply_bindings()
 	var tree := get_tree()
 	if tree != null:
 		var win := tree.root.get_window()
 		if win != null:
 			UILayout.apply_scale(win)
+		if vision_changed:
+			# Only on an actual CHANGE: apply_settings runs on every slider drag,
+			# and rebuilding the world on each frame of a volume tweak would be a
+			# hitch with no cause the player could see.
+			var main := tree.get_first_node_in_group("main")
+			if main != null and main.has_method("rebuild_visuals"):
+				main.rebuild_visuals()
+
+
+# --- v13 the Grand Commission ------------------------------------------------
+
+# Index of the earned accent in Palette.LIVERY_ACCENTS. Named rather than a
+# literal 8 because two files gate on it and a ninth bought accent added later
+# must not silently become the earned one.
+const REGISTRY_ACCENT := 8
+
+
+func commission_stage() -> int:
+	# Which stage is up for claiming. Equals STAGES.size() when all four are in.
+	return clampi(commission_claimed, 0, CommissionDB.count())
+
+
+func commission_complete() -> bool:
+	return commission_claimed >= CommissionDB.count()
+
+
+func commission_ready() -> bool:
+	# Deliberately does NOT read `commissioned`: that flag is persistent, and a
+	# claim counter that consulted it would find stage 4 already done and make it
+	# unclaimable on every run after the first.
+	if commission_complete():
+		return false
+	return CommissionDB.met(commission_stage(), ledger)
+
+
+func claim_commission() -> Dictionary:
+	# Re-checks stage AND thresholds at its own top rather than trusting the
+	# caller -- survey_mast.gd's lesson, and the harness is exactly the second
+	# caller that comment warns about. Returns {} on refusal so a caller cannot
+	# mistake "nothing happened" for a payout.
+	if not commission_ready():
+		return {}
+	var stage := commission_stage()
+	var paid := int(CommissionDB.stage(stage).get("pays", 0))
+
+	# STATE BEFORE MONEY. add_salvage emits salvage_changed, and PortPanel
+	# re-enters _refresh() from that signal -- so incrementing after the payout
+	# would rebuild the sheet reading the pre-claim stage and redraw the button
+	# that was just paid for.
+	commission_claimed = stage + 1
+	if commission_claimed >= CommissionDB.count():
+		commissioned = true
+	add_salvage(paid)
+	note_log("%s — GSA REGISTRY" % String(CommissionDB.stage(stage).get("name", "")))
+	_queue_save()
+	return {"stage": stage, "name": String(CommissionDB.stage(stage).get("name", "")), "pays": paid}
+
+
+func accent_unlocked(index: int) -> bool:
+	# The single question both renderers ask. The lock lives here and at the load
+	# path, never in set_livery -- set_livery is also how a save restores a
+	# colour, so a refusal there would rewrite a legitimately earned livery.
+	return index < REGISTRY_ACCENT or commissioned
 
 
 func shake_enabled() -> bool:
-	return bool(setting("shake"))
+	# Reduced motion subsumes shake: someone who asked for less movement is not
+	# asking to keep the camera lurching. The reverse is not true.
+	return bool(setting("shake")) and not reduce_motion()
+
+
+# Actions a player may rebind. Deliberately not every action in the InputMap:
+# `cancel` is the escape hatch out of every console and the pause menu, and a
+# player who binds it to a key they cannot reach has no way back to the settings
+# page that would let them fix it. It stays on Escape.
+const REBINDABLE := ["move_up", "move_down", "move_left", "move_right",
+	"ability", "cycle_target"]
+
+
+func apply_bindings() -> void:
+	# Rebuilt from the saved dict on every settings change and on load, so the
+	# InputMap and the save can never disagree. An action missing from the dict
+	# keeps whatever project.godot gave it.
+	var saved: Dictionary = setting("bindings")
+	if not (saved is Dictionary):
+		return
+	for action in REBINDABLE:
+		if not saved.has(action) or not InputMap.has_action(action):
+			continue
+		var codes: Array = saved[action]
+		if not (codes is Array) or codes.is_empty():
+			continue
+		InputMap.action_erase_events(action)
+		for code in codes:
+			var ev := InputEventKey.new()
+			ev.physical_keycode = int(code)
+			InputMap.action_add_event(action, ev)
+
+
+func rebind(action: String, physical_keycode: int) -> bool:
+	# One key per action, replacing whatever was there. Returns false rather than
+	# silently doing nothing so the UI can say why.
+	if not REBINDABLE.has(action) or physical_keycode == 0:
+		return false
+	# A key already spoken for is TAKEN AWAY from its old owner rather than
+	# shared. Two actions on one key is not a binding, it is a bug the player
+	# discovers mid-flight.
+	var binds: Dictionary = (setting("bindings") as Dictionary).duplicate(true)
+	for other in REBINDABLE:
+		if other == action:
+			continue
+		if binds.has(other):
+			var kept: Array = []
+			for c in binds[other]:
+				if int(c) != physical_keycode:
+					kept.append(int(c))
+			# Never leave an action with nothing bound: an unreachable action is
+			# worse than a shared key, because there is no way to notice it until
+			# the moment it is needed.
+			if not kept.is_empty():
+				binds[other] = kept
+			else:
+				return false
+	binds[action] = [physical_keycode]
+	set_setting("bindings", binds)
+	return true
+
+
+func reset_bindings() -> void:
+	set_setting("bindings", {})
+	# Erasing the overrides is not enough -- InputMap still holds whatever was
+	# applied. load_from_project_settings puts every action back to project.godot.
+	InputMap.load_from_project_settings()
+
+
+func haptics_enabled() -> bool:
+	return bool(setting("haptics"))
+
+
+func reduce_motion() -> bool:
+	return bool(setting("reduce_motion"))
 
 
 # --- v6 livery --------------------------------------------------------------
@@ -251,6 +434,10 @@ func reset_to_starter() -> void:
 	# field comment: what you called your ship outlives the run that named it.
 	ledger = DEFAULT_LEDGER.duplicate()
 	captains_log = []
+	# Run state, cleared with the ledger it reads from. `commissioned` is NOT
+	# cleared: it is the one thing here that outlives the run, same as the paint
+	# and the ship's name.
+	commission_claimed = 0
 	tutorial_step = 0          # a fresh survey starts at step one
 	# audio_muted is a device preference, not run state: deliberately preserved
 	# across a new game.
@@ -1103,6 +1290,8 @@ func save_game() -> void:
 		"ledger": ledger,
 		"ship_name": ship_name,
 		"captains_log": captains_log,
+		"commission_claimed": commission_claimed,
+		"commissioned": commissioned,
 	}
 	var f := FileAccess.open(save_path, FileAccess.WRITE)
 	if f == null:
@@ -1208,12 +1397,24 @@ func load_game() -> bool:
 	settings["sfx_vol"] = clampf(float(settings["sfx_vol"]), 0.0, 1.0)
 	settings["shake"] = bool(settings["shake"])
 	settings["ui_scale"] = clampf(float(settings["ui_scale"]), 0.7, 1.6)
+	settings["colorblind"] = clampi(int(settings["colorblind"]), 0, Palette.Vision.size() - 1)
+	if not (settings["bindings"] is Dictionary):
+		settings["bindings"] = {}
 
 	livery = DEFAULT_LIVERY.duplicate()
 	var saved_livery: Dictionary = data.get("livery", {})
 	for key in DEFAULT_LIVERY:
 		if saved_livery.has(key):
 			livery[key] = int(saved_livery[key])
+	# CLAMPED. These were the only ints in load_game with no bound, protected
+	# solely by Palette's posmod wrap -- which is not protection, it is a rename:
+	# `accent: 17` wraps to 1 and `accent: 8` wraps to 0, so a hand-edited save
+	# silently wears a colour it never earned rather than being corrected. That
+	# becomes load-bearing the moment an accent is EARNED rather than bought,
+	# because player_ship.gd reads Palette.livery_accent(livery_index("accent"))
+	# directly and never asks set_livery anything.
+	livery["hull"] = clampi(int(livery["hull"]), 0, Palette.LIVERY_HULLS.size() - 1)
+	livery["accent"] = clampi(int(livery["accent"]), 0, Palette.LIVERY_ACCENTS.size() - 1)
 
 	# Key by key onto the defaults, so a v9 save arrives with every counter at 0
 	# rather than with the dict missing. Floored at 0: a hand-edited negative
@@ -1224,6 +1425,19 @@ func load_game() -> bool:
 		if saved_ledger.has(key):
 			ledger[key] = maxi(0, int(saved_ledger[key]))
 	ship_name = _sanitize_ship_name(str(data.get("ship_name", DEFAULT_SHIP_NAME)))
+
+	# v13. Clamped against STAGES.size() rather than a literal 4, so adding a
+	# fifth stage cannot leave a stale bound behind. A v12 save arrives with
+	# nothing claimed and uncommissioned, which is the correct reading of a save
+	# written before the Commission existed.
+	commission_claimed = clampi(int(data.get("commission_claimed", 0)), 0, CommissionDB.count())
+	commissioned = bool(data.get("commissioned", false))
+	# The accent lock, AT THE LOAD PATH. Finding 2: a hand-edited save never calls
+	# set_livery, and the ship reads the index straight out of Palette -- so this
+	# is the only place that can refuse it. The clamp above turns 17 into a valid
+	# index; this turns a valid-but-unearned one into 0.
+	if not commissioned and int(livery["accent"]) >= REGISTRY_ACCENT:
+		livery["accent"] = 0
 
 	# v12. Rebuilt element by element rather than taken wholesale — the
 	# market_events posture — so a save carrying a number, a null or a 200-char
@@ -1267,3 +1481,9 @@ func load_game() -> bool:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:
 		save_game()
+		# One row per session, at the same moment the save is written. Guarded by
+		# save_enabled for the same reason save_game is: a harness that has said
+		# "never write" must not leave a row behind that a later playtest reads
+		# as if a person had produced it.
+		if save_enabled:
+			Telemetry.record_session(played_seconds)

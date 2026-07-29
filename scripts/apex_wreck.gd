@@ -35,11 +35,7 @@ func _ready() -> void:
 	add_to_group("crackable")
 	_build_mesh()
 
-	_crack_player = AudioStreamPlayer.new()
-	if ResourceLoader.exists("res://audio/crack.wav"):
-		_crack_player.stream = load("res://audio/crack.wav")
-	_crack_player.volume_db = -5.0
-	add_child(_crack_player)
+	_crack_player = Sfx.attached_loop(self, "crack", -5.0)
 
 
 func pick_anchor() -> Vector3:
@@ -204,6 +200,7 @@ func _breach() -> void:
 		rig.punch_zoom(-1.8)
 
 	Sfx.play("breach", 0.0)
+	Sfx.haptic("heavy")
 	Sfx.play("vortex", -6.0)
 	FX.flash(parent, pos, Palette.WHITE_HOT, 5.0, 0.35)
 	FX.shockwave(parent, pos, Palette.GOLD, 13.0, 1.0)

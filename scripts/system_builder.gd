@@ -58,6 +58,15 @@ static func _build_environment(def: Dictionary, container: Node3D) -> void:
 	sun.rotation_degrees = Vector3(-50, 35, 0)
 	container.add_child(sun)
 
+	# From here the Environment has exactly one writer. The values set above are
+	# the system's BASELINE; Atmosphere expresses depth and threat as multiples of
+	# them, so a system authored dim stays dim. See scripts/atmosphere.gd.
+	var air := Atmosphere.new()
+	air.name = "Atmosphere"
+	air.add_to_group("atmosphere")
+	container.add_child(air)
+	air.bind(env, sun)
+
 
 static func _build_lattice(def: Dictionary, container: Node3D) -> void:
 	# The compass cartography: concentric survey rings + radial bearing lines.
