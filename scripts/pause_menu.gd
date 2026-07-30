@@ -210,6 +210,12 @@ func _build_root() -> void:
 	# know what they can read.
 	_body.add_child(_sub(GameState.archeology_line()))
 	_body.add_child(_sub(GameState.smuggling_line()))
+	# The third line is SAFE to add here, and that was measured rather than
+	# assumed: the root page already sits past its scroll cap at a 1.6 UI scale
+	# (546 rows against 456), so _clamp_height pins the panel at 492 of 512 and a
+	# fourth _sub costs 26 rows of scroll rather than an overflow. SHEET FITS
+	# cannot see the difference — see STRATEGY §36 for why that is its own defect.
+	_body.add_child(_sub(GameState.mining_line()))
 	_body.add_child(_spacer(6))
 	_body.add_child(_action("RESUME", Palette.TEAL, resume))
 	_body.add_child(_action("CAPTAIN'S LOG", Palette.AMBER, func() -> void:

@@ -50,7 +50,7 @@ TIMEOUT_S="${PYXIS_HARNESS_TIMEOUT:-1500}"
 # SAVETEST is stateful: =write lays down a fixture the bare read consumes, so
 # the pair must stay adjacent and in this order. The migrate modes are
 # self-contained and each builds its own old-version fixture.
-SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 partial6)
+SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 partial6)
 
 if [ $# -gt 0 ]; then
 	# SAVETEST names the whole stateful sequence below, never a plain tag. Left in
@@ -60,7 +60,7 @@ if [ $# -gt 0 ]; then
 	SAVE_MODES=()
 	for t in "$@"; do
 		if [ "$t" = "SAVETEST" ]; then
-			SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 partial6)
+			SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 partial6)
 		else
 			TAGS+=("$t")
 		fi
@@ -68,6 +68,15 @@ if [ $# -gt 0 ]; then
 fi
 
 # Godot's user:// for this project, so we can prove the real save is untouched.
+#
+# ONE FALSE POSITIVE, and it is worth knowing before you go hunting: this compares
+# the file before and after the WHOLE sweep, so it cannot tell a harness writing
+# the save from the developer PLAYING THE GAME while the sweep runs. A live game
+# autosaves, the md5 moves, and the sweep reports SAVE TOUCHED against perfectly
+# innocent harnesses. Check for a running Godot on the project before assuming a
+# harness is at fault -- and check the `version` field, since a harness on a
+# branch that has bumped SAVE_VERSION would write the NEW number and a concurrent
+# game on main would write the old one.
 SAVE="$HOME/Library/Application Support/Godot/app_userdata/Pyxis/save.json"
 save_md5() { [ -f "$SAVE" ] && md5 -q "$SAVE" || echo "absent"; }
 BEFORE="$(save_md5)"

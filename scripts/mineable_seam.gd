@@ -42,6 +42,10 @@ var mine_time := 4.0
 var cell := Vector2i.ZERO
 var seam_index := 0
 var mined := false
+# Non-empty ("pyx01:2") for the eleven AUTHORED seams in charted space, which are
+# remembered in the save. Empty for every expanse seam, which are remembered only
+# for the session. See _record_cut().
+var charted_key := ""
 
 var _face: MeshInstance3D
 var _face_mat: StandardMaterial3D
@@ -107,7 +111,13 @@ func _update_prompt() -> void:
 		return
 	_in_range_last = in_range
 	if in_range:
-		hud.prompt("HOLD TO CUT — %s x%d" % [CommodityDB.short_name(good), cut_units()])
+		if is_locked():
+			# Says what is missing, not just that something is. A refusal with no
+			# reason reads as a bug; a refusal that names the tier is a goal.
+			hud.prompt("SEAM TOO DEEP — MINING %d REQUIRED" % GameState.MINING_DEEP_TIER)
+		else:
+			hud.prompt("HOLD TO CUT — %s x%d" % [
+				CommodityDB.short_name(good), cut_units()])
 	else:
 		hud.clear_prompt()
 
@@ -153,21 +163,68 @@ func _approach() -> void:
 
 
 func hold_begin() -> void:
-	if mined or not _player_in_range():
+	if mined or is_locked() or not _player_in_range():
 		return
 	_holding = true
 
 
 func hold_release() -> void:
+	# The player LETTING GO is the t2 gesture. Deliberately not the same thing as
+	# the hold lapsing because the ship drifted out of range -- see _drop_hold --
+	# or a seam would be spent for half its ore by a hand off the controls.
+	var was_holding := _holding
+	_holding = false
+	if was_holding and not mined \
+			and GameState.mining >= GameState.MINING_SAMPLE_TIER \
+			and _progress >= GameState.MINING_SAMPLE_FRACTION:
+		_take_sample()
+		return
+	_sync_gauge()
+
+
+func _drop_hold() -> void:
+	# The hold ending because the world moved, not because the player chose. Never
+	# takes a sample.
 	_holding = false
 	_sync_gauge()
+
+
+func sample_units() -> int:
+	# Half of what THIS ship would have taken, floored, never less than one.
+	# Derived from cut_units() rather than `units`: the Assay Rig makes the two
+	# differ, and a sample computed off the raw table would drift away from what a
+	# finished cut actually pays. A sample must always be strictly worse than
+	# staying -- CORE SAMPLE CANNOT OUT-YIELD A CUT asserts it at every band, with
+	# and without the rig.
+	return maxi(1, int(floor(float(cut_units()) * GameState.MINING_SAMPLE_FRACTION)))
+
+
+func is_locked() -> bool:
+	# t3 is ACCESS. A locked seam stays visible and stays on the radar, because a
+	# thing you can see and cannot have is a goal and a thing that is simply
+	# absent is nothing at all.
+	return not GameState.can_work_band(band)
+
+
+func marker_color() -> Color:
+	# t1 buys INFORMATION, and this is the whole of it. Below the tier every seam
+	# is the same grey arrow, so a 60-credit Silicate and a 240-credit Iridium are
+	# indistinguishable until you fly inside MINE_RANGE and read the prompt. At t1
+	# the marker takes the ore's own colour -- which the seam's cut face has worn
+	# since stage 1, so the skill teaches a language the world already spoke.
+	#
+	# Read by hud.gd's collect loop through has_method, so no other marker needs
+	# to know this exists.
+	if GameState.mining < GameState.MINING_READ_TIER:
+		return Palette.HULL
+	return CommodityDB.color_of(good)
 
 
 func hold_tick(delta: float) -> void:
 	if mined or not _holding:
 		return
 	if not _player_in_range():
-		hold_release()
+		_drop_hold()
 		return
 	_progress += delta / maxf(mine_seconds(), 0.01)
 	_sync_gauge()
@@ -186,7 +243,20 @@ func _complete() -> void:
 	# only because of its callers is a function the next caller breaks.
 	if mined:
 		return
+	_yield_cut(cut_units(), "CUT")
 
+
+func _take_sample() -> void:
+	# t2's CHOICE, and it costs something: past halfway you may walk away with
+	# half of what the seam holds, and the seam is SPENT either way. A free
+	# partial would just be a slower full cut; paying the whole seam for half the
+	# ore is what makes leaving early a decision instead of an optimisation.
+	if mined:
+		return
+	_yield_cut(sample_units(), "CORE SAMPLE")
+
+
+func _yield_cut(take: int, label: String) -> void:
 	# ALL OR NOTHING. load_cargo is PARTIAL: it takes as many units as fit and
 	# reports how many. SurveyMast used to call it and revert only when it took
 	# zero, so a mast worked with one space free took 1 of its 2 units and marked
@@ -195,13 +265,16 @@ func _complete() -> void:
 	# way first. Stage 3 brought the mast into line, so this is now the shared
 	# rule rather than a divergence: ask whether the whole yield fits BEFORE
 	# spending the thing that holds it.
-	var take := cut_units()
 	if not GameState.can_load(good, take):
 		var hud_full := get_tree().get_first_node_in_group("hud")
 		if hud_full:
-			hud_full.show_toast("NO ROOM FOR THE CUT — %s x%d" % [
-				CommodityDB.short_name(good), take], Palette.THREAT)
-		hold_release()
+			hud_full.show_toast("NO ROOM FOR THE %s — %s x%d" % [
+				label, CommodityDB.short_name(good), take], Palette.THREAT)
+		# Deliberately NOT hold_release(): at t2 that re-enters _take_sample and
+		# recurses. Clearing the hold inline does what hold_release did before the
+		# sample existed, which is all this path ever wanted.
+		_holding = false
+		_sync_gauge()
 		return
 
 	mined = true
@@ -213,9 +286,9 @@ func _complete() -> void:
 	# CommodityDB.SALVAGE_CHANCE, so 22% of every seam would come out as graded
 	# salvage -- which is ARCHEOLOGY's feed. Routing mining through it would make
 	# cutting rock level a reading skill and turn FEEDS COMPETE red.
-	var main := get_tree().get_first_node_in_group("main")
-	if main and main.deep_space:
-		main.deep_space.note_mined(cell, seam_index)
+	_record_cut()
+	# Fed by the CUT, weighted by BAND. Never by the sale.
+	GameState.mark_mining(band)
 
 	Sfx.play("crack", -4.0, 0.75)
 	Sfx.haptic("medium")
@@ -226,10 +299,26 @@ func _complete() -> void:
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud:
 		hud.crack_progress(-1.0)
-		hud.show_toast("CUT — %s x%d" % [CommodityDB.short_name(good), take],
+		hud.show_toast("%s — %s x%d" % [label, CommodityDB.short_name(good), take],
 			CommodityDB.color_of(good))
 		hud.refresh_cargo()
 	_spend_visual()
+
+
+func _record_cut() -> void:
+	# TWO stores, and which one a seam uses is design rather than plumbing. A
+	# CHARTED seam is one of eleven authored rocks in the entire game and is
+	# remembered in the SAVE: respawning a finite set on every warp is the
+	# deep-hulk farm that deep_space.gd's own comment records shipping once. An
+	# EXPANSE seam is one of thousands and is remembered only for the session,
+	# which is safe precisely because the band gradient makes shallow farming pay
+	# badly (see WARP FARM). Eleven fixed rocks have no gradient to hide behind.
+	if charted_key != "":
+		GameState.note_seam_cut(charted_key)
+		return
+	var main := get_tree().get_first_node_in_group("main")
+	if main and main.deep_space:
+		main.deep_space.note_mined(cell, seam_index)
 
 
 func _spend_visual() -> void:

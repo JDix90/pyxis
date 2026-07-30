@@ -2486,14 +2486,27 @@ func _run_smug_test() -> void:
 			arch_goods[sid] = true
 			for out_v in CommodityDB.reads_as(sid):
 				arch_goods[String(out_v)] = true
+	# THREE sets since stage 4, and the third is why ore carries `ore` rather than
+	# `band` or `parent`: those two keys are literally what puts a good into
+	# archeology's pile, so an ore wearing either would have levelled a reading
+	# skill off a rock and collapsed two feeds into one.
+	var ore_goods := {}
+	for oid_v in CommodityDB.ore_ids():
+		ore_goods[String(oid_v)] = true
 	var overlap := ""
 	for g_v in GameState.SMUGGLING_GOODS:
 		if arch_goods.has(String(g_v)):
-			overlap = String(g_v)
-	print("[smug] FEEDS COMPETE smuggling pays on %s, archeology on %d salvage/component ids, overlap=%s -> %s" % [
-		str(GameState.SMUGGLING_GOODS), arch_goods.size(),
+			overlap = "%s (smuggling/archeology)" % String(g_v)
+	for o_v in ore_goods:
+		var oid := String(o_v)
+		if arch_goods.has(oid):
+			overlap = "%s (mining/archeology)" % oid
+		if GameState.SMUGGLING_GOODS.has(oid):
+			overlap = "%s (mining/smuggling)" % oid
+	print("[smug] FEEDS COMPETE smuggling pays on %s, archeology on %d salvage/component ids, mining on %d ores, overlap=%s -> %s" % [
+		str(GameState.SMUGGLING_GOODS), arch_goods.size(), ore_goods.size(),
 		overlap if overlap != "" else "none",
-		"PASS" if overlap == "" else "FAIL"])
+		"PASS" if overlap == "" and ore_goods.size() == 8 else "FAIL"])
 
 	# 2. NO TOLL XP, NO XP FOR FLEEING. Both were proposed and both were killed by
 	#    arithmetic: paying is the losing move (a fight nets ~+700, running is
@@ -9025,6 +9038,80 @@ func _run_save_test() -> void:
 		print("[savetest] v13 ROUND TRIP claimed=%d commissioned=%s accent=%d (earned, must survive) -> %s" % [
 			GameState.commission_claimed, str(GameState.commissioned),
 			GameState.livery_index("accent"), "PASS" if round_ok else "FAIL"])
+	elif mode == "migrate13":
+		# The migration THIS stage introduces. v13 has no mining keys at all, so
+		# the whole of the fix is three `data.get` defaults — the policy load_game
+		# has held since v1, and the reason there is still no migrate_*() function
+		# anywhere in this file. What must be proved is that a save written before
+		# mining existed arrives at tier 0 with NOTHING cut, rather than arriving
+		# with a truthy default that hands a returning player a skill and eleven
+		# spent rocks they never touched.
+		var v13 := {
+			"version": 13,
+			"salvage": 27182,
+			"owned": ["pulse_1", "drive_cruise"],
+			"fit": {"0": "pulse_1", "2": "drive_cruise"},
+			"current_system": "pyx02",
+			"ship_name": "THE SLOW ASSAY",
+			"archeology": 2, "archeology_xp": 40,
+			"smuggling": 1, "smuggling_xp": 20,
+			"tutorial_step": -1,
+		}
+		var f13 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f13.store_string(JSON.stringify(v13))
+		f13.close()
+		var ok13 := GameState.load_game()
+		var virgin: bool = GameState.mining == 0 and GameState.mining_xp == 0 \
+			and GameState.seams_cut.is_empty()
+		# The OTHER two ladders must be untouched by a stage that adds a third.
+		var neighbours: bool = GameState.archeology == 2 and GameState.smuggling == 1 \
+			and GameState.salvage == 27182
+		print("[savetest] v13->v14 UNMINED mining=%d xp=%d seams=%d, other ladders kept=%s -> %s" % [
+			GameState.mining, GameState.mining_xp, GameState.seams_cut.size(),
+			str(neighbours), "PASS" if ok13 and virgin and neighbours else "FAIL"])
+
+		# THE ROUND TRIP LIVES HERE, not in GSATEST, for the structural reason the
+		# v13 leg above records: save_game() early-returns on `not save_enabled`,
+		# lock_saving() is one-way, and GSATEST locks. A locked harness asserting a
+		# round trip measures in-memory state that never left the process.
+		GameState.mark_mining(4)
+		GameState.note_seam_cut(GameState.seam_key("pyx01", 2))
+		GameState.note_seam_cut(GameState.seam_key("pyx03", 0))
+		var xp_before := GameState.mining_xp
+		GameState.save_game()
+		GameState.mining = 0
+		GameState.mining_xp = 0
+		GameState.seams_cut = {}
+		GameState.load_game()
+		var round14: bool = GameState.mining_xp == xp_before \
+			and GameState.is_seam_cut("pyx01:2") and GameState.is_seam_cut("pyx03:0") \
+			and GameState.seams_cut.size() == 2
+		print("[savetest] v14 ROUND TRIP mining_xp %d, seams_cut %s -> %s" % [
+			GameState.mining_xp, str(GameState.seams_cut.keys()),
+			"PASS" if round14 else "FAIL"])
+
+		# And the validator: a raw dictionary keyed by strings nobody types must
+		# not survive naming a system that does not exist, a rock that does not
+		# exist, or a key with no index in it at all.
+		var rubbish := {
+			"version": 14,
+			"seams_cut": {
+				"pyx01:0": true,          # real, must survive
+				"nosuch:0": true,         # no such system
+				"pyx01:99": true,         # no such rock in that system
+				"pyx01": true,            # no index at all
+				"pyx01:x": true,          # index is not a number
+				"pyx02:0": false,         # falsey, must be dropped not kept
+			},
+		}
+		var fr := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fr.store_string(JSON.stringify(rubbish))
+		fr.close()
+		GameState.load_game()
+		var only_real: bool = GameState.seams_cut.size() == 1 \
+			and GameState.is_seam_cut("pyx01:0")
+		print("[savetest] v14 SEAMS_CUT REJECTS RUBBISH 6 keys in, kept %s -> %s" % [
+			str(GameState.seams_cut.keys()), "PASS" if only_real else "FAIL"])
 	elif mode == "partial6":
 		# A v6 save written before a later setting existed must still get that
 		# setting's default rather than a missing key — the reason load merges
@@ -10376,7 +10463,7 @@ func _run_mine_test() -> void:
 
 	# --- 3. one step, and every ore is sellable somewhere ---------------------
 	var bad := ""
-	for band in range(1, 5):
+	for band in range(0, 5):
 		for gid_v in CommodityDB.seam_yields(band):
 			var gid := String(gid_v)
 			if not CommodityDB.is_ore(gid) or CommodityDB.no_retail(gid) \
@@ -10389,8 +10476,11 @@ func _run_mine_test() -> void:
 	# The gradient IS the anti-farm mechanism, so it is asserted rather than
 	# trusted: the expanse resets on a warp, and what makes that safe is that the
 	# band you can reach in one warp is the band that pays worst.
+	# STARTS AT BAND 0 since stage 4. Band 0 is charted space -- the only band that
+	# never resets -- so it must be the poorest of all, or the eleven permanent
+	# seams become the best rate in the game rather than a windfall.
 	var means: Array = []
-	for band in range(1, 5):
+	for band in range(0, 5):
 		var total := 0.0
 		var table: Array = CommodityDB.seam_yields(band)
 		for gid_v in table:
@@ -10405,7 +10495,7 @@ func _run_mine_test() -> void:
 
 	# --- 5. every band offers both categories --------------------------------
 	var lopsided := ""
-	for band in range(1, 5):
+	for band in range(0, 5):
 		var kinds := {}
 		for gid_v in CommodityDB.seam_yields(band):
 			kinds[CommodityDB.ore_class(String(gid_v))] = true
@@ -10711,6 +10801,197 @@ func _run_mine_test() -> void:
 		"PASS" if not mast.surveyed and GameState.cargo_count(chart_d) == 0 \
 			and GameState.cargo_free() == mast_free else "FAIL"])
 	mast.queue_free()
+	GameState.cargo = {}
+
+	# --- 19. the charted eleven are a windfall, not an income ----------------
+	# Charted seams CANNOT press the pacing ceiling: PACING_LOOP carries no seam
+	# term and MINING IS A ROUTE, NOT A RAISE asserts it stays that way. So
+	# PACINGTEST is structurally blind to them, and something else has to bound
+	# them or eleven permanent rocks are new content nothing watches at all --
+	# which is the trap this repo keeps rediscovering. They are a one-time
+	# windfall, so they are measured against the windfall the game already has.
+	var authored := 0
+	for sid_v in SystemDB.ids():
+		authored += (SystemDB.get_system(String(sid_v)).get("asteroids", []) as Array).size()
+	var band0: Array = CommodityDB.seam_yields(0)
+	var b0_mean := 0.0
+	for gid_v in band0:
+		b0_mean += float(CommodityDB.base_price(String(gid_v)))
+	b0_mean /= maxf(float(band0.size()), 1.0)
+	var charted_total := b0_mean * float(DeepSpace.SEAM_UNITS[0]) * float(authored)
+	# Three derelicts in the whole game; PACINGTEST measures one at ~5,200.
+	var derelict_budget := 5200.0 * 3.0
+	var share := charted_total / derelict_budget
+	# 15%, not 25%. The design value is 9%, and a bound loose enough to tolerate
+	# a DOUBLING of charted yield would sit there green through exactly the change
+	# it exists to catch. This one goes red if band 0's units or prices double.
+	print("[mine] CHARTED SEAMS ARE A WINDFALL %d authored seams worth %.0f, %.0f%% of the %.0f derelict budget vs 15%% -> %s" % [
+		authored, charted_total, share * 100.0, derelict_budget,
+		"PASS" if authored > 0 and share <= 0.15 else "FAIL"])
+
+	# --- 20. two stores, and which one is the design -------------------------
+	# DRIVEN through _complete() on both kinds, never by calling the two stores
+	# directly. The thing under test is the ROUTING in _record_cut, and the first
+	# version of this poked each store instead -- which proved only that a
+	# Dictionary remembers things, and stayed green with the routing deleted. It
+	# was caught by the red pass, which is the entire argument for the red pass.
+	GameState.seams_cut = {}
+	GameState.cargo = {}
+	var ckey := GameState.seam_key(SystemDB.START_SYSTEM, 0)
+	var charted_probe := MineableSeam.new()
+	charted_probe.good = "ore_silicate"
+	charted_probe.units = 2
+	charted_probe.band = 0
+	charted_probe.charted_key = ckey
+	system_root.add_child(charted_probe)
+	var expanse_probe := MineableSeam.new()
+	expanse_probe.good = "ore_ferrite"
+	expanse_probe.units = 3
+	expanse_probe.band = 1
+	expanse_probe.cell = Vector2i(9, 9)
+	expanse_probe.seam_index = 0
+	system_root.add_child(expanse_probe)
+	await get_tree().process_frame
+	charted_probe._complete()
+	expanse_probe._complete()
+	var both_cut: bool = GameState.is_seam_cut(ckey) \
+		and deep_space.is_mined(Vector2i(9, 9), 0)
+	deep_space.rebuild()
+	await get_tree().process_frame
+	print("[mine] CHARTED PERSISTS, EXPANSE RESETS both recorded on cut=%s; after a rebuild charted=%s expanse=%s -> %s" % [
+		str(both_cut), str(GameState.is_seam_cut(ckey)),
+		str(deep_space.is_mined(Vector2i(9, 9), 0)),
+		"PASS" if both_cut and GameState.is_seam_cut(ckey) \
+			and not deep_space.is_mined(Vector2i(9, 9), 0) else "FAIL"])
+	charted_probe.queue_free()
+	expanse_probe.queue_free()
+	GameState.cargo = {}
+
+	# --- 21. the feed is the CUT, never the SALE -----------------------------
+	# A sale is a dock visit, which a smuggler makes anyway; if selling ore paid,
+	# a trade run would level a mining skill and 19's clock warning lands. Driven
+	# through PortPanel._sell, the real counter, rather than asserted about it.
+	GameState.mining = 0
+	GameState.mining_xp = 0
+	GameState.cargo = {}
+	GameState.load_cargo("ore_ferrite", 6)
+	var anchor: Port = null
+	for n in get_tree().get_nodes_in_group("dockable"):
+		if (n as Port).port_id == "anchor":
+			anchor = n as Port
+	var sold := 0
+	if anchor:
+		player.global_position = anchor.dock_point
+		_complete_dock(anchor)
+		await get_tree().create_timer(0.5).timeout
+		sold = GameState.cargo_count("ore_ferrite")
+		port_panel._sell("ore_ferrite", sold)
+		await get_tree().process_frame
+	var xp_after_sale := GameState.mining_xp
+	# And the same ore, cut instead of sold, must pay.
+	GameState.cargo = {}
+	var paid_seam := MineableSeam.new()
+	paid_seam.good = "ore_ferrite"
+	paid_seam.units = 3
+	paid_seam.band = 2
+	system_root.add_child(paid_seam)
+	await get_tree().process_frame
+	paid_seam._complete()
+	print("[mine] MINING PAYS ON SEAMS, NOT SALES sold %d ore -> %d xp, then cut one band-2 seam -> %d xp -> %s" % [
+		sold, xp_after_sale, GameState.mining_xp,
+		"PASS" if sold > 0 and xp_after_sale == 0 and GameState.mining_xp == 2 else "FAIL"])
+	paid_seam.queue_free()
+	if anchor:
+		port_panel.close_panel()
+		undock()
+		await get_tree().create_timer(0.3).timeout
+
+	# --- 22. the tiers buy information, a choice and access — never credits --
+	# util_assay already owns the yield axis. A tier that moved a number with a
+	# price on it would be a second earner under a loop at 97% of its ceiling.
+	var priced_move := ""
+	for band_v in range(0, 5):
+		var probe_cut := MineableSeam.new()
+		probe_cut.band = int(band_v)
+		probe_cut.units = DeepSpace.SEAM_UNITS[int(band_v)]
+		system_root.add_child(probe_cut)
+		GameState.mining = 0
+		var at_t0 := probe_cut.cut_units()
+		GameState.mining = GameState.MINING_TIERS.size() - 1
+		var at_top := probe_cut.cut_units()
+		if at_t0 != at_top:
+			priced_move = "band %d yields %d at tier 0 and %d at the cap" % [
+				int(band_v), at_t0, at_top]
+		probe_cut.queue_free()
+	print("[mine] TIERS BUY NO CREDITS a seam yields the same at tier 0 and at the cap (%s) -> %s" % [
+		priced_move if priced_move != "" else "every band identical",
+		"PASS" if priced_move == "" else "FAIL"])
+
+	# --- 23. a sample can never beat staying ---------------------------------
+	# sample_units() derives from cut_units(), so the Assay Rig moves both. Read
+	# with the rig FITTED as well as bare, because deriving it from the raw table
+	# instead is the mistake this is written against.
+	GameState.cargo = {}
+	# Pinned, because 22 above leaves the ladder at its cap and this assertion
+	# must not inherit it -- an assertion that reads state a previous one happened
+	# to leave behind is measuring the order of the file.
+	GameState.mining = 0
+	var sample_bad := ""
+	for rig_on in [false, true]:
+		GameState.reactor_tier = ModuleDB.REACTOR_TIERS.size() - 1
+		if not GameState.owns("util_assay"):
+			GameState.owned.append("util_assay")
+		GameState.equip(ModuleDB.Slot.UTILITY_B, "util_assay" if rig_on else "")
+		for band_v in range(0, 5):
+			var s := MineableSeam.new()
+			s.band = int(band_v)
+			s.units = DeepSpace.SEAM_UNITS[int(band_v)]
+			system_root.add_child(s)
+			if s.sample_units() >= s.cut_units():
+				sample_bad = "band %d: sample %d vs cut %d (rig=%s)" % [
+					int(band_v), s.sample_units(), s.cut_units(), str(rig_on)]
+			s.queue_free()
+	GameState.equip(ModuleDB.Slot.UTILITY_B, "")
+	print("[mine] CORE SAMPLE CANNOT OUT-YIELD A CUT every band, rig on and off (%s) -> %s" % [
+		sample_bad if sample_bad != "" else "none", "PASS" if sample_bad == "" else "FAIL"])
+
+	# --- 24. t3 is ACCESS, and a locked seam is visible ----------------------
+	var deep_seam := MineableSeam.new()
+	deep_seam.band = 4
+	deep_seam.units = DeepSpace.SEAM_UNITS[4]
+	system_root.add_child(deep_seam)
+	await get_tree().process_frame
+	deep_seam.global_position = player.global_position + Vector3(0, 0, 2.0)
+	GameState.mining = 0
+	deep_seam.hold_begin()
+	var refused: bool = not deep_seam._holding
+	var still_listed: bool = deep_seam.is_in_group("mineable")
+	GameState.mining = GameState.MINING_DEEP_TIER
+	deep_seam.hold_begin()
+	var allowed: bool = deep_seam._holding
+	deep_seam.hold_release()
+	print("[mine] T3 OPENS THE QUIET band-4 hold refused at tier 0=%s, allowed at tier %d=%s, visible while locked=%s -> %s" % [
+		str(refused), GameState.MINING_DEEP_TIER, str(allowed), str(still_listed),
+		"PASS" if refused and allowed and still_listed else "FAIL"])
+	deep_seam.queue_free()
+
+	# --- 25. t1 is INFORMATION, read off the marker --------------------------
+	var tint_seam := MineableSeam.new()
+	tint_seam.good = "ore_iridium"
+	system_root.add_child(tint_seam)
+	await get_tree().process_frame
+	GameState.mining = 0
+	var grey: Color = tint_seam.marker_color()
+	GameState.mining = GameState.MINING_READ_TIER
+	var tinted: Color = tint_seam.marker_color()
+	print("[mine] T1 READS THE ORE marker %s at tier 0, %s at tier %d (ore is %s) -> %s" % [
+		str(grey), str(tinted), GameState.MINING_READ_TIER,
+		str(CommodityDB.color_of("ore_iridium")),
+		"PASS" if grey == Palette.HULL and tinted == CommodityDB.color_of("ore_iridium") \
+			and grey != tinted else "FAIL"])
+	tint_seam.queue_free()
+	GameState.mining = 0
+	GameState.mining_xp = 0
 	GameState.cargo = {}
 
 	get_tree().quit()

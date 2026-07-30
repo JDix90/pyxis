@@ -75,19 +75,27 @@ first:
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --import
 ```
 
-Current baseline: **367 PASS / 0 FAIL / 0 script errors** across 47 runs, save
-format **v13** — the 268 that shipped, plus `PYXIS_FEELTEST` (13),
+Current baseline: **377 PASS / 0 FAIL / 0 script errors** across 48 runs, save
+format **v14** — the 268 that shipped, plus `PYXIS_FEELTEST` (13),
 `PYXIS_UITEST` (14), `PYXIS_GSATEST` (17), `PYXIS_ACCESSTEST` (11),
-`PYXIS_MINETEST` (18), `PYXIS_ENVTEST` (9), `PYXIS_STREAMTEST` (6), two more in
+`PYXIS_MINETEST` (25), `PYXIS_ENVTEST` (9), `PYXIS_STREAMTEST` (6), two more in
 `MUSICTEST` for the score's depth axis, two more in `CARTTEST` for the mast's
-clearance, one more in `LIVERYTEST` for the earned ninth accent, and two in
-`SAVETEST=migrate12` for the v12→v13 migration.
+clearance, one more in `LIVERYTEST` for the earned ninth accent, two in
+`SAVETEST=migrate12` for the v12→v13 migration, and three in
+`SAVETEST=migrate13` for v13→v14.
 
 Mining stages 2 and 3 added seven: three in `MINETEST` (the fit reaching the
 verb, the power a mining commit costs, and the survey mast deferring a reading
 it cannot take whole), three in `PACINGTEST` for the prospector's route profile,
 and one in `SHIPTEST` that no mining module is invisible in the refit console.
-The save is untouched by both stages — `SAVE_VERSION` stays at 13 until stage 4.
+Neither stage touched the save.
+
+Mining stage 4 added ten and bumped the save to **v14**: seven in `MINETEST`
+(the charted eleven as a windfall, the persistent/session split, that the skill
+is fed by cuts and never by sales, that no tier buys credits, that a core sample
+can never out-yield a cut, and the two access tiers), and three in
+`SAVETEST=migrate13` (a v13 save arrives unmined, `seams_cut` survives a round
+trip, and the validator rejects a hand-edited key).
 
 Harness state is **pinned**: `Main._ready()` calls `reset_to_starter()` whenever
 any name in `HARNESS_VARS` is set. Before that, every assertion was measured

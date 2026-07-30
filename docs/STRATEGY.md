@@ -2437,3 +2437,140 @@ exists because five of stage 1's assertions shipped green and proved nothing.
   argument, demonstrated.
 - `THE CONSOLE DRAWS THE UPSIDE` — the conditional rows disabled, and the
   console went back to rendering the Assay Rig as a shield penalty.
+
+## 36. Mining — stage 4, the skill
+
+The verb, the fit and the profile were stages 1–3. This is the ladder that sits
+on top of them, and the first save bump since the Commission: **`SAVE_VERSION`
+14**.
+
+### What the tiers buy, and what they deliberately do not
+
+`MINING_TIERS [0, 18, 50, 110]`, fed by **seams cut, weighted by band** — never
+by ore *sold*. A sale is a dock visit, which a smuggler makes anyway; if selling
+ore paid, a trade run would level a mining skill and §19's clock warning lands.
+`MINING PAYS ON SEAMS, NOT SALES` drives a real sale through `PortPanel._sell`
+and a real cut through `_complete()`, and checks only the second one moves.
+
+- **t1 — information.** The radar marker takes the ore's colour. Below the tier
+  every seam is the same grey arrow, so a 60-credit Silicate and a 240-credit
+  Iridium are indistinguishable until you fly inside `MINE_RANGE`. This turns
+  "fly to every arrow and read it" into "choose which rock is worth the trip".
+- **t2 — a choice.** Past halfway, letting go takes **half the cut and spends the
+  seam**. Paying the whole seam for half the ore is what makes leaving early a
+  decision rather than an optimisation; a free partial would just be a slower
+  full cut.
+- **t3 — access.** Band-4 seams open. A locked seam stays visible and stays on
+  the radar, and its prompt names the tier it wants — a thing you can see and
+  cannot have is a goal, a thing that is absent is nothing.
+
+None of them buys credits or yield. `util_assay` already owns the yield axis, and
+a tier that moved a priced number would be a second earner under a loop already
+at 97% of its ceiling. `TIERS BUY NO CREDITS` compares a seam's yield at tier 0
+and at the cap, at every band.
+
+**110 tops out higher than archeology's 78 and smuggling's 84, and that is not an
+inconsistency** — the three are earned in different units, so comparing their top
+values is a category error. What matters is sessions-to-max, and band weighting
+sets it: roughly fourteen sessions working the Shoals, three and a half working
+the Quiet. The shallow grind being slow is the anti-farm gradient said again in
+the skill.
+
+### Band 0, and why charted seams persist
+
+Charted space had no ore table at all. It has one now — Silicate and Ferrite at
+**2 units**, ~130 a seam — so the gradient runs **130 / 195 / 425 / 530 / 981**
+and `RICHER OUTWARD` starts at band 0 rather than band 1. Band 0 is the poorest
+of all because it is the only band that never resets.
+
+One seam per authored asteroid: **11 in the entire game** (pyx01 5, pyx02 3,
+pyx03 3). They are *placed* by `SystemBuilder` from authored data rather than
+rolled, because they persist and a persistent thing needs a stable identity. The
+key is the system id and the rock's **array index**, which means reordering an
+`asteroids` array silently rekeys a player's cut seams — said out loud at the
+array and in `game_state.gd`.
+
+The split is the design: charted is **persistent** (eleven finite rocks
+respawning on every warp is the deep-hulk farm this repo already shipped once),
+expanse is **session** (safe because the band gradient makes shallow farming pay
+badly). `CHARTED PERSISTS, EXPANSE RESETS` drives both kinds through
+`_complete()` and rebuilds.
+
+### The gate the old plan set could not be executed
+
+The staged plan said: *run PACINGTEST, and if headroom is under ~1.5%, cut
+charted seams.* Stage 3 forbade a `seam` term in `PACING_LOOP` and
+`MINING IS A ROUTE, NOT A RAISE` asserts its absence — so **charted seams cannot
+move `MIDTIER` at all**, and the gate measured something unconnected to the thing
+it gated. PACINGTEST is structurally blind to them.
+
+They are a one-time windfall, structurally a small derelict, so they are measured
+against the windfall the game already has: `CHARTED SEAMS ARE A WINDFALL` totals
+all eleven and holds them under **15%** of the three-derelict budget. They sit at
+**9%** (1,430 against 15,600). The bound is 15 and not 25 deliberately — a bound
+loose enough to tolerate a doubling would sit green through exactly the change it
+exists to catch, which the red pass confirmed by doubling band 0's units.
+
+### There was no migration to write
+
+`load_game()` has been field-defaulting since v1 and there is still no
+`migrate_*()` function anywhere. A v13 save arrives at mining 0 with nothing cut
+because `data.get` says so. The work was the version constant, `seams_cut`
+save/load, a `SAVETEST=migrate13` fixture leg, and adding `migrate13` to
+`run_harness.sh`'s `SAVE_MODES` **in both places it hardcodes that list**.
+
+`seams_cut` is validated against the generator the way `_load_warehouse` is: a
+raw dictionary keyed by strings the player never types must not survive naming a
+system or a rock that is not there.
+
+### Two assertions that did not test what they claimed
+
+Both were caught by the red pass, and both are the reason it is mandatory.
+
+**`CHARTED PERSISTS, EXPANSE RESETS` poked the two stores directly.** It called
+`GameState.note_seam_cut()` and `deep_space.note_mined()` and then checked what
+survived a rebuild — which proves only that a Dictionary remembers things. With
+the entire routing in `_record_cut()` deleted it stayed green. It drives both
+kinds through `_complete()` now.
+
+**`CORE SAMPLE CANNOT OUT-YIELD A CUT` inherited state from the assertion above
+it.** `TIERS BUY NO CREDITS` leaves the ladder at its cap, and the sample check
+read that instead of pinning its own — so a red patch that should have failed it
+passed, because the inherited tier inflated `cut_units()` enough to hide the bug.
+It pins `mining = 0` now. An assertion that reads state a previous one happened
+to leave behind is measuring the order of the file.
+
+A third, smaller finding: `_load_seams_cut`'s system-exists filter is **redundant**
+— the bounds check already rejects an unknown system, because `get_system()`
+returns `{}` and an empty asteroids array fails it. That is an implementation
+detail of `SystemDB` rather than a promise, so the explicit test stays, and the
+comment now says which filter has the teeth.
+
+### The pause sheet, measured rather than feared
+
+A third skill line was predicted to break `SHEET FITS`. It does not, and the
+measurement is worth keeping: at a 1.6 UI scale the root page content is **546
+rows against a 456 cap**, going to **572** with the third line, while the panel
+reads **492 of 512 either way** because `_clamp_height()` pins it. A line costs
+26 rows of scroll and the assertion cannot see the difference.
+
+Which is the real finding: **`SHEET FITS` is structurally incapable of failing on
+content growth.** It measures `_panel.size.y`, and the clamp guarantees that
+value. It proves the clamp works; it cannot prove the page is usable, and the
+root page has been ~90 rows past its cap since before this horizon with the
+assertion silent. §25's rule landing on the assertion written to enforce §25.
+Restoring its teeth means asserting something the clamp does not guarantee — that
+the last action button is reachable without scrolling — which is a different
+assertion, and its own change.
+
+### Known, small, and deliberately not fixed here
+
+`MineableSeam._update_prompt()` memoises on `_in_range_last` alone, so a prompt
+written while a seam is locked does not refresh if the tier changes while the
+ship sits inside `MINE_RANGE` — you would read "SEAM TOO DEEP" until you moved a
+unit and came back. It is the same memo the `cut_units()` figure already lives
+with when a refit changes the fit mid-approach, so it is consistent rather than
+new, it self-corrects on any movement, and reaching it requires levelling on some
+*other* seam while parked on a band-4 one. Left alone so the sweep that signed
+off this stage describes the code that shipped; worth a `_locked_last` companion
+next time this file is open.

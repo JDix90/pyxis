@@ -340,10 +340,23 @@ const GOODS := {
 #
 # Every band carries at least one metal and one mineral, so neither category is
 # a band you have to reach before you can see it. Mean seam value climbs
-# 195 / 425 / 530 / 981 across the bands, which is the anti-farm gradient: the
-# expanse resets on a warp, and the band you can reach in one warp is the band
-# that pays worst.
+# 130 / 195 / 425 / 530 / 981 across the bands, which is the anti-farm gradient:
+# the expanse resets on a warp, and the band you can reach in one warp is the
+# band that pays worst. Band 0 is the charted systems and is poorest of all,
+# because it is the only band that never resets.
 const SEAM_YIELDS := {
+	# BAND 0 IS THE CHARTED SYSTEMS, and it exists because stage 4 puts a seam on
+	# each of the eleven authored asteroids. Two units of the two cheapest ores --
+	# ~130 a seam against band 1's 195 -- so the outward gradient still holds at
+	# its most reachable rung, and the whole charted supply across a playthrough
+	# (~1,430) stays a windfall rather than an income. Asserted by CHARTED SEAMS
+	# ARE A WINDFALL; the gradient is asserted by RICHER OUTWARD, which starts at
+	# band 0 for exactly this reason.
+	#
+	# Charted seams are never ROLLED: seams_for() early-returns on band <= 0 and
+	# SEAM_CHANCE[0] stays 0.0. They are placed from authored data by
+	# SystemBuilder, because they persist and therefore need stable indices.
+	0: ["ore_silicate", "ore_ferrite"],
 	1: ["ore_ferrite", "ore_silicate"],
 	2: ["ore_ferrite", "ore_tungsten", "ore_hydrate", "ore_phosphor"],
 	3: ["ore_tungsten", "ore_hydrate", "ore_platinum", "ore_phosphor"],
