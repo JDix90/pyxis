@@ -197,30 +197,40 @@ func _complete() -> void:
 	# else calls it, and nothing about the name says so.
 	if surveyed:
 		return
+
+	# ALL OR NOTHING, asked BEFORE the mast is spent rather than repaired after.
+	# load_cargo is PARTIAL -- it takes what fits and reports how many -- and the
+	# revert this used to rely on only fired when it took ZERO. So the full hold
+	# was always handled correctly and the NEARLY full hold was not: a mast worked
+	# with one space free took 1 of its 2 units, marked itself read and toasted
+	# "SURVEY LOGGED x1", destroying half the reading with no way to tell. That is
+	# the harder half to notice and the one a working hold is actually in.
+	#
+	# MineableSeam._complete() was written this way from the start, against this
+	# exact bug, and its comment names this function. This is the mast brought
+	# into line with it.
+	var good := CommodityDB.chart_for_band(band)
+	var hud := get_tree().get_first_node_in_group("hud")
+	if good == "" or not GameState.can_load(good, YIELD_UNITS):
+		# Deferred, not wasted: nothing is spent and the mast stays workable.
+		_holding = false
+		_progress = 0.0
+		if hud:
+			hud.crack_progress(-1.0)
+			hud.show_toast("NO ROOM FOR THE READING", Palette.THREAT)
+		return
+
 	surveyed = true
 	_holding = false
 	_progress = 0.0
 	remove_from_group("crackable")
+	var taken := GameState.load_cargo(good, YIELD_UNITS)
 
-	var good := CommodityDB.chart_for_band(band)
-	var taken := GameState.load_cargo(good, YIELD_UNITS) if good != "" else 0
-
-	var hud := get_tree().get_first_node_in_group("hud")
 	if hud:
 		hud.crack_progress(-1.0)
-		if taken > 0:
-			hud.show_toast("SURVEY LOGGED — %s x%d" % [
-				CommodityDB.short_name(good), taken], CommodityDB.color_of(good))
-			hud.refresh_cargo()
-		else:
-			# The hold is full and a reading has nowhere to go. Said out loud
-			# rather than silently dropped — and the mast stays unsurveyed, so
-			# the trip is not wasted, only deferred.
-			hud.show_toast("NO ROOM FOR THE READING", Palette.THREAT)
-	if taken <= 0:
-		surveyed = false
-		add_to_group("crackable")
-		return
+		hud.show_toast("SURVEY LOGGED — %s x%d" % [
+			CommodityDB.short_name(good), taken], CommodityDB.color_of(good))
+		hud.refresh_cargo()
 
 	Sfx.play("equip", -7.0, 1.35)
 	FX.ring_pulse(get_parent(), pick_anchor(), CommodityDB.color_of(good), 2.6, 0.7)

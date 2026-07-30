@@ -307,6 +307,42 @@ const MODULES := {
 		"desc": "Reads plating like a map, and the dark like a page.",
 		"stats": {"weapon_range_bonus": 3.2, "crit_chance": 0.34, "survey_speed": 0.60},
 	},
+	# --- mining tools ---------------------------------------------------------
+	# The fit half of the mining verb. Deliberately TWO axes rather than one
+	# bigger number: the Cutting Head buys SPEED and the Assay Rig buys YIELD, so
+	# a prospector with one slot spare has a question to answer rather than a
+	# strictly-better module to buy.
+	#
+	# Neither is a rig. rig_prospector is the whole-ship commitment that pays for
+	# mining in reach, punch and hull; these are tools, and each costs one clean
+	# thing. There are only TWO utility slots, so the three mining modules can
+	# never all be fitted at once — that is the constraint that stops a
+	# prospector from also being a warship, and PYXIS_MINETEST asserts it rather
+	# than trusting it.
+	"util_cutter": {
+		"name": "Cutting Head",
+		"category": "utility",
+		"tier": 1,
+		"power": 3,
+		"price": 5600,
+		"desc": "A boom, a torch and a grapple. Rock opens faster; corners do not.",
+		"stats": {"mining_rate": 0.35, "turn_rate": -1.6},
+	},
+	"util_assay": {
+		"name": "Assay Rig",
+		"category": "utility",
+		"tier": 2,
+		"power": 4,
+		"price": 15200,
+		"desc": "Reads the face before the cut, and takes what an eye would leave.",
+		# ore_yield is FLAT (+1 unit), not a multiplier, and that is the anti-farm
+		# gradient talking: one more unit of band-1 ore is 65 credits, one more of
+		# band-4 is 196. A multiplier rounded to whole units would have paid the
+		# shallow band best in percentage terms, which is exactly backwards — the
+		# expanse resets on a warp, so the reachable band must stay the poor one.
+		"stats": {"ore_yield": 1.0, "shield_max": -30.0},
+	},
+
 	# --- specialist rigs (v7) -------------------------------------------------
 	# Every one of these is a TRADE, expressed as negative stats on the same
 	# additive pile everything else uses. A hauler really is slower; a strike rig
@@ -591,8 +627,17 @@ static func compute_stats(fit: Dictionary) -> Dictionary:
 
 
 static func summary_lines(stats: Dictionary) -> Array:
-	# (label, value) pairs for the refit console's delta preview.
-	return [
+	# (label, value) pairs for the refit console's stat row.
+	#
+	# THIS LIST IS THE WHOLE OF WHAT A PLAYER CAN SEE. It is hardcoded, so a
+	# module whose upside lives in a key that is not on it reads in the console as
+	# pure downside -- which is what both mining tools did when they were first
+	# written: the Cutting Head showed a HANDLING penalty and nothing else, and
+	# the Assay Rig a SHIELD penalty and nothing else. Nobody buys either. The
+	# design contract at the top of this file says every module is "legible - few
+	# stats, all surfaced as deltas in the refit console", and a stat the console
+	# cannot draw breaks it however correctly the stat behaves at the rock face.
+	var out := [
 		["DPS", "%.0f" % stats["dps"]],
 		["REACH", "%.1f" % stats["reach"]],
 		["SPEED", "%.1f" % stats["max_speed"]],
@@ -601,3 +646,14 @@ static func summary_lines(stats: Dictionary) -> Array:
 		["SALVAGE", "%.0f%%" % (float(stats["salvage_mult"]) * 100.0)],
 		["HOLD", "%.0f" % stats.get("cargo_space", 24.0)],
 	]
+	# CONDITIONAL, and that is a layout decision as much as an editorial one:
+	# these are cells in a plain HBoxContainer on a 720-wide portrait phone, not
+	# a wrapping row, so seven is already tight and a ship with no cutting gear
+	# must not spend two more saying "none". The pair appears and disappears
+	# together so that comparing the two tools never moves the other columns.
+	var rate := float(stats.get("mining_rate", 0.0))
+	var extra := float(stats.get("ore_yield", 0.0))
+	if rate != 0.0 or extra != 0.0:
+		out.append(["CUT", "%.0f%%" % ((1.0 + rate) * 100.0)])
+		out.append(["ORE", "+%d" % int(extra)])
+	return out

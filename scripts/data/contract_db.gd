@@ -74,6 +74,26 @@ const CONTRACTS := {
 		"reward": 2250,
 		"systems": [],
 	},
+	# Mining's contract, and the reason it is FERRITE: a band-1 seam is the only
+	# ore a player can reach on their first warp out, and ferrite is the metal it
+	# yields. A consignment the new prospector cannot fill would teach the wrong
+	# thing about the verb it exists to advertise.
+	#
+	# 1,650 is chosen against the pacing band rather than for flavour.
+	# _pacing_contract_yield measures the MEAN reward of everything PYX-01 offers,
+	# and PACING_LOOP already sits at ~97% of its ceiling, so a ninth contract is
+	# a lever on the whole economy. At 1,650 the mean moves 1,667.5 -> 1,665.6, so
+	# EARNED falls by two credits. A round 2,000 would have raised it by 37 and
+	# spent a tenth of the remaining headroom on a number nobody chose carefully.
+	"haul_ore": {
+		"title": "FOUNDRY CONSIGNMENT",
+		"kind": "deliver",
+		"good": "ore_ferrite",
+		"target": 6,
+		"dest": "cinderworks",
+		"reward": 1650,
+		"systems": [],
+	},
 	"crack_hull": {
 		"title": "BREACH THE DERELICT",
 		"kind": "breach",

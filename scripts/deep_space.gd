@@ -604,8 +604,11 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 # home, thick and rich outward -- and that gradient is not flavour, it is the
 # anti-farm mechanism. `_mined` is SESSION state (see note_mined), so a warp
 # re-rolls the expanse; what makes that safe is that the band you can reach in
-# one warp is the band that pays worst. Band 1 works out at roughly 195 credits
-# a minute against a combat baseline of about 2,000.
+# one warp is the band that pays worst. Band 1 works out at roughly 330 credits
+# a minute against a combat baseline of about 2,000 -- PYXIS_MINETEST's WARP FARM
+# prints the measured figure. (This said 195 until stage 3: 195 is the band-1
+# mean SEAM VALUE from CommodityDB.SEAM_YIELDS, not a rate, and the two were
+# transcribed into one sentence.)
 const SEAM_CHANCE := [0.0, 0.22, 0.30, 0.38, 0.45]
 const SEAM_UNITS := [0, 3, 4, 4, 5]
 # How far outside the rock's own collision sphere the seam node sits. A seam

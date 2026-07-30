@@ -107,7 +107,7 @@ func _update_prompt() -> void:
 		return
 	_in_range_last = in_range
 	if in_range:
-		hud.prompt("HOLD TO CUT — %s x%d" % [CommodityDB.short_name(good), units])
+		hud.prompt("HOLD TO CUT — %s x%d" % [CommodityDB.short_name(good), cut_units()])
 	else:
 		hud.clear_prompt()
 
@@ -124,6 +124,16 @@ func mine_seconds() -> float:
 	# uses for survey_speed. compute_stats sums unknown keys additively, so
 	# mining_rate needed no schema change anywhere.
 	return mine_time / maxf(1.0 + float(GameState.stats.get("mining_rate", 0.0)), 0.2)
+
+
+func cut_units() -> int:
+	# What this seam gives THIS ship, as opposed to what is written in the cell
+	# plan. Everything downstream -- the prompt, the room check, the load and the
+	# toast -- reads this one function, because the failure mode of having two of
+	# them is promising the player a number the hold never receives.
+	#
+	# Additive and flat, unlike mining_rate's multiplier: see util_assay.
+	return units + int(GameState.stats.get("ore_yield", 0.0))
 
 
 func on_tapped() -> void:
@@ -177,25 +187,27 @@ func _complete() -> void:
 	if mined:
 		return
 
-	# ALL OR NOTHING, and this is a deliberate divergence from SurveyMast.
-	# load_cargo is PARTIAL: it takes as many units as fit and reports how many.
-	# The mast calls it and only reverts when it took zero, so a mast worked with
-	# one space free takes 1 of its 2 units and marks itself surveyed -- half the
-	# reading destroyed, silently. With a five-unit seam that would be five times
-	# worse. The mast's own comment says the trip should be "deferred, not
-	# wasted"; this is that comment implemented.
-	if not GameState.can_load(good, units):
+	# ALL OR NOTHING. load_cargo is PARTIAL: it takes as many units as fit and
+	# reports how many. SurveyMast used to call it and revert only when it took
+	# zero, so a mast worked with one space free took 1 of its 2 units and marked
+	# itself surveyed -- half the reading destroyed, silently. With a five-unit
+	# seam that would be five times worse, which is why the seam was written this
+	# way first. Stage 3 brought the mast into line, so this is now the shared
+	# rule rather than a divergence: ask whether the whole yield fits BEFORE
+	# spending the thing that holds it.
+	var take := cut_units()
+	if not GameState.can_load(good, take):
 		var hud_full := get_tree().get_first_node_in_group("hud")
 		if hud_full:
 			hud_full.show_toast("NO ROOM FOR THE CUT — %s x%d" % [
-				CommodityDB.short_name(good), units], Palette.THREAT)
+				CommodityDB.short_name(good), take], Palette.THREAT)
 		hold_release()
 		return
 
 	mined = true
 	_holding = false
 	remove_from_group("mineable")
-	GameState.load_cargo(good, units)
+	GameState.load_cargo(good, take)
 
 	# Deliberately NOT through Main.spawn_loot. That funnel applies
 	# CommodityDB.SALVAGE_CHANCE, so 22% of every seam would come out as graded
@@ -214,7 +226,7 @@ func _complete() -> void:
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud:
 		hud.crack_progress(-1.0)
-		hud.show_toast("CUT — %s x%d" % [CommodityDB.short_name(good), units],
+		hud.show_toast("CUT — %s x%d" % [CommodityDB.short_name(good), take],
 			CommodityDB.color_of(good))
 		hud.refresh_cargo()
 	_spend_visual()

@@ -2237,7 +2237,9 @@ out there. What makes a warp-reset safe is the gradient: mean seam value runs
 without flying back out — measures **329 credits a minute against a combat
 baseline of about 2,000**. Warp-farming the Shoals is six times worse than just
 fighting. `WARP FARM` asserts the number so that anyone who later raises
-`SEAM_CHANCE[1]` sees it collapse.
+`SEAM_CHANCE[1]` sees it collapse. (Stage 2 gave the game a module that adds a
+unit to every cut, so that assertion now prices the *fitted* farm rather than the
+starter one — see §35.)
 
 Band 1 is a thin *shell*, not a region — depth 0–160 past a chart edge of 40 is
 a radius of 40–200, roughly `|c| <= 3` at `CELL 64`. The first version of that
@@ -2259,3 +2261,179 @@ reported a farm rate of zero.
   rolls, and that is what it is verified against.
 - `HOLD FULL DEFERS` was the one that worked first time, and it is the one that
   found the mast's latent partial-load bug.
+
+## 35. Mining — stages 2 and 3, the fit and the profile
+
+Stage 1 gave the deep a verb. These two give it a **fit worth choosing** and a
+**profile that proves it is a route rather than a raise**. Neither touches the
+save.
+
+### The fit: two tools, two axes
+
+`util_cutter` (Cutting Head, 3 power, 5,600) buys **speed** — `mining_rate` 0.35,
+paid for in turn rate. `util_assay` (Assay Rig, 4 power, 15,200) buys **yield** —
+a flat `+1` unit on every cut, paid for in shield. Two axes rather than one
+bigger number, so a prospector with a slot spare has a question to answer instead
+of a strictly-better module to buy.
+
+`ore_yield` is **flat, not a multiplier**, and that is the anti-farm gradient
+talking: one more unit of band-1 ore is 65 credits and one more of band-4 is 196.
+A multiplier rounded to whole units would have paid the shallow band best in
+percentage terms — exactly backwards for a system whose expanse resets on a warp.
+
+Everything downstream of a cut reads one function, `MineableSeam.cut_units()`:
+the prompt, the room check, the load and the toast. Four call sites each doing
+their own arithmetic is how a player gets promised a number the hold never
+receives, so `THE FIT REACHES THE VERB` checks that what lands equals what was
+promised, not merely that the stat is non-zero.
+
+### Three modules, two slots
+
+No new slot family, and that is the constraint. `rig_prospector`, `util_cutter`
+and `util_assay` are three utility modules against **two** utility slots, so the
+complete prospector can never exist — you pick two. The heaviest legal pair over
+the best drive and the best core draws **16 of a Mk III's 18**, leaving 2 against
+a Lance Array's 4: a ship built to mine gives up the mid-tier weapon the pacing
+band is denominated in. `MINING COSTS A MOUNT` asserts that rather than trusting
+it, and goes red if either tool is cheapened.
+
+### A module the console cannot draw is a module nobody buys
+
+Both tools were finished, correct at the rock face, and **unsellable**, and it
+took building them to see why. `ModuleDB.summary_lines()` is a hardcoded
+seven-row list — DPS, REACH, SPEED, HANDLING, SHIELD, SALVAGE, HOLD — and it is
+the whole of what the refit console shows. Neither `mining_rate` nor `ore_yield`
+was on it. So the Cutting Head rendered as **HANDLING −1.6 and nothing else**,
+and the Assay Rig as **SHIELD −30 and nothing else**: two purchases that read as
+pure downside at 5,600 and 15,200 credits.
+
+The fitting contract at the top of `module_db.gd` already promised the opposite —
+"legible, few stats, all surfaced as deltas in the refit console" — so this was a
+contract violation rather than a missing feature. A `CUT` / `ORE` pair now appears
+**conditionally**, only when a mining stat is non-zero, because `_stat_row` is a
+plain `HBoxContainer` on a 720-wide portrait phone rather than a wrapping one and
+seven cells is already tight. The pair appears and disappears together so that
+comparing the two tools never shifts the other columns.
+
+`THE CONSOLE DRAWS THE UPSIDE` asserts it, and checks that the row **exists**
+rather than that the summary merely **changed** — `util_cutter`'s turn-rate
+penalty already moves HANDLING, so a difference check would have passed with the
+upside still invisible.
+
+The same defect is still live elsewhere and is deliberately left for its own
+change: `util_repair` (5,200) and `util_repair_2` (13,500) carry `shield_regen`
+as their *only* stat, and `shield_regen` is not on the list either — so fitting
+either changes not one number the player can see.
+
+### The contract, priced against the band rather than for flavour
+
+`haul_ore` delivers 6 Ferrite Ingots to the Cinderworks for **1,650**. Ferrite
+because band 1 is the only band a first warp reaches and ferrite is the metal it
+yields — a consignment the new prospector cannot fill would teach the wrong thing
+about the verb it advertises.
+
+The reward is the interesting number. `_pacing_contract_yield()` measures the
+**mean** reward of everything PYX-01 offers, so a ninth contract is a lever on
+the whole economy: at 1,650 the mean moves 1,667.5 → 1,665.6 and `EARNED` falls
+by two credits. A round 2,000 would have raised it by 37.
+
+### The profile: a second weighting, never a second measurement
+
+`PACING_PROSPECT` is `4 swarm, 2 sentry, 8 seams, 1 trade, 1 contract, 1 survey`
+— a second **authored weighting folded over the same measured yields**.
+`PACING_LOOP` is untouched and carries no `seam` term at all. Both profiles run
+through one `_pacing_earned(profile, yields)` against one `yields` dictionary,
+and that is the whole design: two profiles sharing the measurements cannot drift
+apart by valuing an activity differently, so a parity failure always means the
+*routes* diverged and never that the instrument did.
+
+Measured: prospector **12,016** against a steady (no-derelict) **11,804**, 1.8%
+apart inside a 20% tolerance, at 2.07 × `lance_1` inside `[0.60, 3.00]`. The
+tuning knob is the weight `"seam": 8`, never an ore price — a price moves the
+market, the contract, the interdiction weight and four port inventories at once.
+
+`ROUTE PARITY` measures against **steady, not best-case**, and that choice is the
+assertion. A derelict is a once-per-system windfall with three in the whole game
+and the prospector's route has none, so comparing against the loop that includes
+one would credit mining with a hull it never cracked.
+
+### What the ceiling actually looks like
+
+The plan was written against a recorded `EARNED` of 16,418 = 2.831 × `lance_1`.
+The real figure is **16,764–17,001, or 2.88–2.93 × `lance_1`**, measured across
+five runs: the standard loop sits at roughly **97% of its ceiling**, not 94%,
+with about ±0.9% of run-to-run noise coming from the derelict's spill. That is on
+the order of **400 credits of headroom, not 980** — and stage 4 should re-measure
+before authoring a single charted seam rather than trusting either figure.
+
+Which is why `MINING IS A ROUTE, NOT A RAISE` is its own assertion. Adding a mere
+`"seam": 4` to `PACING_LOOP` — the obvious knob, and the one a later stage will
+reach for — puts `MIDTIER` at **3.18** and breaks the ceiling outright. Verified
+by doing it.
+
+### The three harness holes stage 1 exposed
+
+**`EVERY NAMED BUYER BUYS` swept 10 goods and should have swept 20.** It filtered
+on `is_component`, but `trade_only_at` is not a component field — it is a
+restriction field that contraband, stolen goods and all eight ores carry too. Ore
+shipped naming four ports as its only buyers, and the one assertion whose whole
+job is to check that claim skipped every one of them. Verified in both
+directions: with an ore pointed at a port that has no counter for it, the widened
+filter fails and the old one passes.
+
+**`NO ROUND-TRIP PROFIT` had only ever run at `smuggling = 0`.**
+`Market.fences()` carries a tier-3 clause returning true for any deep port with a
+fence service, and `can_buy` is `not fences(...)`, so at tier 3 the buy side
+*closes* at the deep havens: 107 pairs swept against tier 0's 130. Both counts
+are printed, because tier 3 legitimately checks fewer pairs and a reader has to
+see that rather than assume one sweep ran twice. Prices themselves do not move
+with the tier — `sell_price` applies `fence_bonus`, keyed on the port's own
+`fence_goods` list — which is now a property proved rather than assumed.
+
+**The survey mast's partial load, fixed.** §34 called this a companion one-liner.
+It was subtler than recorded: the *full* hold was always handled, because the mast
+reverted when `load_cargo` took zero. The **nearly full** hold was not — one space
+free took 1 of a 2-unit reading and toasted "SURVEY LOGGED x1". That is the harder
+half to notice and the one a working hold is actually in. The mast now asks
+`can_load()` before spending itself, exactly as `MineableSeam` always did.
+
+### And one number that was wrong in the source
+
+`deep_space.gd` said band 1 works out at "roughly 195 credits a minute". 195 is
+the band-1 mean **seam value** from `SEAM_YIELDS`; the rate is 329. Two figures
+transcribed into one sentence, and the doc had it right while the code did not.
+`WARP FARM` now also prices the **fitted** farm: the Assay Rig's flat extra unit
+is precisely what someone farming would be carrying, so measuring the starter fit
+was measuring a ship no farmer would fly.
+
+### Every new assertion made to fail first
+
+Seven assertions were added across the two stages, and each was verified red by
+reintroducing the specific defect it names — the house rule from §34, which
+exists because five of stage 1's assertions shipped green and proved nothing.
+
+- `THE FIT REACHES THE VERB` — twice. Once with `cut_units()` ignoring
+  `ore_yield` (3 units → 3), and once with `_complete()` loading `units` while
+  the prompt promised `cut_units()` ("3 units → 4, hold took 3"). The second is
+  the one worth having: it is the four call sites disagreeing, not the stat
+  failing.
+- `MINING COSTS A MOUNT` — Assay Rig dropped to 2 power, leaving 4 spare against
+  a Lance Array's 4, which is no longer "cannot afford".
+- `THE MAST DEFERS TOO` — the guard weakened from `can_load(good, YIELD_UNITS)`
+  to `can_load(good, 1)`, which is precisely the old partial-load behaviour:
+  "took 1, mast still workable=false".
+- `EVERY NAMED BUYER BUYS` — verified in **both** directions, which is the only
+  way a widening can be proved. An ore was pointed at the Cantina, which has no
+  counter for it: the widened filter fails over 20 goods and the old
+  `is_component` filter passes over 10, with the same bug present.
+- `NO ROUND-TRIP PROFIT` — market spreads inverted; the failure names the tier
+  it was found at ("smuggling 3: deep_yard ore_iridium x25"), which proves the
+  tier-3 pass actually reaches the price comparison rather than merely running.
+- `ROUTE PARITY` and `PROSPECT MIDTIER` — the seam weight taken to 30 (3.70 ×
+  `lance_1`, 78% apart) and to 0 (27.6% apart). Both directions, because a
+  parity check that only fails upward would accept a seam yield of nothing.
+- `MINING IS A ROUTE, NOT A RAISE` — `"seam": 4` added to `PACING_LOOP`, which
+  put `MIDTIER` at 3.18 and broke the ceiling. This is the assertion's whole
+  argument, demonstrated.
+- `THE CONSOLE DRAWS THE UPSIDE` — the conditional rows disabled, and the
+  console went back to rendering the Assay Rig as a shield penalty.

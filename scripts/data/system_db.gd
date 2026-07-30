@@ -80,8 +80,13 @@ const SYSTEMS := {
 			# system you start in, which is what makes filing feel like going
 			# somewhere rather than like opening a menu.
 			"services": ["market", "outfitter", "repair", "contracts", "paint", "storage", "commission"],
+			# The Cutting Head is stocked HERE, in the system the player starts in,
+			# because a verb you cannot buy a tool for is a verb the player never
+			# finds. The Assay Rig is not: at 15,200 it belongs at the ports a
+			# prospector reaches after deciding mining is the route they want.
 			"stock": ["pulse_2", "util_tractor", "util_cargo", "drive_vector",
-				"drive_cruise_2", "util_tractor_2", "util_repair", "rig_hauler"],
+				"drive_cruise_2", "util_tractor_2", "util_repair", "rig_hauler",
+				"util_cutter"],
 		},
 		# Secondary station: entertainment, no market of its own. Placed far from
 		# the Anchor so crossing PYX-01 has a reason and a destination.
@@ -180,7 +185,8 @@ const SYSTEMS := {
 			"bias": {"alloys": 0.68, "volatiles": 0.72, "isotopes": 1.35, "cores": 1.25, "relics": 1.05},
 			"services": ["market", "outfitter", "repair", "contracts", "paint"],
 			"stock": ["util_cargo", "util_tractor", "drive_vector", "arc_1", "arc_2", "core_surge",
-				"util_cargo_2", "drive_vector_2", "util_repair", "rig_prospector"],
+				"util_cargo_2", "drive_vector_2", "util_repair", "rig_prospector",
+				"util_cutter", "util_assay"],
 		},
 		# Secondary station: industrial. Bulk discounts and honest sell-back, but
 		# it will not sell you a weapon — the Yards have that trade.
@@ -201,7 +207,8 @@ const SYSTEMS := {
 					"drive_cruise_2", "drive_vector_2", "util_tractor_2",
 					"util_shield_2", "util_cargo_2", "util_scanner_2",
 					"util_repair", "util_repair_2",
-					"rig_hauler", "rig_prospector", "rig_bulwark", "rig_runner"],
+					"rig_hauler", "rig_prospector", "rig_bulwark", "rig_runner",
+					"util_cutter", "util_assay"],
 			},
 		],
 		# Swarm-heavy: an Arc fit farms this system, a Lance fit struggles.
@@ -267,7 +274,8 @@ const SYSTEMS := {
 			"services": ["market", "outfitter", "repair", "contracts", "paint", "lab", "storage"],
 			"stock": ["lance_1", "lance_2", "arc_2", "pulse_2", "util_shield", "util_scanner",
 				"core_surge", "core_aegis", "torp_1", "torp_2",
-				"util_shield_2", "util_scanner_2", "util_repair_2", "rig_strike", "rig_bulwark"],
+				"util_shield_2", "util_scanner_2", "util_repair_2", "rig_strike", "rig_bulwark",
+				"util_assay"],
 		},
 		# Secondary station: the smuggler's den. The only place that will fence
 		# what you should not be carrying, and the only place that will sell you
