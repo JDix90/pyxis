@@ -95,6 +95,28 @@ static func harness_running() -> bool:
 # authored, every yield below them is observed.
 const PACING_LOOP := {"swarm": 14, "sentry": 5, "derelict": 1, "trade": 1,
 	"contract": 1, "survey": 2}
+# The prospector's session: a SECOND authored weighting folded over the SAME
+# measured yields, never a second set of measurements. That is the whole design
+# of it — two profiles that share one `yields` dictionary cannot drift apart by
+# valuing an activity differently, so a parity failure always means the ROUTES
+# diverged and never that the instrument did.
+#
+# Note what is NOT here: PACING_LOOP carries no "seam" term and is untouched by
+# mining. Mining is settled as an ALTERNATIVE loop rather than extra income, and
+# the standard loop already sits at ~97% of its ceiling — there is no room for a
+# seventh earner and none is taken. A prospector trades combat away for cutting
+# and lands beside the recurring rate, not above it.
+#
+# The tuning knob is the weight "seam": 8 — how much of a session cutting fills.
+# Never an ore price: a price moves the market, the haul_ore contract, the
+# interdiction weight and four port inventories at once, and this weight moves
+# only this.
+const PACING_PROSPECT := {"swarm": 4, "sentry": 2, "seam": 8, "trade": 1,
+	"contract": 1, "survey": 1}
+# How far the prospector's route may sit from the recurring standard rate. Wide
+# on purpose: this is checking that mining is a ROUTE rather than a raise or a
+# trap, not that two playstyles pay to the credit.
+const PACING_ROUTE_TOLERANCE := 0.20
 const PACING_MINUTES := 8.0
 # CEILING: earned-per-loop as a fraction of the whole catalog. Above this the
 # catalog is a shopping list again, which was the phase-1 problem.
@@ -3970,16 +3992,32 @@ func _run_salvage_test() -> void:
 		CommodityDB.short_name(deep_grade), CommodityDB.base_price(deep_grade),
 		"PASS" if CommodityDB.base_price(deep_grade) > CommodityDB.base_price(home_grade) else "FAIL"])
 
-	# 11. Every port a component names as a buyer must ACTUALLY have a counter for
-	#     it. REACHABLE only needs one counter on the whole chart, so it would pass
-	#     with a good listed at four ports and sellable at one — which is exactly
-	#     the shape of the contraband-at-the-Cantina bug 11 was written about.
+	# 11. Every port a RESTRICTED GOOD names as a buyer must ACTUALLY have a
+	#     counter for it. REACHABLE only needs one counter on the whole chart, so
+	#     it would pass with a good listed at four ports and sellable at one —
+	#     which is exactly the shape of the contraband-at-the-Cantina bug 11 was
+	#     written about.
+	#
+	#     WIDENED (mining stage 3). This filtered on is_component, and
+	#     `trade_only_at` is not a component field -- it is a RESTRICTION field
+	#     that contraband, stolen goods and all eight ores carry too. Ore shipped
+	#     naming four ports as its only buyers, and the one assertion whose whole
+	#     job is to check that claim skipped every one of them, because ore has no
+	#     `parent`. The filter now asks the question the assertion is named for:
+	#     did this good name a buyer?
+	#
+	#     The swept count is printed because a filter that silently narrows is
+	#     precisely how the hole opened -- "PASS" over eleven goods and "PASS"
+	#     over twenty read identically in a log.
 	var no_counter := ""
+	var named_goods := 0
 	for gid in CommodityDB.ids():
 		var id := String(gid)
-		if not CommodityDB.is_component(id):
+		var named: Array = CommodityDB.get_good(id).get("trade_only_at", [])
+		if named.is_empty():
 			continue
-		for pid_v in (CommodityDB.get_good(id).get("trade_only_at", []) as Array):
+		named_goods += 1
+		for pid_v in named:
 			var pid := String(pid_v)
 			var pdef := SystemDB.port_def_by_id(pid)
 			if pdef.is_empty():
@@ -3987,8 +4025,8 @@ func _run_salvage_test() -> void:
 			var svc: Array = pdef.get("services", PortPanel.DEFAULT_SERVICES)
 			if not (svc.has("market") or (svc.has("fence") and Market.fences(pdef, id))):
 				no_counter = "%s names %s, which has no counter for it" % [id, pid]
-	print("[salvage] EVERY NAMED BUYER BUYS -> %s %s" % [
-		"PASS" if no_counter == "" else "FAIL", no_counter])
+	print("[salvage] EVERY NAMED BUYER BUYS %d goods name a buyer -> %s %s" % [
+		named_goods, "PASS" if no_counter == "" else "FAIL", no_counter])
 
 	# 12. THE RATE THE TIERS ASSERTION IS COMPUTED FROM MUST ACTUALLY BE PAID.
 	#     ARCHEOLOGY_PER_BREACH existed, TIERS divided by it, and nothing in the
@@ -4270,6 +4308,32 @@ func _run_ship_test() -> void:
 			and boss.hp_fraction() > hp_before and home < 2.0 else "FAIL"])
 	print("[ship] DISENGAGE REFUSED outside a fight: %s (must be false) -> %s" % [
 		str(disengage_apex()), "PASS" if not disengage_apex() else "FAIL"])
+
+	# A MODULE THE CONSOLE CANNOT DRAW IS A MODULE NOBODY BUYS.
+	# ModuleDB.summary_lines is a hardcoded list and it is the whole of what the
+	# refit console shows, so a module carrying its upside in a key that is not on
+	# that list reads as pure downside. Both mining tools did exactly that when
+	# first written: the Cutting Head rendered a HANDLING penalty and nothing
+	# else. Checking that the row EXISTS rather than that the list merely
+	# CHANGED is the point -- util_cutter's turn_rate penalty already moves
+	# HANDLING, so "the summary differs" would have passed while the upside was
+	# still invisible.
+	var draw_missing := ""
+	for mid_v in ["rig_prospector", "util_cutter", "util_assay"]:
+		var probe_fit := ModuleDB.STARTER_FIT.duplicate()
+		probe_fit[ModuleDB.Slot.UTILITY] = String(mid_v)
+		var probe_stats := ModuleDB.compute_stats(probe_fit)
+		var carries := float(probe_stats.get("mining_rate", 0.0)) != 0.0 \
+			or float(probe_stats.get("ore_yield", 0.0)) != 0.0
+		var drawn := false
+		for pair in ModuleDB.summary_lines(probe_stats):
+			if String(pair[0]) == "CUT" or String(pair[0]) == "ORE":
+				drawn = true
+		if carries and not drawn:
+			draw_missing = String(mid_v)
+	print("[ship] THE CONSOLE DRAWS THE UPSIDE every mining module surfaces a row a player can read (invisible: %s) -> %s" % [
+		draw_missing if draw_missing != "" else "none",
+		"PASS" if draw_missing == "" else "FAIL"])
 	get_tree().quit()
 
 
@@ -6219,21 +6283,46 @@ func _run_station_test() -> void:
 	var all_counters: Array = SystemDB.port_ids().duplicate()
 	all_counters.append_array(DeepPortDB.ids())
 	var printer := ""
-	for pid_v in all_counters:
-		var pid := String(pid_v)
-		var pdef := DeepPortDB.by_id(pid) if DeepPortDB.is_deep_port(pid) \
-			else SystemDB.port_def_by_id(pid)
-		for good_v in CommodityDB.ids_for_port(pid):
-			var good := String(good_v)
-			if not Market.can_buy(pdef, good):
-				continue
-			for size in [1, 10, 25]:
-				var b := Market.buy_price(pdef, pid, good, size)
-				var sl := Market.sell_price(pdef, pid, good, size)
-				if sl >= b:
-					printer = "%s %s x%d: buy %d, sell %d" % [pid, good, size, b, sl]
-	print("[station] NO ROUND-TRIP PROFIT at any of %d ports (chart + expanse), good or trade size -> %s %s" % [
-		all_counters.size(), "PASS" if printer == "" else "FAIL", printer])
+	#    RUN AT BOTH SMUGGLING TIERS (mining stage 3). This had only ever swept at
+	#    smuggling 0, because reset_to_starter leaves it there and nothing moved
+	#    it. Market.fences() carries a tier-3 clause that returns true for ANY
+	#    deep port holding a fence service, and can_buy is `not fences(...)` — so
+	#    at tier 3 the buy side CLOSES at the deep havens and those port/good
+	#    pairs stop being checked at all. The pair count is printed per tier so
+	#    that difference is visible rather than implied: tier 3 legitimately
+	#    checks FEWER pairs, and a reader has to be able to see that rather than
+	#    assume the two runs were the same sweep twice.
+	#
+	#    Prices themselves do not move with the tier — sell_price applies
+	#    fence_bonus, which is keyed on the port's own fence_goods list and not on
+	#    fences(). That is a property this now proves rather than assumes.
+	var smug_before := GameState.smuggling
+	var pairs_at := {}
+	for tier_v in [0, GameState.SMUGGLING_ACCESS_TIER]:
+		var tier := int(tier_v)
+		GameState.smuggling = tier
+		var pairs := 0
+		for pid_v in all_counters:
+			var pid := String(pid_v)
+			var pdef := DeepPortDB.by_id(pid) if DeepPortDB.is_deep_port(pid) \
+				else SystemDB.port_def_by_id(pid)
+			for good_v in CommodityDB.ids_for_port(pid):
+				var good := String(good_v)
+				if not Market.can_buy(pdef, good):
+					continue
+				pairs += 1
+				for size in [1, 10, 25]:
+					var b := Market.buy_price(pdef, pid, good, size)
+					var sl := Market.sell_price(pdef, pid, good, size)
+					if sl >= b:
+						printer = "smuggling %d: %s %s x%d: buy %d, sell %d" % [
+							tier, pid, good, size, b, sl]
+		pairs_at[tier] = pairs
+	GameState.smuggling = smug_before
+	print("[station] NO ROUND-TRIP PROFIT at any of %d ports (chart + expanse), good or trade size; smuggling 0 swept %d pairs, tier %d swept %d -> %s %s" % [
+		all_counters.size(), int(pairs_at[0]), GameState.SMUGGLING_ACCESS_TIER,
+		int(pairs_at[GameState.SMUGGLING_ACCESS_TIER]),
+		"PASS" if printer == "" else "FAIL", printer])
 
 	# 8. DECLARED TRADEABLE MUST MEAN ACTUALLY TRADEABLE.
 	#    CommodityDB.trades_at() and a port's `services` list are two separate
@@ -7362,20 +7451,21 @@ func _run_pacing_test() -> void:
 	var per_trade := _pacing_trade_yield()
 	var per_contract := _pacing_contract_yield()
 	var per_survey := _pacing_survey_yield()
+	var per_seam := _pacing_seam_yield()
 
-	print("[pacing] YIELD  swarm %.0f/kill  sentry %.0f/kill  derelict %.0f/hull  trade %.0f/run  contract %.0f/each" % [
-		per_swarm, per_sentry, per_derelict, per_trade, per_contract])
+	print("[pacing] YIELD  swarm %.0f/kill  sentry %.0f/kill  derelict %.0f/hull  trade %.0f/run  contract %.0f/each  survey %.0f  seam %.0f/cut" % [
+		per_swarm, per_sentry, per_derelict, per_trade, per_contract, per_survey, per_seam])
 
-	var earned := per_swarm * float(PACING_LOOP["swarm"]) \
-		+ per_sentry * float(PACING_LOOP["sentry"]) \
-		+ per_derelict * float(PACING_LOOP["derelict"]) \
-		+ per_trade * float(PACING_LOOP["trade"]) \
-		+ per_contract * float(PACING_LOOP["contract"]) \
-		+ per_survey * float(PACING_LOOP["survey"])
+	# ONE measurement set, every profile folded over it. See PACING_PROSPECT.
+	var yields := {
+		"swarm": per_swarm, "sentry": per_sentry, "derelict": per_derelict,
+		"trade": per_trade, "contract": per_contract, "survey": per_survey,
+		"seam": per_seam,
+	}
+	var earned := _pacing_earned(PACING_LOOP, yields)
 
-	print("[pacing] LOOP %d swarm + %d sentry + %d derelict + %d trade run + %d contract over %.0f min" % [
-		int(PACING_LOOP["swarm"]), int(PACING_LOOP["sentry"]), int(PACING_LOOP["derelict"]),
-		int(PACING_LOOP["trade"]), int(PACING_LOOP["contract"]), PACING_MINUTES])
+	print("[pacing] LOOP %s over %.0f min" % [
+		_pacing_describe(PACING_LOOP), PACING_MINUTES])
 	print("[pacing] EARNED %.0f per %.0f-minute loop  (%.0f sessions to the full catalog)" % [
 		earned, PACING_MINUTES, float(catalog) / maxf(earned, 1.0)])
 
@@ -7431,7 +7521,63 @@ func _run_pacing_test() -> void:
 	print("[pacing] MIDTIER %.2f x %s (%d) per best-case loop vs [%.2f, %.2f] -> %s" % [
 		modules, PACING_MIDTIER, int(mid), PACING_MIN_MODULES, PACING_MAX_MODULES,
 		"PASS" if modules >= PACING_MIN_MODULES and modules <= PACING_MAX_MODULES else "FAIL"])
+
+	# --- the prospector's route ----------------------------------------------
+	# The same yields, weighted the way a session spent cutting rock is weighted.
+	var prospect := _pacing_earned(PACING_PROSPECT, yields)
+	print("[pacing] PROSPECT %s over %.0f min" % [
+		_pacing_describe(PACING_PROSPECT), PACING_MINUTES])
+	print("[pacing] PROSPECT EARNED %.0f per loop" % prospect)
+	var prospect_modules := prospect / maxf(mid, 1.0)
+	print("[pacing] PROSPECT MIDTIER %.2f x %s per loop vs [%.2f, %.2f] -> %s" % [
+		prospect_modules, PACING_MIDTIER, PACING_MIN_MODULES, PACING_MAX_MODULES,
+		"PASS" if prospect_modules >= PACING_MIN_MODULES \
+			and prospect_modules <= PACING_MAX_MODULES else "FAIL"])
+
+	# Measured against STEADY rather than against the best case, and that choice
+	# is the assertion. A derelict is a once-per-system windfall — three in the
+	# whole game — and the prospector's route has none in it, so comparing to the
+	# loop that includes one would credit mining with a hull it never cracked and
+	# make a route that pays 30% worse look correct.
+	var parity := absf(prospect - steady) / maxf(steady, 1.0)
+	print("[pacing] ROUTE PARITY prospector %.0f vs steady %.0f, %.1f%% apart vs %.0f%% allowed -> %s" % [
+		prospect, steady, parity * 100.0, PACING_ROUTE_TOLERANCE * 100.0,
+		"PASS" if parity <= PACING_ROUTE_TOLERANCE else "FAIL"])
+
+	# And the standard loop must not have been paid a credit for mining existing.
+	# This is cheap to assert and the exact thing a later stage would break by
+	# reaching for the obvious knob: adding a seam term here rather than tuning
+	# the weight in PACING_PROSPECT.
+	print("[pacing] MINING IS A ROUTE, NOT A RAISE standard loop names %s, seam among them=%s -> %s" % [
+		str(PACING_LOOP.keys()), str(PACING_LOOP.has("seam")),
+		"PASS" if not PACING_LOOP.has("seam") else "FAIL"])
 	get_tree().quit()
+
+
+func _pacing_earned(profile: Dictionary, yields: Dictionary) -> float:
+	# ONE summation, every route profile folded through it. The point of a second
+	# authored weighting is that it shares the measurements: a profile carrying
+	# its own copy of this arithmetic would eventually value an activity
+	# differently, and ROUTE PARITY would then be comparing two different games
+	# rather than two ways to play one.
+	#
+	# An activity a profile does not name contributes nothing, which is how
+	# PACING_LOOP carries no "seam" term at all rather than a zero.
+	var total := 0.0
+	for key in profile:
+		total += float(yields.get(key, 0.0)) * float(profile[key])
+	return total
+
+
+func _pacing_describe(profile: Dictionary) -> String:
+	# Read off the profile rather than hand-written, because the hand-written
+	# version was wrong: the LOOP line named five of its six terms for as long as
+	# `survey` had been in the dict, so 560 of EARNED's credits had no visible
+	# source in the log that exists to explain EARNED.
+	var parts := PackedStringArray()
+	for key in profile:
+		parts.append("%d %s" % [int(profile[key]), String(key)])
+	return " + ".join(parts)
 
 
 func _pacing_catalog_cost() -> int:
@@ -7615,6 +7761,29 @@ func _pacing_survey_yield() -> float:
 	print("[pacing]   survey: %s x%d at base %d = %.0f per reading" % [
 		CommodityDB.short_name(good), SurveyMast.YIELD_UNITS,
 		CommodityDB.base_price(good), per])
+	return per
+
+
+func _pacing_seam_yield() -> float:
+	# What one cut is worth at the counter, priced at the DRIFT band for exactly
+	# the reason _pacing_survey_yield is: band 2 is the depth a real loop actually
+	# works, and a number with no combat and no RNG in it would only measure the
+	# harness's patience if it were flown instead of valued.
+	#
+	# Read off SEAM_YIELDS and SEAM_UNITS rather than restated as a constant, so
+	# that retuning the ore table moves this and ROUTE PARITY notices. A restated
+	# number is how a profile quietly stops describing the game.
+	var band := 2
+	var table: Array = CommodityDB.seam_yields(band)
+	if table.is_empty():
+		return 0.0
+	var total := 0.0
+	for gid_v in table:
+		total += float(CommodityDB.base_price(String(gid_v)))
+	var mean := total / float(table.size())
+	var per := mean * float(DeepSpace.SEAM_UNITS[band])
+	print("[pacing]   seam: band %d mean %.0f x %d units = %.0f per cut" % [
+		band, mean, DeepSpace.SEAM_UNITS[band], per])
 	return per
 
 
@@ -10299,6 +10468,15 @@ func _run_mine_test() -> void:
 	var b1_seams := 0.0
 	var b1_value := 0.0
 	var cells := 0
+	# AND THE FARM CASE IS THE FITTED ONE. Stage 2's Assay Rig adds a flat unit to
+	# every cut, so pricing this at the starter fit would measure an exploit
+	# nobody running it would be flying -- "an assertion is only worth what it can
+	# see" applied to the one number that makes session-state expanse safe. Read
+	# off ModuleDB rather than restated, so a richer yield module moves it.
+	var best_yield := 0
+	for mid_v in ModuleDB.MODULES:
+		var mstats: Dictionary = (ModuleDB.MODULES[mid_v] as Dictionary).get("stats", {})
+		best_yield = maxi(best_yield, int(float(mstats.get("ore_yield", 0.0))))
 	# Band 1 is a thin SHELL, not a region: depth 0..160 past a chart edge of 40
 	# is a radius of 40..200, which at CELL 64 is roughly |c| <= 3. Scanning
 	# outward from the origin finds none of it, which is how the first version of
@@ -10312,13 +10490,15 @@ func _run_mine_test() -> void:
 			for sd_v in (plan["seams"] as Array):
 				var sd: Dictionary = sd_v
 				b1_seams += 1.0
-				b1_value += float(CommodityDB.base_price(String(sd["good"]))) * float(sd["units"])
+				b1_value += float(CommodityDB.base_price(String(sd["good"]))) \
+					* float(int(sd["units"]) + best_yield)
 	var per_cell := b1_value / maxf(float(cells), 1.0)
 	# One 64u cell at the hull's base speed of 5.75 is 11.1s, so credits/min is
 	# per_cell * (60 / 11.1).
 	var per_min := per_cell * (60.0 / 11.1)
-	print("[mine] WARP FARM band 1: %d cells, %.2f seams, %.0f credits/cell = %.0f/min vs a ~2000/min combat baseline -> %s" % [
-		cells, b1_seams, per_cell, per_min, "PASS" if cells > 0 and per_min < 600.0 else "FAIL"])
+	print("[mine] WARP FARM band 1 at the best ore_yield (+%d a cut): %d cells, %.2f seams, %.0f credits/cell = %.0f/min vs a ~2000/min combat baseline -> %s" % [
+		best_yield, cells, b1_seams, per_cell, per_min,
+		"PASS" if cells > 0 and per_min < 600.0 else "FAIL"])
 
 	# --- 10. the pick order ---------------------------------------------------
 	# _pick is screen-space with no raycast and plan_cell has no keep-out between
@@ -10441,6 +10621,96 @@ func _run_mine_test() -> void:
 	print("[mine] PROSPECTOR IS NOT INVISIBLE no zero-weight ore (%s); 30 PLATINUM weighs %d vs RAID_MIN_HOLD %d -> %s" % [
 		zero_weight if zero_weight != "" else "none", rich_hold, RAID_MIN_HOLD,
 		"PASS" if zero_weight == "" and rich_hold >= RAID_MIN_HOLD else "FAIL"])
+	GameState.cargo = {}
+
+	# --- 16. the fit reaches the verb ----------------------------------------
+	# Stage 2's whole claim is that fitting changes mining, and a stat nothing
+	# reads is a price tag. This repo has shipped exactly that once already --
+	# ARCHEOLOGY_PER_BREACH, which TIERS divided by and which nothing ever
+	# awarded (see 12) -- so both new keys are DRIVEN through equip() rather than
+	# poked into GameState.stats. A harness that assigns the number it is about
+	# to read is measuring itself.
+	var fit_seam := MineableSeam.new()
+	fit_seam.good = "ore_ferrite"
+	fit_seam.units = 3
+	fit_seam.mine_time = 4.0
+	system_root.add_child(fit_seam)
+	await get_tree().process_frame
+	var bare_secs := fit_seam.mine_seconds()
+	var bare_take := fit_seam.cut_units()
+
+	GameState.reactor_tier = ModuleDB.REACTOR_TIERS.size() - 1
+	for mid_v in ["util_cutter", "util_assay"]:
+		if not GameState.owns(String(mid_v)):
+			GameState.owned.append(String(mid_v))
+	var wore_it := GameState.equip(ModuleDB.Slot.UTILITY, "util_cutter") \
+		and GameState.equip(ModuleDB.Slot.UTILITY_B, "util_assay")
+	var fit_secs := fit_seam.mine_seconds()
+	var fit_take := fit_seam.cut_units()
+	# And the hold must receive exactly what the prompt promised. cut_units() is
+	# read by the prompt, the room check, the load and the toast for precisely
+	# this reason; `landed == fit_take` is the check that the four agree.
+	fit_seam._complete()
+	var landed := GameState.cargo_count("ore_ferrite")
+	print("[mine] THE FIT REACHES THE VERB fitted=%s: cut %.2fs -> %.2fs, %d units -> %d, hold took %d -> %s" % [
+		str(wore_it), bare_secs, fit_secs, bare_take, fit_take, landed,
+		"PASS" if wore_it and fit_secs < bare_secs and fit_take > bare_take \
+			and landed == fit_take else "FAIL"])
+	fit_seam.queue_free()
+	GameState.cargo = {}
+
+	# --- 17. mining costs a mount --------------------------------------------
+	# The fitting contract says there is always a call to make; mining's call is
+	# this one. Three mining modules into two utility slots, so the rig and both
+	# tools can never fly together -- and the heaviest pair that CAN, over the
+	# best drive and the best core, leaves a Mk III without room for the weapon
+	# the pacing band is denominated in. A prospector gives up the Lance to be a
+	# prospector, and that is the price of the route rather than an oversight.
+	var util_slots := 0
+	for slot_v in ModuleDB.SLOT_CATEGORY:
+		if String(ModuleDB.SLOT_CATEGORY[slot_v]) == "utility":
+			util_slots += 1
+	var commit := {
+		ModuleDB.Slot.UTILITY: "rig_prospector",
+		ModuleDB.Slot.UTILITY_B: "util_assay",
+		ModuleDB.Slot.DRIVE: "drive_vector_2",
+		ModuleDB.Slot.CORE: "core_aegis",
+	}
+	var mk3 := ModuleDB.reactor_power(ModuleDB.REACTOR_TIERS.size() - 1)
+	var drawn := ModuleDB.power_draw(commit)
+	var spare := mk3 - drawn
+	var lance_power := int(ModuleDB.get_module(PACING_MIDTIER)["power"])
+	print("[mine] MINING COSTS A MOUNT 3 mining utilities into %d slots; the commit draws %d of Mk III's %d, leaving %d vs %s's %d -> %s" % [
+		util_slots, drawn, mk3, spare, PACING_MIDTIER, lance_power,
+		"PASS" if util_slots == 2 and spare < lance_power else "FAIL"])
+
+	# --- 18. and the mast defers the same way --------------------------------
+	# 11's companion, and it lives in THIS harness deliberately: MineableSeam was
+	# written all-or-nothing against a bug that was live in SurveyMast the whole
+	# time, and its comment says so by name. A fix with no assertion beside it is
+	# a fix that comes back.
+	#
+	# The FULL hold was always handled -- the mast reverted when load_cargo took
+	# zero. The NEARLY full hold was not: one space free took 1 of a 2-unit
+	# reading and toasted "SURVEY LOGGED x1", destroying half of it silently. So
+	# one space free is the case set up here, not a full hold, which would pass
+	# against the old code and prove nothing.
+	GameState.cargo = {}
+	var mast_cap := GameState.cargo_capacity()
+	GameState.load_cargo("ore_phosphor", mast_cap - 1)   # space 1, so exactly 1 free
+	var mast_free := GameState.cargo_free()
+	var mast := SurveyMast.new()
+	mast.band = 2                                        # CHT-D: space 1, YIELD_UNITS 2
+	system_root.add_child(mast)
+	await get_tree().process_frame
+	mast._complete()
+	var chart_d := CommodityDB.chart_for_band(2)
+	print("[mine] THE MAST DEFERS TOO %d space free vs a %d-unit reading: took %d, mast still workable=%s -> %s" % [
+		mast_free, SurveyMast.YIELD_UNITS, GameState.cargo_count(chart_d),
+		str(not mast.surveyed),
+		"PASS" if not mast.surveyed and GameState.cargo_count(chart_d) == 0 \
+			and GameState.cargo_free() == mast_free else "FAIL"])
+	mast.queue_free()
 	GameState.cargo = {}
 
 	get_tree().quit()

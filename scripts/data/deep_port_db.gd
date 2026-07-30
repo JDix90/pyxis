@@ -94,7 +94,8 @@ const ARCHETYPES := [
 		"repair_price": 1200,
 		"stock": ["drive_vector", "drive_cruise_2", "util_cargo", "util_cargo_2",
 			"util_tractor", "util_tractor_2", "util_shield", "util_repair",
-			"rig_hauler", "rig_prospector", "rig_runner"],
+			"rig_hauler", "rig_prospector", "rig_runner",
+			"util_cutter", "util_assay"],
 	},
 	{
 		"id": "deep_yard",
