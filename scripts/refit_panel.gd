@@ -455,7 +455,8 @@ func _build_pilot_strip() -> void:
 	# The same rule the pause menu and the lab render, beside the field-read
 	# buttons it explains.
 	var line := Label.new()
-	line.text = "%s\n%s" % [GameState.archeology_line(), GameState.smuggling_line()]
+	line.text = "%s\n%s\n%s" % [GameState.archeology_line(),
+		GameState.smuggling_line(), GameState.mining_line()]
 	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	line.add_theme_font_size_override("font_size", 10)
 	line.add_theme_color_override("font_color", Palette.AMBER_DIM)

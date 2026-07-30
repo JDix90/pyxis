@@ -609,8 +609,12 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 # prints the measured figure. (This said 195 until stage 3: 195 is the band-1
 # mean SEAM VALUE from CommodityDB.SEAM_YIELDS, not a rate, and the two were
 # transcribed into one sentence.)
+# SEAM_CHANCE[0] stays 0.0 forever: charted seams are AUTHORED by SystemBuilder,
+# one per asteroid, never rolled. seams_for() early-returns on band <= 0 to match.
 const SEAM_CHANCE := [0.0, 0.22, 0.30, 0.38, 0.45]
-const SEAM_UNITS := [0, 3, 4, 4, 5]
+# Index 0 became a real entry in stage 4 (it was unread padding before). Nothing
+# indexes it except the charted placement and the RICHER OUTWARD assertion.
+const SEAM_UNITS := [2, 3, 4, 4, 5]
 # How far outside the rock's own collision sphere the seam node sits. A seam
 # measured from the ROCK's centre would be unreachable on a big one: a QUIET
 # boulder's obstacle radius reaches 6.56 and MineableSeam.MINE_RANGE is 6.0, so

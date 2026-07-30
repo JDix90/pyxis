@@ -17,7 +17,7 @@ static func build(def: Dictionary, container: Node3D, opts := {}) -> void:
 	_build_starfield(def, container)
 	_build_haze(def, container)
 	_build_bodies(def, container)
-	_build_asteroids(def, container)
+	_build_asteroids(def, container, String(opts.get("system_id", "")))
 	_build_derelict(def, container)
 	_build_apex(def, container)
 	_build_port(def, container)
@@ -257,8 +257,10 @@ static func _build_comet(cfg: Dictionary, container: Node3D) -> void:
 	tw.tween_property(comet, "position", cfg.get("from", Vector3(-40, 0, -30)), 0.01)
 
 
-static func _build_asteroids(def: Dictionary, container: Node3D) -> void:
+static func _build_asteroids(def: Dictionary, container: Node3D, system_id := "") -> void:
+	var index := -1
 	for cfg in def.get("asteroids", []):
+		index += 1
 		var rock := MeshInstance3D.new()
 		var sm := SphereMesh.new()
 		sm.radius = 1.0
@@ -274,7 +276,44 @@ static func _build_asteroids(def: Dictionary, container: Node3D) -> void:
 		# Collide against the rock's footprint on the play plane, using the
 		# smaller horizontal axis so the sphere sits inside the visible mesh.
 		var s: Vector3 = cfg["scale"]
-		Obstacles.add(cfg["pos"], minf(s.x, s.z) * 0.82)
+		var radius := minf(s.x, s.z) * 0.82
+		Obstacles.add(cfg["pos"], radius)
+		_build_charted_seam(container, cfg, radius, system_id, index)
+
+
+static func _build_charted_seam(container: Node3D, cfg: Dictionary, radius: float,
+		system_id: String, index: int) -> void:
+	# One seam per authored asteroid: eleven in the whole game, and the reason
+	# charted mining is a WINDFALL rather than an income. They are placed here from
+	# authored data rather than rolled, because they PERSIST and a persistent thing
+	# needs a stable identity -- the key is the system id and this rock's array
+	# INDEX, so reordering an `asteroids` array rekeys a player's cut seams.
+	if system_id == "":
+		return
+	# DETERMINISTIC angle, on its own local stream. Two reasons it cannot use the
+	# shared randf() the rock rotation above uses: that stream would shift every
+	# later draw in the system, and a seam whose angle re-rolled on each rebuild
+	# would move a SPENT face somewhere new every time the player warped home.
+	var srng := RandomNumberGenerator.new()
+	srng.seed = hash("%s|%d|chartseam" % [system_id, index])
+	var table: Array = CommodityDB.seam_yields(0)
+	if table.is_empty():
+		return
+	var seam := MineableSeam.new()
+	seam.good = String(table[srng.randi() % table.size()])
+	seam.units = DeepSpace.SEAM_UNITS[0]
+	seam.band = 0
+	seam.mine_time = 4.0 + 0.6 * (0 - 1)
+	seam.charted_key = GameState.seam_key(system_id, index)
+	seam.mined = GameState.is_seam_cut(seam.charted_key)
+	container.add_child(seam)
+	# The rock sits below the play plane; the seam stands off its collision sphere
+	# ON the plane, which is the one geometry rule that makes a single MINE_RANGE
+	# correct at every rock size. See mineable_seam.gd's header.
+	var ang := srng.randf_range(0.0, TAU)
+	var flat: Vector3 = Vector3(cfg["pos"].x, 0.0, cfg["pos"].z)
+	seam.position = flat + Vector3(cos(ang), 0.0, sin(ang)) \
+		* (radius + DeepSpace.SEAM_STANDOFF)
 
 
 static func _build_derelict(def: Dictionary, container: Node3D) -> void:

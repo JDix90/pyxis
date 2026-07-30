@@ -8,7 +8,7 @@ signal salvage_changed(total: int)
 signal system_unlocked(id: String)
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 13
+const SAVE_VERSION := 14
 const SAVE_DEBOUNCE := 1.0
 
 # v6 defaults. Kept as one dictionary each so a migration only has to merge
@@ -116,6 +116,28 @@ var archeology_xp := 0
 # skills all fed by "playing the game" rise together and become a clock.
 var smuggling := 0
 var smuggling_xp := 0
+
+# v14. MINING. Fed by SEAMS CUT, weighted by band — never by ore SOLD, which a
+# smuggler's dock visit would also trigger and which would make the three feeds
+# rise together (19's clock warning, and FEEDS COMPETE asserts the good-sets are
+# disjoint). Ore carries neither `band` nor `parent`, so it belongs to neither
+# ARCHEOLOGY's salvage set nor SMUGGLING's, and the three stay honest rivals.
+var mining := 0
+var mining_xp := 0
+
+# v14. Charted seams already cut, keyed "system:asteroid_index" ("pyx01:2").
+#
+# PERSISTENT, unlike the expanse's session-only `_mined`, and the split is the
+# whole design. There are eleven finite authored rocks in the game; respawning
+# them on every warp is the deep-hulk farm bug that DeepSpace._build_post's
+# comment already records once. The expanse can reset safely because its defence
+# is the band gradient (see WARP FARM); eleven fixed rocks have no such defence.
+#
+# It cannot grow without bound the way 17's rejected visited-cells array would:
+# it is capped at the number of authored asteroids in the game, which is 11.
+# The KEY is the system id and the asteroid's ARRAY INDEX, so reordering an
+# `asteroids` array in system_db.gd silently rekeys a player's cut seams.
+var seams_cut := {}
 
 # v9. Bonded stores, keyed by PLACE.
 #
@@ -429,6 +451,9 @@ func reset_to_starter() -> void:
 	archeology_xp = 0
 	smuggling = 0
 	smuggling_xp = 0
+	mining = 0
+	mining_xp = 0
+	seams_cut = {}
 	warehouse = {}
 	# A new survey is a new logbook. ship_name is deliberately NOT reset — see the
 	# field comment: what you called your ship outlives the run that named it.
@@ -657,6 +682,39 @@ func can_equip(slot: int, id: String) -> bool:
 	var probe := fit.duplicate()
 	probe[slot] = id
 	return ModuleDB.power_draw(probe) <= power_cap()
+
+
+func _load_seams_cut(saved: Dictionary) -> void:
+	# Validated against the GENERATOR, exactly as _load_warehouse validates bay
+	# keys against the places that actually exist. A raw dictionary keyed by
+	# strings the player never types is still a raw dictionary: a hand-edited save
+	# — or an `asteroids` array that lost an entry between builds — must not leave
+	# this holding a rock that is not there any more.
+	seams_cut = {}
+	for key_v in saved:
+		var key := String(key_v)
+		var bits := key.split(":")
+		if bits.size() != 2:
+			continue                       # 1. shape
+		var sid := String(bits[0])
+		if not SystemDB.exists(sid):
+			continue                       # 2. the system must still exist.
+			                               #    REDUNDANT today and kept anyway: the
+			                               #    red pass showed filter 4 already
+			                               #    rejects an unknown system, because
+			                               #    get_system() returns {} and an empty
+			                               #    asteroids array fails the bounds
+			                               #    check. That is an implementation
+			                               #    detail of SystemDB, not a promise,
+			                               #    so the explicit test stays.
+		if not String(bits[1]).is_valid_int():
+			continue                       # 3. the index must be a number
+		var idx := int(bits[1])
+		var rocks: Array = SystemDB.get_system(sid).get("asteroids", [])
+		if idx < 0 or idx >= rocks.size():
+			continue                       # 4. and must still name a real rock
+		if bool(saved[key_v]):
+			seams_cut[key] = true          # 5. falsey values dropped, not kept
 
 
 # --- bonded stores ----------------------------------------------------------
@@ -955,6 +1013,87 @@ func smuggling_line() -> String:
 	elif smuggling >= 1:
 		perk = "THE LANES WARN YOU EARLY"
 	return "SMUGGLING %d — %s · %s" % [smuggling, perk, tail]
+
+
+# v14. MINING. Tops out higher than the other two ladders (78 and 84), and that
+# is not an inconsistency: the three are earned in DIFFERENT UNITS, so comparing
+# their top values is a category error. What matters is sessions-to-max, and the
+# weighting is what sets it — a seam pays XP equal to its BAND, so 110 is about
+# fourteen sessions of working the Shoals and three and a half of working the
+# Quiet. The shallow grind being genuinely slow is the same anti-farm gradient
+# the ore prices encode, said again in the skill.
+const MINING_TIERS := [0, 18, 50, 110]
+# What the tiers buy: INFORMATION, a CHOICE, and ACCESS. Never credits, never a
+# yield — util_assay already owns the yield axis, and a tier that paid would put
+# a second earner under a loop already at 97% of its ceiling. TIERS BUY NO
+# CREDITS asserts it rather than trusting the comment.
+const MINING_READ_TIER := 1     # t1: the radar marker takes the ore's colour
+const MINING_SAMPLE_TIER := 2   # t2: release past halfway and keep half the cut
+const MINING_SAMPLE_FRACTION := 0.5
+const MINING_DEEP_TIER := 3     # t3: band-4 seams can be worked at all
+
+
+func mining_next_at() -> int:
+	var next := mining + 1
+	return MINING_TIERS[next] if next < MINING_TIERS.size() else -1
+
+
+func mark_mining(band: int) -> bool:
+	# Weighted by BAND, and fed by the CUT rather than the SALE. Selling ore is a
+	# dock visit, which a smuggler makes anyway; cutting rock is the verb this
+	# skill is about. MINING PAYS ON SEAMS, NOT SALES asserts the distinction.
+	var xp := maxi(band, 1)
+	if mining >= MINING_TIERS.size() - 1:
+		return false
+	mining_xp += xp
+	var gained := false
+	while mining < MINING_TIERS.size() - 1 and mining_xp >= MINING_TIERS[mining + 1]:
+		mining += 1
+		gained = true
+	# One line naming the tier LANDED on, matching mark_smuggling: a big band-4
+	# cut can cross two at once, and the log must not disagree with the toast.
+	if gained:
+		note_log("MINING %d — THE ROCK READS DIFFERENTLY NOW" % mining)
+	_queue_save()
+	return gained
+
+
+func can_work_band(band: int) -> bool:
+	# t3 is ACCESS: the deepest seams are refused until the skill is there. A
+	# locked seam stays visible and says why -- a thing you can see and cannot
+	# have is a goal, and a thing that is simply absent is nothing at all.
+	return band < 4 or mining >= MINING_DEEP_TIER
+
+
+func mining_line() -> String:
+	var next_at := mining_next_at()
+	var tail := ("%d TO NEXT" % (next_at - mining_xp)) if next_at >= 0 \
+		else "NOTHING LEFT TO LEARN"
+	var perk := "ORE READS AS GREY ROCK"
+	if mining >= MINING_DEEP_TIER:
+		perk = "THE QUIET'S SEAMS WILL OPEN FOR YOU"
+	elif mining >= MINING_SAMPLE_TIER:
+		perk = "YOU CAN TAKE A CORE SAMPLE AND MOVE ON"
+	elif mining >= MINING_READ_TIER:
+		perk = "YOU READ A SEAM'S ORE AT A DISTANCE"
+	return "MINING %d — %s · %s" % [mining, perk, tail]
+
+
+# --- charted seams ----------------------------------------------------------
+
+func seam_key(system_id: String, index: int) -> String:
+	return "%s:%d" % [system_id, index]
+
+
+func is_seam_cut(key: String) -> bool:
+	return seams_cut.has(key)
+
+
+func note_seam_cut(key: String) -> void:
+	if key == "":
+		return
+	seams_cut[key] = true
+	_queue_save()
 
 
 func archeology_line() -> String:
@@ -1286,6 +1425,9 @@ func save_game() -> void:
 		"archeology_xp": archeology_xp,
 		"smuggling": smuggling,
 		"smuggling_xp": smuggling_xp,
+		"mining": mining,
+		"mining_xp": mining_xp,
+		"seams_cut": seams_cut,
 		"warehouse": warehouse,
 		"ledger": ledger,
 		"ship_name": ship_name,
@@ -1383,6 +1525,11 @@ func load_game() -> bool:
 	archeology_xp = maxi(int(data.get("archeology_xp", 0)), 0)
 	smuggling = clampi(int(data.get("smuggling", 0)), 0, SMUGGLING_TIERS.size() - 1)
 	smuggling_xp = maxi(int(data.get("smuggling_xp", 0)), 0)
+	# v14. A v13 save arrives at mining 0 with nothing cut, by the same policy —
+	# there is no migration branch here and there never has been one.
+	mining = clampi(int(data.get("mining", 0)), 0, MINING_TIERS.size() - 1)
+	mining_xp = maxi(int(data.get("mining_xp", 0)), 0)
+	_load_seams_cut(data.get("seams_cut", {}))
 	_load_warehouse(data.get("warehouse", {}))
 
 	# v6 fields. Merged key-by-key onto the defaults rather than taken wholesale,

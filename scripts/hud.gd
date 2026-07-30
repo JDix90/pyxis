@@ -157,12 +157,20 @@ class RadarLayer:
 				var screen := _project(cam, world, centre, rect)
 				if inset.grow(-OFFSCREEN_PAD + EDGE_MARGIN).has_point(screen):
 					continue     # on screen: the player can already see it
+				# The colour is per-GROUP by default, which is right for everything
+				# that is one kind of thing. A seam is not: what it holds is worth
+				# 60 credits or 240 and the marker is the only place that can say
+				# so before you fly there. An optional per-node override keeps that
+				# knowledge in the node instead of teaching this loop about ore.
+				var col: Color = spec[2] as Color
+				if n.has_method("marker_color"):
+					col = n.marker_color()
 				found.append({
 					"id": n.get_instance_id(),
 					"tier": int(spec[1]),
 					"dist": player.global_position.distance_to(world),
 					"screen": screen,
-					"color": spec[2] as Color,
+					"color": col,
 					"size": float(spec[3]),
 				})
 
