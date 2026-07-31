@@ -89,7 +89,7 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **443 PASS / 1 FAIL / 0 script errors** across 53 runs, save
+Current baseline: **446 PASS / 1 FAIL / 0 script errors** across 53 runs, save
 format **v17**.
 
 The 1 FAIL is `HOLDTEST`'s `THE READOUT FOLLOWS THE HOLD`, and it **predates
@@ -106,8 +106,9 @@ contracts first, or assert on `accept`.
 
 **Two further assertions are load-flaky, and it is worth knowing before you
 trust a red sweep.** `DEEPTEST`'s `STARFIELD` and `RAIDTEST`'s `THE HOLD IS NOT
-A SHIELD` both passed one full sweep and failed the next on identical code, and
-both pass repeatedly when run alone. They are timing-sensitive rather than
+A SHIELD` failed one full sweep of three on identical code — they were green in
+the first and the third — and both pass repeatedly when run alone. They are
+timing-sensitive rather than
 wrong: `STARFIELD` read `1234.8u` on a loaded machine against `0.6u` idle, so it
 is measuring a starfield that has not been rebuilt yet, and `THE HOLD IS NOT A
 SHIELD`'s `moving+open` leg needs the ship to actually have velocity by the
