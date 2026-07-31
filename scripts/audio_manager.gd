@@ -21,6 +21,7 @@ var _streams := {}
 var _pool: Array[AudioStreamPlayer] = []
 var _next := 0
 var _loops := {}
+var _looped := {}
 
 var _streak := 0
 var _streak_time := 0.0
@@ -140,13 +141,41 @@ static func frame_count(stream: AudioStreamWAV) -> int:
 
 
 static func loopify(stream: AudioStream) -> AudioStream:
-	# Idempotent: the whole file, front to back, forever.
+	# Idempotent: the whole file, front to back, forever. MUTATES what it is given
+	# and hands the same object back, which is why nothing may pass it a stream
+	# out of `_streams` -- see _looped_stream. Music does pass it a bare load(),
+	# and that is fine: no music layer is ever played as a one-shot.
 	if stream is AudioStreamWAV:
 		var w := stream as AudioStreamWAV
 		w.loop_mode = AudioStreamWAV.LOOP_FORWARD
 		w.loop_begin = 0
 		w.loop_end = frame_count(w)
 	return stream
+
+
+func _looped_stream(name: String) -> AudioStream:
+	# A looping COPY, memoised per name, and the copy is the whole point.
+	#
+	# `_streams[name]` is one resource shared by every player of that sound --
+	# load() hands back Godot's cached instance -- so loopifying it in place did
+	# not make "this player" loop, it made the SOUND loop, for the rest of the
+	# session, including for the fire-and-forget pool.
+	#
+	# It shipped as a mining bug, because "crack" is the one name used both ways:
+	# Derelict takes a crack loop on SPAWN, so entering any system with a hulk in
+	# it was enough, and mineable_seam's completion one-shot then played a stream
+	# that had quietly become endless. The pool has no stop(), so the only thing
+	# that ever silenced it was `_next` wrapping 20 sounds later and stealing the
+	# player back -- which is exactly what a swarm turning up does.
+	#
+	# One copy shared by every looping player is still correct: playback position
+	# lives in the player's AudioStreamPlayback, not in the resource, which is
+	# already how the pool shares one stream across 20 players.
+	if not _streams.has(name):
+		return null
+	if not _looped.has(name):
+		_looped[name] = loopify(_streams[name].duplicate())
+	return _looped[name]
 
 
 func attached_loop(owner: Node, name: String, volume_db := -6.0) -> AudioStreamPlayer:
@@ -162,7 +191,7 @@ func attached_loop(owner: Node, name: String, volume_db := -6.0) -> AudioStreamP
 		# Looped because the hold it scores outruns the sample: crack.wav is 2.2s
 		# and a Reaches hulk takes 2.6s, so the deepest wrecks used to fall silent
 		# just before they gave way.
-		p.stream = loopify(_streams[name])
+		p.stream = _looped_stream(name)
 	owner.add_child(p)
 	return p
 
@@ -170,7 +199,7 @@ func attached_loop(owner: Node, name: String, volume_db := -6.0) -> AudioStreamP
 func loop_start(name: String, volume_db := -6.0) -> void:
 	if not _streams.has(name) or _loops.has(name):
 		return
-	var stream: AudioStream = loopify(_streams[name])
+	var stream: AudioStream = _looped_stream(name)
 	var p := AudioStreamPlayer.new()
 	p.process_mode = Node.PROCESS_MODE_ALWAYS
 	p.stream = stream
@@ -193,3 +222,21 @@ func loop_stop(name: String, fade := 0.4) -> void:
 
 func is_looping(name: String) -> bool:
 	return _loops.has(name)
+
+
+func playing_count(name: String) -> int:
+	# How many pooled one-shots of this sound are still sounding.
+	#
+	# Exists so a harness can ask the question the player actually asks -- "is
+	# that noise still going?" -- rather than reaching into `_pool` itself. It
+	# counts the fire-and-forget pool only: object-owned loops from
+	# attached_loop() belong to their node and end when it does, and the named
+	# loops in `_loops` have is_looping() for the same purpose.
+	if not _streams.has(name):
+		return 0
+	var one_shot: AudioStream = _streams[name]
+	var n := 0
+	for p in _pool:
+		if p.playing and p.stream == one_shot:
+			n += 1
+	return n

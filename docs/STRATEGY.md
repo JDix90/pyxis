@@ -3549,3 +3549,177 @@ spill — **13 units of space against a bare hold of 24** — so dumping ore to 
 room for the drop is a genuine play, and locking the screen would delete it.
 Note `set_panels_locked` has two callers, docking and the boss, so leaving HOLD
 out is also what keeps the docked stash exit reachable.
+
+## 44. Two bugs that were not where they were reported
+
+Both of these arrived with a diagnosis attached, and both diagnoses were wrong in
+the same instructive way: they described the symptom's *neighbourhood* rather
+than its cause. Chasing either as written would have produced a plausible change
+that fixed nothing.
+
+### The mining audio was never a mining bug
+
+Reported as "after mining ore, the mining sound keeps looping", with the sharp
+observation that only a swarm's arrival ever stopped it — "which suggests the
+loop is never stopped, merely overwritten." That instinct was exactly right and
+pointed one layer below where it was aimed.
+
+There is no mining loop. `mineable_seam` has no `AudioStreamPlayer` of its own
+and never calls `attached_loop`; the sound is a single fire-and-forget one-shot
+at the end of a cut, `Sfx.play("crack", -4.0, 0.75)`. Every other way out of a
+hold — cancel, drift, stun, dock, warp, recall, death — makes no sound at all, so
+the instruction to audit all of them would have added teardown code to fifteen
+paths that had nothing to tear down.
+
+What actually happened is one line:
+
+```gdscript
+static func loopify(stream: AudioStream) -> AudioStream:
+	w.loop_mode = AudioStreamWAV.LOOP_FORWARD   # mutates
+	return stream                               # the same object
+```
+
+`_streams[name]` holds **one** resource per sound — `load()` returns Godot's
+cached instance — so this never made *a player* loop. It made **the sound** loop,
+process-wide, permanently. `Derelict` takes a crack loop in `_ready`, on spawn
+rather than on breach, so entering any system containing a hulk was enough. From
+that moment every completed cut handed an endless stream to a pool with no
+`stop()`, and the only thing that could ever silence it was `_next` wrapping
+twenty sounds later and stealing the player back. A swarm turning up is precisely
+that.
+
+`crack` is the **only** name in the project used both as a loop and as a
+one-shot, which is why this surfaced as a mining bug and nothing else. The fix is
+a memoised duplicate — `_looped_stream(name)` — so the loop players get a looping
+copy and `_streams` stays pristine. Not in the `.import` files, incidentally:
+every one of them carries `edit/loop_mode=0`. All looping in this project is
+runtime mutation, which is worth knowing before hunting the next one.
+
+**Two assertions were reading the bug as though it were the feature.** FEELTEST's
+`LOOP END` asked the shared one-shot cache for its `loop_end` after a
+`loop_start` — a question that only had an answer because the cache was being
+corrupted, and which would have gone red *on the fix*. It now reads the loop
+player's own stream, and additionally asserts the one-shot copy comes back
+unlooped. `CRACK OUTLASTS HOLD` was fine: it read the player's stream all along.
+
+The new check, `THE CUT FALLS SILENT`, waits for silence **before** cutting.
+Written the obvious way it read six sounds still ringing from earlier sections,
+so "something is playing" was true whether or not the cut made a noise. Red, it
+prints `5 sounding before, 6 at the cut, 6 after 4.0s`; green, `0 / 1 / 0`.
+
+### The apex respawn, and the assertion that was not what it looked like
+
+`SystemBuilder._build_apex` never asked whether the engine was dead, and its
+comment — "only exists once this system's derelict has been breached" — was
+describing a rule that lives somewhere else entirely (breaching arms the *wake*,
+never the build). That much was reported accurately.
+
+What was not: `PYXIS_BOSSTEST`'s step 4 was said to assert the old behaviour and
+to need inverting. It does not. It **halves** the engine and warps out, then
+asserts a full read on return — it is about a *damaged* engine, and §41 had
+rewritten it specifically so it could not pass vacuously. Retreat resetting the
+fight is correct design: failure costs tempo, never salvage. Only a **win** must
+stick. Inverting step 4 would have deleted a good assertion and replaced it with
+a false one; the suite needed three new checks instead, and step 4 passes
+untouched.
+
+**The third state.** `apex_killed` is not "this engine is dead" — stage 1 split
+the two deliberately, and HUNTTEST's `OPENING A LANE DOES NOT SPEND THE BONUS`
+pins the split. So killed-but-not-yet-cracked had nowhere to live:
+
+| state | flag | rebuilt on entry |
+|---|---|---|
+| alive | neither | the engine |
+| killed, wreck uncracked | `apex_down` | the **wreck** |
+| killed and cracked | `+ apex_killed` | nothing |
+
+**The wreck survives the warp, and that is the decision worth writing down.**
+Losing a 15,000–32,000 credit first-kill bonus to a jump the player had every
+reason to make is a silent punishment for leaving. The wreck is rebuilt at the
+same deterministic `lair_pos` until somebody actually breaches it, and the new
+check asserts the *bonus it carries*, not merely that a node exists — a wreck
+rebuilt from defaults would otherwise pass while quietly paying 15,000 in a
+system authored for 32,000.
+
+`apex_down` is written by `on_apex_defeated`, **not** by `open_lane`. `lanes_open`
+looked like a free answer that would have avoided the save bump, and is not one:
+BOSSTEST's own staging opens a lane purely as a travel permit without anything
+dying, and the v15 grandfather seeds `lanes_open` from `breached`, so a save old
+enough would report living engines as dead and delete their bonus.
+
+### The grandfather, and choosing which way to be wrong
+
+A v16 save cannot say which engines are down; it only records which ones **paid**.
+So v17 seeds `apex_down` from `apex_killed`, which under-counts by exactly one
+case — killed, warped out, never cracked.
+
+That is the right direction to be wrong. Under-counting rebuilds an engine the
+player already beat, which is merely today's behaviour left unchanged for one
+system. Over-counting would delete a wreck worth up to 32,000 credits that they
+can still see on the radar. `SAVETEST=migrate16` asserts both halves: `pyx01`
+paid and is grandfathered down, `pyx02` has an open lane and is **not** — which
+is the same assertion twice, once for what the rule does and once for what it
+refuses to guess.
+
+One subtlety the validator leg exists for: **absent** and **empty** must not read
+alike. Absent means "infer from `apex_killed`"; an empty list in a v17 save means
+"this player has collected nothing", and reading the second as the first would
+resurrect every engine they had put down.
+
+### What comes back, and what does not
+
+Worth recording because the report asked about "sentries" and there is no such
+thing as an apex sentry. Three separate populations were checked before changing
+anything: the engine's own probes (vented mid-fight, cleared by `reset_fight`),
+the authored garrison in `def["sentries"]` (hundreds of units away, unrelated to
+the lair), and deep-space nests (already suppressed inside `LAIR_KEEPOUT`). Only
+the engine node itself was ever the problem. Ambient pacing keeps respawning, as
+it should.
+
+### The suite the fix broke, and why it was the right kind of break
+
+`PYXIS_BALANCE` went red on the first full sweep after the apex fix, and the
+failure mode is worth keeping: **every fit after the first reported `NO BOSS`**,
+and `PHASE INTEGRITY` printed a row of zeros — `ARC 0/0/0/0/0; PULSE 0/0/0/0/0;
+…` — which is a suite measuring nothing rather than a balance result.
+
+The cause is the fix working. `_balance_run` fights pyx01's engine to a
+conclusion with six fits and a four-run resample pass, calling `_load_system`
+between each. The first fit killed the engine; from v17 on, a killed engine is
+not rebuilt, so the remaining twenty-odd runs had nothing to shoot at.
+
+The repair is one line in the harness, not a softening of the rule:
+`GameState.apex_down = []` at the top of each run, the same shape HUNTTEST
+already uses to restore `apex_killed` after asserting on it. A harness that
+deliberately replays an encounter the game gives **once** has to put the world
+back itself; that is a property of the measurement, not a hole in the fix.
+
+Two things make this a good failure rather than an annoying one. It was loud —
+`NO BOSS` on every line and a visible row of zeros, not a plausible-looking
+number that happened to be wrong. And it was caught by the *full sweep* rather
+than by the suites under change: `BOSSTEST`, `MINETEST`, `HUNTTEST` and
+`FEELTEST` were all green when it appeared. The per-suite runs during
+development would never have found it, which is the argument for the sweep being
+the gate rather than the suite you happen to be editing.
+
+### One standing FAIL that is not ours
+
+The same sweep surfaced `HOLDTEST`'s `THE READOUT FOLLOWS THE HOLD` failing, and
+it reproduces identically on a clean `fb03037` worktree — so the recorded
+"437 PASS / 0 FAIL" was already off by one before this change. Instrumented, the
+cause is immediate:
+
+```
+[dbg] accept=false active=[sweep_swarm, haul_small] slots_free=0
+```
+
+`ACTIVE_SLOTS` is 2 and both are still held from an earlier section of the same
+suite, so `contracts.accept("haul_alloys")` returns **false** and the assertion
+does not check. The delivery half of it has never executed; its `both_fired`
+clause compares pre-spill cargo against post-delivery cargo, two quantities from
+different phases, and is false for a reason unrelated to what the line claims to
+measure. Left for whoever owns the hold — the fix is to drop the two contracts
+first or to assert on `accept` — but recorded here because an assertion that has
+never once run is exactly the defect class §41 and §43 were written about, and
+finding a third one in the suite added most recently is the argument for reading
+every new check's *red* run rather than trusting its green one.

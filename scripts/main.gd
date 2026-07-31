@@ -890,9 +890,11 @@ func _load_system(id: String) -> void:
 	system_def = SystemDB.get_system(id)
 	GameState.set_current_system(id)
 
-	# Boss state never survives a system change: the encounter resets to full on
-	# warp or reload. Clearing the flag here is what stops a mid-fight warp-out
-	# from permanently stalling the swarm spawner.
+	# Boss state never survives a system change: a DAMAGED engine resets to full on
+	# warp or reload, because retreating costs tempo and never salvage. Clearing
+	# the flag here is what stops a mid-fight warp-out from permanently stalling
+	# the swarm spawner. A DESTROYED engine is a different question and is not
+	# rebuilt at all — SystemBuilder._build_apex asks GameState.has_apex_down.
 	_set_boss_active(false)
 	_apex_wake_timer = -1.0
 	# Raiders are children of SystemRoot and die with it, so the raid is over the
@@ -1898,6 +1900,15 @@ func _find_apex() -> ApexBoss:
 	return nodes[0] as ApexBoss
 
 
+func _find_apex_wreck() -> ApexWreck:
+	# By type rather than by group: the wreck shares "crackable" with every
+	# derelict in the system, so the group alone would answer a different question.
+	for node in get_tree().get_nodes_in_group("crackable"):
+		if node is ApexWreck:
+			return node as ApexWreck
+	return null
+
+
 func arm_apex_wake() -> void:
 	# Called when this system's derelict is breached — the aftershock.
 	if _find_apex() != null:
@@ -2074,6 +2085,10 @@ func on_player_downed() -> void:
 func on_apex_defeated(_boss: Node3D) -> void:
 	_set_boss_active(false)
 	report_kill("apex")
+	# v17. The kill is recorded HERE, where the engine actually dies, and not in
+	# open_lane — which is also called to grant passage in stagings where nothing
+	# has died, and would then bury a living engine.
+	GameState.mark_apex_down(system_id)
 	# The lane opens the moment the engine stops transmitting — not when its
 	# wreck is cracked. Breaching the wreck is a second trip, for the bonus and
 	# the spill, and a player who dies on the way back should still have earned
@@ -9525,6 +9540,17 @@ func _run_balance_test() -> void:
 func _balance_run(weapon_a: String, weapon_b: String, label: String) -> Dictionary:
 	GameState.equip(ModuleDB.Slot.WEAPON_A, weapon_a)
 	GameState.equip(ModuleDB.Slot.WEAPON_B, weapon_b)
+	# v17. UNDO THE KILL THE LAST FIT MADE. Every run here fights the same engine
+	# to a conclusion, and since v17 an engine that has been put down is not
+	# rebuilt -- so without this the first fit killed pyx01's and every fit after
+	# it reported NO BOSS. PHASE INTEGRITY then read a row of zeros, which is a
+	# suite measuring nothing rather than a balance result.
+	#
+	# Cleared per RUN and not once at the top, because the resample pass calls
+	# this again after four more kills. Same shape as HUNTTEST restoring
+	# apex_killed after it asserts on it: a harness that deliberately replays an
+	# encounter the game gives once has to put the world back itself.
+	GameState.apex_down = []
 	_load_system("pyx01")
 	await get_tree().create_timer(0.5).timeout
 
@@ -9728,6 +9754,11 @@ func _run_boss_test() -> void:
 	# 4. Returning restores a full-strength engine (fight resets, per design —
 	# failure costs tempo, never salvage). The boss left pyx01 at 0.50 hp
 	# (halved in check 2); a full read here proves the rebuild starts fresh.
+	#
+	# v17. THIS CHECK IS ABOUT A DAMAGED ENGINE AND STAYS THAT WAY. A retreat
+	# resets; only a WIN sticks, and checks 5-7 below are the win. Reading them as
+	# one rule -- "the apex always comes back" -- is what let the respawn bug sit
+	# behind a green suite: nothing here had ever killed the thing.
 	travel_to("pyx01")
 	await get_tree().create_timer(WARP_CHARGE + WARP_STREAK + WARP_ARRIVE + 1.0).timeout
 	var boss2 := _find_apex()
@@ -9735,6 +9766,63 @@ func _run_boss_test() -> void:
 	print("[bosstest] RETURN apex_present=%s hp_fraction=%.2f -> %s" % [
 		str(boss2 != null), frac,
 		"PASS" if boss2 != null and frac >= 0.999 else "FAIL"])
+
+	# 5. A KILLED engine does not come back. Driven to death through take_damage
+	# at the core, never by setting a flag: the fix reads GameState.apex_down, and
+	# a harness that called mark_apex_down itself would prove only that a list
+	# holds what you put in it. The kill has to travel boss -> _die ->
+	# _become_wreck -> on_apex_defeated for this to mean anything.
+	# Woken first, and that is not ceremony: check 4 rebuilt this engine, so it is
+	# DORMANT, and take_damage refuses damage in DORMANT/WAKING/DYING. Without
+	# this the loop below swings 400 times into a machine that is asleep and the
+	# check fails for a reason that has nothing to do with what it measures.
+	player.global_position = boss2.global_position + Vector3(0, 0, 4.0)
+	await get_tree().physics_frame
+	_apex_wake_timer = 0.2
+	await get_tree().create_timer(ApexBoss.WAKE_TIME + 1.2).timeout
+	var swings := 0
+	while is_instance_valid(boss2) and boss2.state != ApexBoss.State.DYING and swings < 400:
+		boss2.take_damage(3000.0)
+		await get_tree().physics_frame
+		swings += 1
+	# _become_wreck is stage 4 of the death sequence, 1.5s after the hub collapses.
+	await get_tree().create_timer(3.0).timeout
+	var died: bool = _find_apex() == null
+	var down: bool = GameState.has_apex_down("pyx01")
+	var bonus_owed: bool = not GameState.has_killed_apex("pyx01")
+	print("[bosstest] ENGINE DIES took %d swings, apex gone=%s, recorded down=%s, bonus still owed=%s -> %s" % [
+		swings, str(died), str(down), str(bonus_owed),
+		"PASS" if died and down and bonus_owed else "FAIL"])
+
+	# 6. ...and the wreck it left is still there after a round trip, carrying the
+	# bonus it was built with. Losing a 15,000-32,000 credit payout to a warp the
+	# player had every reason to make is the silent punishment this half exists to
+	# forbid; asserting the BONUS and not merely the node is what catches a wreck
+	# rebuilt from defaults.
+	var wreck_bonus_before: int = _find_apex_wreck().first_kill_bonus if _find_apex_wreck() else -1
+	travel_to("pyx02")
+	await get_tree().create_timer(WARP_CHARGE + WARP_STREAK + WARP_ARRIVE + 1.0).timeout
+	travel_to("pyx01")
+	await get_tree().create_timer(WARP_CHARGE + WARP_STREAK + WARP_ARRIVE + 1.0).timeout
+	var wreck := _find_apex_wreck()
+	var no_engine: bool = _find_apex() == null
+	var authored: int = int(SystemDB.get_system("pyx01").get("apex", {}).get("bonus", -1))
+	print("[bosstest] A KILLED ENGINE STAYS DEAD engine back=%s, wreck survived=%s carrying %d (was %d, authored %d) -> %s" % [
+		str(not no_engine), str(wreck != null),
+		wreck.first_kill_bonus if wreck else -1, wreck_bonus_before, authored,
+		"PASS" if no_engine and wreck != null and wreck.first_kill_bonus == authored else "FAIL"])
+
+	# 7. And once the wreck is cracked, the lair is empty for good. This is the
+	# third state: apex_down says do not rebuild the engine, apex_killed says the
+	# wreck has already paid, and together they mean there is nothing left here.
+	GameState.mark_apex_killed("pyx01")
+	travel_to("pyx02")
+	await get_tree().create_timer(WARP_CHARGE + WARP_STREAK + WARP_ARRIVE + 1.0).timeout
+	travel_to("pyx01")
+	await get_tree().create_timer(WARP_CHARGE + WARP_STREAK + WARP_ARRIVE + 1.0).timeout
+	print("[bosstest] A CRACKED WRECK LEAVES NOTHING engine=%s wreck=%s -> %s" % [
+		str(_find_apex() != null), str(_find_apex_wreck() != null),
+		"PASS" if _find_apex() == null and _find_apex_wreck() == null else "FAIL"])
 	get_tree().quit()
 
 
@@ -10268,6 +10356,69 @@ func _run_save_test() -> void:
 			GameState.apex_hint_count("pyx01"),
 			"nothing" if not GameState.apex_intel.has("nosuch") else "SOMETHING",
 			"PASS" if clean16 else "FAIL"])
+	elif mode == "migrate16":
+		# v17 persists the KILL. Before it, nothing on disk said an engine was
+		# destroyed — apex_killed means "the wreck paid its bonus", which is a
+		# later and rarer event — so a v16 save cannot be read literally. It has to
+		# be grandfathered, and the direction of the guess is the whole decision.
+		var v16 := {
+			"version": 16,
+			"salvage": 6100,
+			"current_system": "pyx01",
+			"breached": ["pyx01"],
+			"lanes_open": ["pyx01", "pyx02"],
+			"apex_killed": ["pyx01"],
+			"run_seed": 555111,
+			"tutorial_step": -1,
+		}
+		var f16 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f16.store_string(JSON.stringify(v16))
+		f16.close()
+		var ok16 := GameState.load_game()
+		# pyx01 was collected, so its engine is certainly down. pyx02 had a lane
+		# open and nothing else, which after the v15 split can mean a breach and
+		# not a kill -- seeding from lanes_open would bury a living engine here.
+		var grandfathered: bool = GameState.has_apex_down("pyx01") \
+			and not GameState.has_apex_down("pyx02")
+		var kept16: bool = GameState.salvage == 6100 and GameState.run_seed == 555111 \
+			and GameState.lanes_open.has("pyx02")
+		print("[savetest] v16->v17 A COLLECTED BONUS PROVES A DEAD ENGINE down=%s (pyx01 paid, pyx02 only flyable), other state kept=%s -> %s" % [
+			str(GameState.apex_down), str(kept16),
+			"PASS" if ok16 and grandfathered and kept16 else "FAIL"])
+
+		# The round trip, driven through the real recorder rather than by
+		# appending to the array: mark_apex_down is what the death path calls.
+		GameState.mark_apex_down("pyx02")
+		GameState.save_game()
+		GameState.apex_down = []
+		GameState.load_game()
+		var round17: bool = GameState.has_apex_down("pyx01") and GameState.has_apex_down("pyx02")
+		print("[savetest] v17 ROUND TRIP apex_down %s -> %s" % [
+			str(GameState.apex_down), "PASS" if round17 else "FAIL"])
+
+		# And the validator, in the shape apex_killed and lanes_open already use:
+		# a system that does not exist cannot have an engine, and a duplicate must
+		# not double-enter a list every builder treats as a set.
+		var rubbish17 := {
+			"version": 17,
+			"breached": ["pyx01"],
+			"lanes_open": ["pyx01"],
+			"apex_killed": [],
+			"apex_down": ["pyx01", "nosuch", "pyx01"],
+			"run_seed": 555111,
+		}
+		var fr17 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fr17.store_string(JSON.stringify(rubbish17))
+		fr17.close()
+		GameState.load_game()
+		# An EMPTY apex_killed alongside a populated apex_down is also the case
+		# that proves the grandfather did not fire on a v17 save: absent means
+		# "infer", empty means "the player has collected nothing", and reading the
+		# second as the first would resurrect every engine they had put down.
+		var clean17: bool = GameState.apex_down.size() == 1 \
+			and GameState.has_apex_down("pyx01") and GameState.apex_killed.is_empty()
+		print("[savetest] v17 THE KILL LIST REJECTS RUBBISH 3 entries in (one unknown, one duplicate), kept %s with no bonus collected -> %s" % [
+			str(GameState.apex_down), "PASS" if clean17 else "FAIL"])
 	elif mode == "partial6":
 		# A v6 save written before a later setting existed must still get that
 		# setting's default rather than a missing key — the reason load merges
@@ -10439,10 +10590,22 @@ func _run_feel_test() -> void:
 	print("[feel] COMPRESSED STREAM frames=%d vs data.size()/2=%d -> %s" % [
 		real_frames, byte_guess, "PASS" if real_frames != byte_guess else "FAIL"])
 
+	# Read off the LOOP PLAYER's stream, not out of `_streams`. This used to ask
+	# the shared one-shot cache what its loop_end was, which worked only because
+	# loop_start was corrupting that cache -- the assertion was reading the bug
+	# rather than the feature, and would have gone red on the fix. What it is
+	# actually for is the QOA frame-count arithmetic above, and that lives on
+	# whichever stream the player is really given.
 	Sfx.loop_start("ambient", -40.0)
-	var amb_end: int = (Sfx._streams["ambient"] as AudioStreamWAV).loop_end
-	print("[feel] LOOP END ambient loop_end=%d frames=%d -> %s" % [
-		amb_end, real_frames, "PASS" if amb_end == real_frames else "FAIL"])
+	var amb_loop := Sfx._loops["ambient"].stream as AudioStreamWAV
+	var amb_end: int = amb_loop.loop_end
+	# The pristine cache is the other half of the same rule: a one-shot stream
+	# must come out of a loop_start no more looping than it went in.
+	var one_shot_intact: bool = (Sfx._streams["ambient"] as AudioStreamWAV).loop_mode \
+		== AudioStreamWAV.LOOP_DISABLED
+	print("[feel] LOOP END ambient loop_end=%d frames=%d, one-shot copy still unlooped=%s -> %s" % [
+		amb_end, real_frames, str(one_shot_intact),
+		"PASS" if amb_end == real_frames and one_shot_intact else "FAIL"])
 	Sfx.loop_stop("ambient", 0.01)
 
 	var calm := load("res://audio/music_calm.wav") as AudioStreamWAV
@@ -12973,6 +13136,54 @@ func _run_mine_test() -> void:
 	tint_seam.queue_free()
 	GameState.mining = 0
 	GameState.mining_xp = 0
+	GameState.cargo = {}
+
+	# --- 26. the cut stops making noise once the cut is over -----------------
+	# The sound the player complained about is mineable_seam's COMPLETION
+	# one-shot, and there is no mining loop anywhere to have leaked -- so this
+	# does not check teardown on the fifteen other ways out of a hold. It checks
+	# the rule the bug actually broke: a fire-and-forget sound ends by itself.
+	#
+	# The Derelict is the reproduction, not scenery. `crack` is the one name used
+	# both as an object loop and as a one-shot, and Derelict takes its crack loop
+	# in _ready -- so merely existing was enough to turn every later cut endless.
+	# Without one in the tree this section passes on a world where the bug is
+	# still there.
+	#
+	# Nothing else may make a sound between the cut and the read: the pool is 20
+	# deep and round-robin, so 20 stray one-shots would recycle the stuck player
+	# and hand back a green light. Section 21 docks and sells; this is why 26
+	# stands on its own at the end rather than borrowing that ship.
+	var noisy_hulk := Derelict.new()
+	system_root.add_child(noisy_hulk)
+	await get_tree().process_frame
+
+	var quiet_seam := MineableSeam.new()
+	quiet_seam.good = "ore_iron"
+	system_root.add_child(quiet_seam)
+	await get_tree().process_frame
+	quiet_seam.global_position = player.global_position + Vector3(0, 0, 2.0)
+	await get_tree().physics_frame
+
+	# Silence FIRST, and it is not tidiness. The sections above cut a lot of rock,
+	# and read straight after the cut this counted six sounds still ringing from
+	# them -- so "something is playing" would have been true whether or not THIS
+	# cut made a noise, and the before/after pair would have proved nothing.
+	# crack.wav is 2.2s and the cut plays it at 0.75 pitch, so ~2.93s of audio.
+	await get_tree().create_timer(4.0).timeout
+	var sounding_before := Sfx.playing_count("crack")
+	quiet_seam._complete()
+	var sounding_at_cut := Sfx.playing_count("crack")
+	await get_tree().create_timer(4.0).timeout
+	var sounding_after := Sfx.playing_count("crack")
+	var cache_clean: bool = (Sfx._streams["crack"] as AudioStreamWAV).loop_mode \
+		== AudioStreamWAV.LOOP_DISABLED
+	print("[mine] THE CUT FALLS SILENT %d sounding before, %d at the cut, %d after 4.0s (sample 2.20s at 0.75), one-shot stream unlooped=%s -> %s" % [
+		sounding_before, sounding_at_cut, sounding_after, str(cache_clean),
+		"PASS" if sounding_before == 0 and sounding_at_cut > 0 \
+			and sounding_after == 0 and cache_clean else "FAIL"])
+	quiet_seam.queue_free()
+	noisy_hulk.queue_free()
 	GameState.cargo = {}
 
 	get_tree().quit()

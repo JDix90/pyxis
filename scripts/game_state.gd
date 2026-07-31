@@ -21,7 +21,7 @@ signal system_unlocked(id: String)
 signal lane_opened(id: String)
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 16
+const SAVE_VERSION := 17
 const SAVE_DEBOUNCE := 1.0
 
 # v6 defaults. Kept as one dictionary each so a migration only has to merge
@@ -98,7 +98,9 @@ var contract_state := {}
 var barks_seen: Array[String] = []
 
 # v3: systems whose apex engine has been put down at least once (first-kill
-# bonus is one-time). The fight itself is never persisted — it always resets.
+# bonus is one-time). A DAMAGED engine is still never persisted — retreat from a
+# fight and it is whole again, because failure costs tempo and never salvage.
+# What IS persisted, since v17, is the kill itself: see apex_down.
 var apex_killed: Array[String] = []
 
 # v15. THE HUNT — progression is now TWO tiers, and this is the second.
@@ -118,6 +120,30 @@ var apex_killed: Array[String] = []
 # before v15 has the second without the first (see _load_lanes_open) and must
 # not be charged a bonus it already collected, nor refused a lane it already had.
 var lanes_open: Array[String] = []
+
+# v17. THE ENGINE STAYS DOWN. Systems whose apex engine has been DESTROYED.
+#
+# There are three states, and before v17 only two of them had somewhere to live,
+# which is why a cleared system rebuilt a full-strength engine the moment you
+# warped out and back — SystemBuilder had nothing to ask:
+#
+#   neither flag  -> the engine is alive. Build it.
+#   apex_down     -> killed, wreck not yet cracked. Build the WRECK.
+#   + apex_killed -> killed and cracked. Build nothing.
+#
+# Kept SEPARATE from both neighbours above, and neither of them could stand in:
+#
+#   apex_killed is "has the first-kill bonus been paid", which is only true once
+#   the WRECK is cracked — a second trip the player may not survive. Gating the
+#   build on it would leave exactly the window this field exists to close.
+#
+#   lanes_open is "may this lane be flown", which is not the same question: the
+#   pre-v15 grandfather seeds it from `breached`, so a save from before the split
+#   would mark living engines dead and silently delete their bonus.
+#
+# Written by Main.on_apex_defeated — deliberately NOT by open_lane(), which is
+# also called to grant passage without anything having died.
+var apex_down: Array[String] = []
 
 # v15. The run's own salt, and the only source of per-playthrough hiding.
 #
@@ -527,6 +553,7 @@ func reset_to_starter() -> void:
 	contract_state = {}
 	barks_seen = []
 	apex_killed = []
+	apex_down = []
 	cargo = {}
 	played_seconds = 0.0
 	docked_at = ""
@@ -743,9 +770,31 @@ func mark_apex_killed(id: String) -> void:
 	if apex_killed.has(id):
 		return
 	apex_killed.append(id)
-	# The hunt is over, so the dossier goes with it. Kept deliberately here
-	# rather than in open_lane: this is the function that means "the engine is
-	# dead", and the intel is about the engine, not about the lane.
+	# The hunt is over, so the dossier goes with it. Kept here rather than in
+	# open_lane because the intel is about the ENGINE, not about the lane. Since
+	# v17 mark_apex_down is the earlier and more literal "the engine is dead", and
+	# it clears the dossier too — by the time the wreck is cracked there is
+	# normally nothing left to clear. This stays as the backstop for the one order
+	# that skips it: a save grandfathered from v16, where the kill was inferred.
+	clear_apex_intel(id)
+	_queue_save()
+
+
+func has_apex_down(id: String) -> bool:
+	return apex_down.has(id)
+
+
+func mark_apex_down(id: String) -> void:
+	# The engine is DESTROYED, and unlike its hit points that outlives the system
+	# teardown: SystemBuilder asks this before it builds anything at the lair.
+	#
+	# Separate from mark_apex_killed on purpose — see apex_down's declaration. The
+	# bonus is still owed at this point, and the wreck carrying it is rebuilt on
+	# re-entry until somebody cracks it.
+	if apex_down.has(id):
+		return
+	apex_down.append(id)
+	# Nothing left to hunt, so the dossier goes now rather than at the wreck.
 	clear_apex_intel(id)
 	_queue_save()
 
@@ -1749,6 +1798,7 @@ func save_game() -> void:
 		"contract_state": contract_state,
 		"barks_seen": barks_seen,
 		"apex_killed": apex_killed,
+		"apex_down": apex_down,
 		"lanes_open": lanes_open,
 		"run_seed": run_seed,
 		"cargo": cargo,
@@ -1841,6 +1891,29 @@ func load_game() -> bool:
 	for id in data.get("apex_killed", []):
 		if SystemDB.exists(str(id)):
 			apex_killed.append(str(id))
+
+	# v17. THE SECOND GRANDFATHER, and it is the conservative one on purpose.
+	#
+	# Before v17 the kill was not persisted at all, so a v16 save cannot tell us
+	# which engines are down — only which ones PAID, in apex_killed. Seeding from
+	# that is exact where it speaks and silent where it does not: a player who
+	# cracked a wreck never sees that engine again, which is the fix they are
+	# owed, and nobody is handed a system they did not clear.
+	#
+	# It under-counts by exactly one case — killed, warped out, wreck never
+	# cracked — and that is the right way to be wrong. Under-counting rebuilds an
+	# engine the player already beat, which is today's behaviour and merely
+	# unchanged; over-counting would delete a wreck worth up to 32,000 credits
+	# that they can still see on the radar. NOT seeded from lanes_open for the
+	# same reason: its own pre-v15 grandfather fills it from `breached`, so a save
+	# old enough would report living engines as dead.
+	apex_down = []
+	if data.has("apex_down"):
+		for id in data.get("apex_down", []):
+			if SystemDB.exists(str(id)) and not apex_down.has(str(id)):
+				apex_down.append(str(id))
+	else:
+		apex_down = apex_killed.duplicate()
 
 	# v15. THE GRANDFATHER, and it is the whole reason this stage is safe to ship.
 	#
