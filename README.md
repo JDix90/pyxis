@@ -109,9 +109,11 @@ and seams is left in the arena, and the leash ends the fight *only* past the
 leash) and one in `PYXIS_RADARTEST` (the engine is not on the map until you are
 inside `DETECT_RANGE`). `DEEPTEST` 30 was inverted rather than added to — the
 chart edge no longer breaks a fight off, so it now asserts the lock **holds** at
-depth. `APEXTEST` lost one: its `grav_tether` check is a printed observation now,
-because re-staging it exposed a defect it could never have caught, and fixing
-that is a balance decision. STRATEGY §39.
+depth. `APEXTEST`'s `grav_tether` check was briefly a printed observation —
+re-staging it exposed a defect it could never have caught, and the tether had
+dragged an idle ship 0.0u since the day it shipped. That defect is now fixed and
+the clause is a real assertion again, joined by a second one that the weakest
+legal fit can still burn free of a live tether. STRATEGY §40.
 
 `PYXIS_MANUALTEST` (6) covers the in-game pilot's manual: that every contents
 entry opens a real page, that opening and closing it never moves the pause state

@@ -375,7 +375,10 @@ Two rules hold all three together:
 
 1. **Every armament is telegraphed and fully dodgeable.** `PYXIS_APEXTEST`
    asserts a parked ship takes damage and an orbiting one takes zero. An attack
-   you cannot answer with movement is a damage tax, not a mechanic.
+   you cannot answer with movement is a damage tax, not a mechanic. The Meridian
+   deals no damage, so its half of this rule is asserted as *drag* and *escape*
+   instead — see §40, which is also the story of that assertion being green for
+   the entire life of an armament that did nothing at all.
 2. **They fire during SURVEY only.** SURVEY is where the player parks on the core,
    which is the behaviour they exist to punish. Firing through SEAL as well
    stacked a second pressure onto the phase where slow fits already spend most
@@ -3037,3 +3040,147 @@ Arguably the new measurement is the better one: the suite's own header calls
 itself "the acceptance test for the encounter", and the encounter is now measured
 in isolation rather than with a swarm fight layered over it. That is an argument
 for re-deriving the bar, not for restoring the waves.
+## 40. THE MERIDIAN's tether, and the check that could not fail
+
+THE MERIDIAN is the last engine in the game, and its graviton tether is the one
+armament in the trio that deals no damage at all. It drags you toward the hub,
+the sweep arm, and the inner edge of the survey field: the armament *is* the
+positioning. It had never worked. Not "was weak" — an idle ship parked in front
+of it moved **0.0u**, and had done since the armament shipped.
+
+### The brake was what beat it
+
+`_tether_pull` did the obvious thing:
+
+    player.velocity += inward * pull * delta
+
+and `PlayerShip` integrates a few lines later with
+
+    velocity = velocity.move_toward(desired, accel * delta)
+
+For a ship with no move target and no attack target, `desired` is `Vector3.ZERO`
+— so that line is not steering, it is **braking**, at `accel`: 9.0 on the bare
+hull and never below the 3.0 ModuleDB floors it to. Both beat a 6.5 u/s² pull, so
+`move_toward` clamped the velocity back to exactly zero every frame, before
+`global_position` was touched. Net displacement across a full 2.8s window: none.
+
+The comment above that line reasoned that "the weakest drive in the catalog
+accelerates at 9+ — the tether only wins against a player who is not flying." The
+shape of that error is worth keeping, because it is a comfortable one to make: it
+read `accel` as a *thrust* budget, something the player spends on going
+somewhere. `accel` is the rate at which velocity converges on `desired` in either
+direction. The ship spending all of it on braking is precisely the ship that is
+not flying — so the only ship the armament existed to catch was the only one it
+could never move, and the comment asserted the opposite with total confidence.
+
+### The fix goes around the brake, not through it
+
+The pull cannot live on `velocity`, because `velocity` is the thing being braked.
+It now rides the same channel `_recoil` already used: a separate vector summed
+into the position step, never passed through `move_toward`.
+
+    var travelled := (velocity + _recoil + _tick_tether(delta)) * delta
+
+`ApexBoss` pushes into it through `PlayerShip.apply_tether()` and the ship spends
+it. The player's own thrust still fights the tether, because the two velocities
+add — a ship burning outward keeps the difference. What it no longer does is win
+by standing still.
+
+The parameter that matters is not the pull, it is **`drag_cap` — a terminal
+speed rather than an acceleration**, at 1.15 u/s. An acceleration cap has no
+ceiling on where a long window ends up; a terminal speed makes the guarantee
+arithmetic. ModuleDB floors `max_speed` at 1.6, so the worst hull the game will
+let you fly still burns outward at a net 0.45 u/s against a live tether. That
+promise is load-bearing enough that `PlayerShip` re-clamps it at
+`TETHER_DRAG_CEILING` rather than trusting the caller's data: the boss's table
+may be tuned, and no tuning of it may build a cage.
+
+Three smaller decisions fell out of the same reasoning. The drag survives an EMP,
+because an unpowered hull is exactly what a tether should catch and letting it
+lapse there would make the stun the cheapest escape. It is cleared by warp, dock
+and death, none of which a tether should follow you through. And `Obstacles`
+kills its component into a surface the same way it does `velocity`, or a tether
+that pins you against a rock grinds there for the rest of its window.
+
+### The check that could not fail
+
+The assertion that should have caught all of this was green the entire time. It
+measured
+
+    park.distance_to(player.global_position)
+
+against a `park` the ship was **never placed at**. The other two bosses' branches
+pin the ship to `park` every frame; the tether's branch has to let the ship move,
+so it measured displacement instead — and nothing anywhere put the ship on the
+mark to begin with. What it actually reported was the gap between a point near
+the boss and wherever `_load_system` had left the ship, a number that started
+large, never moved, and cleared a `> 1.5` threshold on the first frame.
+
+The last run before the fix printed it plainly, and nobody had read it:
+
+    [apex] pyx03 ARMAMENT grav_tether dragged an idle ship 1143.2u toward the hub -> PASS
+
+That 1143.2 is not noise. It is the Meridian's own lair depth — `system_db.gd`
+puts it at `[1150.0, 1450.0]` out in the deep — so the harness was reporting the
+distance from the player's spawn to the far side of the map and calling it drag.
+A number three orders of magnitude past anything the mechanic could produce was
+sitting in the log of a passing sweep, because nothing reads a PASS.
+
+Staging it correctly took two corrections, not one. The ship is now placed on the
+mark once, before the loop. And the mark moved **out to 9.0u**, because
+`_tether_pull` stops pulling inside `HUB_RADIUS + 1.0` — 3.2u. A ship staged at
+the 4.5u the pinned bosses share has **1.3u** of room to be dragged through
+before the armament lets go, against a threshold of 1.5u: a perfect tether would
+have come up short of the old bar by the width of the coast at the end of it. The
+old check was unable to fail twice over — it measured the wrong thing, and the
+right thing had almost nowhere to happen.
+
+The measurement is also now **closure on the hub** rather than distance from the
+park point, so the number means what the line says. Distance-from-park counts a
+shove in any direction, including outward — which is the one direction that would
+mean the armament was broken in the opposite way.
+
+### Both halves asserted, both made to fail first
+
+Two assertions, because the mechanic is two promises:
+
+| Assertion | Broken | Fixed |
+|---|---|---|
+| an idle ship gets dragged | 0.0u | **3.3u** (threshold 2.0) |
+| the weakest legal fit escapes | **−1.2u** (dragged in anyway) | **+1.0u** |
+
+The first was verified red the honest way: harness fixed, armament left broken,
+and it printed `0.0u -> FAIL`. That is the run that proves the check has teeth,
+and it is the run the old staging could not produce at any threshold. The second
+was made to fail by raising `drag_cap` above the `max_speed` floor — the exact
+hazard it exists to catch — which required lifting `TETHER_DRAG_CEILING` too,
+since the ceiling alone already refuses to build the cage.
+
+The escape assertion is deliberately written against ModuleDB's **floors** rather
+than a chosen module list. 1.6 u/s and 3.0 accel is the worst hull any legal fit
+can produce, so a ship that escapes on those numbers means every fit escapes. A
+named fit would only have proven something about that fit, and would have quietly
+stopped meaning anything the next time the catalog moved.
+
+### It happened again while it was being written
+
+The escape assertion failed on its first run, reporting `gained 0.0u`. The
+armament was fine. The harness was burning outward from frame zero, so the ship
+left the tether's 13.0u range before a window ever opened, and no tether ever
+latched — `0.0u` was not a measurement, it was the absence of one, printed in the
+same shape as a measurement.
+
+That is the *same* defect as the one this whole section is about, committed in
+new code written immediately after diagnosing it: a number reported against a
+state the ship was never in. The **verdict** was right by luck of construction —
+a strict `> 0.0` and an explicit "did a window ever open" guard both refused it —
+but the **message** was indistinguishable from a real zero-gain result, and only
+going and looking established which one it was. A green version of that same
+confusion is exactly what had hidden the tether for its whole life.
+
+So the print now names the difference — `(NO TETHER EVER LATCHED)` — because "no
+window opened" and "the ship gained nothing" are different failures with
+different fixes, and a harness that renders them identically is one flipped
+comparison away from being green about nothing. The staging was corrected to the
+order the mechanic is actually played in: hold the mark, take the latch, *then*
+burn.

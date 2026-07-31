@@ -143,7 +143,10 @@ const ATTACKS := {
 		"width": 1.5, "reach": 11.0, "range": 15.0},
 	"flare_mortar": {"interval": 4.6, "telegraph": 1.05, "damage": 8.0,
 		"radius": 2.3, "shells": 3, "scatter": 1.6, "range": 15.0},
-	"grav_tether": {"interval": 7.5, "duration": 2.8, "pull": 6.5, "range": 13.0},
+	# drag_cap is the terminal drag speed in u/s, and it must stay below the
+	# 1.6 u/s that ModuleDB floors max_speed at or the worst legal fit is pinned.
+	"grav_tether": {"interval": 7.5, "duration": 2.8, "pull": 6.5,
+		"drag_cap": 1.15, "range": 13.0},
 }
 # First shot lands well after the wake so the opening read stays calm.
 const ATTACK_FIRST_DELAY := 2.5
@@ -591,12 +594,27 @@ func _tether_pull(player: Node3D, spec: Dictionary, delta: float) -> void:
 	if inward.length() < HUB_RADIUS + 1.0:
 		return          # already against the hull; the sweep arm takes it from here
 	inward = inward.normalized()
-	# Applied to velocity as an acceleration, not to position as a teleport, so
-	# the player's own thrust fights it on equal terms. Pull is 6.5 u/s²; the
-	# weakest drive in the catalog accelerates at 9+ — the tether only wins
-	# against a player who is not flying.
-	if "velocity" in player:
-		player.velocity += inward * float(spec.get("pull", 6.5)) * delta
+	# Routed through PlayerShip's own drag channel, NOT through `velocity`.
+	#
+	# This was `player.velocity += inward * pull * delta`, and it dragged an idle
+	# ship 0.0u for as long as it existed. PlayerShip integrates with
+	# `velocity = velocity.move_toward(desired, accel * delta)`, and `desired` is
+	# ZERO for a ship with no move target — so the autopilot brakes at `accel`
+	# (9.0 bare, floored at 3.0 by ModuleDB), beats the 6.5 pull, and clamps the
+	# velocity back to nothing before the position step runs. The comment that
+	# used to sit here reasoned the tether "only wins against a player who is not
+	# flying", which had the case exactly backwards: the ship that is not flying
+	# is the one braking hardest, and it was the only ship the armament could not
+	# move.
+	#
+	# `drag_cap` is a terminal speed rather than an acceleration, and it is the
+	# escape guarantee: at 1.15 u/s it sits under the 1.6 u/s floor ModuleDB
+	# clamps max_speed to, so the weakest legal fit still burns outward at a net
+	# 0.45 u/s. The two velocities add, so thrust is still what beats this —
+	# standing still is simply no longer thrust.
+	if player.has_method("apply_tether"):
+		player.apply_tether(inward, float(spec.get("pull", 6.5)),
+			float(spec.get("drag_cap", 1.15)), delta)
 	_tether_fx_cooldown -= delta
 	if _tether_fx_cooldown <= 0.0:
 		_tether_fx_cooldown = 0.12

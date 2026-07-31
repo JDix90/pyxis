@@ -5766,6 +5766,30 @@ func _run_apex_test() -> void:
 		var taken := 0.0
 		var prev: float = player.shield
 		var displaced := 0.0
+		var tether := boss.attack_kind == "grav_tether"
+		if tether:
+			# Re-staged FARTHER OUT, on top of the wake park above rather than
+			# instead of it. That park is at 4.5u because it has a different job
+			# — it is what puts the ship inside the proximity poll's reach so the
+			# engine wakes at all — and it must stay where it is, before the
+			# timer is armed.
+			#
+			# 4.5u is the wrong mark for THIS measurement, though. _tether_pull
+			# stops pulling inside HUB_RADIUS + 1.0 (3.2u), so a ship staged at
+			# 4.5u has just 1.3u of room to be dragged through before the
+			# armament lets go — less than the bar below, which means a perfectly
+			# working tether would still have failed it. 9.0u sits comfortably
+			# inside the armament's 13.0u range and leaves 5.8u of travel.
+			park = boss.global_position + Vector3(0, 0, 9.0)
+			player.global_position = park
+			player.velocity = Vector3.ZERO
+			player.has_move_target = false
+			player.clear_target()
+			await get_tree().physics_frame
+		# Measured as CLOSURE on the hub rather than distance from the park point,
+		# so the number means what the line below prints: dragged TOWARD the hub.
+		# Distance-from-park counts a shove in any direction, including outward.
+		var start_gap: float = park.distance_to(boss.global_position)
 		for i in range(60 * 14):
 			# Probes die on sight, so the only remaining sources are the sweep
 			# arm (parked outside its blade path check below) and the armament.
@@ -5776,9 +5800,9 @@ func _run_apex_test() -> void:
 			# ship, so displacement is measured instead of prevented. The lance
 			# and mortar bosses hold the spot by re-assigning position, which
 			# also makes them the stationary worst case their telegraphs punish.
-			if boss.attack_kind == "grav_tether":
-				displaced = maxf(displaced,
-					park.distance_to(player.global_position))
+			if tether:
+				displaced = maxf(displaced, start_gap
+					- boss.global_position.distance_to(player.global_position))
 			else:
 				player.global_position = park
 				player.velocity = Vector3.ZERO
@@ -5791,41 +5815,81 @@ func _run_apex_test() -> void:
 				player.shield = player.shield_max     # never trip the emergency warp
 				prev = player.shield
 
-		if boss.attack_kind == "grav_tether":
-			# The Meridian's armament is control, not damage: what this wants to
-			# say is that an idle ship gets DRAGGED, not that it gets hurt.
+		if tether:
+			# The Meridian's armament is control, not damage: the assertion is
+			# that an idle ship gets DRAGGED, not that it gets hurt. 2.0u sits
+			# under a measured 3.3u so a tuning nudge does not trip it, and well
+			# over the 0.0u the broken armament produced.
+			print("[apex] %s ARMAMENT %s dragged an idle ship %.1fu toward the hub -> %s" % [
+				sys, boss.attack_kind, displaced,
+				"PASS" if displaced > 2.0 else "FAIL"])
+
+			# 2b. THE ESCAPE GUARANTEE, the other half of the same mechanic. A
+			#     control armament that cannot be broken is a cage, and the thing
+			#     that makes this one breakable is a terminal drag speed set below
+			#     the slowest ship the game will let you fly.
 			#
-			# AN OBSERVATION, NOT AN ASSERTION, AND THAT IS A KNOWN DEFECT ON
-			# RECORD RATHER THAN A STANDARD BEING LOWERED. Read the number: the
-			# tether drags an idle ship 0.0u, and it always has.
-			#
-			# _tether_pull adds `inward * 6.5 * delta` to player.velocity. The very
-			# next thing that happens to that value is PlayerShip's own
-			# integration, `velocity.move_toward(desired, accel * delta)` -- and
-			# for a ship with no move target `desired` is ZERO, so the autopilot
-			# brakes at accel (9.0 on the bare hull) against a pull of 6.5 and
-			# clamps it to exactly zero, every frame, before a single unit of
-			# travel is integrated. apex_boss.gd's own comment reasons that "the
-			# weakest drive in the catalog accelerates at 9+ -- the tether only
-			# wins against a player who is not flying", which has the case exactly
-			# backwards: the ship that is NOT flying is the one braking hardest.
-			#
-			# It went unseen because the clause below could not fail. The
-			# grav_tether branch only ever READ `park.distance_to(player)` and
-			# never assigned `park`, so `displaced` was the distance from the
-			# engine to wherever the ship already stood -- clearing a 1.5u bar on
-			# the first frame with the tether doing nothing. Parking the ship
-			# properly (see the wake staging above) is what surfaced it; before
-			# that the same clause reported a 1,143u drag, which is a number no
-			# armament in this game could produce.
-			#
-			# Left as an observation deliberately. Making the tether work means
-			# choosing a pull that survives the autopilot AND stays out-runnable
-			# by the weakest legal fit (max_speed floors at 1.6), and that is a
-			# balance decision about the final boss, to be made in the hand and
-			# not in a harness. STRATEGY §39.
-			print("[apex] %s ARMAMENT %s dragged an idle ship %.1fu toward the hub (must be > 1.5 — KNOWN DEFECT, the pull is cancelled by PlayerShip's own braking; STRATEGY §39)" % [
-				sys, boss.attack_kind, displaced])
+			#     Asserted against ModuleDB's FLOORS rather than a chosen module
+			#     list, because the floors are what the promise is made of: 1.6
+			#     u/s and 3.0 accel is the worst hull any legal fit can produce,
+			#     so a ship that escapes on those numbers means every fit does.
+			#     The drag caps at 1.15 u/s, leaving a net 0.45 u/s outward.
+			var restore: Dictionary = player._stats.duplicate()
+			var weak: Dictionary = restore.duplicate()
+			weak["max_speed"] = 1.6
+			weak["accel"] = 3.0
+			player._apply_fit(weak)
+			player.global_position = park
+			player.velocity = Vector3.ZERO
+			player.clear_target()
+			# Drain whatever is left of the window the drag loop ended inside, so
+			# what gets measured below is a whole latch and not its last few
+			# frames. Bounded, because an unbounded wait on boss state hangs the
+			# sweep rather than failing it.
+			for i in range(60 * 5):
+				if boss._tether_time <= 0.0:
+					break
+				player.global_position = park
+				player.velocity = Vector3.ZERO
+				await get_tree().physics_frame
+			# Gap to the hub at the first and last frame of one live tether, so
+			# the number is headway made against the pull rather than before it.
+			var gap_open := -1.0
+			var gap_close := -1.0
+			var outward: Vector3 = boss.global_position + Vector3(0, 0, 40.0)
+			for i in range(60 * 25):
+				for pr in get_tree().get_nodes_in_group("apex_probe"):
+					if is_instance_valid(pr):
+						(pr as Node3D).queue_free()
+				player.clear_target()
+				if boss._tether_time > 0.0:
+					# Latched. NOW burn outward — this is the order the mechanic
+					# is played in, and the only order that can be measured: the
+					# armament reaches 13.0u, so a ship already running is out of
+					# range before the first window ever opens. Burning early
+					# measured nothing at all and reported it as a failure.
+					player.has_move_target = true
+					player.move_target = outward
+					gap_close = boss.global_position.distance_to(player.global_position)
+					if gap_open < 0.0:
+						gap_open = gap_close
+				elif gap_open >= 0.0:
+					break                          # the window opened, and has shut
+				else:
+					player.global_position = park  # hold the mark until it latches
+					player.velocity = Vector3.ZERO
+					player.has_move_target = false
+				await get_tree().physics_frame
+			player._apply_fit(restore)
+			player.has_move_target = false
+			# "No window opened" and "the ship gained nothing" are different
+			# failures with different fixes, and both would otherwise print as
+			# 0.0u. Saying which is the whole lesson of this section.
+			var latched := gap_open >= 0.0
+			var gained: float = (gap_close - gap_open) if latched else 0.0
+			print("[apex] %s ESCAPE weakest legal fit (1.6 u/s) burning outward gained %.1fu across a live tether%s -> %s" % [
+				sys, gained, "" if latched else " (NO TETHER EVER LATCHED)",
+				"PASS" if latched and gained > 0.0 else "FAIL"])
 		else:
 			print("[apex] %s ARMAMENT %s dealt %.0f to a parked ship over 14s -> %s" % [
 				sys, boss.attack_kind, taken,
