@@ -1134,6 +1134,45 @@ func stash_to_fit(slot: int, id: String, key: String) -> int:
 	return moved
 
 
+func stash_would_fit_now(key: String) -> bool:
+	# The slot-free twin of stash_would_fit, for a console that has no fitting
+	# slot to name. The originals take a PROSPECTIVE swap (slot, id) and ask what
+	# it would leave over; here the hold is ALREADY over capacity and the
+	# question is only whether the bay can take the difference. Passing an
+	# arbitrary slot to get at the same answer would be a lie in the code even
+	# where the arithmetic happened to come out right.
+	var over := cargo_over()
+	if over <= 0:
+		return true
+	var room := warehouse_free(key)
+	var freed := 0
+	for g_v in _stashable_order():
+		var g := String(g_v)
+		var per := maxi(1, CommodityDB.space_of(g))
+		var movable := mini(cargo_count(g), room / per) if per > 0 else 0
+		freed += movable * per
+		room -= movable * per
+		if freed >= over:
+			return true
+	return freed >= over
+
+
+func stash_to_fit_now(key: String) -> int:
+	# ALL OR NOTHING, exactly as stash_to_fit is. A stash that half-fills the bay
+	# and leaves the player still over-full with a partly-emptied hold is the
+	# worst outcome available here.
+	if not stash_would_fit_now(key):
+		return 0
+	var moved := 0
+	for g_v in _stashable_order():
+		var g := String(g_v)
+		while cargo_over() > 0 and cargo_count(g) > 0:
+			if store_cargo(key, g, 1) <= 0:
+				break
+			moved += 1
+	return moved
+
+
 # --- reading salvage --------------------------------------------------------
 # ARCHEOLOGY. One skill, three tiers past the start, and it gates INFORMATION
 # rather than power — which is what keeps it out of 9's "linear upgrade

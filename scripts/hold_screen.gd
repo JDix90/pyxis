@@ -68,6 +68,7 @@ var _selected := ""
 # rebuild would redraw the whole grid once per unit while strip_hottest unloads
 # a raided hold one unit at a time.
 var _dirty := false
+var _needs_clamp := false
 var refresh_count := 0
 
 
@@ -90,6 +91,15 @@ func _process(_delta: float) -> void:
 	if _dirty and is_open:
 		_dirty = false
 		_refresh()
+	elif _needs_clamp and is_open:
+		# ONE FRAME LATER, ON PURPOSE. Godot settles container layout over a
+		# frame, so the chrome measured during _refresh is the PRE-settle height
+		# -- a wrapped label in the strip lands one row different once the column
+		# has its real width. Clamping only at refresh time left the sheet 34
+		# rows short at capacity 104, which THE CLAMP HOLDS caught by measuring
+		# after the frame the way anything looking at the screen would.
+		_needs_clamp = false
+		_clamp_height()
 
 
 func _mark_dirty() -> void:
@@ -180,15 +190,45 @@ func _clamp_height() -> void:
 	if vp.y <= 1.0:
 		return
 	_dock_clear = HUD.DOCK_BOTTOM + _dock_height() + SHEET_GAP
-	var chrome := _col.get_combined_minimum_size().y - _scroll.custom_minimum_size.y + 32.0
-	var room := maxf(vp.y * MAX_RATIO - chrome, MIN_SHEET - chrome)
-	var content := _grid.get_combined_minimum_size().y
-	_scroll.custom_minimum_size.y = minf(content, room)
+	# TWO PASSES, because the clamp perturbs what it measures. Setting the
+	# scroll's minimum re-lays-out the column, and a wrapped label in the strip
+	# can settle one row taller or shorter than it measured at -- so a single
+	# pass leaves the viewport off by exactly that row whenever `room` is the
+	# binding term. Measured as a constant 34-unit gap at capacity 104 before
+	# this loop existed. The second pass reads the settled layout; a third never
+	# changes anything, because the strip's height is a function of the column
+	# width and that no longer moves.
+	for _pass in range(2):
+		var chrome := _chrome_height()
+		var room := maxf(vp.y * MAX_RATIO - chrome, MIN_SHEET - chrome)
+		var content := _grid.get_combined_minimum_size().y
+		_scroll.custom_minimum_size.y = minf(content, room)
 	_height = _col.get_combined_minimum_size().y + 32.0
 	if not is_open:
 		_set_slide(_height)
 	else:
 		_set_slide(0.0)
+
+
+func _chrome_height() -> float:
+	# Everything in the column that is NOT the scroll, summed directly.
+	#
+	# NOT `_col.get_combined_minimum_size().y - _scroll.custom_minimum_size.y`,
+	# which is the obvious spelling and is CIRCULAR: the column's minimum
+	# INCLUDES the scroll's, so each call folds its own previous output back in.
+	# It looks correct while the strip is short and diverges the moment it is
+	# not -- measured at a room of -26,506 once the strip grew read buttons and
+	# a pilot block. THE CLAMP HOLDS caught it, which is the entire reason that
+	# assertion is written to recompute rather than to read back.
+	var h := 32.0                       # the MarginContainer's 16 top + 16 bottom
+	var seen := 0
+	for c in _col.get_children():
+		if c == _scroll:
+			continue
+		h += (c as Control).get_combined_minimum_size().y
+		seen += 1
+	h += float(_col.get_theme_constant("separation")) * float(maxi(seen, 0))
+	return h
 
 
 func _dock_height() -> float:
@@ -314,12 +354,64 @@ func _refresh() -> void:
 		_strip.remove_child(c)
 		c.queue_free()
 
+	_build_overflow_exit()
 	if _selected != "" and GameState.cargo_count(_selected) > 0:
 		_build_selected(_selected)
 	else:
 		_selected = ""
 		_build_idle()
 	_clamp_height()
+	_needs_clamp = true
+
+
+func _docked_bay_key() -> String:
+	# The bay of the station we are clamped to, or "" if flying or the station
+	# keeps no store.
+	var main := get_tree().get_first_node_in_group("main")
+	if main == null or main.docked_port == null:
+		return ""
+	var port: Port = main.docked_port
+	var pdef: Dictionary = port.def if not port.def.is_empty() \
+		else SystemDB.port_def_by_id(port.port_id)
+	if not GameState.port_has_bay(pdef):
+		return ""
+	return port.bay_key if port.bay_key != "" else port.port_id
+
+
+func _build_overflow_exit() -> void:
+	# THE HONEST WAY OUT OF AN OVER-FULL HOLD, offered only while docked at a
+	# bay. It does not weaken JETTISON PAYS NOTHING: dumping stays free because
+	# dodging a trip to a port should not also be profitable, and stashing IS
+	# that trip -- the cargo goes into a paid bay at a station you flew to.
+	var over := GameState.cargo_over()
+	if over <= 0:
+		return
+	var key := _docked_bay_key()
+	if key == "":
+		_strip.add_child(UIKit.label(
+			"OVER CAPACITY BY %d — DUMP SOMETHING, OR DOCK AT A BAY." % over,
+			UIKit.SIZE_SMALL, Palette.THREAT, HORIZONTAL_ALIGNMENT_LEFT))
+		return
+	if not GameState.stash_would_fit_now(key):
+		_strip.add_child(UIKit.label(
+			"OVER CAPACITY BY %d — THE BAY CANNOT TAKE IT ALL." % over,
+			UIKit.SIZE_SMALL, Palette.THREAT, HORIZONTAL_ALIGNMENT_LEFT))
+		return
+	var b := UIKit.button("STASH %d TO THE BAY" % over, Palette.GOLD,
+		UIKit.SIZE_SMALL, Vector2(0, 34))
+	b.pressed.connect(func() -> void:
+		UIKit.press_pop(b)
+		var moved := GameState.stash_to_fit_now(key)
+		if moved <= 0:
+			Sfx.play("tap", -14.0, 0.6)
+			return
+		Sfx.play("equip", -7.0, 0.9)
+		var hud := get_tree().get_first_node_in_group("hud")
+		if hud:
+			hud.show_toast("STASHED %d UNIT%s" % [
+				moved, "" if moved == 1 else "S"], Palette.GOLD)
+		_refresh())
+	_strip.add_child(b)
 
 
 func _build_idle() -> void:
@@ -334,6 +426,33 @@ func _build_idle() -> void:
 		return
 	_strip.add_child(UIKit.label("TAP A BLOCK TO SEE WHAT IT IS.",
 		UIKit.SIZE_FINE, Palette.AMBER_DIM, HORIZONTAL_ALIGNMENT_LEFT))
+
+	# The pilot's three skill lines, beside the read buttons they explain --
+	# which is the reason they were worth moving with the manifest rather than
+	# leaving in a console about modules.
+	var readable := 0
+	for gid in GameState.cargo:
+		var g := String(gid)
+		if CommodityDB.is_salvage(g) and GameState.can_read(g, false):
+			readable += GameState.cargo_count(g)
+	if readable > 0:
+		_strip.add_child(UIKit.label(
+			"%d UNIT%s READABLE ABOARD — TAP ONE TO OPEN IT." % [
+				readable, "" if readable == 1 else "S"],
+			UIKit.SIZE_FINE, Palette.TEAL, HORIZONTAL_ALIGNMENT_LEFT))
+	var pilot := UIKit.label("%s\n%s\n%s" % [GameState.archeology_line(),
+		GameState.smuggling_line(), GameState.mining_line()],
+		UIKit.SIZE_FINE, Palette.AMBER_DIM, HORIZONTAL_ALIGNMENT_LEFT)
+	pilot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# THE WIDTH FLOOR IS NOT COSMETIC. An autowrapping Label with no minimum
+	# width computes its wrap at nearly zero width, so it reports a minimum
+	# HEIGHT as if every word were its own line -- measured at 2,415 rows for
+	# these three skill lines, which then became the column's minimum and drove
+	# the sheet's clamp to a negative height. manual_screen and pause_menu both
+	# pin wrapped labels to 300 for exactly this reason. THE CLAMP HOLDS is what
+	# caught it, by recomputing rather than reading back.
+	pilot.custom_minimum_size = Vector2(300, 0)
+	_strip.add_child(pilot)
 
 
 func _build_selected(good: String) -> void:
@@ -356,6 +475,8 @@ func _build_selected(good: String) -> void:
 	_strip.add_child(UIKit.label(detail, UIKit.SIZE_FINE, Palette.AMBER_DIM,
 		HORIZONTAL_ALIGNMENT_LEFT))
 
+	_build_field_reads(good)
+
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
 	var armed := _pending_cargo == good
@@ -365,6 +486,61 @@ func _build_selected(good: String) -> void:
 		row.add_child(_mini("DUMP ALL" if not armed else "SURE?",
 			func() -> void: _dump(good, held)))
 	_strip.add_child(row)
+
+
+func _build_field_reads(good: String) -> void:
+	# READING SALVAGE, WITHOUT A LAB. It lives here rather than at a port for the
+	# reason it always did: it is a hold operation, and this is now the console
+	# that manages what is on your ship from anywhere. Ports keep SERVICES; this
+	# is you and a prybar.
+	if not CommodityDB.is_salvage(good):
+		return
+	if not GameState.can_read(good, false):
+		_strip.add_child(UIKit.label(
+			"SEALED — ARCHEOLOGY %d READS THIS GRADE." % CommodityDB.band_of(good),
+			UIKit.SIZE_FINE, Palette.AMBER_DIM, HORIZONTAL_ALIGNMENT_LEFT))
+		return
+	var reads := CommodityDB.reads_as(good)
+	if reads.is_empty():
+		return
+	_strip.add_child(UIKit.label("READ IT AS:", UIKit.SIZE_FINE, Palette.AMBER_DIM,
+		HORIZONTAL_ALIGNMENT_LEFT))
+	var reads_row := HBoxContainer.new()
+	reads_row.add_theme_constant_override("separation", 6)
+	for out_v in reads:
+		var out := String(out_v)
+		# The value and space deltas, printed. Reading compresses a hold 2.6-3.7x
+		# and physically shrinks the deep grades, and a read button that did not
+		# say so was asking the player to guess.
+		var d_val := CommodityDB.base_price(out) - CommodityDB.base_price(good)
+		var d_space := CommodityDB.space_of(out) - CommodityDB.space_of(good)
+		var b := UIKit.button("%s  %s%s  %+d SPACE" % [
+			CommodityDB.short_name(out), "+" if d_val >= 0 else "", _comma(d_val),
+			d_space], Palette.TEAL, UIKit.SIZE_FINE, Vector2(0, 34))
+		b.pressed.connect(func() -> void:
+			UIKit.press_pop(b)
+			_do_field_read(good, out))
+		reads_row.add_child(b)
+	_strip.add_child(reads_row)
+
+
+func _do_field_read(sid: String, out: String) -> void:
+	if not GameState.identify(sid, out, false):
+		# A read that cannot be stowed fails cleanly rather than half-happening:
+		# a component can be bulkier than the salvage it came out of.
+		Sfx.play("tap", -14.0, 0.6)
+		var hud := get_tree().get_first_node_in_group("hud")
+		if hud:
+			hud.show_toast("NO ROOM TO STOW THAT READ", Palette.THREAT)
+		return
+	Sfx.play("equip", -7.0, 1.1)
+	var hud2 := get_tree().get_first_node_in_group("hud")
+	if hud2:
+		hud2.show_toast("READ — %s" % CommodityDB.short_name(out),
+			CommodityDB.color_of(out))
+	if GameState.cargo_count(sid) <= 0:
+		_selected = ""
+	_refresh()
 
 
 func _mini(text: String, cb: Callable) -> Button:
@@ -465,7 +641,7 @@ func room_for_grid() -> float:
 	# be compared rather than so the assertion can borrow the answer.
 	if _root == null or _col == null:
 		return -1.0
-	var chrome := _col.get_combined_minimum_size().y - _scroll.custom_minimum_size.y + 32.0
+	var chrome := _chrome_height()
 	return maxf(_root.size.y * MAX_RATIO - chrome, MIN_SHEET - chrome)
 
 
