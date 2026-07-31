@@ -3418,6 +3418,74 @@ func _run_hold_test() -> void:
 	print("[hold] CATEGORY every one of %d components names a real parent -> %s %s" % [
 		comps, "PASS" if orphan == "" and comps > 0 else "FAIL", orphan])
 
+	# 4b. EVERY GOOD HAS A FAMILY. The hold screen draws a glyph per family, so a
+	#     good that classifies into nothing draws as a blank cell — a hole in the
+	#     picture with no way to tell what is sitting in it.
+	#
+	#     The ORE CHECK is the load-bearing half. `family()` tests is_ore FIRST
+	#     because all eight ores carry `trade_only_at` (their industrial buyers),
+	#     and a version that tested the allowlist first would file every ore
+	#     beside the contraband — a partition that is still total, still 34, and
+	#     completely wrong. Counting alone cannot see that; naming the ores can.
+	var fam_counts := {}
+	var unfiled := ""
+	for gid2 in CommodityDB.ids():
+		var g2 := String(gid2)
+		var fam := CommodityDB.family(g2)
+		if fam == "" or not Palette.FAMILY_GLYPHS.has(fam):
+			unfiled = g2
+		fam_counts[fam] = int(fam_counts.get(fam, 0)) + 1
+	var ore_misfiled := ""
+	for oid in CommodityDB.ore_ids():
+		var of := CommodityDB.family(String(oid))
+		if of != "metal" and of != "mineral":
+			ore_misfiled = "%s->%s" % [String(oid), of]
+	var fam_line := ""
+	for k in fam_counts:
+		fam_line += "%s %d  " % [String(k), int(fam_counts[k])]
+	print("[hold] EVERY GOOD HAS A FAMILY %s(%d goods, %d families) unfiled='%s' ore misfiled='%s' -> %s" % [
+		fam_line, CommodityDB.ids().size(), fam_counts.size(), unfiled, ore_misfiled,
+		"PASS" if unfiled == "" and ore_misfiled == "" \
+			and fam_counts.size() == Palette.FAMILY_GLYPHS.size() else "FAIL"])
+
+	# 4c. THE FAMILY GLYPHS ARE DRAWABLE. A glyph is the hold grid's PRIMARY
+	#     channel rather than a redundancy — see the colour measurement in
+	#     ACCESSTEST — so an empty or unrenderable one is not a cosmetic fault,
+	#     it deletes the only thing identifying a cell.
+	#
+	#     None of them may be a BAND_GLYPHS entry: the manual teaches ▲ as THE
+	#     DRIFT (manual_screen.gd), and a metal ore wearing ▲ in the hold would
+	#     be teaching the same shape two meanings.
+	#
+	#     THERE IS NO RENDERABILITY CHECK HERE, and that is a finding rather than
+	#     an omission. The obvious clause is `font.has_char(...)`, and it was
+	#     written, run, and removed: measured against the font a Label actually
+	#     resolves, has_char reports EVERY geometric shape missing -- including
+	#     ◈ ▲ ● ◆, the shipped band glyphs the manual draws, and ✕, the close
+	#     button on all four panels. The project ships no font (UIKit.FACE is
+	#     null), so those glyphs reach the screen through Godot's system-font
+	#     fallback at DRAW time, which has_char cannot see. A clause that fails
+	#     on glyphs the game already displays correctly is worse than no clause.
+	#
+	#     What that leaves unguarded, honestly: a glyph no system font carries
+	#     draws as tofu and this line stays green. The project already carries
+	#     that risk for its band glyphs and its close button, so this adds no new
+	#     exposure -- but it is a windowed eyeball check, not a headless one.
+	var glyph_seen := {}
+	var glyph_bad := ""
+	for fam_v in Palette.FAMILY_GLYPHS:
+		var gl := String(Palette.FAMILY_GLYPHS[fam_v])
+		if gl == "":
+			glyph_bad = "%s empty" % String(fam_v)
+		elif glyph_seen.has(gl):
+			glyph_bad = "%s duplicates %s" % [String(fam_v), gl]
+		elif Palette.BAND_GLYPHS.has(gl):
+			glyph_bad = "%s uses band glyph %s" % [String(fam_v), gl]
+		glyph_seen[gl] = true
+	print("[hold] THE FAMILY GLYPHS ARE DISTINCT %d non-empty, pairwise distinct, none a band glyph; bad='%s' -> %s" % [
+		glyph_seen.size(), glyph_bad,
+		"PASS" if glyph_bad == "" and glyph_seen.size() == Palette.FAMILY_GLYPHS.size() else "FAIL"])
+
 	# 5. READ COMPRESSION is real and now printable: every grade reads into
 	#    something worth more per unit of hold space than the grade itself.
 	var worst := 99.0
