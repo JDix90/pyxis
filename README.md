@@ -75,14 +75,17 @@ first:
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --import
 ```
 
-Current baseline: **393 PASS / 0 FAIL / 0 script errors** across 51 runs, save
-format **v15** — the 268 that shipped, plus `PYXIS_FEELTEST` (13),
+Current baseline: **398 PASS / 1 FAIL / 0 script errors** across 51 runs, save
+format **v15**. The one FAIL is `PYXIS_BALANCE`'s `PHASE INTEGRITY`, and it is a
+**stale threshold rather than a regression** — see "the assertion the relocation
+recalibrated" below. Every other suite is green. The 399 are the 268 that
+shipped, plus `PYXIS_FEELTEST` (13),
 `PYXIS_UITEST` (14), `PYXIS_GSATEST` (17), `PYXIS_ACCESSTEST` (11),
 `PYXIS_MINETEST` (25), `PYXIS_ENVTEST` (9), `PYXIS_STREAMTEST` (6), two more in
 `MUSICTEST` for the score's depth axis, two more in `CARTTEST` for the mast's
 clearance, one more in `LIVERYTEST` for the earned ninth accent, two in
 `SAVETEST=migrate12` for the v12→v13 migration, and three in
-`SAVETEST=migrate13` for v13→v14, and `PYXIS_HUNTTEST` (7) with
+`SAVETEST=migrate13` for v13→v14, and `PYXIS_HUNTTEST` (13) with
 `SAVETEST=migrate14` (3) for v14→v15.
 
 Mining stages 2 and 3 added seven: three in `MINETEST` (the fit reaching the
@@ -97,6 +100,18 @@ is fed by cuts and never by sales, that no tier buys credits, that a core sample
 can never out-yield a cut, and the two access tiers), and three in
 `SAVETEST=migrate13` (a v13 save arrives unmined, `seams_cut` survives a round
 trip, and the validator rejects a hand-edited key).
+
+The Hunt stage 2 moved the apex engines out into the expanse and added six
+assertions, no save bump: five in `PYXIS_HUNTTEST` (the arena keep-out is
+`ApexBoss.LEASH_RANGE` and cannot drift from it, the keep-out subtracts and only
+inside itself, it never reaches `MINETEST`'s world fingerprint, nothing but rocks
+and seams is left in the arena, and the leash ends the fight *only* past the
+leash) and one in `PYXIS_RADARTEST` (the engine is not on the map until you are
+inside `DETECT_RANGE`). `DEEPTEST` 30 was inverted rather than added to — the
+chart edge no longer breaks a fight off, so it now asserts the lock **holds** at
+depth. `APEXTEST` lost one: its `grav_tether` check is a printed observation now,
+because re-staging it exposed a defect it could never have caught, and fixing
+that is a balance decision. STRATEGY §39.
 
 `PYXIS_MANUALTEST` (6) covers the in-game pilot's manual: that every contents
 entry opens a real page, that opening and closing it never moves the pause state
@@ -121,7 +136,34 @@ so they ran unpinned for horizons, and a refit capture came back photographing
 the developer's own ship. `THE PINNING LIST IS COMPLETE` in `PYXIS_HUNTTEST` now
 reads `main.gd` and fails if the two lists disagree. See STRATEGY §38.
 
-`PYXIS_BALANCE` fights the apex to a conclusion with three fits and has taken
-anywhere from five to eleven minutes depending on how the fights go; the runner's
+### The assertion the relocation recalibrated
+
+`PYXIS_BALANCE`'s `PHASE INTEGRITY` has two clauses. The floor — **every run
+engages at least one seal** — holds in all thirty fight samples measured across
+five runs; it never once read zero, and it is the clause that encodes the actual
+design catastrophe ("a fit that bursts through would never meet a seal").
+
+The second — **every fit's median is at least two** — no longer describes the
+fight it samples. Swarm waves are charted-space pacing and `_process` returns
+early on them past the chart edge, so a fight staged at the lair, 308u out, has
+**no waves in it at all**. Every earlier calibration of that bar was taken from
+fights that did. Without the incidental targets the phases go down faster and
+the fit meets fewer seals, and the bar now sits inside the noise for four of the
+six fits. Measured, seals per fit:
+
+    LANCE     2, 2, 2, 1, 1, 2      MIXED     2, 3, 3, 4
+    ARC       5, 4, 10, 3           TORP      3, 1, 3, 1, 4, 2
+    PULSE     2, 2, 1, 1, 3, 2      TORP+LNC  2, 2, 1, 1, 2
+
+Three of five runs failed it, on four different fits, standalone and in-sweep
+alike. **This is a threshold to re-derive, not a bug to chase** — and deliberately
+left for a measurement pass rather than nudged here, because this suite's own
+comments record two previous rewrites caused by exactly that: a bar set from too
+few samples of a distribution nobody had measured. STRATEGY §39.
+
+`PYXIS_BALANCE` fights the apex to a conclusion with six fits — plus up to two
+resamples each, for any fit whose first run engages fewer than two seals — and
+has taken anywhere from five to twenty minutes depending on how the fights go
+and what else is running; the runner's
 timeout is set well above that, because it exists to catch a harness that never
 calls `quit()`, not to police runtime.
