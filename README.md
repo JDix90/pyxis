@@ -104,6 +104,17 @@ cargo against *post-delivery* cargo — two unrelated phases — which is the
 "inherits state from the one above it" shape this file warns about. Drop the two
 contracts first, or assert on `accept`.
 
+**Two further assertions are load-flaky, and it is worth knowing before you
+trust a red sweep.** `DEEPTEST`'s `STARFIELD` and `RAIDTEST`'s `THE HOLD IS NOT
+A SHIELD` both passed one full sweep and failed the next on identical code, and
+both pass repeatedly when run alone. They are timing-sensitive rather than
+wrong: `STARFIELD` read `1234.8u` on a loaded machine against `0.6u` idle, so it
+is measuring a starfield that has not been rebuilt yet, and `THE HOLD IS NOT A
+SHIELD`'s `moving+open` leg needs the ship to actually have velocity by the
+frame it samples. Neither is a determinism failure — `WORLD FINGERPRINT` and the
+rest of `DEEPTEST` hold — but on a slower or busier box than the usual one they
+will cost you a sweep. Re-run the tag alone before believing either.
+
 The most recent seven are the two-bug pass in STRATEGY §44:
 three in `BOSSTEST` (the engine dies, a killed engine stays dead and its wreck
 survives the warp, a cracked wreck leaves nothing), three in
