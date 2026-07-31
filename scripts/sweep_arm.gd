@@ -7,9 +7,16 @@ extends Node3D
 # NO inner safe pocket, so parking on top of the boss is the most dangerous place
 # on the field, not a hiding spot.
 #
-# Park radii (player_ship.reach() * 0.7) vs SWEEP_RADIUS 6.0:
-#   Arc 3.85 / Pulse 4.90-5.25  -> under the blade, paying shield for damage
-#   Lance 7.70-8.40             -> outside it, safe but slow at clearing probes
+# Park radii (player_ship.reach() * 0.7) vs SWEEP_RADIUS 8.0:
+#   Arc 3.85-4.34 / Pulse 4.90-5.25 / Torp 6.30-7.00
+#                       -> under the blade, paying shield for damage
+#   Lance Mk I 7.70     -> under it too, just barely
+#   Lance Mk II 8.40    -> the one park outside the blades — and CORE_RANGE (7.0)
+#                          pulls a core-shooting Lance back inside anyway; the
+#                          rim park is only safe for probe work
+# (An earlier version of this table was computed against SWEEP_RADIUS 6.0 and
+# concluded "Lance -> outside it, safe" — the radius moved and the conclusion
+# quietly stopped being true for the Mk I.)
 #
 # --- FEEL CONSTANTS ---
 # Deliberately LARGER than ApexBoss.CORE_RANGE (7.0): every position from which
@@ -164,6 +171,15 @@ func _damage_check() -> void:
 	# maths degenerates at the hub (atan2 of ~0,~0), so without this the blades
 	# would sail harmlessly over anyone parked on top of the boss — one ground
 	# tap would opt out of the entire encounter's positional pressure.
+	#
+	# MEASURED UNREACHABLE today, kept as a backstop (STRATEGY §41). SystemBuilder
+	# registers the hub as an obstacle at HUB_RADIUS * 0.75 (1.65u) and PlayerShip
+	# resolves out of it every physics frame, so even a ship teleported to the
+	# boss's own position settles at 2.60u — the obstacle floor, not this branch,
+	# is what actually keeps ships out of the degenerate zone. This stays because
+	# it guards the MATHS above, and any future mover that skips Obstacles.resolve
+	# (the EMP integrator already skips it, though nothing pushes far enough
+	# during a stun today) would land here rather than in a silent safe pocket.
 	if dist < HUB_CRUSH_RADIUS:
 		if player.has_method("take_hit"):
 			player.take_hit(DAMAGE_PER_SECOND * TICK)
