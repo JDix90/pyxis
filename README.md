@@ -35,7 +35,7 @@ behind a `PYXIS_*` environment variable and run headless:
 PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 ```
 
-Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 34 of them.
+Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 39 of them.
 The house rules, learned the hard way and enforced by review:
 
 - **Assert the rule, not the rendering.** Test the thing that must be true once,
@@ -75,12 +75,13 @@ first:
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --import
 ```
 
-Current baseline: **406 PASS / 0 FAIL / 0 script errors** across 51 runs, save
-format **v15**. The last standing FAIL — `PYXIS_BALANCE`'s `PHASE INTEGRITY`,
-a stale threshold rather than a regression — was re-derived from a 66-sample
+Current baseline: **423 PASS / 0 FAIL / 0 script errors** across 52 runs, save
+format **v16**. `PYXIS_BALANCE`'s `PHASE INTEGRITY` was the last standing FAIL —
+a stale threshold rather than a regression — and was re-derived from a 66-sample
 measurement pass rather than nudged; see "the assertion the relocation
 recalibrated" below. The count grew from there by the tether pair in `APEXTEST`
-(STRATEGY §40), the five `BOSSTEST` conversions (§41), and earlier: the 268
+(STRATEGY §40), the five `BOSSTEST` conversions (§41), the intel dossier's
+fourteen (§42), and earlier: the 268
 that shipped, plus `PYXIS_FEELTEST` (13),
 `PYXIS_UITEST` (14), `PYXIS_GSATEST` (17), `PYXIS_ACCESSTEST` (11),
 `PYXIS_MINETEST` (25), `PYXIS_ENVTEST` (9), `PYXIS_STREAMTEST` (6), two more in
@@ -89,6 +90,13 @@ clearance, one more in `LIVERYTEST` for the earned ninth accent, two in
 `SAVETEST=migrate12` for the v12→v13 migration, and three in
 `SAVETEST=migrate13` for v13→v14, and `PYXIS_HUNTTEST` (13) with
 `SAVETEST=migrate14` (3) for v14→v15.
+
+The Hunt's stage 3 added the intel dossier and fourteen more: thirteen in
+`PYXIS_HUNTTEST` covering the dossier, the estimator and the channels, plus
+`SAVETEST=migrate15` (3) for v15→v16. Two of those thirteen exist because the
+estimator failed them — `INTEL NARROWS AND NEVER LIES` caught a search circle
+that excluded the lair it was pointing at, and `BUYING INTEL NEVER WIDENS THE
+SEARCH` caught the area growing when a reading was bought. See STRATEGY §42.
 
 Mining stages 2 and 3 added seven: three in `MINETEST` (the fit reaching the
 verb, the power a mining commit costs, and the survey mast deferring a reading

@@ -29,6 +29,13 @@ const HULL_OFFSET := 6.6
 const SURVEY_RANGE := 6.5
 const DECAY_RATE := 1.6
 const YIELD_UNITS := 2
+# How close a working mast has to be to the lair before the engine's
+# transmission shows up in its reading, and the half-angle it can promise.
+# 220u is a little under two cells: close enough that finding a mast that hears
+# anything is itself a signal, far enough that the band+quadrant the free
+# broadcast gives you is a searchable area rather than a needle.
+const RESONANCE_RANGE := 220.0
+const MAST_ERROR_DEG := 8.0
 
 # Set by whoever builds it, before add_child.
 var band := 1
@@ -238,3 +245,19 @@ func _complete() -> void:
 	var main := get_tree().get_first_node_in_group("main")
 	if main and main.deep_space:
 		main.deep_space.note_surveyed(cell)
+
+	# THE MAST HEARS THE ENGINE, but only from close enough to triangulate. A
+	# survey dish is not an intel desk: it picks up the transmission as
+	# interference on its own reading, which is why this costs nothing and why
+	# it only works within RESONANCE_RANGE of the lair.
+	#
+	# That range is the whole design of this channel. It is free intel, so it
+	# must not be free intel you can farm from the doorstep — you have to
+	# already be deep, and roughly in the right part of the deep, before a mast
+	# tells you anything. The hunt narrows what you can search; it does not
+	# replace the searching.
+	if main and main.has_method("file_apex_intel"):
+		var lair: Vector3 = SystemDB.lair_pos(main.system_id, GameState.run_seed)
+		if lair != Vector3.ZERO \
+				and lair.distance_to(global_position) <= RESONANCE_RANGE:
+			main.file_apex_intel("mast", global_position, MAST_ERROR_DEG)

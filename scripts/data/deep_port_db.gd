@@ -34,11 +34,20 @@ extends Object
 const OUTFIT_FLOOR := 0.80
 const SELLBACK_CEILING := 0.75
 
-# Services are deliberately limited to the four that are pure functions of the
-# port def: market, outfitter, fence, repair. Contracts name chart destinations,
-# rumours are the Cantina's trade in news of a chart these places are off, and
-# paint is an indulgence you fly home for. Out here you trade, you refit, you
-# unload what you should not be carrying, and you patch the hull.
+# Services are deliberately limited to the ones that are pure functions of the
+# port def: market, outfitter, fence, repair. Contracts name chart destinations
+# and paint is an indulgence you fly home for. Out here you trade, you refit,
+# you unload what you should not be carrying, and you patch the hull.
+#
+# v16 ADDED ONE, and only to the furthest station out. This file used to say
+# flatly that "rumours are the Cantina's trade in news of a chart these places
+# are off", and for market gossip that is still exactly right -- a station 1,200
+# units past the edge has nothing to say about a glut at the Anchor. But THE
+# HUNT is not news of the chart; it is news of the deep, and the Last Watch is
+# the only address in the game that is deeper than the thing being hunted. So it
+# sells the sharpest bearing there is (+-5 degrees, 900 salvage) while the
+# Cantina sells the vaguest (a band and a quadrant, 500), and the price of
+# precision is measured in how far out you were willing to go to ask.
 const ARCHETYPES := [
 	{
 		"id": "deep_relay",
@@ -128,7 +137,10 @@ const ARCHETYPES := [
 		# only the deep produces. It fences as well as the Haven, because at this
 		# range the distinction between a fence and a market has stopped meaning
 		# anything to anyone.
-		"services": ["market", "fence", "repair"],
+		"services": ["market", "fence", "repair", "rumors"],
+		"rumor_price": 700,
+		"hunt_price": 900,
+		"hunt_error": 5.0,
 		"bias": {"relics": 1.45, "cores": 1.40, "contraband": 1.25, "stolen": 1.20},
 		"fence_goods": ["relics", "cores", "contraband", "stolen",
 			"plate_ablative", "cell_fuel", "rod_decay", "sink_thermal", "lattice_data", "index_cartographic", "servo_prewar", "heart_reliquary", "manifest_forged", "charge_unstable"],

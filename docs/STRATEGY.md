@@ -3281,3 +3281,143 @@ the Mk II at 8.40, the Mk I parks at 7.70 — *under* the blade — and
 `CORE_RANGE` (7.0) drags any core-shooting Lance back inside regardless; the
 rim park is only safe for probe work. A comment that does arithmetic ages like
 an assertion that measures nothing: silently.
+
+## 42. The Hunt — stage 3, the intel dossier
+
+Stage 2 hid the engines and gave the player one free sentence: a band and a
+quadrant. That is enough to make the deep a place you search rather than a place
+you cross, and not enough to make searching it a *game*. Stage 3 is the ladder
+between them — six ways to learn more, priced in credits, distance and risk
+rather than in time.
+
+### The dossier holds claims, never the answer
+
+`GameState.apex_intel` is per-system arrays of hints in two shapes: a bearing
+cone taken from a stored origin, and a `{band, quadrant}` rumour. **Nothing in it
+is ground truth.** `SystemDB.lair_pos` is, and it is never written down — every
+hint is derived from it at the moment it is earned and then stands on its own.
+
+That separation buys three things at once. A save file cannot leak the answer.
+A contradictory dossier stays contradictory instead of being silently
+reconciled. And the estimate can be recomputed live, so a bought reading tightens
+the plot the instant it is filed rather than at the next checkpoint.
+
+The cap is eight, **widest error evicted first** — a ±5° reading bought at the
+Last Watch must never spend itself evicting a ±15° guard-post rumour already on
+file. Rumours score as 90° (a quadrant), which puts them at the front of the
+queue to go. The entry is deleted on the kill: intel about a dead engine is
+clutter that would keep drawing a survey plot for a hunt that is over.
+
+### Six channels, priced in three different currencies
+
+| channel | error | what it costs |
+|---|---|---|
+| survey mast | ±8° | free, but only within 220u of the lair |
+| cartographic index | ±12° | a relic, and a lab to read it at |
+| cleared guard post | ±15° | a fight, band 2 or deeper |
+| open shear | ±4° | being there, once, while it is open |
+| Embers Cantina | band+quadrant | 500 salvage |
+| The Last Watch | ±5° | 900 salvage, 1,200u past the chart edge |
+
+The spread is the design. The **vaguest** channel is the one you can earn by
+fighting, so combat never substitutes for the desks that sell precision. The
+**sharpest** is the one that cannot be sought out — a shear opens where it opens,
+on a fuse. And the two paid rungs are separated by geography rather than by
+price alone: the Cantina sells the cheap word in charted space, the Watch sells
+the sharp one from further out than the thing being hunted. `deep_port_db.gd`
+used to say flatly that rumours were the Cantina's trade; that is still true of
+market gossip and no longer true of the hunt, and the header now says which is
+which.
+
+Every channel files through one function. Six call sites that each decided
+independently what a hint costs and what the player sees would be six chances
+for the answer to leak.
+
+### Precision is bought, never farmed
+
+Two rules fall out of that and both are asserted. The same instrument read twice
+from the same spot is **one** reading — otherwise parking on a mast and
+re-triggering it narrows the estimate for free. And the error is **seeded, not
+rolled**: a pure function of system, run, channel and observer position, so
+saving before a purchase and reloading is not a reroll for a better cone. A hunt
+where the optimal play is to reload is not a hunt.
+
+### The estimator, and three ways it was wrong
+
+`Hunt.estimate` intersects the cones with the authored depth band on a polar
+grid. Not algebra: intersecting N cones with an annulus analytically is N-body
+case analysis — cones crossing the annulus twice, cones missing it, pairs
+meeting in two disjoint lenses — and every branch is a chance to return a
+plausible `Vector3` that is wrong, which is the exact failure this project keeps
+writing assertions about. A grid has no special cases and degrades honestly.
+
+The band is a **clamp**: hints choose where in the annulus, never the annulus, so
+no stale or hand-edited dossier can put the ghost in charted space. `strength`
+counts hints the agreed region actually satisfies, so three cones that
+contradict each other yield 2 — and the radar's threshold does not fire on a
+dossier that disagrees with itself.
+
+Then the harness took the estimator apart three times.
+
+**It under-claimed.** A two-hint dossier reported a 209u search radius with the
+lair 213u away — a circle that confidently excluded the answer. The grid holds
+POINTS; the hints admit CELLS. At radius 1300 a 3° step is a 68-unit arc, so
+measuring to the samples under-claims the region by up to half a cell diagonal.
+
+**It widened when intel was bought.** Twice, in two different repairs. First
+because a coarse pass that cannot resolve a narrow agreement falls back to a
+SUPERSET ("points satisfying all but one"). Then, once refinement fixed that,
+because the measured extent *dips before it rises*: while the window is much
+larger than the region only a sample or two lands inside, so the radius is
+mostly cell inflation, and it grows again as the window closes. Stopping on "two
+passes agree" caught the dip; keeping the widest pass moved the wobble to a
+different fixture. A player paying 900 salvage and watching the circle grow has
+been told the hunt is broken, whatever the arithmetic says.
+
+What shipped bounds **the window rather than the samples inside it**. The window
+is a genuine superset of the agreed region, so it cannot under-claim; it shrinks
+as constraints are added instead of jittering with sample placement; and six
+passes run every time so measurement DEPTH is uniform and two dossiers are
+comparable.
+
+And then the residual is **named rather than tuned away**. `RESIDUAL_FRACTION`
+is 5%, chosen against what a player can see: the ghost only appears under a 200u
+radius, where 5% is ten units — less than one marker width on the radar. Three
+formulations each moved the noise somewhere else rather than removing it, which
+is the signature of a method's noise floor rather than a bug hiding inside it.
+The honest move at that point is to say what the number means, not to keep
+adjusting until one fixture comes out clean.
+
+### The assertion a new channel broke, and the one it was hiding
+
+The full sweep came back 421 PASS / 1 FAIL, and the failure was `LOGTEST`'s
+`FIVE SITES WIRED` reporting `shear 2 line`. Nothing was wrong with it. Its
+staging parks the ship four units from a shear and counts what the shear writes
+to the captain's log — and working a shear from close up now also files a
+bearing, which writes its own line. One assertion, two systems, both behaving
+correctly. The ship now stands outside `Rift.INTEL_READ_RANGE`, so the check
+measures the thing it names.
+
+**That collision was worth more than the fix.** It pointed at a gap: the
+channels' proximity gates were load-bearing design with nothing driving them.
+`HUNTTEST`'s channel battery calls `file_apex_intel` directly, which is right for
+testing the dossier and proves nothing about whether a shear checks how far away
+you are. A shear that talks from any distance is a bearing you collect by flying
+past, and the entire paid ladder above it stops meaning anything.
+
+So `A SHEAR ONLY TALKS TO WHOEVER IS THERE` drives the real node: pulsed from
+78u it files nothing, pulsed from 3u it files once, pulsed again it still holds
+one. Red-verified by deleting the distance check, which files a bearing from 78u
+away. The far case runs FIRST on purpose — the one-shot flag must not have been
+spent by a read that should never have happened, and testing near-then-far would
+pass on an implementation that had no gate at all.
+
+### What the checkout cost
+
+A `git checkout` of two files, run to revert red-test edits without checking
+whether those files held anything else, discarded the entire refinement rework
+and one channel hook. Both were rebuilt from the session's own record within the
+hour and the harness confirmed the rebuild, so nothing shipped wrong — but the
+rule it broke exists precisely because "I know what is in this file" is a belief,
+not a fact. **Check `git status` before any command that discards, every time,
+including the times it is obviously unnecessary.**

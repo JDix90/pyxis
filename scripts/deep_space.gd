@@ -373,6 +373,29 @@ static func band_name(depth: float) -> String:
 	return BAND_NAMES[band_of(depth)]
 
 
+# The four compass sectors a rumour can name. COARSE on purpose: a quadrant of
+# the Drift is still an enormous amount of nothing to search, which is exactly
+# what the cheapest tier of intel should buy.
+#
+# Pure and shared, because three separate places need to agree on it — the free
+# lane-obstructed broadcast, the dossier's save-side validator, and Hunt's
+# estimator. The moment two of them derive "which quadrant is that" independently
+# they will disagree at a boundary, and a rumour that names the wrong sector is
+# worse than no rumour: it costs credits AND sends you the wrong way.
+const QUADRANTS := ["EAST", "SOUTH", "WEST", "NORTH"]
+
+
+static func quadrant_of(pos: Vector3) -> String:
+	var deg := fposmod(rad_to_deg(atan2(pos.z, pos.x)), 360.0)
+	if deg < 45.0 or deg >= 315.0:
+		return "EAST"
+	if deg < 135.0:
+		return "SOUTH"
+	if deg < 225.0:
+		return "WEST"
+	return "NORTH"
+
+
 static func band_color(depth: float) -> Color:
 	return Palette.band_color(band_of(depth))
 
@@ -1236,6 +1259,22 @@ func note_guard_died(key: Vector2i) -> void:
 	# different bands for the same post.
 	var origin: Vector3 = _guard_origin.get(key, Vector3.ZERO)
 	GameState.note_log("POST CLEARED — %s" % band_name(depth_at(origin)))
+
+	# WHAT THE POST WAS GUARDING AGAINST. A cleared post gives up its standing
+	# orders, and out here those orders point one way. Gated on band >= 2 for a
+	# reason that is not difficulty scaling: the Shoals are close enough to the
+	# chart that a post there is guarding a wreck, not keeping a watch on the
+	# engine, and letting it talk would hand out a bearing before the player had
+	# gone anywhere.
+	#
+	# +-15 degrees, the widest bearing channel in the game. This is the one hint
+	# you can earn purely by fighting, so it is deliberately the vaguest: it
+	# rewards clearing the deep without letting combat substitute for the desks
+	# that sell precision.
+	if band_of(depth_at(origin)) >= 2:
+		var main := get_tree().get_first_node_in_group("main")
+		if main != null and main.has_method("file_apex_intel"):
+			main.file_apex_intel("guard", origin, 15.0)
 
 
 func guards_at(key: Vector2i) -> Array:
