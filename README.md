@@ -89,8 +89,9 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **443 PASS / 1 FAIL / 0 script errors** across 53 runs, save
-format **v17**.
+Current baseline: **447 PASS / 1 FAIL / 0 script errors** across 53 runs, save
+format **v17**. 448 assertion lines, of which one is the standing HOLDTEST
+failure below and one is a flaky RAIDTEST line that may take a second run.
 
 The 1 FAIL is `HOLDTEST`'s `THE READOUT FOLLOWS THE HOLD`, and it **predates
 this change** — it reproduces identically on `fb03037` with nothing applied,
@@ -104,7 +105,47 @@ cargo against *post-delivery* cargo — two unrelated phases — which is the
 "inherits state from the one above it" shape this file warns about. Drop the two
 contracts first, or assert on `accept`.
 
-The most recent seven are the two-bug pass in STRATEGY §44:
+**Two further assertions are flaky, and it is worth knowing before you trust a
+red sweep.** Neither is a determinism failure — `WORLD FINGERPRINT` holds
+throughout — and neither comes from the changes above: both were reproduced on a
+clean `fb03037` worktree with nothing applied.
+
+`RAIDTEST`'s `THE HOLD IS NOT A SHIELD` is the worse of the two and is **not
+load-related**. On untouched `fb03037`, run alone on an idle machine, it failed
+**1 of 3** runs. It is always the same clause — `moving+open eligible=false` — so
+the `moving` leg is racing the frame it samples on and the ship has no velocity
+yet when eligibility is read. Expect roughly one red sweep in three until it is
+given a frame to accelerate in.
+
+`DEEPTEST`'s `STARFIELD` is milder and does look load-related: green in three
+sweeps of four, and it read `1234.8u` on a busy machine against `0.6u` idle — it
+is measuring a starfield that has not been rebuilt yet.
+
+Re-run the tag alone before believing either.
+
+The most recent one is Reactor Mk IV (STRATEGY §46) — 20 power for 55,000, a
+credit SINK rather than a raise. `MINING COSTS A MOUNT` had to be pinned to
+Mk III first: it read `reactor_power(REACTOR_TIERS.size() - 1)` into a variable
+named `mk3`, so a fourth tier silently changed what it measured. Run unpinned
+against Mk IV it prints "the commit draws 16 of **Mk III's 20**", which is the
+stale-name defect stating itself. `THE TOP REACTOR BUYS THE MOUNT BACK` is new
+beside it. `PACINGTEST` re-measured, not reasoned about: `MIDTIER` unmoved at
+2.91 (it is income-only, so a sink cannot touch it) and `CEILING` slacker at
+0.041, the catalog denominator having grown by the new tier's price.
+
+The three before that are the legibility pass in STRATEGY §45, which made six
+live stats visible for the first time — `shield_regen`, `accel`, `magnet_range`,
+`survey_speed`, `chain`, `splash` — plus core abilities, and drew the
+before/after delta on every module row in **both** the refit console and the
+store. `THE CONSOLE DRAWS THE UPSIDE` was replaced rather than extended: it
+checked three mining modules for two column names and was green while
+`util_repair` (5,200) and `util_repair_2` (13,500) moved no number at all. The
+pair that replaced it checks all 36 modules and then every stat key one at a
+time. `THE STAT STRIP WRAPS` and `THE DELTA IS AT THE DECISION` are new in
+`UITEST`; the first exists because the stat row was an `HBoxContainer` that
+squeezes rather than overflows, and the catalog's widest fit is 14 columns.
+
+The seven before those are the two-bug pass in STRATEGY §44:
 three in `BOSSTEST` (the engine dies, a killed engine stays dead and its wreck
 survives the warp, a cracked wreck leaves nothing), three in
 `SAVETEST=migrate16` for v16→v17, and one in `MINETEST` (`THE CUT FALLS

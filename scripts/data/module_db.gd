@@ -37,16 +37,36 @@ const SLOT_CATEGORY := {
 
 # Budget curve. Starter fit draws 8, so Mk I leaves room to add a utility and
 # try one weapon swap. The squeeze arrives when you want two heavy mounts, and
-# even Mk III cannot carry a fit of all-best modules — there is always a call
-# to make.
+# not even the top tier carries a fit of all-best modules (27) — there is always
+# a call to make.
 #
 # Phase 2 pricing: the reactor is the single most build-defining purchase in the
 # game, so it should be the thing you save several sessions for, not an early
-# formality. Mk III is deliberately the most expensive line in the catalog.
+# formality. The top tier is deliberately the most expensive line in the catalog.
+#
+# MK IV, and what it is FOR. The budget was measured before it was changed, and
+# the complaint that prompted it — "you cannot run a mining fit and a defensive
+# fit at once" — turned out to be false at Mk III: rig_prospector + rig_bulwark
+# over starter weapons, drive and core draws 16 of 18. What actually blocks that
+# pairing is the TWO UTILITY SLOTS, which MINING COSTS A MOUNT asserts on
+# purpose, and no amount of reactor would move it.
+#
+# So Mk IV does not exist to relieve that. It buys back the one trade the same
+# assertion names: at 18 the prospector commit (16) cannot also carry a lance_1
+# (4), and at 20 it can, exactly. That is the whole product — 55,000 credits to
+# stop giving up your gun to be a prospector — and it is why the step is 2 and
+# not 3. All-best is still 27 and still out of reach.
+#
+# Sold for credits, which makes it a SINK: PACINGTEST's binding MIDTIER clause is
+# EARNED / lance_1's price, an income-only measure with no expenditure term, so a
+# new tier cannot move it. It joins _pacing_catalog_cost's denominator instead
+# and makes the already-slack CEILING ratio slacker. Re-measured, not reasoned
+# about — see the sweep in STRATEGY §46.
 const REACTOR_TIERS := [
 	{"name": "Reactor Mk I", "power": 12, "price": 0},
 	{"name": "Reactor Mk II", "power": 15, "price": 10000},
 	{"name": "Reactor Mk III", "power": 18, "price": 32000},
+	{"name": "Reactor Mk IV", "power": 20, "price": 55000},
 ]
 
 # --- base hull stats, before modules ---------------------------------------
@@ -548,6 +568,28 @@ static func modules_for_slot(slot: int) -> Array:
 	return out
 
 
+static func default_slot(id: String, fit: Dictionary) -> int:
+	# Where this module would go if the player bought it now. The store sells
+	# without a slot chip to point at, so a delta shown there has to pick one, and
+	# picking wrong makes the preview a lie: previewing a second Cargo Bay into
+	# the slot already holding one would report no change at all.
+	#
+	# First EMPTY slot of the right category, falling back to the first of that
+	# category -- which is what equipping into a full pair actually does.
+	if not exists(id):
+		return -1
+	var category: String = MODULES[id]["category"]
+	var first := -1
+	for slot in SLOT_CATEGORY:
+		if SLOT_CATEGORY[slot] != category:
+			continue
+		if first < 0:
+			first = slot
+		if not exists(String(fit.get(slot, ""))):
+			return slot
+	return first
+
+
 static func power_draw(fit: Dictionary) -> int:
 	var total := 0
 	for slot in fit:
@@ -646,14 +688,89 @@ static func summary_lines(stats: Dictionary) -> Array:
 		["SALVAGE", "%.0f%%" % (float(stats["salvage_mult"]) * 100.0)],
 		["HOLD", "%.0f" % stats.get("cargo_space", 24.0)],
 	]
-	# CONDITIONAL, and that is a layout decision as much as an editorial one:
-	# these are cells in a plain HBoxContainer on a 720-wide portrait phone, not
-	# a wrapping row, so seven is already tight and a ship with no cutting gear
-	# must not spend two more saying "none". The pair appears and disappears
-	# together so that comparing the two tools never moves the other columns.
+	# CONDITIONAL, and that was once a hard layout ceiling: these were cells in a
+	# plain HBoxContainer on a 720-wide portrait phone, so seven was already tight
+	# and an eighth had to earn its place. The row is an HFlowContainer now and
+	# wraps, which is what makes the block below affordable at all -- but
+	# conditional is still right on editorial grounds. A ship with no cutting gear
+	# must not spend two columns saying "none", and a pair that appears and
+	# disappears together means comparing two tools never moves the other columns.
 	var rate := float(stats.get("mining_rate", 0.0))
 	var extra := float(stats.get("ore_yield", 0.0))
 	if rate != 0.0 or extra != 0.0:
 		out.append(["CUT", "%.0f%%" % ((1.0 + rate) * 100.0)])
 		out.append(["ORE", "+%d" % int(extra)])
+
+	# EVERYTHING BELOW WAS INVISIBLE, and the two Repair Bays are the reason this
+	# had to change: shield_regen was their ONLY stat, so fitting a 13,500-credit
+	# module moved not one number on this strip. The player was asked to buy an
+	# effect the console could not draw. Six stats were in that state, and the
+	# audit that found them is the one worth repeating -- diff every key any
+	# module writes against every key this function reads.
+	#
+	# Each is shown only when something has actually moved it off the hull's own
+	# figure, so a bare starter ship still reads as seven columns.
+	if not is_equal_approx(float(stats.get("shield_regen", 0.0)), float(BASE["shield_regen"])):
+		out.append(["REGEN", "%.0f/s" % float(stats["shield_regen"])])
+	if not is_equal_approx(float(stats.get("accel", 0.0)), float(BASE["accel"])):
+		# The Vector Drive's whole identity. It reads as SPEED -2.5 against the
+		# Cruise and nothing else, which is why it looked like a downgrade.
+		out.append(["ACCEL", "%.0f" % float(stats["accel"])])
+	if not is_equal_approx(float(stats.get("magnet_range", 0.0)), float(BASE["magnet_range"])):
+		out.append(["PULL", "%.0f" % float(stats["magnet_range"])])
+	if float(stats.get("survey_speed", 0.0)) != 0.0:
+		out.append(["SURVEY", "+%.0f%%" % (float(stats["survey_speed"]) * 100.0)])
+
+	# chain and splash are NOT flat keys. compute_stats folds drive/utility/core
+	# stats into the top level but keeps weapon stats per-weapon in `weapons`, so
+	# reading stats["chain"] finds nothing and always did -- which is precisely
+	# how the Arc and Torpedo families shipped with their defining trait unsaid.
+	var chain := 0
+	var splash := 0.0
+	for w_v in stats.get("weapons", []):
+		var w: Dictionary = w_v
+		chain = maxi(chain, int(w.get("chain", 0)))
+		splash = maxf(splash, float(w.get("splash", 0.0)))
+	if chain > 0:
+		out.append(["CHAIN", "+%d" % chain])
+	if splash > 0.0:
+		out.append(["SPLASH", "%.1f" % splash])
+
+	# Cores carry an empty `stats` and all three therefore moved nothing at all.
+	# The description says what the ability feels like; these are the two numbers
+	# it never gave you, and a 9,400-credit core against a free one is exactly the
+	# comparison they decide.
+	var ability: Dictionary = stats.get("ability", {})
+	if not ability.is_empty():
+		out.append([String(ability.get("name", "ABILITY")),
+			"%.1fs/%.0fs" % [float(ability.get("duration", 0.0)), float(ability.get("cooldown", 0.0))]])
+	return out
+
+
+static func delta_lines(before: Dictionary, after: Dictionary) -> Array:
+	# [label, before, after] for every cell that MOVES, and nothing else. One
+	# source of truth so the refit console and the store cannot drift apart.
+	#
+	# Label-keyed rather than index-keyed, because summary_lines is conditional:
+	# fitting a Repair Bay ADDS a REGEN column that was not there a moment ago,
+	# and a positional diff would report every column after it as changed. A cell
+	# missing from one side reads as an em dash, which is honest -- "this ship has
+	# no answer for that yet" is different from "this ship scores zero".
+	var b := {}
+	var order := []
+	for pair in summary_lines(before):
+		b[String(pair[0])] = String(pair[1])
+		order.append(String(pair[0]))
+	var a := {}
+	for pair in summary_lines(after):
+		a[String(pair[0])] = String(pair[1])
+		if not order.has(String(pair[0])):
+			order.append(String(pair[0]))
+
+	var out := []
+	for label in order:
+		var was: String = b.get(label, "—")
+		var now: String = a.get(label, "—")
+		if was != now:
+			out.append([label, was, now])
 	return out

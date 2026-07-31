@@ -3723,3 +3723,181 @@ first or to assert on `accept` — but recorded here because an assertion that h
 never once run is exactly the defect class §41 and §43 were written about, and
 finding a third one in the suite added most recently is the argument for reading
 every new check's *red* run rather than trusting its green one.
+
+## 45. Saying what a module actually does
+
+The design contract at the top of `module_db.gd` claims every module is
+"legible — few stats, **all surfaced as deltas in the refit console**". Two
+halves of that sentence were untrue, and had been since the console shipped.
+
+### The audit, which is the part worth repeating
+
+`summary_lines` is a hardcoded list of seven columns, and the way to find what
+it misses is mechanical: diff every key any module *writes* against every key
+that function *reads*. Six came back, plus core abilities:
+
+| silent stat | carried by | what the player saw |
+|---|---|---|
+| `shield_regen` | `util_repair` +11, `util_repair_2` +19, `util_shield` +5, `util_shield_2` +9, `rig_bulwark` +4 | **nothing at all** for both Repair Bays |
+| `accel` | every drive, three rigs | the Vector Drive read as SPEED −2.5 and no upside |
+| `magnet_range` | both tractors, `rig_prospector` | half the tractor's pitch |
+| `survey_speed` | both scanners | — |
+| `chain` | `arc_1` 2, `arc_2` 3 | the Arc family's entire identity |
+| `splash` | `torp_1` 2.2, `torp_2` 2.9 | the Torpedo family's entire identity |
+| `ability` | all three cores (`stats: {}`) | **nothing at all**, on a 9,400-credit part |
+
+`util_repair` is 5,200 credits and `util_repair_2` is 13,500, and fitting either
+moved **not one number on the screen built to compare modules**. The three cores
+were in the same state.
+
+**`chain` and `splash` are not flat keys, and that is why they were missed.**
+`compute_stats` folds drive/utility/core stats into the top level but keeps
+weapon stats *per weapon* inside `stats["weapons"]`, so `stats["chain"]` reads
+nothing and always did. A fix that added `["CHAIN", stats["chain"]]` would have
+rendered a confident zero.
+
+### The second half: a promise with no implementation
+
+`GameState.preview_stats(slot, id)` existed, was correct, and had **zero callers
+in the repository** — while `refit_panel.gd`'s own header comment advertised a
+"stat delta preview". The arithmetic had been sitting there unused the whole
+time; nothing had ever drawn it.
+
+**The delta lives on each module ROW, not on a hovered or selected one.** This is
+a 720-wide portrait touch console. There is no hover on a phone, so a preview
+that appears on focus would be dead on the target device — the answer has to sit
+next to the thing you are about to press. The store gets the same treatment, and
+also gains the `"%d PWR"` the refit console has always printed and the store
+never did: before this, a 19,500-credit Targeting Scanner Mk II was sold on a
+name, one line of flavour text and a price.
+
+### The layout constraint was real, and the old note was right about it
+
+The previous comment defended seven columns on the grounds that these are cells
+in a plain `HBoxContainer` on a phone. That was correct, and it is why the six
+stats could not simply be appended: **an `HBoxContainer` of `EXPAND_FILL` cells
+does not overflow visibly, it squeezes.** Fourteen columns is reachable — an Arc
+and a Torpedo for `CHAIN` and `SPLASH`, a Prospector and an Assay Rig for `CUT`,
+`ORE` and `PULL` — and fourteen labels shaved to 46px each would have shipped as
+"the console looks tight" rather than as a defect.
+
+The row is an `HFlowContainer` now and wraps, which the chip row above it already
+did for the same reason. Measured at the catalog's widest fit: **14 columns,
+narrowest cell 62px against a 62px floor, 0px overflow.** Against the old
+container the same fit runs 868px wide inside a 720px sheet.
+
+### The assertion was the instance, not the rule
+
+`THE CONSOLE DRAWS THE UPSIDE` checked three mining modules for a `CUT` or `ORE`
+column. It was green for as long as it existed, and the rule it was named after
+was being broken three rows away the entire time. Replaced by two:
+
+- **`THE CONSOLE DRAWS EVERY MODULE`** — all 36, each compared against the same
+  fit with that slot *emptied* rather than against the starter. Comparing to the
+  starter would let every weapon pass merely by displacing the pulse it replaces.
+- **`EVERY STAT REACHES A COLUMN`** — per key rather than per module, because a
+  module can be legible by accident: `util_cutter`'s `turn_rate` penalty already
+  moved `HANDLING` while `mining_rate` itself was undrawable. Perturbing one key
+  at a time is what isolates that.
+
+The five keys `compute_stats` folds into DPS and REACH are **named in the output**
+rather than quietly skipped. A silent skip list is how the first version of this
+line came to cover three modules and read like it covered the catalog.
+
+Red-first, each against the mechanism it names rather than an inverted
+comparison: deleting the `REGEN` column gives `mute: 2, first: util_repair` and
+`undrawable: shield_regen`; deleting the ability column gives `mute: 3, first:
+core_overcharge` and `undrawable: ability`; reverting the row to an
+`HBoxContainer` fails the strip check; and removing the delta from either screen
+fails `THE DELTA IS AT THE DECISION` on that screen alone.
+
+That last one is asserted against the **rendered panel** — walking the built tree
+for the text — rather than against `preview_stats`'s return value. The function
+has always returned the right numbers. Not one of them had ever reached a screen,
+and only the rendered tree can tell the difference.
+
+## 46. The power budget, measured before it was changed
+
+The report was "the power budget is too tight", with one concrete example: you
+cannot run a mining fit and a defensive fit at once. The measurement came first,
+and it disagreed.
+
+### What the numbers said
+
+| tier | power | price |
+|---|---|---|
+| Mk I | 12 | 0 |
+| Mk II | 15 | 10,000 |
+| Mk III | 18 | 32,000 |
+
+Six slots: two weapons, a drive, a core, **two** utilities. Starter fit draws 8.
+
+**The player could already buy tiers.** `port_panel._reactor_row` is the first row
+of the outfitter body at every port carrying the service, flat-priced and
+unaffected by port multipliers, and the field console correctly says "AT PORT".
+The upgrade path was neither missing nor broken — which was worth establishing,
+because "the ladder does not exist" and "the ladder is expensive" are very
+different fixes.
+
+**And the example was false at Mk III.** `rig_prospector` + `rig_bulwark` over
+starter weapons, drive and core draws **16 of 18** — it fits, with 2 spare. What
+actually stops a player pairing mining with defence is the **two utility slots**,
+and `MINING COSTS A MOUNT` asserts that limit on purpose. No amount of reactor
+moves it. A tier sold to relieve that complaint would not have relieved it.
+
+Where power genuinely binds at Mk III is narrower: two heavy mounts plus anything
+(dual `torp_2` is 12 before a drive), and two good utilities *plus* two good
+weapons (21–27).
+
+### So Mk IV has one job, and it is the one the assertion already named
+
+`MINING COSTS A MOUNT` says the prospector commit (16) leaves a Mk III without
+room for the `lance_1` (4) the pacing band is denominated in — "a prospector
+gives up the Lance to be a prospector". **Mk IV at 20 buys exactly that back, and
+nothing else.** 55,000 credits to stop giving up your gun. The step is 2 rather
+than 3 for that reason: all-best is 27 and stays out of reach, and the slot limit
+is untouched.
+
+### The stale name that the new tier exposed
+
+`MINING COSTS A MOUNT` computed:
+
+```gdscript
+var mk3 := ModuleDB.reactor_power(ModuleDB.REACTOR_TIERS.size() - 1)
+```
+
+A variable called `mk3`, holding *whatever the top tier happens to be*, inside an
+assertion whose every surrounding word says "Mk III". Adding a fourth tier did not
+make it lie — it made it **stop being about Mk III**, silently. Run against Mk IV
+before the fix, it prints `the commit draws 16 of Mk III's 20`, which is the
+defect saying itself out loud.
+
+This is the third instance of the same class in three sections: `_build_apex`'s
+comment (§44), `sweep_arm.gd`'s radius table (§41), and now a variable name inside
+a live check. The pattern is a name that encodes an assumption and a value that
+does not. Pinned to `MK3_TIER := 2`, with `THE TOP REACTOR BUYS THE MOUNT BACK`
+added beside it so the top tier's claim is asserted rather than assumed.
+
+### The economy, re-measured rather than reasoned about
+
+The house rule is that a new tier sold for credits is a SINK and therefore
+house-legal, and that a price cut is a raise. Both halves were checked rather
+than trusted:
+
+| assertion | before | after |
+|---|---|---|
+| `MIDTIER` (binding) | 2.88–2.93 × `lance_1` | **2.91** |
+| `CEILING` | 0.047 vs 0.15 cap | **0.041** |
+| `ROUTE PARITY` | — | 1.0% vs 20% allowed |
+
+`MIDTIER` is `EARNED / lance_1`'s price — an **income-only** measure with no
+expenditure term — so a sink cannot move it, and did not. `CEILING` divides by
+`_pacing_catalog_cost`, which the new tier's 55,000 joins, so the already-slack
+ratio got slacker: 358,200 → 413,200 in the denominator, and the full catalog
+moved from ~21 to **24 sessions**.
+
+Worth recording for whoever next reaches for this lever: the one number in the
+price table that genuinely endangers `MIDTIER` is `lance_1`'s own 5,800, because
+three assertions are denominated in it. Cutting it to 5,000 would read 3.34
+against a 3.00 ceiling and fail immediately. Every other price — including every
+reactor — is invisible to it.

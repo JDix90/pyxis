@@ -1691,6 +1691,31 @@ func _module_row(id: String) -> Control:
 	desc.add_theme_color_override("font_color", Color(0.6, 0.6, 0.66))
 	left.add_child(desc)
 
+	# The store used to show a name, one line of flavour text and a number, and
+	# that was the entire basis for a 19,500-credit decision -- not even the
+	# "%d PWR" the refit console has always printed, on the screen where the
+	# module is actually BOUGHT. Both go here now.
+	#
+	# Previewed into the slot this module would really occupy rather than a fixed
+	# one, or a second Cargo Bay would preview into the bay already fitted and
+	# report that it changes nothing.
+	var meta := HBoxContainer.new()
+	meta.add_theme_constant_override("separation", 8)
+	left.add_child(meta)
+
+	var pwr := Label.new()
+	pwr.text = "%d PWR" % int(m.get("power", 0))
+	pwr.add_theme_font_size_override("font_size", 10)
+	pwr.add_theme_color_override("font_color", Palette.AMBER_DIM)
+	meta.add_child(pwr)
+
+	var slot := ModuleDB.default_slot(id, GameState.fit)
+	if slot >= 0:
+		var delta := UIKit.delta_line(GameState.preview_stats(slot, id), 10)
+		if delta != null:
+			delta.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			meta.add_child(delta)
+
 	if owned:
 		var sellable := not ModuleDB.STARTER_OWNED.has(id)
 		if sellable:
