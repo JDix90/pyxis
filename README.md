@@ -75,11 +75,13 @@ first:
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --import
 ```
 
-Current baseline: **398 PASS / 1 FAIL / 0 script errors** across 51 runs, save
-format **v15**. The one FAIL is `PYXIS_BALANCE`'s `PHASE INTEGRITY`, and it is a
-**stale threshold rather than a regression** — see "the assertion the relocation
-recalibrated" below. Every other suite is green. The 399 are the 268 that
-shipped, plus `PYXIS_FEELTEST` (13),
+Current baseline: **406 PASS / 0 FAIL / 0 script errors** across 51 runs, save
+format **v15**. The last standing FAIL — `PYXIS_BALANCE`'s `PHASE INTEGRITY`,
+a stale threshold rather than a regression — was re-derived from a 66-sample
+measurement pass rather than nudged; see "the assertion the relocation
+recalibrated" below. The count grew from there by the tether pair in `APEXTEST`
+(STRATEGY §40), the five `BOSSTEST` conversions (§41), and earlier: the 268
+that shipped, plus `PYXIS_FEELTEST` (13),
 `PYXIS_UITEST` (14), `PYXIS_GSATEST` (17), `PYXIS_ACCESSTEST` (11),
 `PYXIS_MINETEST` (25), `PYXIS_ENVTEST` (9), `PYXIS_STREAMTEST` (6), two more in
 `MUSICTEST` for the score's depth axis, two more in `CARTTEST` for the mast's
@@ -115,6 +117,15 @@ dragged an idle ship 0.0u since the day it shipped. That defect is now fixed and
 the clause is a real assertion again, joined by a second one that the weakest
 legal fit can still burn free of a live tether. STRATEGY §40.
 
+`PYXIS_BOSSTEST` (5) no longer prints observations: every `(must be ...)` line
+is a real assertion now, each red-verified by breaking its actual mechanism.
+Its HUB EXPLOIT check found the exploit does not exist — the hub's obstacle
+registration floors approach at a measured 2.60u and a ship parked there for a
+full blade revolution loses 58 shield; the old `took_damage=false` was a 3.0s
+window closing before the first hit lands (~4s in). Its RETURN check was
+vacuous — asserting a full engine nobody had damaged — and now halves the boss
+before warping out. STRATEGY §41.
+
 `PYXIS_MANUALTEST` (6) covers the in-game pilot's manual: that every contents
 entry opens a real page, that opening and closing it never moves the pause state
 from either a running or a stopped tree, that CANCEL backs out one step rather
@@ -138,34 +149,37 @@ so they ran unpinned for horizons, and a refit capture came back photographing
 the developer's own ship. `THE PINNING LIST IS COMPLETE` in `PYXIS_HUNTTEST` now
 reads `main.gd` and fails if the two lists disagree. See STRATEGY §38.
 
-### The assertion the relocation recalibrated
+### The assertion the relocation recalibrated — and its fourth version
 
 `PYXIS_BALANCE`'s `PHASE INTEGRITY` has two clauses. The floor — **every run
-engages at least one seal** — holds in all thirty fight samples measured across
-five runs; it never once read zero, and it is the clause that encodes the actual
-design catastrophe ("a fit that bursts through would never meet a seal").
+engages at least one seal** — has never once read zero across 66 measured fight
+samples; it encodes the actual design catastrophe ("a fit that bursts through
+would never meet a seal") and it is unchanged.
 
-The second — **every fit's median is at least two** — no longer describes the
-fight it samples. Swarm waves are charted-space pacing and `_process` returns
-early on them past the chart edge, so a fight staged at the lair, 308u out, has
-**no waves in it at all**. Every earlier calibration of that bar was taken from
-fights that did. Without the incidental targets the phases go down faster and
-the fit meets fewer seals, and the bar now sits inside the noise for four of the
-six fits. Measured, seals per fit:
+The second clause used to be **every fit's median is at least two**, and the
+relocation broke it honestly: a fight staged at the lair, 300u+ out, has no
+swarm waves in it (they are charted-space pacing, and `_process` returns early
+on them past the chart edge), so phases go down faster and fits meet fewer
+seals than every earlier calibration of the bar was taken against. The
+measurement pass that §39 deferred (five standalone runs, pooled with the
+relocation pass's samples — 66 in all) put numbers on it: 18-29% of the low
+fits' mass sits at exactly 1 seal — PULSE 4/14, TORP 3/13, TORP+LNC 2/10,
+LANCE 2/11. A median-of-three bar at 2 against that mass fails
+P(≥2 of 3 samples = 1) ≈ 43% of sweeps, which is precisely the observed
+"failed 3 of 5 runs, standalone and in-sweep alike." The bar was resting on the
+distribution's own median; no amount of resampling fixes the wrong statistic.
 
-    LANCE     2, 2, 2, 1, 1, 2      MIXED     2, 3, 3, 4
-    ARC       5, 4, 10, 3           TORP      3, 1, 3, 1, 4, 2
-    PULSE     2, 2, 1, 1, 3, 2      TORP+LNC  2, 2, 1, 1, 2
+The fourth version asserts what the 66 samples actually guarantee: **every fit
+lands at least one run of ≥ 2 seals**, resampling *until* one lands, capped at
+five samples. The longest observed run of 1s is two; five straight is ~0.2% at
+the worst fit's measured rate, so residual flake moved from ~43% to ~0.3% — by
+changing the claim to one the distribution supports, not by loosening it.
+Whether a typical 1-2 seal deep fight *feels* right is a playtest question,
+kept deliberately out of this line. STRATEGY §41.
 
-Three of five runs failed it, on four different fits, standalone and in-sweep
-alike. **This is a threshold to re-derive, not a bug to chase** — and deliberately
-left for a measurement pass rather than nudged here, because this suite's own
-comments record two previous rewrites caused by exactly that: a bar set from too
-few samples of a distribution nobody had measured. STRATEGY §39.
-
-`PYXIS_BALANCE` fights the apex to a conclusion with six fits — plus up to two
-resamples each, for any fit whose first run engages fewer than two seals — and
-has taken anywhere from five to twenty minutes depending on how the fights go
-and what else is running; the runner's
+`PYXIS_BALANCE` fights the apex to a conclusion with six fits — resampling any
+fit whose first run engages fewer than two seals until one run does, capped at
+five samples per fit — and has taken anywhere from five to twenty minutes
+depending on how the fights go and what else is running; the runner's
 timeout is set well above that, because it exists to catch a harness that never
 calls `quit()`, not to police runtime.

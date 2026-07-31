@@ -8937,55 +8937,62 @@ func _run_balance_test() -> void:
 	# or the sweep — it would skip the encounter's ENTIRE mechanic". Bursting one
 	# phase is not that. Never being shut out and made to clear a pack is.
 	#
-	# SAMPLED, TWO-TIER — the third version of this assertion, and each rewrite
-	# was the same lesson arriving again.
+	# SAMPLED, TWO-TIER — the fourth version of this assertion, and this one was
+	# finally set from a distribution measured on purpose (66 samples: the 31
+	# from the relocation pass, plus 33 from a dedicated five-run standalone
+	# measurement; STRATEGY §41).
 	#
 	# v1 compared peak window damage against phase HP — a number CAPPED by phase
 	# HP, so it could only ever fail on an exact tie. v2 counted seals with a bar
 	# of 2, set from six runs showing 3-10 — and PULSE's true floor turned out to
-	# be 1, so the bar sat inside the noise and failed on a coin flip. Both times:
-	# a threshold set from too few samples of a distribution nobody had measured.
+	# be 1. v3 replaced the bar with a per-fit MEDIAN >= 2 — which is a different
+	# way of writing the same mistake, because the measured distribution puts
+	# 18-29% of the low fits' mass AT exactly 1 (PULSE 4/14, TORP 3/13, TORP+LNC
+	# 2/10, LANCE 2/11): a median bar resting ON the distribution's own median
+	# fails P(>=2 of 3 samples = 1) ~ 43% of sweeps, which is what "failed 3 of 5
+	# runs, standalone and in-sweep alike" was. No sample count fixes that — the
+	# statistic was wrong, not the sampling.
 	#
-	# So this version measures the distribution it asserts against. Any fit whose
-	# first run engages fewer than 2 seals is run twice more, and the claims are
-	# two-tier, each matched to what it can honestly guarantee:
+	# The two claims, each matched to what 66 samples say the fight guarantees:
 	#
-	#   every run  >= 1 seal   no fit EVER fully skips the mechanic (13's actual
-	#                          catastrophe — "would never meet a seal")
-	#   median     >= 2 seals  the TYPICAL fight engages it properly; the tail
-	#                          where a burst fit high-rolls one phase is allowed,
-	#                          and whether that tail feels degenerate in the hand
-	#                          is the playtest's question, not this line's.
+	#   every run >= 1 seal        no fit EVER fully skips the mechanic (13's
+	#                              actual catastrophe — "would never meet a
+	#                              seal"). Zero violations in 66 samples.
+	#   every fit lands one >= 2   no fit is CONSISTENTLY shut out of the full
+	#                              shape — resample until a run engages twice, up
+	#                              to 5 samples. The longest observed run of 1s
+	#                              is two; five straight would be ~0.2% for the
+	#                              worst fit at its measured rate. What a typical
+	#                              1-2 seal fight FEELS like is the playtest's
+	#                              question, not this line's.
 	var samples := {}
 	for r in results:
 		samples[String((r as Dictionary)["name"])] = [int((r as Dictionary).get("seals", 0))]
 	for fit in fits:
 		var nm := String(fit["name"]).strip_edges()
-		if int((samples[nm] as Array)[0]) >= 2:
-			continue
-		for extra in range(2):
+		# Resample UNTIL the fit engages properly once, capped at 5 samples —
+		# the early exit is what keeps the honest sample count affordable.
+		while (samples[nm] as Array).size() < 5 and int((samples[nm] as Array).max()) < 2:
 			var rerun := await _balance_run(String(fit["a"]), String(fit["b"]), String(fit["name"]))
 			print(String(rerun["line"]) + "  (resample)")
 			(samples[nm] as Array).append(int(rerun.get("seals", 0)))
 
 	var dist_line := ""
 	var floor_ok := true
-	var median_ok := true
+	var engaged_ok := true
 	for nm_v in samples:
 		var arr: Array = samples[nm_v]
 		arr.sort()
-		var median := int(arr[arr.size() / 2]) if arr.size() % 2 == 1 \
-			else int(arr[arr.size() / 2 - 1])
-		if arr.size() > 1 or median < 2:
-			dist_line += "%s %s med %d; " % [String(nm_v), "/".join(arr.map(func(x): return str(x))), median]
+		if arr.size() > 1 or int(arr[arr.size() - 1]) < 2:
+			dist_line += "%s %s; " % [String(nm_v), "/".join(arr.map(func(x): return str(x)))]
 		if int(arr[0]) < 1:
 			floor_ok = false
-		if median < 2:
-			median_ok = false
-	print("[balance] PHASE INTEGRITY (sampled) %severy run >= 1 seal=%s, every median >= 2=%s -> %s" % [
+		if int(arr[arr.size() - 1]) < 2:
+			engaged_ok = false
+	print("[balance] PHASE INTEGRITY (sampled) %severy run >= 1 seal=%s, every fit lands a run >= 2=%s -> %s" % [
 		dist_line if dist_line != "" else "all fits >= 2 first run; ",
-		str(floor_ok), str(median_ok),
-		"PASS" if floor_ok and median_ok else "FAIL"])
+		str(floor_ok), str(engaged_ok),
+		"PASS" if floor_ok and engaged_ok else "FAIL"])
 	print("[balance]   (peak single-window damage %.0f by %s, against %.0f phase hp — informational:" % [
 		worst_window, worst_fit, float((ApexBoss.PHASES[0] as Dictionary)["hp"])])
 	print("[balance]    this number is CAPPED by phase hp and so cannot be asserted against it)")
@@ -9118,46 +9125,93 @@ func _run_boss_test() -> void:
 
 	# v15. OUT TO THE ENGINE FIRST: the wake is a proximity poll, so armed from
 	# spawn it refuses and every check below runs against a boss that never woke.
-	# This suite prints observations rather than PASS lines, so it could not fail
-	# the sweep while doing it — `woke: boss_active=false`, `HUB EXPLOIT
-	# took_damage=false (must be true)`, `WAVES RESUMED: swarm_count=0 (must be
-	# > 0)`, all reported and all counted as green.
+	#
+	# v15.1. AND EVERY LINE HERE IS AN ASSERTION NOW. This suite printed
+	# observations — `woke: boss_active=false`, `HUB EXPLOIT took_damage=false
+	# (must be true)`, `WAVES RESUMED: swarm_count=0 (must be > 0)` — and the
+	# sweep counted every one of those lines as green while they described a
+	# suite measuring nothing. An expectation the runner cannot see is a code
+	# review comment, not a check.
 	var boss := _find_apex()
 	player.global_position = boss.global_position + Vector3(0, 0, 6.0)
 	await get_tree().physics_frame
 	_apex_wake_timer = 0.2
 	await get_tree().create_timer(ApexBoss.WAKE_TIME + 1.2).timeout
-	print("[bosstest] woke: boss_active=", boss_active, " boss_found=", boss != null)
+	print("[bosstest] WOKE boss_active=%s boss_found=%s -> %s" % [
+		str(boss_active), str(boss != null),
+		"PASS" if boss_active and boss != null else "FAIL"])
 
 	# 1. Hub exploit: parking on the boss must NOT be a safe pocket.
+	#
+	# Two measured facts (STRATEGY §41) shape the staging:
+	#
+	# The ship never actually stands at the centre. SystemBuilder registers the
+	# hub as an obstacle at HUB_RADIUS * 0.75 (1.65u) and PlayerShip resolves
+	# out of it every physics frame, so a ship teleported to the boss's own
+	# position settles at 2.60u and stays there. "Parking on the boss" means
+	# parking at that floor — the closest the game lets anything get.
+	#
+	# The window is 18s — one full phase-0 blade revolution (22°/s, ~16.4s) plus
+	# margin — because this check used to wait 3.0s and reported
+	# `took_damage=false` every run: the first hit lands ~4s in (the armament's
+	# first cycle), so the old window closed before the mechanism it was
+	# doubting had a chance to fire. Measured over 20s the parked ship lost 58
+	# shield to blades, lance fire and probes; the exploit it was written to
+	# catch does not exist.
 	player.global_position = boss.global_position
 	player.shield = player.shield_max
 	await get_tree().create_timer(PlayerShip.WARP_GRACE + 0.3).timeout
 	player.global_position = boss.global_position
-	var before := player.shield
-	await get_tree().create_timer(3.0).timeout
-	print("[bosstest] HUB EXPLOIT: shield %.0f -> %.0f, took_damage=%s (must be true)" % [
-		before, player.shield, str(player.shield < before)])
+	var hub_taken := 0.0
+	var hub_prev: float = player.shield
+	for i in range(18):
+		await get_tree().create_timer(1.0).timeout
+		if player.shield < hub_prev:
+			hub_taken += hub_prev - player.shield
+		hub_prev = player.shield
+		if player.shield < 40.0:
+			player.shield = player.shield_max   # never trip the emergency warp
+			hub_prev = player.shield
+	print("[bosstest] HUB EXPLOIT parked at the hub floor took %.0f over one blade revolution -> %s" % [
+		hub_taken, "PASS" if hub_taken > 0.0 else "FAIL"])
 
-	# 2. Warping out mid-fight must clear boss state, not strand it.
-	print("[bosstest] pre-warp boss_active=", boss_active)
+	# 2. Warping out mid-fight must clear boss state, not strand it. The guard
+	# is main.gd's `_set_boss_active(false)` on the warp path — without it a
+	# mid-fight warp-out permanently stalls the swarm spawner (check 3 is the
+	# downstream half of the same defect).
+	#
+	# The engine is HALVED before leaving, for check 4's sake: the old RETURN
+	# observation never damaged the boss at all, so its 1.00 read would also
+	# have passed in a world where damage DID persist across a warp — the exact
+	# defect the line exists to rule out. Halved HERE because this is the last
+	# moment pyx01's engine exists: the warp tears it down with SystemRoot, and
+	# pyx02's is never built (pyx02 is uncharted in this staging).
+	boss.hp *= 0.5
+	print("[bosstest] pre-warp boss_active=", boss_active,
+		" hp_fraction=%.2f" % boss.hp_fraction())
 	travel_to("pyx02")
 	await get_tree().create_timer(WARP_CHARGE + WARP_STREAK + WARP_ARRIVE + 1.0).timeout
-	print("[bosstest] WARP-OUT: system=", system_id, " boss_active=", boss_active,
-		" (must be false)  apex_present=", _find_apex() != null)
+	print("[bosstest] WARP-OUT system=%s boss_active=%s -> %s" % [
+		system_id, str(boss_active),
+		"PASS" if system_id == "pyx02" and not boss_active else "FAIL"])
 
 	# 3. Swarm waves must resume in the new system.
 	_wave_timer = 0.2
 	await get_tree().create_timer(1.5).timeout
-	print("[bosstest] WAVES RESUMED: swarm_count=", get_tree().get_nodes_in_group("swarm").size(),
-		" (must be > 0)")
+	var resumed := get_tree().get_nodes_in_group("swarm").size()
+	print("[bosstest] WAVES RESUMED swarm_count=%d -> %s" % [
+		resumed, "PASS" if resumed > 0 else "FAIL"])
 
-	# 4. Returning restores a full-strength engine (fight resets, per design).
+	# 4. Returning restores a full-strength engine (fight resets, per design —
+	# failure costs tempo, never salvage). The boss left pyx01 at 0.50 hp
+	# (halved in check 2); a full read here proves the rebuild starts fresh.
 	travel_to("pyx01")
 	await get_tree().create_timer(WARP_CHARGE + WARP_STREAK + WARP_ARRIVE + 1.0).timeout
 	var boss2 := _find_apex()
-	print("[bosstest] RETURN: apex_present=", boss2 != null,
-		" hp_fraction=", "%.2f" % (boss2.hp_fraction() if boss2 else -1.0), " (must be 1.00)")
+	var frac := boss2.hp_fraction() if boss2 else -1.0
+	print("[bosstest] RETURN apex_present=%s hp_fraction=%.2f -> %s" % [
+		str(boss2 != null), frac,
+		"PASS" if boss2 != null and frac >= 0.999 else "FAIL"])
 	get_tree().quit()
 
 

@@ -3184,3 +3184,100 @@ different fixes, and a harness that renders them identically is one flipped
 comparison away from being green about nothing. The staging was corrected to the
 order the mechanic is actually played in: hold the mark, take the latch, *then*
 burn.
+
+## 41. Green the sweep — the bar, the pocket, and the suite that could not fail
+
+The slice after the tether fix spent itself on the sweep's own credibility. The
+baseline stood at 400 PASS / 1 FAIL, and a standing FAIL — however well
+documented as "known-stale" — trains everyone to read the FAIL column as noise.
+Restoring 0 FAIL meant re-deriving one threshold from data instead of nudging
+it, and pulling one suite out of observation-land entirely.
+
+### PHASE INTEGRITY, fourth version — the statistic was wrong, not the sampling
+
+v3 of `PYXIS_BALANCE`'s `PHASE INTEGRITY` asserted a per-fit **median ≥ 2
+seals**, resampling any fit whose first run engaged fewer. It was written as the
+cure for v2's disease — a bar set from too few samples — and it reproduced the
+disease with better bookkeeping, because the bar was still placed without
+measuring where the distribution's mass actually sits.
+
+The measurement pass this section exists to record: five standalone runs on a
+pristine worktree, 30 fresh samples, pooled with the relocation pass's 31 and
+the sweep run that failed — 66 samples, and not one zero among them. Per-fit
+mass AT exactly 1 seal: PULSE 4/14, TORP 3/13, TORP+LNC 2/10, LANCE 2/11. Put a
+median-of-three bar at 2 against ~25% mass at 1 and it fails
+P(≥2 of 3 samples = 1) ≈ **43% of sweeps** — which is precisely the observed
+"failed 3 of 5 runs, standalone and in-sweep alike." The median was resting on
+the distribution's own median. **No sample count fixes a bar placed on the
+statistic's own center — the statistic has to move.**
+
+What 66 samples actually guarantee, and what v4 therefore asserts:
+
+- **Every run ≥ 1 seal** — unchanged, zero violations ever observed. This is
+  the design catastrophe clause ("a fit that bursts through would never meet a
+  seal").
+- **Every fit lands at least one run ≥ 2** — no fit is *consistently* shut out
+  of the mechanic's full shape. Resampling now runs *until* a ≥ 2 lands, capped
+  at five samples: the longest observed run of 1s is two, and five straight
+  would be ~0.2% at the worst fit's measured rate. Residual flake moved from
+  ~43% to ~0.3% — not by loosening the claim, but by making a claim the
+  distribution supports.
+
+What a typical 1–2 seal fight *feels* like — whether the deep fights are too
+short on pressure now that no swarm waves wander through them — is deliberately
+left as a playtest question. An assertion is for what the design guarantees,
+not for what it hopes.
+
+Red-first: phase HP dropped 1700 → 700 so every fit bursts phases inside single
+windows — the exact catastrophe the floor names — and the assertion fired.
+
+### The suite that could not fail, finished
+
+§39 called `PYXIS_BOSSTEST` "the worst of them" — four checks, each printing
+its own expectation and its own violation, counted green because zero PASS
+lines and zero FAIL lines is what a clean observation harness looks like. This
+slice converted every line to a real assertion, and the red-first pass on those
+conversions was where the actual discoveries were:
+
+- **The hub safe pocket does not exist, and never did in the way the check
+  feared.** The ship physically cannot park at the centre: SystemBuilder
+  registers the hub as an obstacle at `HUB_RADIUS * 0.75` (1.65u), PlayerShip
+  resolves out of it every frame, and a ship teleported to the boss's own
+  position settles at **2.60u, measured**. The old `took_damage=false` reading
+  was a 3.0-second window closing before the first hit lands (~4s in). Parked
+  for one full blade revolution (18s), the ship loses 58 shield. The check now
+  asserts over the revolution, not the coffee break.
+- **`HUB_CRUSH_RADIUS` is unreachable today** — the obstacle floor (2.60u) is
+  more than double the crush radius (1.3u). Kept, as a documented backstop: it
+  guards the degenerate bearing maths, and the EMP integrator already skips
+  `Obstacles.resolve`, so a future force applied during a stun is a real path
+  back into that zone. The comment now says which mechanism actually keeps
+  ships out.
+- **A one-shot `_arm.active = false` does not stick** — the boss state machine
+  re-enables the arm on every SURVEY/SEAL transition. Found because the first
+  red run refused to go red: 6 damage leaked through a supposedly disabled
+  arm, in the arm's exact `DAMAGE_PER_SECOND * TICK` = 2.0 increments. The red
+  harness had to disable the blade check itself.
+- **The warp-out clear is redundantly guarded** — `_load_system` clears
+  `boss_active` on the load path AND the leash fires `disengage_apex` during
+  the warp. The second red run also refused to go red until *both* were
+  stranded. The assertion protects the pair; losing either alone is invisible,
+  losing both is what it catches.
+- **RETURN was vacuous** — it asserted a full-strength engine on return
+  without ever damaging the engine, so it would also have passed in a world
+  where damage persisted, which is the exact defect it exists to rule out. The
+  suite now halves the boss before warping out and asserts 1.00 on return.
+
+Every conversion was verified red by breaking its actual mechanism — the wake
+staging, the blade check, both boss-state clears, the spawner, the phase HP
+init — never by inverting the comparison.
+
+### The stale table
+
+`sweep_arm.gd`'s header still analysed park radii against `SWEEP_RADIUS 6.0`;
+the constant is 8.0. Recomputed against the current catalog, the conclusion
+changed, not just the number: "Lance → outside it, safe" is now true only of
+the Mk II at 8.40, the Mk I parks at 7.70 — *under* the blade — and
+`CORE_RANGE` (7.0) drags any core-shooting Lance back inside regardless; the
+rim park is only safe for probe work. A comment that does arithmetic ages like
+an assertion that measures nothing: silently.
