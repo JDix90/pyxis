@@ -3421,3 +3421,131 @@ hour and the harness confirmed the rebuild, so nothing shipped wrong — but the
 rule it broke exists precisely because "I know what is in this file" is a belief,
 not a fact. **Check `git status` before any command that discards, every time,
 including the times it is obviously unnecessary.**
+
+## 43. The hold, as a place rather than a list
+
+The cargo manifest lived inside the **Refit** modal, and `refit_panel.gd` said
+why in its own words:
+
+> THE HOLD, READABLE ANYWHERE … REFIT is the console that is open everywhere
+> except a boss fight and a dock, **which makes it the one place this can live.**
+
+That is a workaround written down honestly. It cost two things: Refit was ~37%
+code about cargo rather than modules, and the hold rendered as `ALLOYS x6` — a
+list that never showed the one fact a pilot needs. Goods cost 1, 2 or 3 space
+each, so `RELICS x8` and `ISOTOPE x8` read identically while occupying 24 and 8
+units of a 24-unit hold.
+
+The hold now has its own console, opened from the HUD readout, drawn as a grid
+where **one cell is one unit of space**. A three-space relic visibly takes three
+times the room of an isotope. Everything else here follows from that and from
+one measurement.
+
+### The measurement that decided the visual design
+
+Run this project's own `_confusion_distance`/`_simulate` over all 561 pairs of
+the 34 commodity colours:
+
+| mode | worst pair | pairs under ACCESSTEST's 0.20 threshold |
+|---|---|---|
+| normal | **0.0224** (`lattice_data`/`chart_reaches`) | **212 / 561** |
+| deutan | **0.0095** | 372 / 561 |
+
+`palette.gd` records the *shipped band set* at 0.173 under deuteranopia and
+calls that "the whole reason for this". **The good colours are an order of
+magnitude worse, in normal vision.** No seven-colour subset of this game's
+tokens clears 0.20 in all four modes; the best is 0.163. And 26 pairs of goods
+share family *and* bulk *and* an indistinguishable colour.
+
+So the grid does not try to name anything. **A cell says what KIND of thing is
+there and how much room it eats; the strip beneath names the good in words.**
+Seven families derived from markers already in the data — `ore_class`,
+`is_salvage`, `is_chart`, `is_component`, `trade_only_at` — each with a glyph,
+and the glyph is the primary channel rather than a redundancy. That is a
+consequence of a measurement, not a preference.
+
+`CommodityDB.family()` stores nothing, which is how it answers the warning above
+the ore block: that hazard is about a *key* shadowing `band` and letting
+`spawn_loot`'s regrade mint the wrong good. Its branch order is load-bearing —
+`is_ore` first, because all eight ores carry `trade_only_at` and an
+allowlist-first version files every ore beside the contraband. That partition is
+still total and still 34, which is exactly why the assertion names the ores
+instead of counting them.
+
+### Four assertions that were wrong before they were right
+
+This section exists mostly to record those, because each was wrong in a way the
+project already has a name for.
+
+**`THE FAMILY GLYPHS ARE DRAWABLE` shipped a renderability check that could not
+see.** `font.has_char()` failed `▽` — and then, probed against the font a Label
+actually resolves, reported *every* geometric shape missing, including `◈ ▲ ● ◆`
+(the band glyphs the manual draws) and `✕` (the close button on all four
+panels). The project ships no font, so those reach the screen through Godot's
+system-font fallback **at draw time**, which `has_char` cannot observe. A clause
+that fails on glyphs the game already displays is worse than no clause. It is
+gone, the attempt is recorded, and what it leaves unguarded is named: a glyph no
+system font carries draws as tofu and the line stays green. That is a windowed
+check, not a headless one.
+
+**`THE READOUT FOLLOWS THE HOLD` passed first time and was wrong to.** Written
+naively, both its legs were no-ops — `spill_unread` returns 0 inside charted
+space, and `on_docked` settles only an *accepted* delivery whose port and
+quantity match. It compared nothing against nothing and reported green **over
+two live bugs**: dying past the chart edge left the HUD reading `HOLD 10/24`
+against a true 4, and settling a delivery left `12/24` against a true 0. It now
+stages the ship past the chart edge, accepts the real contract, docks where it
+points, and asserts both paths moved cargo *before* comparing any readout. The
+fix was `GameState.cargo_changed` rather than a twentieth hand-written refresh
+call — nineteen sites enforcing a rule by memory was the defect.
+
+**`A FINGER FITS` asserted a constant against itself.** It is the project's
+first tap-target assertion at all: `UIKit.button` floors height at 42,
+`RoundButton` is 80×80, nothing had ever checked either, and `port_panel` ships
+32×32 swatches, so the convention was not even held. But as first written it
+required cells to be at least `CELL` — the grid's own design constant — which
+would still pass if someone set `CELL` to 30. It now asserts against a separate
+`TAP_MIN`, and derives the expected cell size from the **laid-out container**
+rather than the grid's arithmetic, so it fails both if the layout starves the
+grid and if the grid's maths drifts from the box it lives in.
+
+**`THE CLAMP HOLDS` found two real bugs and one behaviour, which is the entire
+argument for writing it in the recomputing shape** rather than `SHEET FITS`'s:
+
+- `_clamp_height` computed chrome as `_col.get_combined_minimum_size().y -
+  _scroll.custom_minimum_size.y`, which is **circular** — the column's minimum
+  includes the scroll's, so each call folds its own previous output back in. It
+  looks correct while the strip is two labels; it diverged to a measured room of
+  **−26,506** once the strip grew.
+- An autowrapping `Label` with no minimum **width** computes its wrap at nearly
+  zero width, so the three pilot skill lines reported a minimum **height of
+  2,415 rows**, which became the column's minimum and drove the sheet negative.
+  `manual_screen` and `pause_menu` both pin wrapped labels to 300 for exactly
+  this reason.
+- Godot settles container layout over a frame, so chrome measured during
+  `_refresh` is the pre-settle height and the sheet sat 34 rows short at capacity
+  104. The screen re-measures on the following frame; the assertion waits two,
+  the way the layout harness already does after a resize.
+
+Written as `sheet <= viewport` — `SHEET FITS`'s shape — none of those would have
+been visible, and deleting the clamp outright would still have passed, because a
+collapsed sheet fits a viewport beautifully.
+
+### Two decisions worth keeping
+
+**The door is the HOLD readout, not a fourth dock button.** Four buttons leave no
+centre slot, and ABILITY would sit ~49 design units off centre against the
+dock's own rule that it "gets the position the eye returns to" because it is
+"the button pressed under pressure". The readout costs no dock width and is
+already where a player looks to ask the question.
+
+**The screen is not locked during a boss fight**, unlike REFIT and CHART. The
+instinct that prompted it — dump cargo to run — does not work: cargo has no mass
+model, and dumping before dying is strictly worse than not, since
+`_emergency_warp` spills unread salvage as recoverable cubes while
+`JETTISON SPAWNS NOTHING` forbids dumped cargo from floating at all. The real
+reason is smaller and true: `apex_wreck` seeds 4 isotopes and 3 relics among its
+spill — **13 units of space against a bare hold of 24** — so dumping ore to make
+room for the drop is a genuine play, and locking the screen would delete it.
+Note `set_panels_locked` has two callers, docking and the boss, so leaving HOLD
+out is also what keeps the docked stash exit reachable.

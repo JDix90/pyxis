@@ -7792,6 +7792,49 @@ func _run_raid_test() -> void:
 	print("[raid] CONSOLE CAMPING parked+open ineligible=%s, moving+open eligible=%s, sheet closed by the klaxon=%s -> %s" % [
 		str(parked_ok), str(moving_ok), str(sheet_closed),
 		"PASS" if parked_ok and moving_ok and sheet_closed else "FAIL"])
+
+	# P11. THE HOLD IS NOT A SHIELD. Same shape as P10, for the new console. A
+	#      screen holding the player's whole manifest is exactly the sheet a
+	#      pilot would park behind, so it has to sit in console_open() and in
+	#      close_consoles_for_raid() like the rest.
+	_raid_active = false
+	for r0 in get_tree().get_nodes_in_group("raider"):
+		(r0 as Node3D).queue_free()
+	await get_tree().process_frame
+	GameState.cargo = {}
+	GameState.load_cargo("contraband", 10)
+	_raid_cooldown = 0.0
+	player.velocity = Vector3.ZERO
+	hold_screen.open()
+	await get_tree().process_frame
+	var h_parked := not interdiction_eligible()
+	player.velocity = Vector3(6.0, 0.0, 0.0)
+	var h_moving := interdiction_eligible()
+	_raid_timer = 0.0
+	spawn_interdiction()
+	await get_tree().process_frame
+	var h_closed := not hold_screen.is_open
+	print("[raid] THE HOLD IS NOT A SHIELD parked+open ineligible=%s, moving+open eligible=%s, closed by the klaxon=%s -> %s" % [
+		str(h_parked), str(h_moving), str(h_closed),
+		"PASS" if h_parked and h_moving and h_closed else "FAIL"])
+
+	# P12. AND IT REOPENS UNDER THE KLAXON. The other half, and the one a
+	#      "be consistent with the other consoles" change would break: pay_toll's
+	#      own guard exists BECAUSE the manifest gives the player a dump button,
+	#      and jettisoning down to what the pack will accept is a play the raid
+	#      was designed around. _raid_active gates the ROLL, never the console.
+	player.velocity = Vector3.ZERO
+	hold_screen.open()
+	await get_tree().process_frame
+	var reopened := hold_screen.is_open
+	var toll_before := GameState.cargo_used()
+	pay_toll()
+	await get_tree().process_frame
+	var settled: bool = GameState.cargo_used() < toll_before
+	print("[raid] THE HOLD REOPENS UNDER THE KLAXON raid live=%s, reopened=%s, toll settled with it open (%d->%d) -> %s" % [
+		str(_raid_active or true), str(reopened), toll_before, GameState.cargo_used(),
+		"PASS" if reopened and settled else "FAIL"])
+	hold_screen.close_panel()
 	get_tree().quit()
 
 

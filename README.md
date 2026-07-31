@@ -75,13 +75,13 @@ first:
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --import
 ```
 
-Current baseline: **423 PASS / 0 FAIL / 0 script errors** across 52 runs, save
+Current baseline: **437 PASS / 0 FAIL / 0 script errors** across 52 runs, save
 format **v16**. `PYXIS_BALANCE`'s `PHASE INTEGRITY` was the last standing FAIL —
 a stale threshold rather than a regression — and was re-derived from a 66-sample
 measurement pass rather than nudged; see "the assertion the relocation
 recalibrated" below. The count grew from there by the tether pair in `APEXTEST`
 (STRATEGY §40), the five `BOSSTEST` conversions (§41), the intel dossier's
-fourteen (§42), and earlier: the 268
+fourteen (§42), the hold screen's fourteen (§43), and earlier: the 268
 that shipped, plus `PYXIS_FEELTEST` (13),
 `PYXIS_UITEST` (14), `PYXIS_GSATEST` (17), `PYXIS_ACCESSTEST` (11),
 `PYXIS_MINETEST` (25), `PYXIS_ENVTEST` (9), `PYXIS_STREAMTEST` (6), two more in
@@ -133,6 +133,18 @@ full blade revolution loses 58 shield; the old `took_damage=false` was a 3.0s
 window closing before the first hit lands (~4s in). Its RETURN check was
 vacuous — asserting a full engine nobody had damaged — and now halves the boss
 before warping out. STRATEGY §41.
+
+`PYXIS_HOLDTEST` grew from 7 to 19 with the hold screen, and two of its lines
+found bugs that had already shipped. `THE READOUT FOLLOWS THE HOLD` caught the
+HUD's cargo counter going stale on two paths that mutate cargo without
+refreshing it — dying past the chart edge, and settling a delivery on docking —
+now fixed by a `cargo_changed` signal rather than by a twentieth hand-written
+refresh call. `A FINGER FITS` is the project's first tap-target assertion at
+all: `UIKit.button` floors height at 42 and `RoundButton` is 80×80, but nothing
+had ever checked either, and `port_panel` ships 32×32 swatches. It sweeps three
+windows × three UI scales × three capacities and derives the expected cell size
+from the laid-out container rather than from the grid's own constants, because a
+constant agreeing with itself says nothing about a thumb. STRATEGY §43.
 
 `PYXIS_MANUALTEST` (6) covers the in-game pilot's manual: that every contents
 entry opens a real page, that opening and closing it never moves the pause state
