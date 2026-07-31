@@ -336,11 +336,30 @@ static func _build_derelict(def: Dictionary, container: Node3D) -> void:
 
 
 static func _build_apex(def: Dictionary, container: Node3D, system_id := "") -> void:
-	# The apex engine only exists once this system's derelict has been breached:
-	# the breach is the aftershock that wakes it.
+	# What stands at the lair depends on what the player has already done here.
+	# The old comment claimed the engine "only exists once this system's derelict
+	# has been breached" and nothing in this function ever checked that; breaching
+	# gates the WAKE (main.gd's `_apex_wake_timer`), never the build.
+	#
+	# v17. AND THE KILL IS NOW ASKED ABOUT AT ALL. Every child of SystemRoot is
+	# freed and rebuilt on entry, so with no question asked here a cleared system
+	# handed back a full-strength engine the moment the player warped out and
+	# came home — which stopped being a windfall the day stage 1 made the engine
+	# the gate to the next system, and started being a toll.
 	var cfg: Dictionary = def.get("apex", {})
 	if cfg.is_empty():
 		return
+
+	if GameState.has_apex_down(system_id):
+		# The engine is dead and stays dead. Its WRECK, though, outlives the warp:
+		# cracking it is a second trip, and the first-kill bonus riding on it is
+		# 15,000-32,000 credits. Losing that to a jump the player had every reason
+		# to make would be a silent punishment for leaving, so the wreck is rebuilt
+		# until somebody actually breaches it.
+		if not GameState.has_killed_apex(system_id):
+			_build_apex_wreck(cfg, container, system_id)
+		return
+
 	var boss := ApexBoss.new()
 	boss.difficulty = float(cfg.get("difficulty", 1.0))
 	boss.loot_total = int(cfg.get("loot", 90))
@@ -358,6 +377,23 @@ static func _build_apex(def: Dictionary, container: Node3D, system_id := "") -> 
 	# Registered here, after positioning: inside the node's own _ready the
 	# position is still the origin.
 	Obstacles.add(boss.position, ApexBoss.HUB_RADIUS * 0.75)
+
+
+static func _build_apex_wreck(cfg: Dictionary, container: Node3D, system_id: String) -> void:
+	# The same three fields ApexBoss._become_wreck hands it, off the same system
+	# def the engine was built from, so a wreck that survived a warp is the wreck
+	# that died here rather than a default-valued lookalike carrying 15,000.
+	#
+	# No Obstacles.add: the hub's keep-out belongs to the engine that was flying
+	# it, and _become_wreck never registered one either. A wreck is something you
+	# park against on purpose.
+	var wreck := ApexWreck.new()
+	wreck.loot_total = int(cfg.get("loot", 90))
+	wreck.first_kill_bonus = int(cfg.get("bonus", 15000))
+	wreck.system_id = system_id
+	container.add_child(wreck)
+	wreck.position = SystemDB.lair_pos(system_id, GameState.run_seed) \
+		if system_id != "" else cfg.get("pos", Vector3(6, 0, -18))
 
 
 static func _build_port(def: Dictionary, container: Node3D) -> void:

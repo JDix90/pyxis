@@ -37,7 +37,7 @@ PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 
 Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 40 of them —
 the 39 tags in `run_harness.sh`'s `TAGS`, plus `SAVETEST`, which is one harness
-with 13 modes rather than 13 harnesses (hence 52 runs from 40 suites).
+with 14 modes rather than 14 harnesses (hence 53 runs from 40 suites).
 The house rules, learned the hard way and enforced by review:
 
 - **Assert the rule, not the rendering.** Test the thing that must be true once,
@@ -89,8 +89,14 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **437 PASS / 0 FAIL / 0 script errors** across 52 runs, save
-format **v16**. `PYXIS_BALANCE`'s `PHASE INTEGRITY` was the last standing FAIL —
+Current baseline: **444 PASS / 0 FAIL / 0 script errors** across 53 runs, save
+format **v17**. The most recent seven are the two-bug pass in STRATEGY §44:
+three in `BOSSTEST` (the engine dies, a killed engine stays dead and its wreck
+survives the warp, a cracked wreck leaves nothing), three in
+`SAVETEST=migrate16` for v16→v17, and one in `MINETEST` (`THE CUT FALLS
+SILENT`). `FEELTEST`'s `LOOP END` was re-aimed rather than added to — it had
+been asserting on the very mutation that caused the audio bug, so it would have
+gone red on the fix. `PYXIS_BALANCE`'s `PHASE INTEGRITY` was the last standing FAIL —
 a stale threshold rather than a regression — and was re-derived from a 66-sample
 measurement pass rather than nudged; see "the assertion the relocation
 recalibrated" below. The count grew from there by the tether pair in `APEXTEST`
