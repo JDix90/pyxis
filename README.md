@@ -75,14 +75,15 @@ first:
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --import
 ```
 
-Current baseline: **383 PASS / 0 FAIL / 0 script errors** across 49 runs, save
-format **v14** — the 268 that shipped, plus `PYXIS_FEELTEST` (13),
+Current baseline: **393 PASS / 0 FAIL / 0 script errors** across 51 runs, save
+format **v15** — the 268 that shipped, plus `PYXIS_FEELTEST` (13),
 `PYXIS_UITEST` (14), `PYXIS_GSATEST` (17), `PYXIS_ACCESSTEST` (11),
 `PYXIS_MINETEST` (25), `PYXIS_ENVTEST` (9), `PYXIS_STREAMTEST` (6), two more in
 `MUSICTEST` for the score's depth axis, two more in `CARTTEST` for the mast's
 clearance, one more in `LIVERYTEST` for the earned ninth accent, two in
 `SAVETEST=migrate12` for the v12→v13 migration, and three in
-`SAVETEST=migrate13` for v13→v14.
+`SAVETEST=migrate13` for v13→v14, and `PYXIS_HUNTTEST` (7) with
+`SAVETEST=migrate14` (3) for v14→v15.
 
 Mining stages 2 and 3 added seven: three in `MINETEST` (the fit reaching the
 verb, the power a mining commit costs, and the survey mast deferring a reading
@@ -108,9 +109,17 @@ see STRATEGY §37 for why that shape cannot fail, and for the deferred-`queue_fr
 bug that rewriting it uncovered.
 
 Harness state is **pinned**: `Main._ready()` calls `reset_to_starter()` whenever
-any name in `HARNESS_VARS` is set. Before that, every assertion was measured
-against whatever was in the developer's `save.json`, and three of them went red
-the first time anyone actually played the build. See STRATEGY §33.
+any name in `HARNESS_VARS` is set, then pins `run_seed` to `RUN_SEED_PINNED` so
+the hunt hides its lairs in the same place on every run. Before the pinning,
+every assertion was measured against whatever was in the developer's `save.json`,
+and three of them went red the first time anyone actually played the build. See
+STRATEGY §33.
+
+**Adding a harness means adding it to `HARNESS_VARS` too.** `PYXIS_MINETEST` and
+all three capture modes were dispatched and swept while absent from that list —
+so they ran unpinned for horizons, and a refit capture came back photographing
+the developer's own ship. `THE PINNING LIST IS COMPLETE` in `PYXIS_HUNTTEST` now
+reads `main.gd` and fails if the two lists disagree. See STRATEGY §38.
 
 `PYXIS_BALANCE` fights the apex to a conclusion with three fits and has taken
 anywhere from five to eleven minutes depending on how the fights go; the runner's

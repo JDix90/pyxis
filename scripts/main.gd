@@ -13,6 +13,13 @@ const WARP_CHARGE := 0.75
 const WARP_STREAK := 0.9
 const WARP_ARRIVE := 0.8
 
+# v15. The run salt every harness runs under. Any value works — what matters is
+# that it is FIXED, so the hunt's hiding places are the same on every run and can
+# be asserted about. Stage 2 additionally requires that no lair derived from this
+# lands inside PYXIS_MINETEST's world-fingerprint window; MINETEST asserts that
+# rather than trusting it, so this constant can never drift into the window.
+const RUN_SEED_PINNED := 20260730
+
 const APEX_WAKE_DELAY := 6.0        # after arriving in an already-breached system
 const APEX_BREACH_DELAY := 9.0      # the aftershock, after breaching the derelict
 
@@ -41,6 +48,7 @@ const HARNESS_VARS := [
 	"PYXIS_CARTTEST",
 	"PYXIS_COLLISIONTEST",
 	"PYXIS_CONTRACTTEST",
+	"PYXIS_DEEPSHOTS",
 	"PYXIS_DEEPTEST",
 	"PYXIS_DEMO",
 	"PYXIS_DOCKTEST",
@@ -51,14 +59,32 @@ const HARNESS_VARS := [
 	"PYXIS_FORGETEST",
 	"PYXIS_GSATEST",
 	"PYXIS_HOLDTEST",
+	"PYXIS_HUNTTEST",
 	"PYXIS_INPUTTEST",
 	"PYXIS_LAYOUTTEST",
 	"PYXIS_LIVERYTEST",
 	"PYXIS_LOGTEST",
 	"PYXIS_MARKETTEST",
+	# Was MISSING from this list from the day mining stage 1 shipped it, so all
+	# 25 of its assertions ran against whatever was in the developer's real
+	# save instead of pinned starter state -- the exact defect §33 was written
+	# about, in the list §33 created. It passed anyway, on luck: MINETEST resets
+	# most of what it touches itself. `THE PINNING LIST IS COMPLETE` in
+	# PYXIS_HUNTTEST now reads this file and checks every dispatched harness is
+	# named here, so the next omission cannot be quiet.
+
+	"PYXIS_MINETEST",
 	"PYXIS_MUSICTEST",
+	# The capture modes were unpinned too, and it showed. A capture is a picture
+	# of the DESIGN; rendered against the developer's savegame it is a picture of
+	# their afternoon. This bit for real: a refit capture came back with a 50/50
+	# hold and a Cargo Bay fitted -- their fit, not the starter's -- which made
+	# can_equip refuse the module the capture existed to photograph, and the shot
+	# showed the wrong ship with a plausible-looking stat row.
+	"PYXIS_NARROWSHOTS",
 	"PYXIS_PACINGTEST",
 	"PYXIS_PAUSETEST",
+	"PYXIS_PHASE2SHOTS",
 	"PYXIS_RADARTEST",
 	"PYXIS_RAIDTEST",
 	"PYXIS_RIFTTEST",
@@ -291,6 +317,22 @@ func _ready() -> void:
 	GameState.system_unlocked.connect(func(id: String) -> void:
 		hud.show_toast("CHARTED — %s" % SystemDB.display_name(id), Palette.TEAL)
 		Barks.fire("chart_unlocked")
+		# v15. Charting is now HALF the door, so the same beat that hands the
+		# player a new system tells them what is standing in it. This is where
+		# the hunt starts -- including the tutorial's finale, which used to end
+		# the first act and now opens the second.
+		#
+		# Announced here rather than in tutorial.gd because every charting goes
+		# through this signal; a copy in the tutorial would be a second thing to
+		# keep true, and would say nothing at all for PYX-03.
+		if not GameState.is_lane_open(id):
+			var jam_req := String(SystemDB.get_system(id).get("unlocked_by", ""))
+			var engine := String((SystemDB.get_system(jam_req).get("apex", {}) as Dictionary)
+				.get("name", "THE ENGINE"))
+			hud.show_broadcast("GSA RELAY — LANE OBSTRUCTED",
+				"%s is charted and unreachable. %s is transmitting across the lane. "
+				% [SystemDB.display_name(id), engine]
+				+ "Silence it and the way is yours.", Palette.THREAT)
 	)
 
 	tutorial = Tutorial.new()
@@ -322,6 +364,15 @@ func _ready() -> void:
 	# itself as its first act, and reset_to_starter() does not queue a save.
 	if harness_running():
 		GameState.reset_to_starter()
+		# AND PIN THE RUN SALT, which reset_to_starter has just randomised. From
+		# v15 the hunt hides the apex engine at a position derived from run_seed,
+		# so a harness that let it roll would be measuring a world that moved on
+		# every run -- the same class of mistake as measuring against the
+		# developer's savegame, which is what the block above exists to prevent.
+		#
+		# One constant, so every harness agrees where the lairs are and an
+		# assertion can be written about them.
+		GameState.run_seed = RUN_SEED_PINNED
 
 	# Every harness drives the game directly and must not sit behind a menu.
 	# This has to be decided BEFORE the first _load_system: the builder checks
@@ -569,6 +620,14 @@ func _ready() -> void:
 		_load_system(GameState.current_system)
 		_enter_playing()
 		_run_mine_test()
+		return
+
+	if OS.get_environment("PYXIS_HUNTTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_hunt_test()
 		return
 
 	if OS.get_environment("PYXIS_ENVTEST") != "":
@@ -869,7 +928,7 @@ func _load_system(id: String) -> void:
 func travel_to(id: String) -> void:
 	if warping or id == system_id or not SystemDB.exists(id):
 		return
-	if not GameState.is_system_unlocked(id):
+	if not GameState.is_lane_open(id):
 		return
 	warping = true
 	_warp_sequence(id)
@@ -1877,6 +1936,17 @@ func on_player_downed() -> void:
 func on_apex_defeated(_boss: Node3D) -> void:
 	_set_boss_active(false)
 	report_kill("apex")
+	# The lane opens the moment the engine stops transmitting — not when its
+	# wreck is cracked. Breaching the wreck is a second trip, for the bonus and
+	# the spill, and a player who dies on the way back should still have earned
+	# the frontier they just paid for.
+	for opened in GameState.open_lane(system_id):
+		var opened_name := String(SystemDB.get_system(String(opened)).get("name", opened))
+		if hud:
+			hud.show_broadcast("GSA RELAY — LANE CLEARED",
+				"The interference has stopped. %s is open." % opened_name, Palette.GOLD)
+			hud.show_toast("LANE OPEN — %s" % opened_name, Palette.GOLD)
+		GameState.note_log("LANE OPEN — %s" % opened_name)
 
 
 func award_apex_bonus(sys_id: String, bonus: int) -> void:
@@ -9129,6 +9199,76 @@ func _run_save_test() -> void:
 			and GameState.is_seam_cut("pyx01:0")
 		print("[savetest] v14 SEAMS_CUT REJECTS RUBBISH 6 keys in, kept %s -> %s" % [
 			str(GameState.seams_cut.keys()), "PASS" if only_real else "FAIL"])
+	elif mode == "migrate14":
+		# The migration THIS stage introduces, and the one with real stakes: v15
+		# splits the gate, so a v14 save that had already breached PYX-01 could
+		# WAKE UP LOCKED OUT of a system it was flying to yesterday. The loader
+		# grandfathers it (lanes_open = breached when the key is absent) and this
+		# is where that promise is kept honest through the real file layer.
+		#
+		# The round trip lives here rather than in PYXIS_HUNTTEST for the reason
+		# the v13 leg records: save_game() early-returns on `not save_enabled`,
+		# lock_saving() is one-way, and HUNTTEST locks. A locked harness asserting
+		# a round trip measures in-memory state that never reached the disk.
+		var v14 := {
+			"version": 14,
+			"salvage": 16180,
+			"owned": ["pulse_1", "drive_cruise"],
+			"fit": {"0": "pulse_1", "2": "drive_cruise"},
+			"current_system": "pyx02",     # they were THERE, under the old rule
+			"ship_name": "THE LONG WAY BACK",
+			"breached": ["pyx01"],
+			"apex_killed": [],             # and never touched the engine
+			"mining": 2, "mining_xp": 60,
+			"tutorial_step": -1,
+		}
+		var f14 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f14.store_string(JSON.stringify(v14))
+		f14.close()
+		var ok14 := GameState.load_game()
+		var grandfathered: bool = GameState.lanes_open.has("pyx01") \
+			and GameState.is_lane_open("pyx02")
+		# And they must still be standing where they were. load_game sends a
+		# player home if their current system is unreachable -- with the gate
+		# split and no grandfather, PYX-02 becomes unreachable and this returning
+		# pilot would be teleported to PYX-01 with no explanation.
+		var still_there: bool = GameState.current_system == "pyx02"
+		var salt_rolled: bool = GameState.run_seed != 0
+		var neighbours14: bool = GameState.mining == 2 and GameState.salvage == 16180
+		print("[savetest] v14->v15 NOT STRANDED lanes_open=%s, still at %s, salt=%s, other state kept=%s -> %s" % [
+			str(GameState.lanes_open), GameState.current_system,
+			str(salt_rolled), str(neighbours14),
+			"PASS" if ok14 and grandfathered and still_there and salt_rolled \
+				and neighbours14 else "FAIL"])
+
+		# The v15 round trip: both new fields must survive the real file layer.
+		GameState.open_lane("pyx02")
+		var seed_before := GameState.run_seed
+		GameState.save_game()
+		GameState.lanes_open = []
+		GameState.run_seed = 0
+		GameState.load_game()
+		var round15: bool = GameState.run_seed == seed_before \
+			and GameState.lanes_open.has("pyx01") and GameState.lanes_open.has("pyx02")
+		print("[savetest] v15 ROUND TRIP run_seed %d, lanes_open %s -> %s" % [
+			GameState.run_seed, str(GameState.lanes_open), "PASS" if round15 else "FAIL"])
+
+		# And the validator: lanes for systems that do not exist are dropped, the
+		# same way seams_cut refuses a rock that is not there.
+		var rubbish15 := {
+			"version": 15,
+			"breached": ["pyx01"],
+			"lanes_open": ["pyx01", "nosuch", "pyx01"],
+			"run_seed": 4242,
+		}
+		var fr15 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fr15.store_string(JSON.stringify(rubbish15))
+		fr15.close()
+		GameState.load_game()
+		var clean15: bool = GameState.lanes_open.size() == 1 \
+			and GameState.lanes_open.has("pyx01") and GameState.run_seed == 4242
+		print("[savetest] v15 LANES REJECT RUBBISH 3 entries in (one unknown, one duplicate), kept %s -> %s" % [
+			str(GameState.lanes_open), "PASS" if clean15 else "FAIL"])
 	elif mode == "partial6":
 		# A v6 save written before a later setting existed must still get that
 		# setting's default rather than a missing key — the reason load merges
@@ -10646,6 +10786,128 @@ func _world_fingerprint() -> String:
 # fingerprint line in it. A constant captured afterwards would agree with
 # whatever it was given and prove nothing.
 const WORLD_FINGERPRINT_BEFORE_SEAMS := "3836096557"
+
+
+func _run_hunt_test() -> void:
+	# THE HUNT, stage 1: the run salt, and the two-tier gate that turns the apex
+	# engine from an optional windfall into the door to the next system.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	if player:
+		player.invulnerable = true
+	_wave_timer = 1.0e9
+	_apex_wake_timer = -1.0
+	await get_tree().create_timer(0.3).timeout
+
+	# --- 1. the salt is pinned, and it is not zero ---------------------------
+	# A harness whose world moves every run measures the dice. Zero is called out
+	# separately because it is the value an absent field defaults to, and a run
+	# seeded 0 would hide every lair in the same place for every player.
+	print("[hunt] SALT IS PINNED run_seed %d == RUN_SEED_PINNED %d, non-zero=%s -> %s" % [
+		GameState.run_seed, RUN_SEED_PINNED, str(GameState.run_seed != 0),
+		"PASS" if GameState.run_seed == RUN_SEED_PINNED and GameState.run_seed != 0 else "FAIL"])
+
+	# --- 2. charting and opening are DIFFERENT doors -------------------------
+	# The whole stage in one assertion: breaching charts, and charting alone does
+	# not let you fly. Driven through mark_breached, the real entry point.
+	GameState.breached = []
+	GameState.lanes_open = []
+	var charted_by_breach := GameState.mark_breached("pyx01")
+	var charted := GameState.is_system_charted("pyx02")
+	var open_after_breach := GameState.is_lane_open("pyx02")
+	print("[hunt] BREACH CHARTS, IT DOES NOT OPEN breach charted %s; pyx02 charted=%s lane_open=%s -> %s" % [
+		str(charted_by_breach), str(charted), str(open_after_breach),
+		"PASS" if charted and not open_after_breach else "FAIL"])
+
+	# --- 3. and travel refuses while the lane is jammed ----------------------
+	# Asserted through travel_to rather than the predicate, because the predicate
+	# agreeing with itself proves nothing about the door it is supposed to hold.
+	var before_sys := system_id
+	travel_to("pyx02")
+	await get_tree().process_frame
+	var refused: bool = system_id == before_sys and not warping
+	print("[hunt] JAMMED LANE REFUSES TRAVEL travel_to(pyx02) from %s left us at %s, warping=%s -> %s" % [
+		before_sys, system_id, str(warping), "PASS" if refused else "FAIL"])
+
+	# --- 4. the kill opens it ------------------------------------------------
+	var opened := GameState.open_lane("pyx01")
+	var open_now := GameState.is_lane_open("pyx02")
+	print("[hunt] THE KILL OPENS THE LANE open_lane(pyx01) newly opened %s; pyx02 lane_open=%s -> %s" % [
+		str(opened), str(open_now),
+		"PASS" if open_now and opened.has("pyx02") else "FAIL"])
+
+	# --- 5. the bonus is NOT spent by opening the lane ------------------------
+	# open_lane and mark_apex_killed are deliberately separate: the lane opens
+	# when the engine dies, the bonus is paid when its wreck is cracked, and that
+	# is a second trip. Folding them together would make has_killed_apex true
+	# before the wreck was ever breached and the bonus would never pay at all.
+	var bonus_still_owed: bool = not GameState.has_killed_apex("pyx01")
+	GameState.mark_apex_killed("pyx01")
+	var bonus_spent_after: bool = GameState.has_killed_apex("pyx01")
+	print("[hunt] OPENING A LANE DOES NOT SPEND THE BONUS owed after the kill=%s, spent after the wreck=%s -> %s" % [
+		str(bonus_still_owed), str(bonus_spent_after),
+		"PASS" if bonus_still_owed and bonus_spent_after else "FAIL"])
+
+	# --- 6. no returning player loses a lane they already had ----------------
+	# A pre-v15 save has no lanes_open key at all, and a straight default would
+	# revoke access the old rule granted. Driven through the real loader against
+	# a real fixture, on a redirected path so the player's save is never touched.
+	var real_path := GameState.save_path
+	GameState.save_path = "user://hunt_probe.json"
+	var v14 := {
+		"version": 14,
+		"salvage": 4242,
+		"owned": ["pulse_1", "drive_cruise"],
+		"fit": {"0": "pulse_1", "2": "drive_cruise"},
+		"current_system": "pyx02",
+		"breached": ["pyx01"],          # they charted, under the old rule
+		"apex_killed": [],              # and never touched the engine
+		"tutorial_step": -1,
+	}
+	var fh := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+	fh.store_string(JSON.stringify(v14))
+	fh.close()
+	var loaded := GameState.load_game()
+	var kept: bool = GameState.is_lane_open("pyx02") and GameState.lanes_open.has("pyx01")
+	var salt_rolled: bool = GameState.run_seed != 0
+	print("[hunt] NO RETURNING PILOT IS STRANDED v14 save breached=[pyx01] loaded=%s -> lanes_open=%s, pyx02 flyable=%s, salt rolled=%s -> %s" % [
+		str(loaded), str(GameState.lanes_open), str(GameState.is_lane_open("pyx02")),
+		str(salt_rolled), "PASS" if loaded and kept and salt_rolled else "FAIL"])
+	GameState.save_path = real_path
+
+	# --- 7. the pinning list is complete -------------------------------------
+	# THE ASSERTION THIS FILE OWED ITSELF. MINETEST was dispatched, swept, and
+	# absent from HARNESS_VARS from the day it shipped -- so 25 assertions ran
+	# against the developer's savegame rather than pinned state, which is the
+	# precise defect §33 created that list to prevent. It passed on luck.
+	#
+	# Reading the source is unusual and deliberate: the two lists are the same
+	# fact written twice, and only the file can say whether they still agree.
+	# Anything the game DISPATCHES on must be something the game PINS on.
+	var src := FileAccess.open("res://scripts/main.gd", FileAccess.READ)
+	var text := src.get_as_text() if src != null else ""
+	if src != null:
+		src.close()
+	var re := RegEx.new()
+	re.compile('OS\\.get_environment\\("(PYXIS_[A-Z0-9_]+)"\\)')
+	var dispatched := {}
+	for m in re.search_all(text):
+		dispatched[m.get_string(1)] = true
+	# PYXIS_SHOTS and PYXIS_HARNESS_* are outputs and knobs, not harness modes:
+	# they select where a capture writes, never what the game resets to.
+	var exempt := {"PYXIS_SHOTS": true}
+	var unpinned: Array = []
+	for name_v in dispatched:
+		var nm := String(name_v)
+		if exempt.has(nm) or nm.begins_with("PYXIS_HARNESS"):
+			continue
+		if not HARNESS_VARS.has(nm):
+			unpinned.append(nm)
+	unpinned.sort()
+	print("[hunt] THE PINNING LIST IS COMPLETE %d dispatched harness vars, %d not in HARNESS_VARS %s -> %s" % [
+		dispatched.size(), unpinned.size(), str(unpinned),
+		"PASS" if unpinned.is_empty() else "FAIL"])
+
+	get_tree().quit()
 
 
 func _run_mine_test() -> void:

@@ -382,8 +382,16 @@ static func port_def_by_id(port_id: String) -> Dictionary:
 
 
 static func unlock_hint(id: String) -> String:
+	# What stands between the player and this system, in one line. Two tiers, so
+	# two hints — and the second one NAMES THE ENGINE, because "kill the boss" is
+	# a chore and "silence THE GNOMON" is a hunt. The engine that jams a lane is
+	# the one in the system you are flying FROM, which is `req`.
 	var s := get_system(id)
 	var req := String(s.get("unlocked_by", ""))
 	if req == "":
 		return ""
-	return "BREACH THE %s DERELICT TO CHART" % String(get_system(req).get("name", req))
+	var req_name := String(get_system(req).get("name", req))
+	if not GameState.is_system_charted(id):
+		return "BREACH THE %s DERELICT TO CHART" % req_name
+	var engine := String((get_system(req).get("apex", {}) as Dictionary).get("name", "THE ENGINE"))
+	return "LANE JAMMED — %s IS STILL TRANSMITTING. SILENCE IT." % engine

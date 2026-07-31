@@ -2655,3 +2655,91 @@ against a true 435. The fix is `remove_child()` paired with `queue_free()`.
 already written down in this repo's harness notes. This is that trap in ordinary
 UI code rather than in a test, and it was found by refusing to ship a second
 assertion shaped like the one §36 had just finished complaining about.
+
+## 38. The Hunt — stage 1, the seed and the gate
+
+The playtest verdict that opened this horizon: the loop works, but the *soul* of
+the game is flying out past the chart and getting home again. The apex engines
+were nowhere near that. They sat at ~60% of the charted radius, permanently on
+the radar, and **gated nothing** — breaching the derelict opened the next system
+about twenty minutes into a run, and the engine was an optional windfall you
+could ignore forever.
+
+This horizon makes the engine the door. Stage 1 builds the door; stage 2 moves it
+out into the deep where it belongs.
+
+### Two doors, not one
+
+    breached    ->  the next system is CHARTED. Named, on the map, lane jammed.
+    lanes_open  ->  the lane is OPEN. You may fly it.
+
+Breaching still charts, so the tutorial's finale still opens the world — it just
+ends by *starting* the hunt instead of closing the act. `is_system_unlocked` was
+split into `is_system_charted` and `is_lane_open`, with the old name kept as an
+alias for the **travel** question so that any call site missed in the rework
+fails *closed* — refusing a lane — rather than silently granting one.
+
+The chart panel grew a third state. A jammed system is not drawn like a system
+nobody has heard of: it keeps its name, and wears a **broken ring** rather than a
+padlock — interference, not bureaucracy, the same visual grammar as the shattered
+survey pylon out in the Shoals. The hint names the engine, because "kill the
+boss" is a chore and "silence THE GNOMON" is a hunt.
+
+### The lane opens on the kill, not on the wreck
+
+`open_lane()` and `mark_apex_killed()` are deliberately separate functions, and
+the separation is load-bearing rather than tidiness. The lane opens when the
+engine **dies**; the first-kill bonus is paid when its **wreck is breached**,
+which is a second trip the player may not survive. Folding them together — which
+the first draft did — meant `has_killed_apex` was already true by the time the
+wreck was cracked, and **the bonus would never have paid at all**. A player who
+dies flying home from a kill still keeps the frontier they earned.
+
+### The run salt
+
+`run_seed` is rolled once, at `reset_to_starter`, from the system clock rather
+than the seeded global stream — it is the one number in this game that must *not*
+be deterministic. Everything the hunt will hide (stage 2 onward) derives from it
+and nothing else, which buys both halves of what a hunt needs: **deterministic
+within a run**, so a bearing you were told an hour ago is still true and the lair
+has not moved while you flew home; **fresh across runs**, so a second playthrough
+is not a walk to a remembered coordinate. It is never re-rolled mid-run —
+re-rolling would silently invalidate every hint the player had paid for.
+
+### The migration that could have taken something away
+
+v15 is the first save bump in this project that could **revoke** something. A
+player who breached PYX-01 last night could fly to PYX-02 this morning; a plain
+`lanes_open = []` default would wake them up locked out, and `load_game` would
+have quietly teleported them home for standing in a system it now considered
+unreachable. So an absent key means "this save predates the split", and every
+system they had breached is treated as a lane they had open. It grants nothing
+new — it reproduces exactly the reachability the old rule gave them.
+`SAVETEST=migrate14` asserts it through the real file layer, and its red test
+shows the harm precisely: `lanes_open=[]`, and the pilot standing in PYX-01
+wondering how they got there.
+
+### The assertion this file owed itself
+
+`PYXIS_MINETEST` was dispatched, swept, and **absent from `HARNESS_VARS` from the
+day mining stage 1 shipped it** — so all 25 of its assertions ran against
+whatever was in the developer's real savegame instead of pinned starter state.
+That is the exact defect §33 created that list to prevent, sitting inside the
+list §33 created. It passed anyway, on luck: MINETEST resets most of what it
+touches itself.
+
+`THE PINNING LIST IS COMPLETE` now reads `main.gd` at runtime, regexes every
+`OS.get_environment("PYXIS_*")` the game dispatches on, and asserts each one is
+named in `HARNESS_VARS`. Reading the source is unusual and deliberate: the two
+lists are the same fact written twice, and only the file can say whether they
+still agree. On its first run it found **four** omissions — MINETEST and the
+three capture modes.
+
+The capture modes mattered more than they look. A capture is a picture of the
+*design*; rendered against the developer's savegame it is a picture of their
+afternoon. This had already bitten without being understood: a refit capture came
+back showing a 50/50 hold and a Cargo Bay fitted — their fit, not the starter's —
+which made `can_equip` refuse the very module the capture existed to photograph,
+and produced a shot of the wrong ship with a completely plausible-looking stat
+row. The screenshot was wrong in a way that looked right, which is the only kind
+of wrong that survives review.

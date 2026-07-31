@@ -31,6 +31,7 @@ TAGS=(
 	RADARTEST MUSICTEST PACINGTEST LAYOUTTEST TITLETEST TUTORIALTEST
 	INPUTTEST DOCKTEST MARKETTEST BALANCE BOSSTEST
 	FEELTEST UITEST GSATEST ACCESSTEST STREAMTEST ENVTEST MINETEST MANUALTEST
+	HUNTTEST
 )
 
 # Only list tags that main.gd actually dispatches. An unrecognised PYXIS_* var
@@ -50,7 +51,7 @@ TIMEOUT_S="${PYXIS_HARNESS_TIMEOUT:-1500}"
 # SAVETEST is stateful: =write lays down a fixture the bare read consumes, so
 # the pair must stay adjacent and in this order. The migrate modes are
 # self-contained and each builds its own old-version fixture.
-SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 partial6)
+SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 migrate14 partial6)
 
 if [ $# -gt 0 ]; then
 	# SAVETEST names the whole stateful sequence below, never a plain tag. Left in
@@ -60,7 +61,7 @@ if [ $# -gt 0 ]; then
 	SAVE_MODES=()
 	for t in "$@"; do
 		if [ "$t" = "SAVETEST" ]; then
-			SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 partial6)
+			SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 migrate14 partial6)
 		else
 			TAGS+=("$t")
 		fi

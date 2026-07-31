@@ -144,14 +144,20 @@ func _draw_map() -> void:
 			if drawn.has(key):
 				continue
 			drawn[key] = true
-			var lit := GameState.is_system_unlocked(id) and GameState.is_system_unlocked(other)
+			var lit := GameState.is_lane_open(id) and GameState.is_lane_open(other)
 			var col := Color(Palette.AMBER.r, Palette.AMBER.g, Palette.AMBER.b, 0.45 if lit else 0.13)
 			_map.draw_line(_node_pos(id), _node_pos(other), col, 1.5, true)
 
 	for id_v in SystemDB.ids():
 		var id := str(id_v)
 		var pos := _node_pos(id)
-		var unlocked := GameState.is_system_unlocked(id)
+		# THREE states since v15, not two. A charted-but-jammed system is KNOWN —
+		# it has a name, a place on the chart and a reason you cannot fly there —
+		# and drawing it identically to a system nobody has heard of would throw
+		# away the thing the derelict breach just earned.
+		var charted := GameState.is_system_charted(id)
+		var unlocked := GameState.is_lane_open(id)
+		var jammed := charted and not unlocked
 		var is_current := id == current
 		var is_sel := id == _selected
 
@@ -163,22 +169,34 @@ func _draw_map() -> void:
 
 		var fill := Color(Palette.GOLD.r, Palette.GOLD.g, Palette.GOLD.b, 0.9) if is_current \
 			else (Color(Palette.AMBER.r, Palette.AMBER.g, Palette.AMBER.b, 0.32) if unlocked \
-			else Color(0.16, 0.16, 0.2, 0.9))
+			else (Color(Palette.THREAT.r, Palette.THREAT.g, Palette.THREAT.b, 0.22) if jammed \
+			else Color(0.16, 0.16, 0.2, 0.9)))
 		_map.draw_circle(pos, NODE_RADIUS, fill)
 		_map.draw_arc(pos, NODE_RADIUS, 0.0, TAU, 32,
-			Palette.AMBER if unlocked else Color(0.4, 0.35, 0.4), 1.5, true)
+			Palette.AMBER if unlocked else (Palette.THREAT if jammed else Color(0.4, 0.35, 0.4)),
+			1.5, true)
 
-		if not unlocked:
+		if jammed:
+			# The jam, not a padlock: a broken ring around the node, the same
+			# visual grammar the shattered survey pylon uses out in the Shoals.
+			# It reads as interference rather than as bureaucracy.
+			for arc_i in range(3):
+				var a0: float = float(arc_i) * TAU / 3.0 + 0.22
+				_map.draw_arc(pos, NODE_RADIUS + 5.0, a0, a0 + TAU / 3.0 - 0.44, 12,
+					Color(Palette.THREAT.r, Palette.THREAT.g, Palette.THREAT.b, 0.75), 1.5, true)
+		elif not unlocked:
 			# A small lock glyph: a bar over a box.
 			_map.draw_rect(Rect2(pos + Vector2(-4, -1), Vector2(8, 8)), Color(0.65, 0.6, 0.65))
 			_map.draw_arc(pos + Vector2(0, -1), 4.0, PI, TAU, 10, Color(0.65, 0.6, 0.65), 1.5, true)
 
 		var font := ThemeDB.fallback_font
+		# A jammed system is NAMED. That is what the breach bought.
 		var label := String(SystemDB.get_system(id).get("name", id))
 		var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
 		_map.draw_string(font, pos + Vector2(-w * 0.5, NODE_RADIUS + 15.0), label,
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 11,
-			Palette.AMBER if unlocked else Color(0.5, 0.45, 0.5))
+			Palette.AMBER if unlocked else (Color(Palette.THREAT.r, Palette.THREAT.g,
+				Palette.THREAT.b, 0.85) if jammed else Color(0.5, 0.45, 0.5)))
 
 
 func _on_map_input(event: InputEvent) -> void:
@@ -263,7 +281,7 @@ func _refresh_recall() -> void:
 func _on_travel() -> void:
 	if _selected == "" or _selected == GameState.current_system:
 		return
-	if not GameState.is_system_unlocked(_selected):
+	if not GameState.is_lane_open(_selected):
 		Sfx.play("hit", -10.0, 0.7)
 		return
 	var target := _selected
@@ -277,12 +295,15 @@ func _refresh() -> void:
 	if _selected == "":
 		return
 	var def := SystemDB.get_system(_selected)
-	var unlocked := GameState.is_system_unlocked(_selected)
+	var unlocked := GameState.is_lane_open(_selected)
+	var charted := GameState.is_system_charted(_selected)
 	_title.text = SystemDB.display_name(_selected)
 
 	if not unlocked:
 		_detail.text = SystemDB.unlock_hint(_selected)
-		_travel_button.text = "UNCHARTED"
+		# The button says which of the two things is missing. "UNCHARTED" on a
+		# system you have already charted would read as the game forgetting.
+		_travel_button.text = "LANE JAMMED" if charted else "UNCHARTED"
 		_travel_button.disabled = true
 	elif _selected == GameState.current_system:
 		_detail.text = "Current position.  Threat ×%.1f   Salvage ×%.2f" % [
