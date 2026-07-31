@@ -3036,7 +3036,15 @@ func _run_log_test() -> void:
 	GameState.captains_log.clear()
 	var rift := spawn_rift()
 	if rift != null:
-		player.global_position = rift.global_position + Vector3(4, 0, 0)
+		# PARKED OUTSIDE Rift.INTEL_READ_RANGE, which it did not have to be until
+		# v16. Working a shear from close up now also files a bearing on the
+		# engine, and that writes its own log line — correct behaviour, and it
+		# made this assertion read `shear 2 line` because the staging was
+		# standing near enough to trigger two different systems at once. The
+		# check is about what the SHEAR writes, so the ship stands where only the
+		# shear can reach it.
+		player.global_position = rift.global_position \
+			+ Vector3(Rift.INTEL_READ_RANGE + 8.0, 0, 0)
 		await get_tree().physics_frame
 		rift.pulse()
 		rift.pulse()
@@ -11900,6 +11908,41 @@ func _run_hunt_test() -> void:
 			prev_r = r
 	print("[hunt] BUYING INTEL NEVER WIDENS THE SEARCH 6 dossiers x 5 readings, %s -> %s" % [
 		"no growth" if widened == "" else "GREW: " + widened, "PASS" if grow_ok else "FAIL"])
+	GameState.clear_apex_intel(system_id)
+
+	# 14. THE FREE CHANNELS ARE GATED ON BEING THERE. Driven through the real
+	#     node, because the gate is the whole reason a free channel does not
+	#     wreck the hunt: a shear that files intel from any distance is a
+	#     bearing you collect by flying past, and the ladder of paid readings
+	#     stops meaning anything. The far case runs FIRST — the one-shot flag
+	#     must not have been spent by a read that should never have happened.
+	GameState.clear_apex_intel(system_id)
+	var shear := spawn_rift()
+	var gate_ok := false
+	var far_hints := -1
+	var near_hints := -1
+	if shear != null:
+		player.global_position = shear.global_position \
+			+ Vector3(Rift.INTEL_READ_RANGE * 3.0, 0, 0)
+		await get_tree().physics_frame
+		shear.pulse()
+		await get_tree().physics_frame
+		far_hints = GameState.apex_hint_count(system_id)
+		player.global_position = shear.global_position + Vector3(3, 0, 0)
+		await get_tree().physics_frame
+		shear.pulse()
+		await get_tree().physics_frame
+		near_hints = GameState.apex_hint_count(system_id)
+		gate_ok = far_hints == 0 and near_hints == 1
+		# And only ONCE per shear, or a player parked on a tear narrows the
+		# estimate for free every 75 seconds.
+		shear.pulse()
+		await get_tree().physics_frame
+		gate_ok = gate_ok and GameState.apex_hint_count(system_id) == 1
+	print("[hunt] A SHEAR ONLY TALKS TO WHOEVER IS THERE pulsed from %.0fu: %d hints; from 3u: %d; pulsed again: %d -> %s" % [
+		Rift.INTEL_READ_RANGE * 3.0, far_hints, near_hints,
+		GameState.apex_hint_count(system_id), "PASS" if gate_ok else "FAIL"])
+	player.global_position = Vector3.ZERO
 	GameState.clear_apex_intel(system_id)
 
 	get_tree().quit()
