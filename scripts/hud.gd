@@ -360,6 +360,14 @@ var _gain_timer: SceneTreeTimer = null
 
 func _ready() -> void:
 	add_to_group("hud")
+	# THE READOUT FOLLOWS THE HOLD WITHOUT BEING ASKED. Nineteen sites call
+	# refresh_cargo() by hand and two of them had already forgotten -- salvage
+	# spilled on death and a delivery settled on docking both left this label
+	# showing a hold the player no longer had. Connected in _ready and never in
+	# a resize handler: refit_panel records what re-connecting on size_changed
+	# does, which is that Godot cannot dedupe lambdas and a dragged window
+	# multiplies the connection.
+	GameState.cargo_changed.connect(refresh_cargo)
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -813,6 +821,15 @@ func refresh_cargo() -> void:
 	_cargo_label.text = "HOLD %d/%d" % [used, cap]
 	_cargo_label.add_theme_color_override("font_color",
 		Palette.THREAT if used >= cap else Palette.AMBER_DIM)
+
+
+func cargo_text() -> String:
+	# What the readout ACTUALLY SAYS, for the harness. Deliberately the rendered
+	# string rather than a recomputation of it: an assertion that recomputed
+	# "HOLD %d/%d" from GameState would agree with itself while the label on
+	# screen showed a hold the player emptied ten seconds ago, which is the exact
+	# defect THE READOUT FOLLOWS THE HOLD exists to catch.
+	return _cargo_label.text if _cargo_label != null else ""
 
 
 func gain_cargo(good: String) -> void:

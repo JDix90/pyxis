@@ -3486,6 +3486,59 @@ func _run_hold_test() -> void:
 		glyph_seen.size(), glyph_bad,
 		"PASS" if glyph_bad == "" and glyph_seen.size() == Palette.FAMILY_GLYPHS.size() else "FAIL"])
 
+	# 4d. THE READOUT FOLLOWS THE HOLD. Cargo has no change signal, so every
+	#     mutation in the game has to remember to call hud.refresh_cargo() by
+	#     hand — nineteen sites, and this asserts that the two which forget are
+	#     fixed and stay fixed.
+	#
+	#     NOT A REINTRODUCE-THE-BUG ASSERTION. Both paths below are red on
+	#     shipped code, which is the strongest form the house rules recognise:
+	#       * spill_unread (main.gd) unloads salvage on death and nothing in
+	#         PlayerShip._emergency_warp -> spill_unread -> on_player_downed
+	#         refreshes. Die past the chart edge and the HUD keeps showing the
+	#         hold you no longer have.
+	#       * Contracts.on_docked unloads a delivery and Main.dock never
+	#         refreshes after calling it.
+	#     Driven through the REAL paths rather than through unload_cargo, because
+	#     unload_cargo was never the thing that was broken.
+	#     STAGED SO THE PATHS ACTUALLY FIRE, which took two corrections. Written
+	#     naively both legs were no-ops and the line passed by comparing nothing
+	#     to nothing: spill_unread returns 0 unless depth_at(pos) > 0, and
+	#     on_docked settles only an ACCEPTED delivery whose dest and target the
+	#     hold satisfies. A mutation assertion has to prove the mutation
+	#     happened, so both legs assert a non-zero delta first.
+	GameState.cargo = {}
+	GameState.load_cargo("salvage_drift", 3)
+	GameState.load_cargo("alloys", 2)
+	hud.refresh_cargo()
+	var readout_before := hud.cargo_text()
+	var used_before := GameState.cargo_used()
+	# Past the chart edge, or the spill is a no-op by design.
+	var deep_at := Vector3(0, 0, chart_edge() + 120.0)
+	var spilled := spill_unread(deep_at)
+	await get_tree().physics_frame
+	var readout_spill := hud.cargo_text()
+	var want_spill := "HOLD %d/%d" % [GameState.cargo_used(), GameState.cargo_capacity()]
+
+	# The delivery path, driven the way docking drives it: accept the real
+	# contract, carry exactly what it asks, dock where it points.
+	GameState.cargo = {}
+	contracts.accept("haul_alloys")
+	GameState.load_cargo("alloys", 6)
+	hud.refresh_cargo()
+	var dock_before := GameState.cargo_used()
+	contracts.on_docked("bastion")
+	await get_tree().physics_frame
+	var readout_dock := hud.cargo_text()
+	var want_dock := "HOLD %d/%d" % [GameState.cargo_used(), GameState.cargo_capacity()]
+	var both_fired: bool = spilled > 0 and used_before > GameState.cargo_used() + 0 \
+		and dock_before > 0 and GameState.cargo_count("alloys") == 0
+	print("[hold] THE READOUT FOLLOWS THE HOLD spill %d units '%s'->'%s' (want '%s'); delivery settled %d->%d '%s' (want '%s'); both paths fired=%s -> %s" % [
+		spilled, readout_before, readout_spill, want_spill,
+		dock_before, GameState.cargo_used(), readout_dock, want_dock, str(both_fired),
+		"PASS" if both_fired and readout_spill == want_spill \
+			and readout_dock == want_dock else "FAIL"])
+
 	# 5. READ COMPRESSION is real and now printable: every grade reads into
 	#    something worth more per unit of hold space than the grade itself.
 	var worst := 99.0
