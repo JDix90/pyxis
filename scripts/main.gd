@@ -1807,18 +1807,10 @@ func _lair_band_name(sys_id: String) -> String:
 
 
 func _lair_quadrant(sys_id: String) -> String:
-	# One of four compass sectors -- COARSE on purpose. A quadrant of the Drift is
-	# still an enormous amount of nothing to search; this narrows the hunt from
-	# "somewhere out there" to "that way", which is all the free hint should buy.
-	var p := SystemDB.lair_pos(sys_id, GameState.run_seed)
-	var deg := fposmod(rad_to_deg(atan2(p.z, p.x)), 360.0)
-	if deg < 45.0 or deg >= 315.0:
-		return "EAST"
-	if deg < 135.0:
-		return "SOUTH"
-	if deg < 225.0:
-		return "WEST"
-	return "NORTH"
+	# Delegates to DeepSpace.quadrant_of -- the sector maths is shared with the
+	# dossier's validator and Hunt's estimator, and a second copy here would be a
+	# boundary disagreement waiting to happen.
+	return DeepSpace.quadrant_of(SystemDB.lair_pos(sys_id, GameState.run_seed))
 
 
 func _find_apex() -> ApexBoss:
@@ -11512,6 +11504,145 @@ func _run_hunt_test() -> void:
 	print("[hunt] THE PINNING LIST IS COMPLETE %d dispatched harness vars, %d not in HARNESS_VARS %s -> %s" % [
 		dispatched.size(), unpinned.size(), str(unpinned),
 		"PASS" if unpinned.is_empty() else "FAIL"])
+
+	# --- v16. THE INTEL DOSSIER ----------------------------------------------
+	# Every assertion below drives the real entry points — add_apex_hint, the
+	# channel builders, Hunt.estimate — rather than poking apex_intel, because a
+	# dossier that only agrees with itself proves nothing about the hunt.
+	var isys := "pyx03"          # the deepest band: the most room for a cone to be wrong in
+	GameState.apex_killed = []
+	GameState.clear_apex_intel(isys)
+	var truth: Vector3 = SystemDB.lair_pos(isys, GameState.run_seed)
+
+	# 1. AN EMPTY DOSSIER PROMISES THE BAND AND NOTHING MORE. The estimate with
+	#    no hints must still be honest: strength 0, and a radius that covers the
+	#    authored annulus rather than a confident point.
+	var e_empty: Dictionary = Hunt.estimate(isys)
+	var band_arr: Array = ((SystemDB.get_system(isys).get("apex", {}) as Dictionary)
+		.get("lair", {}) as Dictionary).get("depth", [0.0, 0.0])
+	var band_mid := (float(band_arr[0]) + float(band_arr[1])) * 0.5 \
+		+ float(SystemDB.get_system(isys).get("bounds", 40.0))
+	print("[hunt] AN EMPTY DOSSIER KNOWS ONLY THE BAND strength=%d (must be 0), radius %.0f ~ band mid %.0f -> %s" % [
+		int(e_empty["strength"]), float(e_empty["radius"]), band_mid,
+		"PASS" if int(e_empty["strength"]) == 0 \
+			and absf(float(e_empty["radius"]) - band_mid) < 1.0 else "FAIL"])
+
+	# 2. EVERY CHANNEL NARROWS IT, AND NONE OF THEM LIES. Hints are filed one at
+	#    a time; the radius must never grow, and the true lair must stay inside
+	#    the region the dossier claims. A channel whose cone excludes the answer
+	#    is worse than no channel — the player pays to be sent the wrong way.
+	var radii: Array = []
+	var contains_truth := true
+	var last_r := 1.0e9
+	var monotonic := true
+	for spec in [
+		[Vector3(0, 0, 0), "rumor", 0.0],                 # the ring tier
+		[Vector3(0, 0, 0), "mast", 8.0],
+		[Vector3(420, 0, -260), "relic", 12.0],
+		[Vector3(-300, 0, 500), "guard", 15.0],
+		[Vector3(-120, 0, -640), "watch", 5.0],
+		[Vector3(700, 0, 210), "rift", 4.0],
+	]:
+		var hint: Dictionary = Hunt.ring_hint(isys, GameState.run_seed) if float(spec[2]) <= 0.0 \
+			else Hunt.bearing_hint(isys, spec[0] as Vector3, String(spec[1]),
+				float(spec[2]), GameState.run_seed)
+		GameState.add_apex_hint(isys, hint)
+		var e: Dictionary = Hunt.estimate(isys)
+		radii.append(int(float(e["radius"])))
+		if float(e["radius"]) > last_r + 0.01:
+			monotonic = false
+		last_r = float(e["radius"])
+		if truth.distance_to(e["center"] as Vector3) > float(e["radius"]) + 1.0:
+			contains_truth = false
+	print("[hunt] INTEL NARROWS AND NEVER LIES radii %s monotonically non-increasing=%s; truth inside the claim every step=%s -> %s" % [
+		str(radii), str(monotonic), str(contains_truth),
+		"PASS" if monotonic and contains_truth and int(radii[radii.size() - 1]) < int(radii[0]) else "FAIL"])
+
+	# 3. AND IT STILL DOES NOT HAND OVER THE ANSWER. Six hints is the richest
+	#    dossier the game sells; the ghost must still be honestly wrong. If this
+	#    ever reads ~0 the channels have stopped selling intel and started
+	#    selling a waypoint.
+	var e_full: Dictionary = Hunt.estimate(isys)
+	var miss := truth.distance_to(e_full["center"] as Vector3)
+	print("[hunt] THE GHOST IS HONESTLY WRONG %d hints, estimate misses the lair by %.0fu (must be > 0) -> %s" % [
+		GameState.apex_hint_count(isys), miss, "PASS" if miss > 1.0 else "FAIL"])
+
+	# 4. THE CAP EVICTS THE WIDEST, NOT THE OLDEST. Fill past HINT_CAP with
+	#    precise readings and the ±90 ring must be the thing that goes, or a
+	#    player who buys the best reading in the game watches it evict itself.
+	var wide_before: bool = false
+	for h_v in GameState.apex_hints(isys):
+		if String((h_v as Dictionary).get("kind", "")) == "ring":
+			wide_before = true
+	for i in range(6):
+		GameState.add_apex_hint(isys, Hunt.bearing_hint(isys,
+			Vector3(900.0 + i * 40.0, 0, -300.0 - i * 55.0), "mast", 6.0, GameState.run_seed))
+	var wide_after := false
+	var worst := 0.0
+	for h_v in GameState.apex_hints(isys):
+		worst = maxf(worst, GameState.hint_error(h_v as Dictionary))
+		if String((h_v as Dictionary).get("kind", "")) == "ring":
+			wide_after = true
+	print("[hunt] THE CAP EVICTS THE WIDEST %d hints (cap %d), ring present before=%s after=%s, worst error now %.0f -> %s" % [
+		GameState.apex_hint_count(isys), GameState.HINT_CAP, str(wide_before), str(wide_after), worst,
+		"PASS" if GameState.apex_hint_count(isys) == GameState.HINT_CAP \
+			and wide_before and not wide_after and worst < 90.0 else "FAIL"])
+
+	# 5. A RE-READ FROM THE SAME SPOT IS NOT NEW INTEL. Otherwise parking on a
+	#    mast and re-triggering it narrows the estimate for free, and precision
+	#    stops being something the player buys.
+	GameState.clear_apex_intel(isys)
+	var first_take := GameState.add_apex_hint(isys, Hunt.bearing_hint(
+		isys, Vector3(80, 0, 40), "mast", 8.0, GameState.run_seed))
+	var second_take := GameState.add_apex_hint(isys, Hunt.bearing_hint(
+		isys, Vector3(80, 0, 40), "mast", 8.0, GameState.run_seed))
+	print("[hunt] THE SAME INSTRUMENT TWICE IS ONE READING first=%s second=%s, dossier holds %d -> %s" % [
+		str(first_take), str(second_take), GameState.apex_hint_count(isys),
+		"PASS" if first_take and not second_take and GameState.apex_hint_count(isys) == 1 else "FAIL"])
+
+	# 6. THE ERROR IS SEEDED, NOT ROLLED. The same reading taken from the same
+	#    place must be the same reading forever, or saving and reloading before
+	#    a purchase becomes a reroll for a better cone.
+	var a1: Dictionary = Hunt.bearing_hint(isys, Vector3(-150, 0, 220), "watch", 5.0, GameState.run_seed)
+	var a2: Dictionary = Hunt.bearing_hint(isys, Vector3(-150, 0, 220), "watch", 5.0, GameState.run_seed)
+	var b1: Dictionary = Hunt.bearing_hint(isys, Vector3(-151, 0, 220), "watch", 5.0, GameState.run_seed)
+	print("[hunt] A READING IS NOT A REROLL same spot twice %.3f vs %.3f (equal), one unit over %.3f (different) -> %s" % [
+		float(a1["bearing"]), float(a2["bearing"]), float(b1["bearing"]),
+		"PASS" if is_equal_approx(float(a1["bearing"]), float(a2["bearing"])) \
+			and not is_equal_approx(float(a1["bearing"]), float(b1["bearing"])) else "FAIL"])
+
+	# 7. AND EVERY CHANNEL'S CONE ACTUALLY CONTAINS THE TRUTH. Per channel, at
+	#    its own advertised error: the reading may be wrong by up to what it
+	#    quotes, and never by more. Measured from many origins, because a cone
+	#    that only holds from the origin it was authored against is luck.
+	var honest := true
+	var worst_off := 0.0
+	for kind_spec in [["mast", 8.0], ["relic", 12.0], ["guard", 15.0], ["watch", 5.0], ["rift", 4.0]]:
+		for ai in range(12):
+			var ang := TAU * float(ai) / 12.0
+			var from := Vector3(cos(ang) * 500.0, 0, sin(ang) * 500.0)
+			var h: Dictionary = Hunt.bearing_hint(isys, from, String(kind_spec[0]),
+				float(kind_spec[1]), GameState.run_seed)
+			var to_truth: Vector3 = truth - from
+			var true_deg := fposmod(rad_to_deg(atan2(to_truth.z, to_truth.x)), 360.0)
+			var off := absf(wrapf(float(h["bearing"]) - true_deg, -180.0, 180.0))
+			worst_off = maxf(worst_off, off - float(kind_spec[1]))
+			if off > float(kind_spec[1]) + 0.001:
+				honest = false
+	print("[hunt] NO CHANNEL EXCEEDS ITS QUOTED ERROR 60 readings across 5 channels, worst overshoot %.4f deg -> %s" % [
+		worst_off, "PASS" if honest else "FAIL"])
+
+	# 8. THE KILL CLOSES THE DOSSIER. Intel about a dead engine is clutter that
+	#    would keep drawing a survey plot for a hunt that is over.
+	GameState.add_apex_hint(isys, Hunt.ring_hint(isys, GameState.run_seed))
+	var before_kill := GameState.apex_hint_count(isys)
+	GameState.mark_apex_killed(isys)
+	var after_kill := GameState.apex_hint_count(isys)
+	var refiled := GameState.add_apex_hint(isys, Hunt.ring_hint(isys, GameState.run_seed))
+	print("[hunt] THE KILL CLOSES THE DOSSIER %d hints before, %d after, re-filing accepted=%s -> %s" % [
+		before_kill, after_kill, str(refiled),
+		"PASS" if before_kill > 0 and after_kill == 0 and not refiled else "FAIL"])
+	GameState.apex_killed = []
 
 	get_tree().quit()
 

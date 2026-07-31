@@ -373,6 +373,29 @@ static func band_name(depth: float) -> String:
 	return BAND_NAMES[band_of(depth)]
 
 
+# The four compass sectors a rumour can name. COARSE on purpose: a quadrant of
+# the Drift is still an enormous amount of nothing to search, which is exactly
+# what the cheapest tier of intel should buy.
+#
+# Pure and shared, because three separate places need to agree on it — the free
+# lane-obstructed broadcast, the dossier's save-side validator, and Hunt's
+# estimator. The moment two of them derive "which quadrant is that" independently
+# they will disagree at a boundary, and a rumour that names the wrong sector is
+# worse than no rumour: it costs credits AND sends you the wrong way.
+const QUADRANTS := ["EAST", "SOUTH", "WEST", "NORTH"]
+
+
+static func quadrant_of(pos: Vector3) -> String:
+	var deg := fposmod(rad_to_deg(atan2(pos.z, pos.x)), 360.0)
+	if deg < 45.0 or deg >= 315.0:
+		return "EAST"
+	if deg < 135.0:
+		return "SOUTH"
+	if deg < 225.0:
+		return "WEST"
+	return "NORTH"
+
+
 static func band_color(depth: float) -> Color:
 	return Palette.band_color(band_of(depth))
 

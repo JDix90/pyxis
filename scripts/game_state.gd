@@ -12,7 +12,7 @@ signal system_unlocked(id: String)
 signal lane_opened(id: String)
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 15
+const SAVE_VERSION := 16
 const SAVE_DEBOUNCE := 1.0
 
 # v6 defaults. Kept as one dictionary each so a migration only has to merge
@@ -174,6 +174,38 @@ var mining_xp := 0
 # The KEY is the system id and the asteroid's ARRAY INDEX, so reordering an
 # `asteroids` array in system_db.gd silently rekeys a player's cut seams.
 var seams_cut := {}
+
+# v16. THE INTEL DOSSIER. Keyed by system id; each value is an Array of hint
+# dictionaries the player has PAID FOR or EARNED, and together they are the only
+# thing standing between "somewhere past the chart edge" and a bearing to fly.
+#
+# Two shapes, and the difference is what each channel can honestly claim:
+#
+#   {"kind": <channel>, "ox": float, "oz": float, "bearing": float, "err": float}
+#       A bearing taken FROM somewhere. `ox`/`oz` is where the instrument stood
+#       — stored, never recomputed, because a cone drawn from the wrong origin
+#       is worse than no cone — and `err` is the half-angle it can promise.
+#   {"kind": "ring", "band": int, "quadrant": String}
+#       A rumour. No origin and no bearing: an annulus and a compass sector.
+#
+# NOTHING here is ground truth. `SystemDB.lair_pos` is, and it is never written
+# down: every hint is derived from it at the moment it is earned and then stands
+# on its own, so a save file cannot leak the answer and a contradictory dossier
+# stays contradictory. `Hunt.estimate` does the intersecting, live, from these.
+#
+# The entry is DELETED on the kill (mark_apex_killed): the hunt is over, the
+# hints are worthless, and a dossier that outlives its quarry is just clutter
+# that would redraw a survey plot for a system with nothing left to find.
+var apex_intel := {}
+# Eight is where the plot stops teaching. Past it the cones overlap so heavily
+# that another one moves the estimate by less than the marker is wide, and the
+# widest-error hint is dropped first — buying a ±5° reading should never be
+# spent evicting itself in favour of a ±15° one already on file.
+const HINT_CAP := 8
+# Bumped whenever the dossier changes, so a renderer can cache an estimate
+# without recomputing a 120x24 grid every frame. Deliberately NOT saved: it
+# numbers edits within a session, not the dossier's contents.
+var intel_version := 0
 
 # v9. Bonded stores, keyed by PLACE.
 #
@@ -498,6 +530,8 @@ func reset_to_starter() -> void:
 	mining = 0
 	mining_xp = 0
 	seams_cut = {}
+	apex_intel = {}
+	intel_version += 1
 	warehouse = {}
 	# A new survey is a new logbook. ship_name is deliberately NOT reset — see the
 	# field comment: what you called your ship outlives the run that named it.
@@ -690,6 +724,10 @@ func mark_apex_killed(id: String) -> void:
 	if apex_killed.has(id):
 		return
 	apex_killed.append(id)
+	# The hunt is over, so the dossier goes with it. Kept deliberately here
+	# rather than in open_lane: this is the function that means "the engine is
+	# dead", and the intel is about the engine, not about the lane.
+	clear_apex_intel(id)
 	_queue_save()
 
 
@@ -802,6 +840,65 @@ func _load_seams_cut(saved: Dictionary) -> void:
 			continue                       # 4. and must still name a real rock
 		if bool(saved[key_v]):
 			seams_cut[key] = true          # 5. falsey values dropped, not kept
+
+
+func _load_apex_intel(saved: Dictionary) -> void:
+	# Validated the way _load_seams_cut is, and for a sharper reason: every value
+	# here is a NUMBER THE RENDERER TRUSTS. A bearing of NaN or an error of -40
+	# does not fail loudly — it silently poisons the estimate, and the survey
+	# plot draws a confident cone pointing at nothing.
+	#
+	# There is deliberately no filter for "does this hint agree with the current
+	# run_seed's lair". Contradiction is a legal state of a dossier: a stale
+	# rumour and a fresh mast reading disagreeing is the mechanic working, and a
+	# loader that quietly discarded the losing hint would be answering the hunt.
+	apex_intel = {}
+	for sid_v in saved:
+		var sid := String(sid_v)
+		if not SystemDB.exists(sid):
+			continue                       # 1. the system must still exist
+		if not (saved[sid_v] is Array):
+			continue                       # 2. shape
+		var kept: Array = []
+		for h_v in (saved[sid_v] as Array):
+			if not (h_v is Dictionary):
+				continue                   # 3. every entry is a hint dict
+			var h: Dictionary = h_v
+			var kind := String(h.get("kind", ""))
+			if kind == "":
+				continue                   # 4. an unattributed hint is unplottable
+			if kind == "ring":
+				var band := int(h.get("band", -1))
+				if band < 0 or band >= DeepSpace.BAND_NAMES.size():
+					continue               # 5. must name a band that exists
+				if not DeepSpace.QUADRANTS.has(String(h.get("quadrant", ""))):
+					continue               # 6. and a real compass sector
+				kept.append({"kind": "ring", "band": band,
+					"quadrant": String(h.get("quadrant", ""))})
+				continue
+			# Bearing hints: every number finite, the error a sane half-angle.
+			var ox := float(h.get("ox", 0.0))
+			var oz := float(h.get("oz", 0.0))
+			var bearing := float(h.get("bearing", 0.0))
+			var err := float(h.get("err", 0.0))
+			if not (is_finite(ox) and is_finite(oz) and is_finite(bearing) and is_finite(err)):
+				continue                   # 7. NaN/inf poisons the estimate silently
+			if err <= 0.0 or err > 90.0:
+				continue                   # 8. a cone with no width, or wider than
+				                           #    the rumour that costs a tenth as much
+			kept.append({"kind": kind, "ox": ox, "oz": oz,
+				"bearing": fposmod(bearing, 360.0), "err": err})
+		# 9. Trim to the cap on the way in as well as on the way out: a
+		#    hand-edited save must not hand anyone a nine-cone dossier.
+		while kept.size() > HINT_CAP:
+			var widest := 0
+			for i in range(kept.size()):
+				if hint_error(kept[i]) > hint_error(kept[widest]):
+					widest = i
+			kept.remove_at(widest)
+		if not kept.is_empty():
+			apex_intel[sid] = kept         # 10. empty arrays dropped, not kept
+	intel_version += 1
 
 
 # --- bonded stores ----------------------------------------------------------
@@ -1183,6 +1280,79 @@ func note_seam_cut(key: String) -> void:
 	_queue_save()
 
 
+# --- the intel dossier ------------------------------------------------------
+
+func apex_hints(system_id: String) -> Array:
+	# A COPY. Callers plot from this every frame; handing out the live array
+	# invites a renderer to sort it in place and quietly reorder what the cap
+	# evicts next.
+	return (apex_intel.get(system_id, []) as Array).duplicate()
+
+
+func apex_hint_count(system_id: String) -> int:
+	return (apex_intel.get(system_id, []) as Array).size()
+
+
+func add_apex_hint(system_id: String, hint: Dictionary) -> bool:
+	# Returns whether the dossier actually took it, so a channel that charges
+	# for a reading can refuse to charge for one it could not file.
+	#
+	# A system with no engine left cannot accumulate intel: the kill deletes the
+	# entry, and without this guard the next mast in a cleared system would
+	# start a fresh dossier for a hunt that is already over.
+	if not SystemDB.exists(system_id) or apex_killed.has(system_id):
+		return false
+	if not apex_intel.has(system_id):
+		apex_intel[system_id] = []
+	var list: Array = apex_intel[system_id]
+
+	# Same channel, same origin, same bearing: a re-read of the same instrument
+	# from the same spot. Refused rather than stacked — otherwise parking on a
+	# mast and re-triggering it would narrow the estimate for free, and the
+	# whole design is that precision is bought.
+	for h_v in list:
+		var h: Dictionary = h_v
+		if String(h.get("kind", "")) != String(hint.get("kind", "")):
+			continue
+		if String(hint.get("kind", "")) == "ring":
+			if int(h.get("band", -1)) == int(hint.get("band", -2)) \
+					and String(h.get("quadrant", "")) == String(hint.get("quadrant", "")):
+				return false
+		elif is_equal_approx(float(h.get("ox", 0.0)), float(hint.get("ox", 0.0))) \
+				and is_equal_approx(float(h.get("oz", 0.0)), float(hint.get("oz", 0.0))):
+			return false
+
+	list.append(hint)
+	# Widest error evicted first, and ONLY once over the cap — a stable sort on
+	# every insert would reorder equal-error hints for no reason.
+	if list.size() > HINT_CAP:
+		var widest := 0
+		for i in range(list.size()):
+			if hint_error(list[i]) > hint_error(list[widest]):
+				widest = i
+		list.remove_at(widest)
+	intel_version += 1
+	_queue_save()
+	return true
+
+
+func hint_error(hint: Dictionary) -> float:
+	# A ring hint has no half-angle of its own, so it is scored as the quadrant
+	# it names: 90 degrees, wider than any bearing channel in the game. That is
+	# what makes the cap evict rumours before it evicts instrument readings.
+	if String(hint.get("kind", "")) == "ring":
+		return 90.0
+	return float(hint.get("err", 90.0))
+
+
+func clear_apex_intel(system_id: String) -> void:
+	if not apex_intel.has(system_id):
+		return
+	apex_intel.erase(system_id)
+	intel_version += 1
+	_queue_save()
+
+
 func archeology_line() -> String:
 	# ONE RULE, three renderers — the lab head, the pause menu and the refit
 	# strip. The string was written once inside the lab tab, which meant the only
@@ -1517,6 +1687,7 @@ func save_game() -> void:
 		"mining": mining,
 		"mining_xp": mining_xp,
 		"seams_cut": seams_cut,
+		"apex_intel": apex_intel,
 		"warehouse": warehouse,
 		"ledger": ledger,
 		"ship_name": ship_name,
@@ -1649,6 +1820,7 @@ func load_game() -> bool:
 	mining = clampi(int(data.get("mining", 0)), 0, MINING_TIERS.size() - 1)
 	mining_xp = maxi(int(data.get("mining_xp", 0)), 0)
 	_load_seams_cut(data.get("seams_cut", {}))
+	_load_apex_intel(data.get("apex_intel", {}))
 	_load_warehouse(data.get("warehouse", {}))
 
 	# v6 fields. Merged key-by-key onto the defaults rather than taken wholesale,
