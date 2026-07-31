@@ -115,7 +115,19 @@ frame it samples. Neither is a determinism failure — `WORLD FINGERPRINT` and t
 rest of `DEEPTEST` hold — but on a slower or busier box than the usual one they
 will cost you a sweep. Re-run the tag alone before believing either.
 
-The most recent seven are the two-bug pass in STRATEGY §44:
+The most recent three are the legibility pass in STRATEGY §45, which made six
+live stats visible for the first time — `shield_regen`, `accel`, `magnet_range`,
+`survey_speed`, `chain`, `splash` — plus core abilities, and drew the
+before/after delta on every module row in **both** the refit console and the
+store. `THE CONSOLE DRAWS THE UPSIDE` was replaced rather than extended: it
+checked three mining modules for two column names and was green while
+`util_repair` (5,200) and `util_repair_2` (13,500) moved no number at all. The
+pair that replaced it checks all 36 modules and then every stat key one at a
+time. `THE STAT STRIP WRAPS` and `THE DELTA IS AT THE DECISION` are new in
+`UITEST`; the first exists because the stat row was an `HBoxContainer` that
+squeezes rather than overflows, and the catalog's widest fit is 14 columns.
+
+The seven before those are the two-bug pass in STRATEGY §44:
 three in `BOSSTEST` (the engine dies, a killed engine stays dead and its wreck
 survives the warp, a cracked wreck leaves nothing), three in
 `SAVETEST=migrate16` for v16→v17, and one in `MINETEST` (`THE CUT FALLS

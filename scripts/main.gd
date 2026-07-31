@@ -1900,6 +1900,21 @@ func _find_apex() -> ApexBoss:
 	return nodes[0] as ApexBoss
 
 
+func _panel_text_contains(root: Node, needle: String) -> bool:
+	# Walks a built panel looking for a Label carrying this text. Asserting on the
+	# RENDERED tree rather than on the function that feeds it is the whole point:
+	# preview_stats returned correct numbers for as long as it has existed and not
+	# one of them ever reached a screen.
+	if root == null:
+		return false
+	if root is Label and String((root as Label).text).findn(needle) >= 0:
+		return true
+	for child in root.get_children():
+		if _panel_text_contains(child, needle):
+			return true
+	return false
+
+
 func _find_apex_wreck() -> ApexWreck:
 	# By type rather than by group: the wreck shares "crackable" with every
 	# derelict in the system, so the group alone would answer a different question.
@@ -5010,22 +5025,79 @@ func _run_ship_test() -> void:
 	# CHANGED is the point -- util_cutter's turn_rate penalty already moves
 	# HANDLING, so "the summary differs" would have passed while the upside was
 	# still invisible.
-	var draw_missing := ""
-	for mid_v in ["rig_prospector", "util_cutter", "util_assay"]:
+	# WIDENED FROM THREE MODULES TO THE WHOLE CATALOG. As first written this
+	# checked rig_prospector, util_cutter and util_assay for a CUT or ORE column,
+	# which is the INSTANCE and not the rule -- and the rule was being broken
+	# three rows away the entire time it was green. util_repair (5,200) and
+	# util_repair_2 (13,500) carry shield_regen as their only stat and
+	# shield_regen was not on the list, so both moved literally nothing; all
+	# three cores carry an empty `stats` and did the same.
+	var starter_cells := ModuleDB.summary_lines(ModuleDB.compute_stats(ModuleDB.STARTER_FIT))
+	var mute := ""
+	var mute_n := 0
+	for mid_v in ModuleDB.MODULES:
+		var mid := String(mid_v)
+		var slot := ModuleDB.default_slot(mid, ModuleDB.STARTER_FIT)
+		if slot < 0:
+			continue
 		var probe_fit := ModuleDB.STARTER_FIT.duplicate()
-		probe_fit[ModuleDB.Slot.UTILITY] = String(mid_v)
-		var probe_stats := ModuleDB.compute_stats(probe_fit)
-		var carries := float(probe_stats.get("mining_rate", 0.0)) != 0.0 \
-			or float(probe_stats.get("ore_yield", 0.0)) != 0.0
-		var drawn := false
-		for pair in ModuleDB.summary_lines(probe_stats):
-			if String(pair[0]) == "CUT" or String(pair[0]) == "ORE":
-				drawn = true
-		if carries and not drawn:
-			draw_missing = String(mid_v)
-	print("[ship] THE CONSOLE DRAWS THE UPSIDE every mining module surfaces a row a player can read (invisible: %s) -> %s" % [
-		draw_missing if draw_missing != "" else "none",
-		"PASS" if draw_missing == "" else "FAIL"])
+		probe_fit[slot] = mid
+		# Compared against the SAME fit with that slot emptied rather than against
+		# the starter, or every weapon would read as "changed" purely by displacing
+		# the pulse it replaces and the check would pass on a mute module.
+		var bare_fit := ModuleDB.STARTER_FIT.duplicate()
+		bare_fit[slot] = ""
+		var bare_cells := ModuleDB.summary_lines(ModuleDB.compute_stats(bare_fit))
+		var with_cells := ModuleDB.summary_lines(ModuleDB.compute_stats(probe_fit))
+		if str(bare_cells) == str(with_cells):
+			mute_n += 1
+			if mute == "":
+				mute = mid
+	print("[ship] THE CONSOLE DRAWS EVERY MODULE all %d modules move a column the player can read (mute: %d, first: %s) -> %s" % [
+		ModuleDB.MODULES.size(), mute_n, mute if mute != "" else "none",
+		"PASS" if mute_n == 0 else "FAIL"])
+
+	# And the same rule one level down, per STAT rather than per module, because
+	# a module can be legible by accident: util_cutter's turn_rate penalty already
+	# moved HANDLING, so "something changed" was true while mining_rate itself was
+	# undrawable. Perturbing one key at a time is what isolates that.
+	#
+	# The five keys compute_stats FOLDS are named in the output rather than
+	# quietly skipped: damage, interval and range become DPS and REACH inside
+	# compute_stats, so poking them in an already-computed dict proves nothing
+	# either way. A silent skip list is how the first version of this line came to
+	# cover three modules and read like it covered the catalog.
+	var folded := ["damage", "interval", "range", "crit_chance", "weapon_range_bonus"]
+	var base_stats := ModuleDB.compute_stats(ModuleDB.STARTER_FIT)
+	var base_cells := ModuleDB.summary_lines(base_stats)
+	var unreadable := ""
+	var checked := 0
+	var keys_seen := {}
+	for mid_v in ModuleDB.MODULES:
+		for k_v in (ModuleDB.MODULES[mid_v]["stats"] as Dictionary):
+			keys_seen[String(k_v)] = true
+		if not (ModuleDB.MODULES[mid_v].get("ability", {}) as Dictionary).is_empty():
+			keys_seen["ability"] = true
+	for key_v in keys_seen:
+		var key := String(key_v)
+		if folded.has(key):
+			continue
+		checked += 1
+		var probe: Dictionary = base_stats.duplicate(true)
+		if key == "ability":
+			probe["ability"] = {"name": "PROBE", "duration": 9.0, "cooldown": 99.0}
+		elif key == "chain" or key == "splash":
+			# Weapon keys live per-weapon; the starter flies two pulses.
+			for w in probe["weapons"]:
+				(w as Dictionary)[key] = 7.0
+		else:
+			probe[key] = float(probe.get(key, 0.0)) + 7.0
+		if str(ModuleDB.summary_lines(probe)) == str(base_cells):
+			unreadable += ("%s " % key)
+	print("[ship] EVERY STAT REACHES A COLUMN %d of %d keys checked one at a time (%s folded into DPS/REACH), undrawable: %s -> %s" % [
+		checked, keys_seen.size(), ", ".join(folded),
+		unreadable if unreadable != "" else "none",
+		"PASS" if unreadable == "" else "FAIL"])
 	get_tree().quit()
 
 
@@ -10921,6 +10993,104 @@ func _run_ui_test() -> void:
 	print("[ui] REOPEN AFTER ESCAPE closed while docked=%s, tapping the port reopens=%s -> %s" % [
 		str(stranded), str(port_panel.is_open),
 		"PASS" if stranded and port_panel.is_open else "FAIL"])
+
+	# --- 10. the stat strip wraps rather than starving -----------------------
+	# Six stats were added to summary_lines and the row they live in was an
+	# HBoxContainer of EXPAND_FILL cells, which does not overflow where anyone can
+	# see it -- it SQUEEZES. The worst fit the catalog can build (an arc and a
+	# torpedo for CHAIN and SPLASH, a prospector and an assay rig for CUT, ORE and
+	# PULL) reaches fourteen columns, and shaving fourteen labels to 46px each
+	# would have shipped as "the console looks a bit tight" rather than as a bug.
+	#
+	# MEASURED OFF THE LAID-OUT CELLS, not off CELL_MIN_W: asserting the constant
+	# against itself is the SHEET FITS trap, and would agree with itself while the
+	# container starved the row. Two frames because Godot settles containers over
+	# one -- the same wait the hold's layout checks use.
+	port_panel.close_panel()
+	GameState.reactor_tier = ModuleDB.REACTOR_TIERS.size() - 1
+	for wide_id in ["arc_2", "torp_2", "rig_prospector", "util_assay"]:
+		if not GameState.owned.has(wide_id):
+			GameState.owned.append(wide_id)
+	GameState.equip(ModuleDB.Slot.WEAPON_A, "arc_2")
+	GameState.equip(ModuleDB.Slot.WEAPON_B, "torp_2")
+	GameState.equip(ModuleDB.Slot.UTILITY, "rig_prospector")
+	GameState.equip(ModuleDB.Slot.UTILITY_B, "util_assay")
+	var widest_cells: int = ModuleDB.summary_lines(GameState.stats).size()
+	var strip_ok := true
+	var strip_worst := 9999.0
+	var strip_over := 0.0
+	var strip_where := ""
+	var saved_ui_scale: float = UILayout.user_scale
+	for probe_size in [Vector2i(720, 1280), Vector2i(414, 736)]:
+		for uscale in [0.7, 1.0, 1.6]:
+			UILayout.user_scale = uscale
+			get_window().size = probe_size
+			refit_panel.open()
+			await get_tree().process_frame
+			await get_tree().process_frame
+			# Typed as the base Container on purpose: this asserts the row's
+			# BEHAVIOUR, so it must still compile and still fail against the
+			# HBoxContainer it replaced rather than erroring on the cast.
+			var strip: Container = refit_panel._stat_row
+			for cell in strip.get_children():
+				var w: float = (cell as Control).size.x
+				if w < strip_worst:
+					strip_worst = w
+					strip_where = "%dx%d@%.1f" % [probe_size.x, probe_size.y, uscale]
+				# A cell narrower than the floor it asked for means the row starved
+				# it; a row that wraps hands every cell its minimum and grows down.
+				if w + 0.5 < RefitPanel.CELL_MIN_W:
+					strip_ok = false
+			# And the strip must still sit inside the sheet it is drawn in. This is
+			# the clause an HBoxContainer fails: it hands every cell its 62px
+			# minimum and then runs 868px wide off the side of a 720px phone,
+			# rather than wrapping. Tracked separately so the FAIL line says which
+			# half broke instead of printing two identical-looking numbers.
+			if strip.size.x > refit_panel._sheet.size.x + 0.5:
+				strip_ok = false
+				strip_over = maxf(strip_over, strip.size.x - refit_panel._sheet.size.x)
+			refit_panel.close_panel()
+			await get_tree().process_frame
+	UILayout.user_scale = saved_ui_scale
+	get_window().size = Vector2i(720, 1280)
+	await get_tree().process_frame
+	print("[ui] THE STAT STRIP WRAPS %d columns at the catalog's widest fit, narrowest cell %.0fpx against a %.0f floor (%s), overflow past the sheet %.0fpx -> %s" % [
+		widest_cells, strip_worst, RefitPanel.CELL_MIN_W, strip_where, strip_over,
+		"PASS" if strip_ok and widest_cells >= 12 else "FAIL"])
+
+	# --- 11. the delta reaches the player, on both screens --------------------
+	# GameState.preview_stats shipped with ZERO callers while refit_panel's own
+	# header promised a "stat delta preview", so the arithmetic existed and was
+	# simply never drawn. Asserting that the PANEL contains it, rather than that
+	# the function returns something, is the difference between the two.
+	#
+	# util_repair is the case that names the bug: shield_regen is its only stat,
+	# so before REGEN existed it moved nothing on either screen and a player was
+	# asked to spend 13,500 on an invisible effect.
+	GameState.equip(ModuleDB.Slot.UTILITY, "")
+	GameState.equip(ModuleDB.Slot.UTILITY_B, "")
+	if not GameState.owned.has("util_repair"):
+		GameState.owned.append("util_repair")
+	var repair_slot := ModuleDB.default_slot("util_repair", GameState.fit)
+	var repair_delta := ModuleDB.delta_lines(
+		GameState.stats, GameState.preview_stats(repair_slot, "util_repair"))
+	refit_panel._slot = ModuleDB.Slot.UTILITY
+	refit_panel.open()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var refit_shows := _panel_text_contains(refit_panel._module_list, "REGEN")
+	refit_panel.close_panel()
+	await get_tree().process_frame
+	_complete_dock(dock_port)
+	port_panel._tab = "outfitter"
+	port_panel._refresh()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var store_shows := _panel_text_contains(port_panel._body, "REGEN")
+	var store_pwr := _panel_text_contains(port_panel._body, "PWR")
+	print("[ui] THE DELTA IS AT THE DECISION util_repair moves %d column(s) %s; refit row draws it=%s, store row draws it=%s with PWR=%s -> %s" % [
+		repair_delta.size(), str(repair_delta), str(refit_shows), str(store_shows), str(store_pwr),
+		"PASS" if repair_delta.size() > 0 and refit_shows and store_shows and store_pwr else "FAIL"])
 
 	get_tree().quit()
 

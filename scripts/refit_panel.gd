@@ -5,10 +5,22 @@ extends CanvasLayer
 # leaving the game.
 #
 # Layout (top to bottom): header with salvage + reactor -> slot chips ->
-# power bar -> module list for the selected slot -> stat delta preview.
+# power bar -> module list for the selected slot -> the current fit's stats.
+#
+# That last line used to say "stat delta preview" and was a promise nothing
+# kept: GameState.preview_stats existed with ZERO callers and the strip only
+# ever drew the equipped fit. The delta is real now, and it lives on each module
+# ROW rather than on the strip -- see _delta_line. This is a touch console, so
+# there is no hover to hang a preview on; the answer has to be sitting next to
+# the thing you are about to press.
 
 const SHEET_RATIO := 0.62
 const SLIDE_TIME := 0.28
+
+# Wide enough for "HANDLING" at font 9 and "100%" at font 15. The flow row wraps
+# rather than squeezing, so this is a floor on legibility instead of a guess at
+# how many columns fit.
+const CELL_MIN_W := 62.0
 
 var is_open := false
 
@@ -22,7 +34,7 @@ var _power_fill: ColorRect
 var _power_track: ColorRect
 var _chip_row: HFlowContainer
 var _module_list: VBoxContainer
-var _stat_row: HBoxContainer
+var _stat_row: HFlowContainer
 
 var _slot := ModuleDB.Slot.WEAPON_A
 var _chips := {}
@@ -226,8 +238,15 @@ func _build_power() -> Control:
 
 
 func _build_stats() -> Control:
-	_stat_row = HBoxContainer.new()
-	_stat_row.add_theme_constant_override("separation", 8)
+	# HFlowContainer, not HBoxContainer, and the swap is what let the six silent
+	# stats be shown at all. An HBox with EXPAND_FILL cells does not overflow
+	# visibly -- it SQUEEZES, so a fourteen-column fit (arc + torpedo + prospector
+	# + assay is reachable) would have quietly shaved every label to nothing
+	# rather than telling anyone. A flow row wraps to a second line instead, and
+	# the sheet's own clamp already recomputes its height from content.
+	_stat_row = HFlowContainer.new()
+	_stat_row.add_theme_constant_override("h_separation", 8)
+	_stat_row.add_theme_constant_override("v_separation", 2)
 	return _stat_row
 
 
@@ -512,6 +531,14 @@ func _build_module_row(id: String, equipped: bool) -> Control:
 	desc.add_theme_color_override("font_color", Color(0.6, 0.6, 0.66))
 	text.add_child(desc)
 
+	# THE ANSWER, NEXT TO THE QUESTION. Everything above is prose; this is the
+	# arithmetic, against the fit currently flying, computed for the slot this
+	# row would actually occupy.
+	if not equipped:
+		var line := UIKit.delta_line(GameState.preview_stats(_slot, id), 10)
+		if line != null:
+			text.add_child(line)
+
 	var right := VBoxContainer.new()
 	right.add_theme_constant_override("separation", -1)
 	right.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -546,7 +573,12 @@ func _rebuild_stats() -> void:
 		child.queue_free()
 	for pair in ModuleDB.summary_lines(GameState.stats):
 		var cell := VBoxContainer.new()
-		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		# SHRINK, not EXPAND_FILL. In a flow container EXPAND_FILL stretches the
+		# cells on each line to fill it, so a wrapped final row of two would sit
+		# half a screen apart from each other; shrinking keeps the columns a
+		# consistent width and lets the wrap do the work.
+		cell.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		cell.custom_minimum_size = Vector2(CELL_MIN_W, 0)
 		cell.add_theme_constant_override("separation", -2)
 
 		var key := Label.new()

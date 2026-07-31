@@ -74,6 +74,39 @@ static func label(text: String, size := SIZE_BODY, color := Palette.AMBER_DIM,
 	return l
 
 
+static func delta_line(after: Dictionary, size := 10) -> Control:
+	# "REGEN 6/s -> 17/s   SHIELD 100 -> 70", drawn against the fit currently
+	# flying. Returns null when nothing moves, so a caller can skip the row
+	# entirely rather than render an empty strip.
+	#
+	# Lives here rather than in either screen because the refit console and the
+	# store ask the identical question at the identical moment, and the whole
+	# defect this answers was one hardcoded list being the only thing a player
+	# could see. Two divergent copies of the fix would be the same mistake again.
+	var pairs := ModuleDB.delta_lines(GameState.stats, after)
+	if pairs.is_empty():
+		return null
+
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 9)
+	row.add_theme_constant_override("v_separation", 0)
+	for triple in pairs:
+		var cell := HBoxContainer.new()
+		cell.add_theme_constant_override("separation", 3)
+		cell.add_child(label(String(triple[0]), size, Palette.AMBER_DIM,
+			HORIZONTAL_ALIGNMENT_LEFT))
+		cell.add_child(label(String(triple[1]), size, Color(0.55, 0.55, 0.6),
+			HORIZONTAL_ALIGNMENT_LEFT))
+		cell.add_child(label("→", size, Color(0.45, 0.45, 0.5),
+			HORIZONTAL_ALIGNMENT_LEFT))
+		# The new value is the only thing here in full contrast: the eye should
+		# land on what the ship BECOMES, not on what it already is.
+		cell.add_child(label(String(triple[2]), size, Palette.HULL,
+			HORIZONTAL_ALIGNMENT_LEFT))
+		row.add_child(cell)
+	return row
+
+
 static func stylebox(color: Color, fill_alpha := 0.10, border_alpha := 0.55,
 		radius := 8) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
