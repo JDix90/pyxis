@@ -35,7 +35,9 @@ behind a `PYXIS_*` environment variable and run headless:
 PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 ```
 
-Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 39 of them.
+Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 40 of them —
+the 39 tags in `run_harness.sh`'s `TAGS`, plus `SAVETEST`, which is one harness
+with 13 modes rather than 13 harnesses (hence 52 runs from 40 suites).
 The house rules, learned the hard way and enforced by review:
 
 - **Assert the rule, not the rendering.** Test the thing that must be true once,
