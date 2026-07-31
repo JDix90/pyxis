@@ -87,6 +87,34 @@ var _grace := 0.0
 # never loses the remainder to int truncation.
 var _flown := 0.0
 
+# --- external drag ------------------------------------------------------------
+# THE MERIDIAN's graviton tether pulls through this channel rather than through
+# `velocity`, and the distinction is the entire mechanic.
+#
+# The obvious implementation — `player.velocity += inward * pull * delta` — is
+# what the tether was, and it dragged an idle ship exactly 0.0u for as long as
+# it existed. The autopilot below brakes `velocity` toward `desired` at `accel`
+# every frame, and for a ship with no move target `desired` is ZERO: the brake
+# runs at 9.0 on the bare hull and never below the 3.0 ModuleDB floors it to,
+# both of which beat a 6.5 pull. So the pull was cancelled to nothing before the
+# position step ran, and cancelled HARDEST against exactly the ship the armament
+# exists to catch — the one sitting still.
+#
+# This rides alongside `_recoil` instead: summed into the position step, never
+# braked, decayed only once the tether lets go. The player's own thrust still
+# fights it, because the two velocities add — a ship burning outward keeps the
+# difference. What it no longer does is win by standing still.
+var _tether_vel := Vector3.ZERO
+var _tether_driven := false
+# How fast the drag bleeds off once the tether releases. Short enough that the
+# snap reads as a release rather than a long coast.
+const TETHER_RELEASE_DECAY := 4.0
+# The hard ceiling on tether drag, in u/s. ModuleDB floors max_speed at 1.6, so
+# a drag at or above that pins the weakest legal fit in place with no way out —
+# and "out-runnable by any legal fit" is the one promise this mechanic has to
+# keep. Callers pass their own cap; this is the line none of them may cross.
+const TETHER_DRAG_CEILING := 1.5
+
 # Docked: clamped to a port. The only fully safe state in the game — nothing
 # can hurt the ship and nothing hunts it.
 var docked := false
@@ -109,6 +137,7 @@ func set_input_enabled(v: bool) -> void:
 		attack_target = null
 		has_move_target = false
 		velocity = Vector3.ZERO
+		clear_tether()
 		driving = false
 
 var _ability := {}
@@ -736,12 +765,41 @@ func activate_ability() -> bool:
 
 # --- simulation -------------------------------------------------------------
 
+func apply_tether(inward: Vector3, pull: float, cap: float, delta: float) -> void:
+	# `cap` is the terminal drag speed, and it carries the whole escape guarantee:
+	# it must stay under the 1.6 u/s that ModuleDB clamps max_speed to, so even
+	# the weakest legal fit still makes outward headway against a live tether.
+	# Enforced here as well as in the caller's data, because this is the only
+	# place that can promise it.
+	_tether_vel = (_tether_vel + inward * pull * delta).limit_length(
+		minf(cap, TETHER_DRAG_CEILING))
+	_tether_driven = true
+
+
+func _tick_tether(delta: float) -> Vector3:
+	# Held while the boss is driving it, bled off from the frame after it stops.
+	# Called exactly once per physics frame on every path that moves the ship —
+	# a path that skipped it would let the drag accumulate unspent and then dump
+	# the whole of it the moment the ship started integrating again.
+	if _tether_driven:
+		_tether_driven = false
+	else:
+		_tether_vel = _tether_vel.move_toward(Vector3.ZERO, TETHER_RELEASE_DECAY * delta)
+	return _tether_vel
+
+
+func clear_tether() -> void:
+	_tether_vel = Vector3.ZERO
+	_tether_driven = false
+
+
 func _physics_process(delta: float) -> void:
 	_tick_ability(delta)
 	_tick_shield(delta)
 
 	if _warping or docked:
 		driving = false  # never leave this stale: the camera reads it to follow
+		clear_tether()   # a tether cannot follow you into a warp or a dock clamp
 		return
 
 	if _emp > 0.0:
@@ -753,7 +811,11 @@ func _physics_process(delta: float) -> void:
 		driving = false
 		has_move_target = false
 		velocity = velocity.move_toward(Vector3.ZERO, 24.0 * delta)
-		global_position += velocity * delta
+		# The tether keeps its grip on a stunned hull — an unpowered ship is
+		# precisely what it catches, and letting the drag lapse here would make
+		# an EMP the cheapest way out of it. Ticked on this path too so the pull
+		# is spent as it arrives rather than banked and dumped on recovery.
+		global_position += (velocity + _tick_tether(delta)) * delta
 		rotation.y += delta * (1.4 + _emp)      # tumbling, unpowered
 		if _engine_mat:
 			_engine_mat.emission_energy_multiplier = 0.15
@@ -812,7 +874,9 @@ func _physics_process(delta: float) -> void:
 
 	velocity = velocity.move_toward(desired, accel * delta)
 	_recoil = _recoil.move_toward(Vector3.ZERO, 12.0 * delta)
-	var travelled := (velocity + _recoil) * delta
+	# Note the order: the tether is summed in AFTER the brake above, never into
+	# the value the brake operates on. That is what makes it survive an idle ship.
+	var travelled := (velocity + _recoil + _tick_tether(delta)) * delta
 	global_position += travelled
 	# Logged here rather than from a position diff elsewhere: this is the one
 	# place that knows the move was flown rather than teleported, so warps,
@@ -830,6 +894,9 @@ func _physics_process(delta: float) -> void:
 		if normal.length() > 0.0001:
 			normal = normal.normalized()
 			velocity -= normal * minf(velocity.dot(normal), 0.0)
+			# The drag gets the same treatment, or a tether that pins you against
+			# a rock grinds into it for the rest of its window instead of sliding.
+			_tether_vel -= normal * minf(_tether_vel.dot(normal), 0.0)
 		global_position = resolved
 
 	var throttle := clampf(velocity.length() / maxf(max_speed, 0.01), 0.0, 1.0)
@@ -949,6 +1016,7 @@ func dock_to(point: Vector3) -> void:
 	attack_target = null
 	has_move_target = false
 	velocity = Vector3.ZERO
+	clear_tether()
 	if _thruster:
 		_thruster.emitting = false
 	if _dock_tween != null and _dock_tween.is_valid():
@@ -1167,6 +1235,7 @@ func begin_warp_charge() -> void:
 	_emp = 0.0
 	has_move_target = false
 	velocity = Vector3.ZERO
+	clear_tether()
 	invulnerable = true
 	if _engine_mat:
 		var tw := create_tween()
@@ -1208,6 +1277,7 @@ func _emergency_warp() -> void:
 	_emp = 0.0        # a stun must never survive the thing that ends the fight
 	has_move_target = false
 	velocity = Vector3.ZERO
+	clear_tether()
 
 	var parent := get_parent()
 	# CAPTURED HERE, before the tween. The position reset happens in a callback
