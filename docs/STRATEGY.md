@@ -2574,3 +2574,84 @@ new, it self-corrects on any movement, and reaching it requires levelling on som
 *other* seam while parked on a band-4 one. Left alone so the sweep that signed
 off this stage describes the code that shipped; worth a `_locked_last` companion
 next time this file is open.
+
+## 37. The manual, in the game rather than beside it
+
+There is an illustrated web version of the pilot's manual, and it is the better
+artefact to read — but it is a private page on a service, and a game that sends a
+new player to a browser to learn its verbs has not taught them anything. So the
+manual ships **inside the build**: `scripts/manual_screen.gd`, reachable from the
+title screen and from the pause sheet, working offline, in the game's own voice.
+
+### Its own node, not a fourth pause page
+
+The pause menu has a page router and would have taken a `manual` page in about
+ten lines. It is not one, because **the title screen has no page system at all**
+and a new player is precisely the person who needs this before they have ever
+pressed NEW SURVEY. One node with two doors beats two copies that drift.
+
+### It never touches `get_tree().paused`
+
+The load-bearing property, and the reason it is stated in the file's header as
+well as asserted. The manual opens over the title screen (running) and over the
+pause sheet (already stopped). A node that paused on open would freeze the title;
+one that unpaused on close would resume the game out from under the pause menu
+that opened it. Whoever opened it owns the pause state — this node only draws.
+`NEVER TOUCHES PAUSE` checks it from *both* states, because a bug that only
+appears in one of them is exactly what a single-state check misses.
+
+### Escape needed an explicit guard, not a bigger layer number
+
+`_unhandled_input` is delivered in **tree order**. A higher CanvasLayer buys
+drawing priority and no input priority whatsoever, and both the manual and the
+pause menu are `PROCESS_MODE_ALWAYS`, so both are live at once. Without a guard,
+Escape inside the manual fell through to the sheet underneath and resumed the
+game instead of backing out one page. `pause_menu._unhandled_input` now returns
+early while the manual is open, and the manual is first on `CameraRig._cancel`'s
+ladder — it is the only console that can be open on top of another.
+
+### What it says is derived, not retyped
+
+Every number on these pages is read from the data that defines it: the reactor
+from `ModuleDB`, the slot list from `SLOT_NAMES` and `STARTER_FIT`, the band
+names and glyphs from `DeepSpace` and `Palette`, the ore count from
+`CommodityDB`, the tier count from `GameState`. A manual that hardcodes "12
+power" lies the first time somebody retunes `REACTOR_TIERS`, and a lying manual
+is worse than no manual.
+
+`THE NUMBERS ARE DERIVED` is honest about its reach in its own comment: it is a
+**drift detector, not a hardcode detector**. It cannot tell a derived 12 from a
+typed 12 today — both render the same glyphs — but the day the data moves, a
+typed number stops agreeing and it goes red. That is the failure that costs a
+player something.
+
+`THE LEGEND FOLLOWS THE PALETTE` is the one that proves a derivation outright,
+because colour-vision mode is the single input here that *can* change at runtime:
+flip it, and all five band swatches must recolour. It matters on its own terms
+too — a player on a colour-vision mode sees a recoloured band on the HUD, and a
+manual still printing the default palette teaches them the wrong colour for the
+thing in front of them.
+
+### The assertion that was toothless, and the bug it found once it wasn't
+
+`THE CLAMP HOLDS` was first written the obvious way, `panel <= viewport` — which
+is exactly the shape §36 records `SHEET FITS` being structurally incapable of
+failing in, since the clamp guarantees the value being measured. Here it was
+worse: with `_clamp_height()` deleted outright the sheet **collapsed to 32 rows**
+and the check still passed, because a collapsed sheet fits a viewport
+beautifully. It could not fail in either direction.
+
+Rewritten to state what the clamp is *for* — every page's scroll viewport must be
+exactly `min(content, room)`, so too tall fails and so does collapsed — it went
+red immediately on real code, and the bug it found was real:
+
+**`queue_free()` is deferred, so `_refresh()` was measuring two pages at once.**
+The outgoing page's children were still parented to `_body` while the incoming
+page's were being added, so `get_combined_minimum_size()` summed both and sized
+the sheet for a page that no longer existed — the Deep page clamped to 456 rows
+against a true 435. The fix is `remove_child()` paired with `queue_free()`.
+
+"`queue_free`d children still appear in `get_children()` that same frame" was
+already written down in this repo's harness notes. This is that trap in ordinary
+UI code rather than in a test, and it was found by refusing to ship a second
+assertion shaped like the one §36 had just finished complaining about.

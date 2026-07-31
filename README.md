@@ -75,7 +75,7 @@ first:
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --import
 ```
 
-Current baseline: **377 PASS / 0 FAIL / 0 script errors** across 48 runs, save
+Current baseline: **383 PASS / 0 FAIL / 0 script errors** across 49 runs, save
 format **v14** — the 268 that shipped, plus `PYXIS_FEELTEST` (13),
 `PYXIS_UITEST` (14), `PYXIS_GSATEST` (17), `PYXIS_ACCESSTEST` (11),
 `PYXIS_MINETEST` (25), `PYXIS_ENVTEST` (9), `PYXIS_STREAMTEST` (6), two more in
@@ -96,6 +96,16 @@ is fed by cuts and never by sales, that no tier buys credits, that a core sample
 can never out-yield a cut, and the two access tiers), and three in
 `SAVETEST=migrate13` (a v13 save arrives unmined, `seams_cut` survives a round
 trip, and the validator rejects a hand-edited key).
+
+`PYXIS_MANUALTEST` (6) covers the in-game pilot's manual: that every contents
+entry opens a real page, that opening and closing it never moves the pause state
+from either a running or a stopped tree, that CANCEL backs out one step rather
+than resuming the game underneath, that its numbers still agree with the data
+they came from, that its band swatches recolour with the colour-vision modes, and
+that the sheet's scroll viewport is exactly `min(content, room)` on every page.
+That last one is deliberately **not** written as "the panel fits the screen" —
+see STRATEGY §37 for why that shape cannot fail, and for the deferred-`queue_free`
+bug that rewriting it uncovered.
 
 Harness state is **pinned**: `Main._ready()` calls `reset_to_starter()` whenever
 any name in `HARNESS_VARS` is set. Before that, every assertion was measured

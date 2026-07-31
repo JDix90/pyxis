@@ -161,6 +161,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	# place — handling it in both places would close a console and pause at once.
 	if not is_open:
 		return
+	# THE MANUAL OWNS ESCAPE WHILE IT IS UP. _unhandled_input is delivered in
+	# TREE order, not CanvasLayer order, so a higher `layer` buys drawing on top
+	# and nothing else -- without this guard, Escape inside the manual would fall
+	# through to the sheet underneath and resume the game instead of backing out
+	# one page. Both nodes are PROCESS_MODE_ALWAYS, so both are live here.
+	var manual := get_tree().get_first_node_in_group("manual_screen")
+	if manual != null and bool(manual.get("is_open")):
+		return
 	# Ahead of the cancel ladder on purpose: while a row is armed, the very next
 	# key IS the binding. Escape included -- otherwise Escape is the one key that
 	# cannot be bound, and it would close the page instead.
@@ -224,6 +232,13 @@ func _build_root() -> void:
 	_body.add_child(_action("SETTINGS", Palette.AMBER, func() -> void:
 		_page = "settings"
 		_refresh()))
+	# The manual opens OVER this sheet rather than as a page inside it, and the
+	# pause state is deliberately left alone: ManualScreen never touches
+	# get_tree().paused, so closing it returns here with the game still stopped.
+	_body.add_child(_action("PILOT'S MANUAL", Palette.AMBER, func() -> void:
+		var m := get_tree().get_first_node_in_group("manual_screen")
+		if m != null:
+			m.open()))
 
 	# The way out of a boss fight. It lives here because the pause menu is the
 	# one console reachable mid-encounter — the refit and chart buttons are

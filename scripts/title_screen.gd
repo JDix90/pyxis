@@ -5,6 +5,10 @@ extends CanvasLayer
 
 signal new_game_pressed
 signal continue_pressed
+# Deliberately NOT routed through _choose(): that fades the title out and hands
+# control to the game. The manual opens on top and the title stays exactly where
+# it was, because reading it is not a decision to start playing.
+signal manual_pressed
 
 const FADE_TIME := 0.5
 
@@ -148,6 +152,10 @@ func _build() -> void:
 	var new_button := _make_button("NEW SURVEY", Palette.AMBER)
 	new_button.pressed.connect(func() -> void: _choose(new_game_pressed))
 	_buttons.add_child(new_button)
+
+	var manual_button := _make_button("PILOT'S MANUAL", Palette.TEAL)
+	manual_button.pressed.connect(func() -> void: manual_pressed.emit())
+	_buttons.add_child(manual_button)
 
 	_mute_button = _make_button("AUDIO ON", Palette.TEAL)
 	_mute_button.pressed.connect(_toggle_mute)
