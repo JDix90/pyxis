@@ -19,7 +19,7 @@ static func build(def: Dictionary, container: Node3D, opts := {}) -> void:
 	_build_bodies(def, container)
 	_build_asteroids(def, container, String(opts.get("system_id", "")))
 	_build_derelict(def, container)
-	_build_apex(def, container)
+	_build_apex(def, container, String(opts.get("system_id", "")))
 	_build_port(def, container)
 	_build_deep_space(def, container, String(opts.get("system_id", "")))
 	# Attract mode and the guided first run want the place without the ambush.
@@ -335,7 +335,7 @@ static func _build_derelict(def: Dictionary, container: Node3D) -> void:
 	Obstacles.add(d.position + fwd * 2.6, 1.9)
 
 
-static func _build_apex(def: Dictionary, container: Node3D) -> void:
+static func _build_apex(def: Dictionary, container: Node3D, system_id := "") -> void:
 	# The apex engine only exists once this system's derelict has been breached:
 	# the breach is the aftershock that wakes it.
 	var cfg: Dictionary = def.get("apex", {})
@@ -350,7 +350,11 @@ static func _build_apex(def: Dictionary, container: Node3D) -> void:
 	boss.boss_name = String(cfg.get("name", "THE GNOMON"))
 	boss.attack_kind = String(cfg.get("attack", "shadow_lance"))
 	container.add_child(boss)
-	boss.position = cfg.get("pos", Vector3(6, 0, -18))
+	# v15. OUT IN THE DEEP, at a place this run picked. The engine used to sit at
+	# an authored point ~60% of the way to the chart edge, in plain sight on the
+	# radar, gating nothing. Now it hides, and finding it is the game.
+	boss.position = SystemDB.lair_pos(system_id, GameState.run_seed) \
+		if system_id != "" else cfg.get("pos", Vector3(6, 0, -18))
 	# Registered here, after positioning: inside the node's own _ready the
 	# position is still the origin.
 	Obstacles.add(boss.position, ApexBoss.HUB_RADIUS * 0.75)

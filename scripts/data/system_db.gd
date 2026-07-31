@@ -56,8 +56,14 @@ const SYSTEMS := {
 			{"pos": Vector3(8, -3, 29), "scale": Vector3(2.2, 2, 2.6)},
 		],
 		"derelict": {"pos": Vector3(-9, 0, -18), "rot_y": 25.0, "loot": 70, "crack_time": 1.8},
-		# The apex wakes only after this system's derelict has been breached.
-		"apex": {"pos": Vector3(10, 0, -22), "difficulty": 1.0, "loot": 90, "bonus": 15000,
+		# v15. THE LAIR. The engine no longer sits at an authored point inside the
+		# charted volume -- it hides out in the expanse, at a bearing and depth
+		# derived from the run salt (SystemDB.lair_pos). `depth` is the band it
+		# hides in, measured past this system's chart edge, and it is the whole
+		# difficulty curve of the hunt: the Drift for the first one, so a pilot
+		# with the tutorial still fresh can brute-force it if the hints run dry.
+		"apex": {"lair": {"depth": [260.0, 340.0]},
+			"difficulty": 1.0, "loot": 90, "bonus": 15000,
 			# The sundial's blade. Its shadow lance locks a firing line where you
 			# were standing and fires down it a beat later — the starting boss
 			# teaches the series' one rule: standing still is what kills you.
@@ -170,7 +176,9 @@ const SYSTEMS := {
 			{"pos": Vector3(-34, -6, -6), "scale": Vector3(4, 3, 4)},
 		],
 		"derelict": {"pos": Vector3(14, 0, -21), "rot_y": -40.0, "loot": 95, "crack_time": 2.1},
-		"apex": {"pos": Vector3(-15, 0, -25), "difficulty": 1.45, "loot": 120, "bonus": 22000,
+		# THE REACHES. Past where the beacons reliably answer — a hunt you fit for.
+		"apex": {"lair": {"depth": [620.0, 780.0]},
+			"difficulty": 1.45, "loot": 120, "bonus": 22000,
 			# The ringed instrument for the ringed system. Flare mortars lob onto
 			# your position under a ground-ring telegraph — area denial where the
 			# Gnomon was a line, so the dodge you learned needs re-learning.
@@ -256,7 +264,9 @@ const SYSTEMS := {
 			{"pos": Vector3(-14, -5, 26), "scale": Vector3(5, 4, 4)},
 		],
 		"derelict": {"pos": Vector3(-6, 0, -25), "rot_y": 70.0, "loot": 130, "crack_time": 2.4},
-		"apex": {"pos": Vector3(13, 0, -27), "difficulty": 2.0, "loot": 160, "bonus": 32000,
+		# THE QUIET. No colour left, nothing transmitting, and the last engine.
+		"apex": {"lair": {"depth": [1150.0, 1450.0]},
+			"difficulty": 2.0, "loot": 160, "bonus": 32000,
 			# The anchorage's anchor. The graviton tether deals no damage at all:
 			# it drags you toward the hub and the sweep arm, so the final boss
 			# weaponizes the positioning the other two only pressured.
@@ -379,6 +389,39 @@ static func port_def_by_id(port_id: String) -> Dictionary:
 			if String((p as Dictionary)["id"]) == port_id:
 				return p
 	return {}
+
+
+static func lair_pos(id: String, run_seed: int) -> Vector3:
+	# WHERE THE ENGINE HIDES. One pure function, called by the builder, by the
+	# intel channels, by the dressing and by every harness -- because the moment
+	# two places derive this independently they will disagree, and a hunt whose
+	# hints point somewhere the boss is not is worse than no hints at all.
+	#
+	# Salted on its OWN stream. It must never draw from the shared generator the
+	# expanse rolls from: that sequence is linear, and a draw taken from it here
+	# would move every rock, hulk, nest and station in the game.
+	#
+	# Depth is measured PAST the chart edge, so a bigger system pushes its own
+	# lair out with it -- the same rule the bands already follow.
+	var s := get_system(id)
+	var lair: Dictionary = (s.get("apex", {}) as Dictionary).get("lair", {})
+	if lair.is_empty():
+		return Vector3.ZERO
+	var band: Array = lair.get("depth", [200.0, 300.0])
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("%s|lair|%d" % [id, run_seed])
+	var bearing := rng.randf_range(0.0, TAU)
+	var depth := rng.randf_range(float(band[0]), float(band[1]))
+	var radius := float(s.get("bounds", 40.0)) + depth
+	return Vector3(cos(bearing) * radius, 0.0, sin(bearing) * radius)
+
+
+static func lair_depth(id: String, run_seed: int) -> float:
+	# The lair's depth past the chart edge — what a bearing hint quotes and what
+	# the band name is derived from. Recomputed rather than stored, so it can
+	# never disagree with lair_pos.
+	var p := lair_pos(id, run_seed)
+	return maxf(p.length() - float(get_system(id).get("bounds", 40.0)), 0.0)
 
 
 static func unlock_hint(id: String) -> String:

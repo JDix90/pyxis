@@ -63,6 +63,22 @@ const HUB_RADIUS := 2.2
 # Every damaging position is inside SweepArm.SWEEP_RADIUS by design.
 const CORE_RANGE := 7.0
 
+# v15. THE HUNT'S THREE RANGES. They live on the engine rather than on Main
+# because they are properties of the thing itself -- how close before it notices
+# you, how far before it stops caring, how close before your instruments admit it
+# is there. Main reads the first two, the radar reads the third; a constant on
+# Main would be invisible to hud.gd, which has no way to name that script.
+#
+# Ordered WAKE < DETECT < LEASH, and the ordering is the design:
+#   60  the engine wakes. Arriving is deliberate.
+#   90  the radar finally marks it. You are already committed by then.
+#  120  the fight ends. Leaving is deliberate too.
+# The gap between wake and leash is what stops the encounter flickering on and
+# off while a ship drifts at the edge of it.
+const WAKE_RANGE := 60.0
+const DETECT_RANGE := 90.0
+const LEASH_RANGE := 120.0
+
 # Per phase: [core_hp, sweep_deg, blades, probe_count, survey_window]
 # Phase HP is sized so that even the highest-DPS fit in the catalog (dual Lance
 # Mk II, ~214 dps) cannot burst a phase inside a single SURVEY window. If it

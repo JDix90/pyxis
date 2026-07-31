@@ -154,6 +154,17 @@ class RadarLayer:
 				var world: Vector3 = n.global_position
 				if n.has_method("pick_anchor"):
 					world = n.pick_anchor()
+				# v15. THE ENGINE IS NOT ON THE MAP UNTIL YOU ARE ON TOP OF IT.
+				# Every other marker earns its place by being a thing you already
+				# know is there. The apex used to be handed over free -- top tier,
+				# never dropped by the 12-marker cap, alpha floored at 0.3 so it
+				# rendered at ANY distance -- which was harmless when it sat in
+				# plain sight inside the charted volume and is fatal now: a
+				# permanent red arrow pointing at the lair would answer the hunt
+				# before the first hint was ever bought.
+				if String(spec[0]) == "apex" \
+						and player.global_position.distance_to(world) > ApexBoss.DETECT_RANGE:
+					continue
 				var screen := _project(cam, world, centre, rect)
 				if inset.grow(-OFFSCREEN_PAD + EDGE_MARGIN).has_point(screen):
 					continue     # on screen: the player can already see it

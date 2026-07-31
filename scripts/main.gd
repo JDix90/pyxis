@@ -329,10 +329,17 @@ func _ready() -> void:
 			var jam_req := String(SystemDB.get_system(id).get("unlocked_by", ""))
 			var engine := String((SystemDB.get_system(jam_req).get("apex", {}) as Dictionary)
 				.get("name", "THE ENGINE"))
+			# The FREE first fix. Every other hint in this hunt is earned or
+			# bought (stage 3), but the opening one is given: a coarse band and
+			# quadrant, no bearing, no distance. It is the difference between a
+			# hunt and a needle in an infinite haystack, and it is deliberately
+			# too vague to fly straight to -- a Drift quadrant is still tens of
+			# thousands of square units of nothing.
 			hud.show_broadcast("GSA RELAY — LANE OBSTRUCTED",
-				"%s is charted and unreachable. %s is transmitting across the lane. "
+				"%s is charted and unreachable. %s is transmitting across the lane "
 				% [SystemDB.display_name(id), engine]
-				+ "Silence it and the way is yours.", Palette.THREAT)
+				+ "from %s, bearing %s. Silence it and the way is yours."
+				% [_lair_band_name(jam_req), _lair_quadrant(jam_req)], Palette.THREAT)
 	)
 
 	tutorial = Tutorial.new()
@@ -1162,10 +1169,24 @@ func _process(delta: float) -> void:
 	# Rather than a new rule, this reuses the one that already exists: crossing
 	# the chart edge mid-encounter IS disengaging, and costs exactly what BREAK
 	# OFF costs. The geometry and the rules now agree.
-	if boss_active and depth > 0.0:
-		disengage_apex(false)
-		if hud:
-			hud.show_toast("BROKE OFF — LEFT CHARTED SPACE", Palette.AMBER)
+	# v15. THE LEASH REPLACED THE CHART EDGE. Crossing out of charted space used
+	# to be the break-off, because the fight could only ever happen inside it.
+	# The fight now happens out in the deep, where that line means nothing — so
+	# the rule becomes what it was always standing in for: RUN FAR ENOUGH FROM
+	# THE ENGINE AND THE FIGHT IS OVER.
+	#
+	# And breaking off no longer sends you home. You are left at depth with a
+	# reset engine and a long way to go, because the trip home from a failed hunt
+	# is the game. Dying still warps you out — that is what makes dying the
+	# expensive exit rather than the convenient one.
+	if boss_active:
+		var live_boss := _find_apex()
+		var player_node: Node3D = get_tree().get_first_node_in_group("player")
+		if live_boss != null and player_node != null \
+				and player_node.global_position.distance_to(live_boss.global_position) > ApexBoss.LEASH_RANGE:
+			disengage_apex(false)
+			if hud:
+				hud.show_toast("BROKE OFF — LEFT THE LAIR", Palette.AMBER)
 
 	# Swarm waves keep a live target for whatever fit the player is testing.
 	# They pause during a boss fight (the engine supplies its own adds) and
@@ -1779,6 +1800,27 @@ func undock() -> void:
 
 # --- apex encounter ---------------------------------------------------------
 
+func _lair_band_name(sys_id: String) -> String:
+	# Which band the engine hides in, named the way the beacons name it.
+	var depth := SystemDB.lair_depth(sys_id, GameState.run_seed)
+	return DeepSpace.BAND_NAMES[DeepSpace.band_of(depth)]
+
+
+func _lair_quadrant(sys_id: String) -> String:
+	# One of four compass sectors -- COARSE on purpose. A quadrant of the Drift is
+	# still an enormous amount of nothing to search; this narrows the hunt from
+	# "somewhere out there" to "that way", which is all the free hint should buy.
+	var p := SystemDB.lair_pos(sys_id, GameState.run_seed)
+	var deg := fposmod(rad_to_deg(atan2(p.z, p.x)), 360.0)
+	if deg < 45.0 or deg >= 315.0:
+		return "EAST"
+	if deg < 135.0:
+		return "SOUTH"
+	if deg < 225.0:
+		return "WEST"
+	return "NORTH"
+
+
 func _find_apex() -> ApexBoss:
 	var nodes := get_tree().get_nodes_in_group("apex")
 	if nodes.is_empty():
@@ -1796,13 +1838,22 @@ func _wake_apex() -> void:
 	var boss := _find_apex()
 	if boss == null or boss_active:
 		return
-	# Not while the player is outside the charted volume. The engine sits at an
-	# authored position near the origin, so waking it while the ship is four
-	# hundred units out would lock every console for a fight that is not visible,
-	# not reachable and not started — and with the leave-the-volume rule below,
-	# it would wake and disengage on a loop. It waits until there is someone to
-	# wake for.
-	if deep_depth() > 0.0:
+	# v15. WAKE FOR WHOEVER IS ACTUALLY THERE.
+	#
+	# This used to refuse while the player was outside the charted volume, and
+	# the reasoning was sound for the world it was written in: the engine sat at
+	# an authored point near the origin, so waking it from four hundred units out
+	# locked every console for a fight that was not visible, not reachable and
+	# not started. With the leave-the-volume rule below, it would wake and
+	# disengage on a loop.
+	#
+	# The engine is now IN the deep, so depth is exactly the wrong question — the
+	# old rule would refuse to wake it anywhere it can now be found. The question
+	# that always meant something is proximity: is the hunter here yet. The timer
+	# keeps its shape and becomes that poll.
+	var hunter: Node3D = get_tree().get_first_node_in_group("player")
+	if hunter == null \
+			or hunter.global_position.distance_to(boss.global_position) > ApexBoss.WAKE_RANGE:
 		_apex_wake_timer = 1.0     # check again shortly
 		return
 	_set_boss_active(true)
@@ -1836,12 +1887,29 @@ func disengage_apex(return_home := true) -> bool:
 	_set_boss_active(false)
 	_apex_wake_timer = APEX_WAKE_DELAY
 
-	# BREAK OFF from the pause menu pulls you out to safety, which is the whole
-	# point of it. Leaving the charted volume under your own power is the same
-	# decision made with the stick instead of a button, and must NOT teleport you
-	# — you went out there deliberately, possibly hundreds of units, and yanking
-	# you home would undo the thing you were doing.
-	if return_home:
+	# v15. BREAKING OFF NO LONGER TELEPORTS YOU HOME, and removing that is an
+	# anti-exploit fix rather than a difficulty preference.
+	#
+	# The old behaviour was right for a fight that happened near the origin: BREAK
+	# OFF pulled you out to safety, which was the whole point of the button. But
+	# the engine now hides out in the Quiet, and a free instant trip home from
+	# fourteen hundred units out — with a full hold, on a button, ignoring the
+	# raid taper and every band between you and the chart — would be the single
+	# best way to move cargo in the game. Fly out heavy, tap the boss, break off,
+	# arrive home. The whole "survive the trip back" loop this horizon is built to
+	# centre would have had a bypass shipped alongside it.
+	#
+	# So breaking off ends the FIGHT and nothing else: the engine resets, you keep
+	# your position and your problem. Recall is still the way home (free, and
+	# refused mid-fight — so break off first, then recall), and dying still warps
+	# you out, which is what keeps dying the expensive exit rather than the
+	# convenient one.
+	#
+	# `return_home` is kept in the signature and honoured only in CHARTED space,
+	# which post-v15 no live fight can be in. It exists for the harnesses that
+	# stage a fight at the origin, and for any future encounter that is genuinely
+	# a home-system affair.
+	if return_home and deep_depth() <= 0.0:
 		var player: PlayerShip = get_tree().get_first_node_in_group("player")
 		if player:
 			player.teleport_to(PlayerShip.SPAWN_POINT)
@@ -1852,8 +1920,8 @@ func disengage_apex(return_home := true) -> bool:
 			rig.global_position = Vector3(0, 0, 2)
 		Sfx.play("warp", -4.0)
 		FX.shockwave(self, PlayerShip.SPAWN_POINT, Palette.TEAL, 7.0, 0.8)
-		if hud:
-			hud.show_toast("BROKE OFF — THE ENGINE RESETS", Palette.TEAL)
+	if hud:
+		hud.show_toast("BROKE OFF — THE ENGINE RESETS", Palette.TEAL)
 	return true
 
 
@@ -4387,25 +4455,37 @@ func _run_ship_test() -> void:
 	GameState.equip(ModuleDB.Slot.UTILITY, "")
 	player.invulnerable = true
 	GameState.mark_breached(system_id)
-	_apex_wake_timer = 0.2
-	await get_tree().create_timer(ApexBoss.WAKE_TIME + 1.0).timeout
 	var boss := _find_apex()
-	# Inside CORE_RANGE first: take_damage breaks shots on the survey field from
-	# further out, so damaging it from spawn is a no-op and the reset below would
-	# be asserting against an untouched boss.
+	# v15. FLY TO THE LAIR FIRST. The engine hides hundreds of units out now, and
+	# the wake is a PROXIMITY poll — arming the timer from spawn refuses forever,
+	# which is correct behaviour and made this assertion measure nothing.
+	# Inside CORE_RANGE too: take_damage breaks shots on the survey field from
+	# further out, so damaging it from a distance is a no-op and the reset below
+	# would be asserting against an untouched boss.
 	player.global_position = boss.global_position + Vector3(0, 0, 5.0)
 	await get_tree().physics_frame
+	_apex_wake_timer = 0.2
+	await get_tree().create_timer(ApexBoss.WAKE_TIME + 1.0).timeout
 	boss.take_damage(400.0)
 	await get_tree().process_frame
 	var hp_before := boss.hp_fraction()
 	var engaged := boss_active
 	var broke := disengage_apex()
 	await get_tree().create_timer(0.4).timeout
-	var home := player.global_position.distance_to(PlayerShip.SPAWN_POINT)
-	print("[ship] DISENGAGE engaged=%s broke=%s boss_active=%s hp %.2f -> %.2f, ship %.1fu from spawn -> %s" % [
-		str(engaged), str(broke), str(boss_active), hp_before, boss.hp_fraction(), home,
+	# AND IT MUST LEAVE YOU WHERE YOU STOOD. This used to assert `home < 2.0` --
+	# that breaking off teleported the ship back to spawn. That was right when the
+	# fight happened near the origin and wrong the moment it moved: a free instant
+	# trip home from the Quiet, on a button, with a full hold, would have been the
+	# best cargo route in the game. Breaking off now ends the FIGHT and nothing
+	# else, so this asserts the opposite of what it used to.
+	var from_spawn := player.global_position.distance_to(PlayerShip.SPAWN_POINT)
+	var from_lair := player.global_position.distance_to(boss.global_position)
+	print("[ship] DISENGAGE LEAVES YOU AT THE LAIR engaged=%s broke=%s boss_active=%s hp %.2f -> %.2f, %.1fu from the engine and %.1fu from spawn -> %s" % [
+		str(engaged), str(broke), str(boss_active), hp_before, boss.hp_fraction(),
+		from_lair, from_spawn,
 		"PASS" if engaged and broke and not boss_active
-			and boss.hp_fraction() > hp_before and home < 2.0 else "FAIL"])
+			and boss.hp_fraction() > hp_before
+			and from_lair < ApexBoss.LEASH_RANGE and from_spawn > 100.0 else "FAIL"])
 	print("[ship] DISENGAGE REFUSED outside a fight: %s (must be false) -> %s" % [
 		str(disengage_apex()), "PASS" if not disengage_apex() else "FAIL"])
 
@@ -10874,7 +10954,49 @@ func _run_hunt_test() -> void:
 		str(salt_rolled), "PASS" if loaded and kept and salt_rolled else "FAIL"])
 	GameState.save_path = real_path
 
-	# --- 7. the pinning list is complete -------------------------------------
+	# --- 7. the lairs are where the design says, and they are hidden ---------
+	# The bands ARE the difficulty curve of the hunt, so they are asserted rather
+	# than trusted: the first engine in the Drift so a pilot with the tutorial
+	# fresh can brute-force it, the last in the Quiet so the final one is a
+	# expedition. Also proves the derivation is stable — same salt, same lair,
+	# every call — because a hint that pointed somewhere the boss was not would
+	# be worse than no hint at all.
+	# RE-PIN FIRST. Assertion 6 above loads a pre-v15 fixture, and the loader
+	# rolls a fresh salt for any save that has none — so by the time control
+	# reaches here run_seed is whatever that roll produced, not RUN_SEED_PINNED.
+	# Without this the band checks below read a RANDOM lair each run: they passed
+	# twice at 317u and 337u and would eventually roll one into the Shoals and
+	# fail on perfectly correct code. Stage 4 wrote this lesson down after the
+	# core-sample check inherited a tier; this is the same mistake, caught by
+	# noticing the reported depth move between two runs that should have been
+	# identical.
+	GameState.run_seed = RUN_SEED_PINNED
+	var lair_bad := ""
+	var lair_report := ""
+	# Bands from DeepSpace.BAND_EDGES [0,160,440,1100]: 2=THE DRIFT,
+	# 3=THE REACHES, 4=THE QUIET. Written out because "band 2" and "the Drift"
+	# are the same fact in two vocabularies and this table is where they meet.
+	for spec_v in [["pyx01", 2], ["pyx02", 3], ["pyx03", 4]]:
+		var lsys := String((spec_v as Array)[0])
+		var want_band := int((spec_v as Array)[1])
+		var lp := SystemDB.lair_pos(lsys, GameState.run_seed)
+		var lp2 := SystemDB.lair_pos(lsys, GameState.run_seed)
+		var ld := SystemDB.lair_depth(lsys, GameState.run_seed)
+		var got_band := DeepSpace.band_of(ld)
+		lair_report += "%s %s@%.0fu " % [lsys, DeepSpace.BAND_NAMES[got_band], ld]
+		if lp != lp2:
+			lair_bad = "%s is not stable across calls" % lsys
+		if got_band != want_band:
+			lair_bad = "%s wanted band %d, hides in %d" % [lsys, want_band, got_band]
+		# And it must be OUT there. A lair inside the charted volume would be
+		# visible from the dock, which is the whole thing this horizon undid.
+		if ld <= 0.0:
+			lair_bad = "%s is inside charted space" % lsys
+	print("[hunt] THE LAIRS HIDE DEEP, AND STAY PUT %s(%s) -> %s" % [
+		lair_report, lair_bad if lair_bad != "" else "stable",
+		"PASS" if lair_bad == "" else "FAIL"])
+
+	# --- 8. the pinning list is complete -------------------------------------
 	# THE ASSERTION THIS FILE OWED ITSELF. MINETEST was dispatched, swept, and
 	# absent from HARNESS_VARS from the day it shipped -- so 25 assertions ran
 	# against the developer's savegame rather than pinned state, which is the
