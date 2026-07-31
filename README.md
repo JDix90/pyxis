@@ -77,6 +77,18 @@ first:
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --import
 ```
 
+**Run that after pulling a change that adds a new `class_name`, too** — not just
+on a fresh checkout. The class registry lives in
+`.godot/global_script_class_cache.cfg` and is rebuilt only by an import pass, so
+until one runs the new type does not exist. `main.gd` declares a member of most
+of them, so the failure is not subtle: the project refuses to load at all, with
+one `Could not find type "X"` followed by a cascade of `Cannot infer the type of
+…` from every expression that touched it.
+
+That cascade is the tell. If a pull leaves you with a screenful of parse errors
+naming one unfamiliar type and then a lot of inference failures, this is it —
+`ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
+
 Current baseline: **437 PASS / 0 FAIL / 0 script errors** across 52 runs, save
 format **v16**. `PYXIS_BALANCE`'s `PHASE INTEGRITY` was the last standing FAIL —
 a stale threshold rather than a regression — and was re-derived from a 66-sample
