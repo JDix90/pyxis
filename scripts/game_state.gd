@@ -6,9 +6,13 @@ extends Node
 signal fit_changed(stats: Dictionary)
 signal salvage_changed(total: int)
 signal system_unlocked(id: String)
+# v15. The lane to `id` is now flyable — its jamming engine is dead. Deliberately
+# a second signal rather than a flag on the first: charting and opening happen at
+# different places, for different reasons, and a listener usually wants one.
+signal lane_opened(id: String)
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 14
+const SAVE_VERSION := 15
 const SAVE_DEBOUNCE := 1.0
 
 # v6 defaults. Kept as one dictionary each so a migration only has to merge
@@ -87,6 +91,38 @@ var barks_seen: Array[String] = []
 # v3: systems whose apex engine has been put down at least once (first-kill
 # bonus is one-time). The fight itself is never persisted — it always resets.
 var apex_killed: Array[String] = []
+
+# v15. THE HUNT — progression is now TWO tiers, and this is the second.
+#
+#   breached   -> the next system is CHARTED. It appears on the map, named,
+#                 with its lane jammed by the engine still transmitting.
+#   lanes_open -> the lane is OPEN. Travel is permitted.
+#
+# Before v15 the breach did both and `apex_killed` gated nothing whatsoever —
+# the engine was an optional windfall parked at 60% of the charted radius, in
+# plain sight, and the frontier opened twenty minutes into a run. Splitting the
+# two is what makes the hunt the spine instead of a side errand.
+#
+# Kept SEPARATE from apex_killed rather than derived from it, because the two
+# answer different questions: apex_killed is "has this engine ever paid its
+# first-kill bonus", lanes_open is "may this lane be flown". A save written
+# before v15 has the second without the first (see _load_lanes_open) and must
+# not be charged a bonus it already collected, nor refused a lane it already had.
+var lanes_open: Array[String] = []
+
+# v15. The run's own salt, and the only source of per-playthrough hiding.
+#
+# Everything the hunt conceals derives from this and nothing else, which buys
+# both halves of what a hunt needs: DETERMINISM WITHIN A RUN — fly away and come
+# back and the lair has not moved, so a bearing you were told an hour ago is
+# still true — and a FRESH HUNT ACROSS RUNS, so a second playthrough is not a
+# walk to a remembered coordinate.
+#
+# Rolled exactly once, at reset_to_starter. Never re-rolled mid-run: re-rolling
+# would silently invalidate every hint the player has paid for and flown for.
+# Harnesses PIN it (Main.RUN_SEED_PINNED) — a harness whose world moved on every
+# run would be measuring the dice.
+var run_seed := 0
 
 # v4: the economy.
 var cargo := {}                # good id -> units held
@@ -439,6 +475,14 @@ func reset_to_starter() -> void:
 	reactor_tier = 0
 	current_system = SystemDB.START_SYSTEM
 	breached = []
+	lanes_open = []
+	# A NEW SURVEY is a new frontier. This is the one place the run's salt is
+	# rolled, and it is rolled from the system clock rather than the seeded
+	# global stream — every other roll in this game is deterministic by design,
+	# and this is the single number that must not be.
+	var seed_rng := RandomNumberGenerator.new()
+	seed_rng.randomize()
+	run_seed = seed_rng.randi()
 	contract_state = {}
 	barks_seen = []
 	apex_killed = []
@@ -482,9 +526,24 @@ func set_current_system(id: String) -> void:
 	_queue_save()
 
 
-func is_system_unlocked(id: String) -> bool:
+func is_system_charted(id: String) -> bool:
+	# On the map and named. Breaching the previous system's derelict does this,
+	# exactly as it always has — the tutorial's finale still opens the world.
 	var req := String(SystemDB.get_system(id).get("unlocked_by", ""))
 	return req == "" or breached.has(req)
+
+
+func is_lane_open(id: String) -> bool:
+	# Flyable. Requires the previous system's engine to be dead.
+	var req := String(SystemDB.get_system(id).get("unlocked_by", ""))
+	return req == "" or lanes_open.has(req)
+
+
+func is_system_unlocked(id: String) -> bool:
+	# Kept as the TRAVEL question, which is what every caller of the old name
+	# actually meant, so a missed call site fails closed (refuses a lane) rather
+	# than open (grants one). New code should say which tier it means.
+	return is_lane_open(id)
 
 
 func mark_breached(id: String) -> Array[String]:
@@ -599,7 +658,35 @@ func has_killed_apex(id: String) -> bool:
 	return apex_killed.has(id)
 
 
+func open_lane(id: String) -> Array[String]:
+	# The engine has stopped transmitting. Returns the lanes this newly opened,
+	# the same shape mark_breached returns for charting — the two are halves of
+	# one progression and should read alike.
+	#
+	# DELIBERATELY SEPARATE from mark_apex_killed, and the separation is
+	# load-bearing rather than tidiness. The lane opens when the engine DIES;
+	# the first-kill bonus is paid when its WRECK IS BREACHED, which is a second
+	# trip the player may not survive. Folding them together would mean the
+	# bonus guard (`has_killed_apex`) was already true by the time the wreck was
+	# cracked, and the bonus would never pay at all.
+	#
+	# It also opens on a repeat kill whose bonus is long spent: a player who has
+	# put the engine down twice should never be held behind that door.
+	var newly: Array[String] = []
+	if lanes_open.has(id):
+		return newly
+	lanes_open.append(id)
+	for other in SystemDB.ids():
+		if String(SystemDB.get_system(other).get("unlocked_by", "")) == id:
+			newly.append(other)
+			lane_opened.emit(other)
+	_queue_save()
+	return newly
+
+
 func mark_apex_killed(id: String) -> void:
+	# Records that this system's first-kill bonus has been collected. The LANE is
+	# open_lane's business — see the note there.
 	if apex_killed.has(id):
 		return
 	apex_killed.append(id)
@@ -1412,6 +1499,8 @@ func save_game() -> void:
 		"contract_state": contract_state,
 		"barks_seen": barks_seen,
 		"apex_killed": apex_killed,
+		"lanes_open": lanes_open,
+		"run_seed": run_seed,
 		"cargo": cargo,
 		"played_seconds": played_seconds,
 		"docked_at": docked_at,
@@ -1501,6 +1590,36 @@ func load_game() -> bool:
 	for id in data.get("apex_killed", []):
 		if SystemDB.exists(str(id)):
 			apex_killed.append(str(id))
+
+	# v15. THE GRANDFATHER, and it is the whole reason this stage is safe to ship.
+	#
+	# Before v15 a breach opened the lane. A player who breached PYX-01 last night
+	# could fly to PYX-02 this morning — and a straight `lanes_open = []` default
+	# would take that away, because their save has no such key and their engine is
+	# very much alive. Revoking access a player already had is the one migration
+	# outcome this codebase will not ship.
+	#
+	# So an absent key means "this save predates the split": every system they had
+	# BREACHED is treated as a lane they had OPEN. It costs them nothing and grants
+	# nothing new — it reproduces exactly the reachability the old rule gave them.
+	# A v15+ save always writes the key, so this branch is genuinely only ever
+	# taken once per save file. Asserted by SAVETEST=migrate14.
+	lanes_open = []
+	if data.has("lanes_open"):
+		for id in data.get("lanes_open", []):
+			if SystemDB.exists(str(id)) and not lanes_open.has(str(id)):
+				lanes_open.append(str(id))
+	else:
+		lanes_open = breached.duplicate()
+
+	# 0 means "no run salt yet" — a pre-v15 save, or one written before the field
+	# existed. Roll one rather than leaving every such save sharing seed 0, which
+	# would hide every lair in the same place for every returning player.
+	run_seed = int(data.get("run_seed", 0))
+	if run_seed == 0:
+		var seed_rng := RandomNumberGenerator.new()
+		seed_rng.randomize()
+		run_seed = seed_rng.randi()
 
 	# v4 economy fields; absent in v1-v3 saves, which simply start with an empty
 	# hold, a fresh clock, and a market at rest.
