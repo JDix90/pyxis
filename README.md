@@ -89,8 +89,9 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **446 PASS / 1 FAIL / 0 script errors** across 53 runs, save
-format **v17**.
+Current baseline: **447 PASS / 1 FAIL / 0 script errors** across 53 runs, save
+format **v17**. 448 assertion lines, of which one is the standing HOLDTEST
+failure below and one is a flaky RAIDTEST line that may take a second run.
 
 The 1 FAIL is `HOLDTEST`'s `THE READOUT FOLLOWS THE HOLD`, and it **predates
 this change** — it reproduces identically on `fb03037` with nothing applied,
@@ -104,17 +105,23 @@ cargo against *post-delivery* cargo — two unrelated phases — which is the
 "inherits state from the one above it" shape this file warns about. Drop the two
 contracts first, or assert on `accept`.
 
-**Two further assertions are load-flaky, and it is worth knowing before you
-trust a red sweep.** `DEEPTEST`'s `STARFIELD` and `RAIDTEST`'s `THE HOLD IS NOT
-A SHIELD` failed one full sweep of three on identical code — they were green in
-the first and the third — and both pass repeatedly when run alone. They are
-timing-sensitive rather than
-wrong: `STARFIELD` read `1234.8u` on a loaded machine against `0.6u` idle, so it
-is measuring a starfield that has not been rebuilt yet, and `THE HOLD IS NOT A
-SHIELD`'s `moving+open` leg needs the ship to actually have velocity by the
-frame it samples. Neither is a determinism failure — `WORLD FINGERPRINT` and the
-rest of `DEEPTEST` hold — but on a slower or busier box than the usual one they
-will cost you a sweep. Re-run the tag alone before believing either.
+**Two further assertions are flaky, and it is worth knowing before you trust a
+red sweep.** Neither is a determinism failure — `WORLD FINGERPRINT` holds
+throughout — and neither comes from the changes above: both were reproduced on a
+clean `fb03037` worktree with nothing applied.
+
+`RAIDTEST`'s `THE HOLD IS NOT A SHIELD` is the worse of the two and is **not
+load-related**. On untouched `fb03037`, run alone on an idle machine, it failed
+**1 of 3** runs. It is always the same clause — `moving+open eligible=false` — so
+the `moving` leg is racing the frame it samples on and the ship has no velocity
+yet when eligibility is read. Expect roughly one red sweep in three until it is
+given a frame to accelerate in.
+
+`DEEPTEST`'s `STARFIELD` is milder and does look load-related: green in three
+sweeps of four, and it read `1234.8u` on a busy machine against `0.6u` idle — it
+is measuring a starfield that has not been rebuilt yet.
+
+Re-run the tag alone before believing either.
 
 The most recent one is Reactor Mk IV (STRATEGY §46) — 20 power for 55,000, a
 credit SINK rather than a raise. `MINING COSTS A MOUNT` had to be pinned to
