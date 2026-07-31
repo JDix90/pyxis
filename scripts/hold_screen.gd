@@ -493,6 +493,14 @@ class HoldGrid extends Control:
 	const CELL := 52.0
 	const CELL_SEP := 6.0
 	const COLS_MIN := 6
+	# The absolute floor a cell may never cross, independent of CELL above.
+	# UIKit.button floors its own height at 42 and this matches it, so a cell is
+	# at least as reachable as the smallest button the game ships. Named
+	# separately BECAUSE A FINGER FITS asserts against it rather than against
+	# CELL: a check that only said "cells are at least CELL" would still pass if
+	# someone set CELL to 30, which is a constant agreeing with itself and no
+	# statement at all about a thumb.
+	const TAP_MIN := 42.0
 
 	var _cells: Array = []
 

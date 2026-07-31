@@ -3552,6 +3552,162 @@ func _run_hold_test() -> void:
 		"PASS" if both_fired and readout_spill == want_spill \
 			and readout_dock == want_dock else "FAIL"])
 
+	# --- v16. THE HOLD SCREEN -------------------------------------------------
+	# Everything below drives the real node. A grid asserted from its own
+	# arithmetic would agree with itself while drawing something else.
+	hold_screen.open()
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	# 4e. THE GRID IS THE HOLD. The screen's one promise: cells == capacity,
+	#     filled == used, empty == free, and one glyph per UNIT rather than per
+	#     cell. Checked at four capacities including both ModuleDB floors --
+	#     6 is the clamped minimum and 104 is Cargo Bay Mk II plus a Hauler
+	#     Frame in the two utility slots.
+	var grid_rows := ""
+	var grid_ok := true
+	for cap_probe in [6, 24, 34, 104]:
+		GameState.cargo = {}
+		GameState.stats["cargo_space"] = float(cap_probe)
+		# A mixed hold at every bulk: 1, 2 and 3 space per unit.
+		GameState.load_cargo("isotopes", 2)          # space 1
+		GameState.load_cargo("alloys", 1)            # space 2
+		if cap_probe >= 24:
+			GameState.load_cargo("relics", 1)        # space 3
+		hold_screen._refresh()
+		await get_tree().process_frame
+		var cells: Array = hold_screen.grid_cells()
+		var filled := 0
+		var glyphs := 0
+		var units := 0
+		for c_v in cells:
+			var c: Dictionary = c_v
+			if String(c["good"]) != "":
+				filled += 1
+			if String(c["glyph"]) != "":
+				glyphs += 1
+		for gid3 in GameState.cargo:
+			units += GameState.cargo_count(String(gid3))
+		grid_rows += "%d:%d/%d/%dg " % [cap_probe, cells.size(), filled, glyphs]
+		if cells.size() != GameState.cargo_capacity() \
+				or filled != GameState.cargo_used() \
+				or cells.size() - filled != GameState.cargo_free() \
+				or glyphs != units:
+			grid_ok = false
+	print("[hold] THE GRID IS THE HOLD cap:cells/filled/glyphs %s(cells==capacity, filled==used, one glyph per unit) -> %s" % [
+		grid_rows, "PASS" if grid_ok else "FAIL"])
+
+	# 4f. THE HOLD PACKS IN ORDER. Blocks are contiguous and no empty cell sits
+	#     before a filled one — free space is one run at the end, which is what
+	#     makes "how much room is left" readable at a glance instead of a hunt
+	#     for gaps. Order is family then price descending, so the gravel ends up
+	#     next to the space it could free.
+	GameState.cargo = {}
+	GameState.stats["cargo_space"] = 34.0
+	GameState.load_cargo("ore_ferrite", 2)      # metal, cheap
+	GameState.load_cargo("relics", 2)           # bulk, dear
+	GameState.load_cargo("contraband", 1)       # restricted, last
+	hold_screen._refresh()
+	await get_tree().process_frame
+	var pack: Array = hold_screen.grid_cells()
+	var seen_gap := false
+	var gap_before_fill := false
+	var seq := ""
+	var last_good := ""
+	for p_v in pack:
+		var p: Dictionary = p_v
+		var g := String(p["good"])
+		if g == "":
+			seen_gap = true
+		else:
+			if seen_gap:
+				gap_before_fill = true
+			if g != last_good:
+				seq += CommodityDB.family(g) + " "
+				last_good = g
+	print("[hold] THE HOLD PACKS IN ORDER %s| no gap before a filled cell=%s -> %s" % [
+		seq, str(not gap_before_fill),
+		"PASS" if not gap_before_fill and seq.begins_with("bulk metal") else "FAIL"])
+
+	# 4g. THE CLAMP HOLDS, in the corrected shape rather than SHEET FITS's.
+	#     SHEET FITS measures _panel.size.y, which _clamp_height() guarantees, so
+	#     it cannot fail on content growth — and written as `sheet <= viewport`
+	#     it would pass on a COLLAPSED sheet too, which is worse. This recomputes
+	#     min(content, room) independently and demands equality within a pixel,
+	#     so too tall fails and so does collapsed.
+	var saved_scale: float = UILayout.user_scale
+	UILayout.user_scale = 1.6
+	var clamp_line := ""
+	var clamp_ok := true
+	for probe in [Vector2i(1440, 900), Vector2i(1100, 800), Vector2i(720, 1280)]:
+		get_window().size = probe
+		await get_tree().process_frame
+		await get_tree().process_frame
+		for cap2 in [6, 104]:
+			GameState.cargo = {}
+			GameState.stats["cargo_space"] = float(cap2)
+			GameState.load_cargo("alloys", 2)
+			hold_screen._refresh()
+			await get_tree().process_frame
+			var want := minf(hold_screen.grid_content_height(), hold_screen.room_for_grid())
+			var got := hold_screen.scroll_viewport_height()
+			if absf(got - want) > 1.0 or got <= 0.0:
+				clamp_ok = false
+				clamp_line += "%dx%d@%d want %.0f got %.0f; " % [probe.x, probe.y, cap2, want, got]
+	print("[hold] THE CLAMP HOLDS scroll viewport == min(content, room) at 3 windows x 2 capacities, 1.6 scale%s -> %s" % [
+		"" if clamp_ok else " MISMATCH " + clamp_line, "PASS" if clamp_ok else "FAIL"])
+
+	# 4h. A FINGER FITS. GENUINELY NEW COVERAGE: nothing in this project asserts
+	#     a tap target today. UIKit.button floors height at 42 and RoundButton is
+	#     80x80, but both are conventions no line has ever checked — and
+	#     port_panel already ships 32x32 swatches, so the convention is not even
+	#     held in practice. A slot grid is exactly where an unreachable cell
+	#     slips through.
+	#
+	#     THE EXPECTATION IS DERIVED FROM THE LAID-OUT CONTAINER, not from the
+	#     screen's own arithmetic. Asserting the grid's constant against the
+	#     grid's constant is the SHEET FITS trap in another costume: it would
+	#     agree with itself while the container squeezed the cells to nothing.
+	#     Recomputing from _grid.size.x means this fails both if the layout
+	#     starves the grid and if the grid's maths drifts from the box it is in.
+	var worst_cell := 9999.0
+	var worst_where := ""
+	var finger_ok := true
+	for probe2 in [Vector2i(720, 1280), Vector2i(414, 736), Vector2i(1440, 900)]:
+		for uscale in [0.7, 1.0, 1.6]:
+			UILayout.user_scale = uscale
+			get_window().size = probe2
+			await get_tree().process_frame
+			await get_tree().process_frame
+			for cap3 in [6, 24, 104]:
+				GameState.cargo = {}
+				GameState.stats["cargo_space"] = float(cap3)
+				hold_screen._refresh()
+				await get_tree().process_frame
+				var g := hold_screen._grid
+				var cols := g.columns()
+				var expect := (g.size.x - float(cols - 1) * HoldScreen.HoldGrid.CELL_SEP) / float(cols)
+				var actual := g.cell_size()
+				if absf(expect - actual) > 1.0:
+					finger_ok = false
+					worst_where = "%dx%d@%.1f cap%d ARITHMETIC %.1f vs %.1f" % [
+						probe2.x, probe2.y, uscale, cap3, expect, actual]
+				if actual < worst_cell:
+					worst_cell = actual
+					if actual < HoldScreen.HoldGrid.TAP_MIN:
+						worst_where = "%dx%d@%.1f cap%d" % [probe2.x, probe2.y, uscale, cap3]
+	# Against TAP_MIN, never against CELL. CELL is the grid's own design size and
+	# comparing the grid to it proves only that the grid agrees with itself;
+	# TAP_MIN is the reachability floor, and it is what a thumb cares about.
+	if worst_cell < HoldScreen.HoldGrid.TAP_MIN:
+		finger_ok = false
+	UILayout.user_scale = saved_scale
+	get_window().size = Vector2i(720, 1280)
+	await get_tree().process_frame
+	print("[hold] A FINGER FITS smallest cell %.1f across 3 windows x 3 scales x 3 capacities (tap floor %.0f)%s -> %s" % [
+		worst_cell, HoldScreen.HoldGrid.TAP_MIN,
+		"" if worst_where == "" else "  worst " + worst_where, "PASS" if finger_ok else "FAIL"])
+
 	# 5. READ COMPRESSION is real and now printable: every grade reads into
 	#    something worth more per unit of hold space than the grade itself.
 	var worst := 99.0
