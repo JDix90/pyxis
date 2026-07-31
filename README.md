@@ -116,7 +116,17 @@ frame it samples. Neither is a determinism failure — `WORLD FINGERPRINT` and t
 rest of `DEEPTEST` hold — but on a slower or busier box than the usual one they
 will cost you a sweep. Re-run the tag alone before believing either.
 
-The most recent three are the legibility pass in STRATEGY §45, which made six
+The most recent one is Reactor Mk IV (STRATEGY §46) — 20 power for 55,000, a
+credit SINK rather than a raise. `MINING COSTS A MOUNT` had to be pinned to
+Mk III first: it read `reactor_power(REACTOR_TIERS.size() - 1)` into a variable
+named `mk3`, so a fourth tier silently changed what it measured. Run unpinned
+against Mk IV it prints "the commit draws 16 of **Mk III's 20**", which is the
+stale-name defect stating itself. `THE TOP REACTOR BUYS THE MOUNT BACK` is new
+beside it. `PACINGTEST` re-measured, not reasoned about: `MIDTIER` unmoved at
+2.91 (it is income-only, so a sink cannot touch it) and `CEILING` slacker at
+0.041, the catalog denominator having grown by the new tier's price.
+
+The three before that are the legibility pass in STRATEGY §45, which made six
 live stats visible for the first time — `shield_regen`, `accel`, `magnet_range`,
 `survey_speed`, `chain`, `splash` — plus core abilities, and drew the
 before/after delta on every module row in **both** the refit console and the

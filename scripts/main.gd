@@ -13080,13 +13080,50 @@ func _run_mine_test() -> void:
 		ModuleDB.Slot.DRIVE: "drive_vector_2",
 		ModuleDB.Slot.CORE: "core_aegis",
 	}
-	var mk3 := ModuleDB.reactor_power(ModuleDB.REACTOR_TIERS.size() - 1)
+	# PINNED TO MK III BY INDEX, and the rename is the point. This read
+	# `reactor_power(REACTOR_TIERS.size() - 1)` into a variable called `mk3`,
+	# which is to say it meant "the top tier" while every word around it said
+	# "Mk III" -- the same stale-name defect as _build_apex's comment and §41's
+	# SWEEP_RADIUS table, sitting inside an assertion rather than beside one.
+	# Adding a fourth tier silently changed what the line measured; it did not
+	# lie about it, it just stopped being about Mk III.
+	#
+	# The claim belongs to Mk III specifically, so it is pinned there. What the
+	# top tier does is asserted separately, below.
+	const MK3_TIER := 2
+	var mk3_power := ModuleDB.reactor_power(MK3_TIER)
 	var drawn := ModuleDB.power_draw(commit)
-	var spare := mk3 - drawn
+	var spare := mk3_power - drawn
 	var lance_power := int(ModuleDB.get_module(PACING_MIDTIER)["power"])
 	print("[mine] MINING COSTS A MOUNT 3 mining utilities into %d slots; the commit draws %d of Mk III's %d, leaving %d vs %s's %d -> %s" % [
-		util_slots, drawn, mk3, spare, PACING_MIDTIER, lance_power,
+		util_slots, drawn, mk3_power, spare, PACING_MIDTIER, lance_power,
 		"PASS" if util_slots == 2 and spare < lance_power else "FAIL"])
+
+	# --- 17b. and Mk IV is what buys the mount back --------------------------
+	# The other half of the same trade, and the only reason the tier exists. A
+	# reactor that merely made numbers bigger would be a raise; this one has a
+	# specific thing it undoes, and asserting it here means the day somebody
+	# retunes the tier or the commit, the claim in REACTOR_TIERS' comment goes
+	# red rather than quietly becoming false.
+	#
+	# The SLOT limit is untouched by it: three mining utilities still do not fit
+	# two slots at any tier, which is checked above and is the constraint the
+	# power budget was wrongly blamed for.
+	var top_tier := ModuleDB.REACTOR_TIERS.size() - 1
+	var top_power := ModuleDB.reactor_power(top_tier)
+	var top_spare := top_power - drawn
+	var all_best := ModuleDB.power_draw({
+		ModuleDB.Slot.WEAPON_A: "lance_2",
+		ModuleDB.Slot.WEAPON_B: "torp_2",
+		ModuleDB.Slot.DRIVE: "drive_vector_2",
+		ModuleDB.Slot.UTILITY: "util_scanner_2",
+		ModuleDB.Slot.UTILITY_B: "util_shield_2",
+		ModuleDB.Slot.CORE: "core_aegis",
+	})
+	print("[mine] THE TOP REACTOR BUYS THE MOUNT BACK %s carries the commit's %d with %d spare vs %s's %d; all-best %d still will not fit -> %s" % [
+		String(ModuleDB.REACTOR_TIERS[top_tier]["name"]), drawn, top_spare,
+		PACING_MIDTIER, lance_power, all_best,
+		"PASS" if top_spare >= lance_power and all_best > top_power else "FAIL"])
 
 	# --- 18. and the mast defers the same way --------------------------------
 	# 11's companion, and it lives in THIS harness deliberately: MineableSeam was

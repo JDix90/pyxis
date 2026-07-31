@@ -37,16 +37,36 @@ const SLOT_CATEGORY := {
 
 # Budget curve. Starter fit draws 8, so Mk I leaves room to add a utility and
 # try one weapon swap. The squeeze arrives when you want two heavy mounts, and
-# even Mk III cannot carry a fit of all-best modules — there is always a call
-# to make.
+# not even the top tier carries a fit of all-best modules (27) — there is always
+# a call to make.
 #
 # Phase 2 pricing: the reactor is the single most build-defining purchase in the
 # game, so it should be the thing you save several sessions for, not an early
-# formality. Mk III is deliberately the most expensive line in the catalog.
+# formality. The top tier is deliberately the most expensive line in the catalog.
+#
+# MK IV, and what it is FOR. The budget was measured before it was changed, and
+# the complaint that prompted it — "you cannot run a mining fit and a defensive
+# fit at once" — turned out to be false at Mk III: rig_prospector + rig_bulwark
+# over starter weapons, drive and core draws 16 of 18. What actually blocks that
+# pairing is the TWO UTILITY SLOTS, which MINING COSTS A MOUNT asserts on
+# purpose, and no amount of reactor would move it.
+#
+# So Mk IV does not exist to relieve that. It buys back the one trade the same
+# assertion names: at 18 the prospector commit (16) cannot also carry a lance_1
+# (4), and at 20 it can, exactly. That is the whole product — 55,000 credits to
+# stop giving up your gun to be a prospector — and it is why the step is 2 and
+# not 3. All-best is still 27 and still out of reach.
+#
+# Sold for credits, which makes it a SINK: PACINGTEST's binding MIDTIER clause is
+# EARNED / lance_1's price, an income-only measure with no expenditure term, so a
+# new tier cannot move it. It joins _pacing_catalog_cost's denominator instead
+# and makes the already-slack CEILING ratio slacker. Re-measured, not reasoned
+# about — see the sweep in STRATEGY §46.
 const REACTOR_TIERS := [
 	{"name": "Reactor Mk I", "power": 12, "price": 0},
 	{"name": "Reactor Mk II", "power": 15, "price": 10000},
 	{"name": "Reactor Mk III", "power": 18, "price": 32000},
+	{"name": "Reactor Mk IV", "power": 20, "price": 55000},
 ]
 
 # --- base hull stats, before modules ---------------------------------------

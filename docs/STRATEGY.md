@@ -3815,3 +3815,89 @@ That last one is asserted against the **rendered panel** — walking the built t
 for the text — rather than against `preview_stats`'s return value. The function
 has always returned the right numbers. Not one of them had ever reached a screen,
 and only the rendered tree can tell the difference.
+
+## 46. The power budget, measured before it was changed
+
+The report was "the power budget is too tight", with one concrete example: you
+cannot run a mining fit and a defensive fit at once. The measurement came first,
+and it disagreed.
+
+### What the numbers said
+
+| tier | power | price |
+|---|---|---|
+| Mk I | 12 | 0 |
+| Mk II | 15 | 10,000 |
+| Mk III | 18 | 32,000 |
+
+Six slots: two weapons, a drive, a core, **two** utilities. Starter fit draws 8.
+
+**The player could already buy tiers.** `port_panel._reactor_row` is the first row
+of the outfitter body at every port carrying the service, flat-priced and
+unaffected by port multipliers, and the field console correctly says "AT PORT".
+The upgrade path was neither missing nor broken — which was worth establishing,
+because "the ladder does not exist" and "the ladder is expensive" are very
+different fixes.
+
+**And the example was false at Mk III.** `rig_prospector` + `rig_bulwark` over
+starter weapons, drive and core draws **16 of 18** — it fits, with 2 spare. What
+actually stops a player pairing mining with defence is the **two utility slots**,
+and `MINING COSTS A MOUNT` asserts that limit on purpose. No amount of reactor
+moves it. A tier sold to relieve that complaint would not have relieved it.
+
+Where power genuinely binds at Mk III is narrower: two heavy mounts plus anything
+(dual `torp_2` is 12 before a drive), and two good utilities *plus* two good
+weapons (21–27).
+
+### So Mk IV has one job, and it is the one the assertion already named
+
+`MINING COSTS A MOUNT` says the prospector commit (16) leaves a Mk III without
+room for the `lance_1` (4) the pacing band is denominated in — "a prospector
+gives up the Lance to be a prospector". **Mk IV at 20 buys exactly that back, and
+nothing else.** 55,000 credits to stop giving up your gun. The step is 2 rather
+than 3 for that reason: all-best is 27 and stays out of reach, and the slot limit
+is untouched.
+
+### The stale name that the new tier exposed
+
+`MINING COSTS A MOUNT` computed:
+
+```gdscript
+var mk3 := ModuleDB.reactor_power(ModuleDB.REACTOR_TIERS.size() - 1)
+```
+
+A variable called `mk3`, holding *whatever the top tier happens to be*, inside an
+assertion whose every surrounding word says "Mk III". Adding a fourth tier did not
+make it lie — it made it **stop being about Mk III**, silently. Run against Mk IV
+before the fix, it prints `the commit draws 16 of Mk III's 20`, which is the
+defect saying itself out loud.
+
+This is the third instance of the same class in three sections: `_build_apex`'s
+comment (§44), `sweep_arm.gd`'s radius table (§41), and now a variable name inside
+a live check. The pattern is a name that encodes an assumption and a value that
+does not. Pinned to `MK3_TIER := 2`, with `THE TOP REACTOR BUYS THE MOUNT BACK`
+added beside it so the top tier's claim is asserted rather than assumed.
+
+### The economy, re-measured rather than reasoned about
+
+The house rule is that a new tier sold for credits is a SINK and therefore
+house-legal, and that a price cut is a raise. Both halves were checked rather
+than trusted:
+
+| assertion | before | after |
+|---|---|---|
+| `MIDTIER` (binding) | 2.88–2.93 × `lance_1` | **2.91** |
+| `CEILING` | 0.047 vs 0.15 cap | **0.041** |
+| `ROUTE PARITY` | — | 1.0% vs 20% allowed |
+
+`MIDTIER` is `EARNED / lance_1`'s price — an **income-only** measure with no
+expenditure term — so a sink cannot move it, and did not. `CEILING` divides by
+`_pacing_catalog_cost`, which the new tier's 55,000 joins, so the already-slack
+ratio got slacker: 358,200 → 413,200 in the denominator, and the full catalog
+moved from ~21 to **24 sessions**.
+
+Worth recording for whoever next reaches for this lever: the one number in the
+price table that genuinely endangers `MIDTIER` is `lance_1`'s own 5,800, because
+three assertions are denominated in it. Cutting it to 5,000 would read 3.34
+against a 3.00 ceiling and fail immediately. Every other price — including every
+reactor — is invisible to it.
