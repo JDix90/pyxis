@@ -38,8 +38,7 @@ func _ready() -> void:
 	# size_changed, so connecting from inside it added a fresh pair of lambdas on
 	# every window resize — Godot cannot dedupe distinct lambdas, so after N
 	# resizes one salvage_changed rebuilt the whole module list N+1 times. A
-	# browser window that is dragged about is the worst case, and the cargo
-	# manifest makes each rebuild bigger.
+	# browser window that is dragged about is the worst case.
 	GameState.fit_changed.connect(func(_s: Dictionary) -> void:
 		if is_open:
 			_refresh()
@@ -47,6 +46,13 @@ func _ready() -> void:
 	GameState.salvage_changed.connect(func(_v: int) -> void:
 		if is_open:
 			_refresh()
+	)
+	# Only the HOLD line, never the whole list. Cargo changes while this sheet is
+	# open -- loot vacuumed up, a toll taken -- and the capacity readout has to
+	# follow, but nothing else in a FITTING console depends on what is aboard.
+	GameState.cargo_changed.connect(func() -> void:
+		if is_open:
+			_refresh_hold_line()
 	)
 
 
@@ -195,6 +201,27 @@ func _build_power() -> Control:
 	_power_fill.color = Palette.AMBER
 	_power_fill.anchor_bottom = 1.0
 	_power_track.add_child(_power_fill)
+
+	# WHAT IS LEFT OF THE HOLD IN THIS CONSOLE, and deliberately only this.
+	#
+	# The manifest moved to its own screen, but a capacity line has to stay:
+	# fitting a Cargo Bay is the one action in here that CHANGES how much room
+	# you have, and a trade you cannot see is a trade you cannot weigh.
+	# ModuleDB.summary_lines already prints fitted capacity in the stat row --
+	# this adds USED, which is the half that was missing, and the chevron marks
+	# it as a door rather than a second readout of the same number.
+	_hold_button = Button.new()
+	_hold_button.flat = true
+	_hold_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	UIKit.apply_font(_hold_button, UIKit.SIZE_LABEL)
+	_hold_button.pressed.connect(func() -> void:
+		# One sheet at a time: this console closes as the other opens, rather
+		# than stacking two consoles the escape ladder would then have to unwind.
+		close_panel()
+		var main := get_tree().get_first_node_in_group("main")
+		if main != null and main.hold_screen != null:
+			main.hold_screen.open())
+	box.add_child(_hold_button)
 	return box
 
 
@@ -264,13 +291,13 @@ func _select_slot(slot: int) -> void:
 # or on a slot change, so arming a jettison, closing the sheet and flying for ten
 # minutes left the confirm live: the next tap on that row dumped cargo with no
 # warning at all. A brake that stays pressed is not a brake.
+var _hold_button: Button
 var _pending_jettison := ""
 var _jettison_armed := false
 # The cargo manifest's own arming, deliberately SEPARATE from the module flow's.
 # Good ids and module ids happen to be disjoint strings today, so one shared
 # variable would work — until the day they are not, and then a primed module
 # swap would be fired by a tap on a cargo row.
-var _pending_cargo := ""
 
 
 func _on_reactor_upgrade() -> void:
@@ -344,7 +371,6 @@ func _confirm_jettison(id: String) -> bool:
 func _disarm() -> void:
 	_pending_jettison = ""
 	_jettison_armed = false
-	_pending_cargo = ""
 
 
 func _reject() -> void:
@@ -363,7 +389,18 @@ func FX_flash_power(color: Color) -> void:
 
 # --- refresh ----------------------------------------------------------------
 
+func _refresh_hold_line() -> void:
+	if _hold_button == null:
+		return
+	var used := GameState.cargo_used()
+	var cap := GameState.cargo_capacity()
+	_hold_button.text = "HOLD  %d / %d  ›" % [used, cap]
+	_hold_button.add_theme_color_override("font_color",
+		Palette.THREAT if used >= cap else Palette.GOLD)
+
+
 func _refresh() -> void:
+	_refresh_hold_line()
 	_salvage_label.text = "%s SALVAGE" % _comma(GameState.salvage)
 
 	var draw := GameState.power_draw()
@@ -389,263 +426,10 @@ func _chip_text(slot: int) -> String:
 	return "%s\n%s" % [ModuleDB.SLOT_NAMES[slot], String(equipped).to_upper()]
 
 
-func _docked_bay_key() -> String:
-	# The bay of the station we are clamped to, or "" if we are flying or the
-	# station keeps no store.
-	var main := get_tree().get_first_node_in_group("main")
-	if main == null or main.docked_port == null:
-		return ""
-	var port: Port = main.docked_port
-	var pdef: Dictionary = port.def if not port.def.is_empty() \
-		else SystemDB.port_def_by_id(port.port_id)
-	if not GameState.port_has_bay(pdef):
-		return ""
-	return port.bay_key if port.bay_key != "" else port.port_id
-
-
-func _build_stash_exit() -> void:
-	# The honest way out of the hold guard, offered only while docked at a bay.
-	#
-	# This does NOT weaken 16. Jettison pays nothing because "dumping cargo to
-	# dodge a trip to a port should not also be profitable" — and stashing IS the
-	# trip to a port. You flew here. The guard's cost is preserved exactly; only
-	# the destruction is removed.
-	#
-	# Its own control rather than the second tap: "tap again" already means
-	# jettison, and overloading a gesture designed to slow down a destructive
-	# action makes the destructive action ambiguous. A lossless one should not
-	# need the brake at all.
-	var key := _docked_bay_key()
-	if key == "":
-		return
-	var equipped_id: String = GameState.fit.get(_slot, "")
-	var over := GameState.cargo_overflow(_slot, equipped_id)
-	if over <= 0:
-		return
-	if not GameState.stash_would_fit(_slot, equipped_id, key):
-		return
-
-	var main := get_tree().get_first_node_in_group("main")
-	var where: String = main.docked_port.port_name if main and main.docked_port else "THE BAY"
-	var b := Button.new()
-	b.text = "HOLD %d OVER — STASH AT %s" % [over, where]
-	b.custom_minimum_size = Vector2(0, 34)
-	b.add_theme_font_size_override("font_size", 11)
-	b.add_theme_color_override("font_color", Palette.GOLD)
-	b.pressed.connect(func() -> void: _do_stash(key, equipped_id))
-	_module_list.add_child(b)
-	_module_list.add_child(HSeparator.new())
-
-
-func _do_stash(key: String, id: String) -> void:
-	var moved := GameState.stash_to_fit(_slot, id, key)
-	if moved <= 0:
-		_reject()
-		_refresh()
-		return
-	Sfx.play("equip", -7.0, 0.9)
-	var hud := get_tree().get_first_node_in_group("hud")
-	if hud:
-		hud.show_toast("STASHED %d UNIT%s" % [moved, "" if moved == 1 else "S"], Palette.GOLD)
-		hud.refresh_cargo()
-	_refresh()
-
-
-func _build_pilot_strip() -> void:
-	# The same rule the pause menu and the lab render, beside the field-read
-	# buttons it explains.
-	var line := Label.new()
-	line.text = "%s\n%s\n%s" % [GameState.archeology_line(),
-		GameState.smuggling_line(), GameState.mining_line()]
-	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	line.add_theme_font_size_override("font_size", 10)
-	line.add_theme_color_override("font_color", Palette.AMBER_DIM)
-	_module_list.add_child(line)
-	_module_list.add_child(HSeparator.new())
-
-
-func _build_cargo_manifest() -> void:
-	# THE HOLD, READABLE ANYWHERE. Until now cargo could only be inspected at a
-	# market counter, so a pilot 900 units out with a full hold had no way to see
-	# what was in it, let alone decide what to drop. REFIT is the console that is
-	# open everywhere except a boss fight and a dock, which makes it the one place
-	# this can live.
-	if GameState.cargo.is_empty():
-		return
-
-	var head := Label.new()
-	head.text = "HOLD  %d / %d  ·  %s SALVAGE ABOARD" % [
-		GameState.cargo_used(), GameState.cargo_capacity(),
-		_comma(GameState.hold_value())]
-	head.add_theme_font_size_override("font_size", 12)
-	head.add_theme_color_override("font_color",
-		Palette.THREAT if GameState.cargo_free() <= 0 else Palette.GOLD)
-	_module_list.add_child(head)
-
-	for gid in CommodityDB.ids():
-		var good := String(gid)
-		var held := GameState.cargo_count(good)
-		if held <= 0:
-			continue
-		_module_list.add_child(_cargo_row(good, held))
-	_module_list.add_child(HSeparator.new())
-
-
-func _cargo_row(good: String, held: int) -> Control:
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 1)
-
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	var title := Label.new()
-	title.text = "%s  x%d" % [CommodityDB.display(good).to_upper(), held]
-	title.add_theme_font_size_override("font_size", 12)
-	title.add_theme_color_override("font_color", CommodityDB.color_of(good))
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(title)
-	# Two taps, its own arming — never the module flow's. Good ids and module ids
-	# are disjoint strings today; the day they are not, one shared variable would
-	# let a tap on a cargo row fire a primed module swap.
-	var armed := _pending_cargo == good
-	row.add_child(_mini("DUMP 1" if not armed else "SURE?",
-		func() -> void: _dump(good, 1)))
-	if held > 1:
-		row.add_child(_mini("ALL" if not armed else "SURE?",
-			func() -> void: _dump(good, held)))
-	box.add_child(row)
-
-	# What it is, what it costs you to carry, and what it is worth. The category
-	# line is the half of "goods became categories" that never reached a screen:
-	# every component has known its parent since the salvage wave and no row ever
-	# said so.
-	var detail := "%d SPACE EACH  ·  %s EACH" % [
-		CommodityDB.space_of(good), _comma(CommodityDB.base_price(good))]
-	if CommodityDB.is_component(good):
-		detail = "%s  ·  %s" % [
-			CommodityDB.short_name(CommodityDB.parent_of(good)), detail]
-	var sub := Label.new()
-	sub.text = detail
-	sub.add_theme_font_size_override("font_size", 9)
-	sub.add_theme_color_override("font_color", Palette.AMBER_DIM)
-	box.add_child(sub)
-	return box
-
-
-func _mini(text: String, cb: Callable) -> Button:
-	var b := Button.new()
-	b.text = text
-	b.add_theme_font_size_override("font_size", 10)
-	b.pressed.connect(cb)
-	return b
-
-
-func _dump(good: String, units: int) -> void:
-	if _pending_cargo != good:
-		_pending_cargo = good
-		var hud0 := get_tree().get_first_node_in_group("hud")
-		if hud0:
-			hud0.show_toast("TAP AGAIN TO DUMP %s" % CommodityDB.short_name(good),
-				Palette.THREAT)
-		_refresh()
-		return
-	_pending_cargo = ""
-	# Pays nothing, spawns nothing. Dumping is a cost you chose over flying to a
-	# counter; paying for it would make it the better option, and floating it
-	# would make a raider toll evadable by dumping and re-collecting.
-	var dumped := GameState.jettison(good, units)
-	Sfx.play("hit", -6.0, 0.6)
-	var hud := get_tree().get_first_node_in_group("hud")
-	if hud:
-		hud.show_toast("JETTISONED %d %s" % [dumped, CommodityDB.short_name(good)],
-			Palette.THREAT)
-		hud.refresh_cargo()
-	_refresh()
-
-
-func _build_field_reads() -> void:
-	# Reading salvage in the field. Half of the rule GameState.identify carries:
-	# a lab reads one band further than you can manage on your own, so there is
-	# always a reason to carry something home AND always a reason to raise the
-	# skill. This is the other half — the part you can do at 900 units out with a
-	# hold full of unknowns and no station for a system in any direction.
-	#
-	# It lives in REFIT rather than at a port because it is a hold operation, and
-	# REFIT is the console that manages what is on your ship from anywhere. 12
-	# keeps SERVICES at ports; this is not a service, it is you and a prybar.
-	var rows: Array = []
-	for band in range(DeepSpace.BAND_NAMES.size()):
-		var sid := CommodityDB.salvage_for_band(band)
-		if sid == "" or GameState.cargo_count(sid) <= 0:
-			continue
-		if not GameState.can_read(sid, false):
-			continue
-		rows.append(sid)
-	if rows.is_empty():
-		return
-
-	var head := Label.new()
-	head.text = "READABLE ABOARD — ARCHEOLOGY %d" % GameState.archeology
-	head.add_theme_font_size_override("font_size", 11)
-	head.add_theme_color_override("font_color", Palette.GOLD)
-	_module_list.add_child(head)
-
-	for sid_v in rows:
-		var sid := String(sid_v)
-		var box := VBoxContainer.new()
-		box.add_theme_constant_override("separation", 2)
-		var title := Label.new()
-		title.text = "%s  x%d" % [CommodityDB.display(sid).to_upper(), GameState.cargo_count(sid)]
-		title.add_theme_font_size_override("font_size", 12)
-		title.add_theme_color_override("font_color", CommodityDB.color_of(sid))
-		box.add_child(title)
-		var opts := HFlowContainer.new()
-		opts.add_theme_constant_override("h_separation", 6)
-		for out_v in CommodityDB.reads_as(sid):
-			var out := String(out_v)
-			var b := Button.new()
-			# The value and space delta, printed. Reading compresses a hold
-			# 2.6-3.7x and physically shrinks the deep grades, and until now
-			# nothing said so anywhere — 20 flagged it as deferred and it stayed
-			# deferred. It is the actual answer to "I am 900u out and full".
-			var d_val := CommodityDB.base_price(out) - CommodityDB.base_price(sid)
-			var d_space := CommodityDB.space_of(out) - CommodityDB.space_of(sid)
-			b.text = "%s  %+d%s" % [CommodityDB.short_name(out), d_val,
-				"" if d_space == 0 else ("  %+d SPACE" % d_space)]
-			b.add_theme_font_size_override("font_size", 10)
-			b.pressed.connect(func() -> void: _do_field_read(sid, out))
-			opts.add_child(b)
-		box.add_child(opts)
-		_module_list.add_child(box)
-
-	var rule := HSeparator.new()
-	_module_list.add_child(rule)
-
-
-func _do_field_read(sid: String, out: String) -> void:
-	if not GameState.identify(sid, out, false):
-		_reject()
-		_refresh()
-		return
-	Sfx.play("equip", -8.0, 1.25)
-	var hud := get_tree().get_first_node_in_group("hud")
-	if hud:
-		hud.show_toast("READ AS %s" % CommodityDB.short_name(out), CommodityDB.color_of(out))
-		hud.refresh_cargo()
-		if GameState.last_read_tiered:
-			hud.show_toast("ARCHEOLOGY %d — %s NOW READS IN THE FIELD" % [
-				GameState.archeology, DeepSpace.BAND_NAMES[GameState.archeology]],
-				Palette.GOLD)
-	_refresh()
-
-
 func _rebuild_module_list() -> void:
 	for child in _module_list.get_children():
 		child.queue_free()
 
-	_build_pilot_strip()
-	_build_stash_exit()
-	_build_field_reads()
-	_build_cargo_manifest()
 
 	var equipped_id: String = GameState.fit.get(_slot, "")
 

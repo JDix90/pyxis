@@ -103,6 +103,61 @@ static func band_glyph(index: int) -> String:
 	return BAND_GLYPHS[clampi(index, 0, BAND_GLYPHS.size() - 1)]
 
 
+# --- cargo families (save v16 / the hold screen) -----------------------------
+# The same argument as BAND_GLYPHS above, arrived at from a harder measurement.
+#
+# The bands at least HAD a remapping worth doing: the shipped set scores 0.173
+# under deuteranopia against a 0.20 threshold, and the replacements clear it.
+# The 34 commodity colours cannot be rescued that way. Measured pairwise with
+# ACCESSTEST's own confusion maths, their worst pair is 0.022 IN NORMAL VISION
+# -- an order of magnitude past the bands' worst case -- with 212 of 561 pairs
+# under the threshold, and no seven-colour subset of this game's tokens clears
+# it in all four modes. Twenty-six pairs of goods share family AND bulk AND an
+# indistinguishable colour.
+#
+# So for the hold grid the glyph is not redundancy, it is the PRIMARY channel,
+# and colour is the weaker second. That is also why the grid identifies nothing
+# on its own: a cell says what KIND of thing is there and how much room it eats,
+# and the strip beneath it says which good in words.
+#
+# NONE of these may be a BAND_GLYPHS entry. The manual teaches ▲ as THE DRIFT,
+# and one shape must not mean two things in the same game. Asserted.
+const FAMILY_GLYPHS := {
+	"bulk": "■",         # solid, plain: the five things everyone trades
+	"metal": "▣",        # a filled square with a rim -- ore, refined
+	"mineral": "△",      # unfilled: the other half of what a seam yields
+	"salvage": "○",      # sealed. Unread, unknown, worth something
+	"component": "◎",    # the same circle, opened -- what a read turns it into
+	"chart": "▤",        # a ruled sheet: somebody else's survey
+	"restricted": "▽",   # a hazard sign, pointed the other way from mineral
+}
+
+
+static func family_glyph(family: String) -> String:
+	return String(FAMILY_GLYPHS.get(family, ""))
+
+
+static func family_color(family: String, band := -1) -> Color:
+	# Salvage and charts route through band_color and everything else does not,
+	# and that is not an inconsistency to tidy up. For those two families the
+	# colour MEANS which band the thing came out of, which is exactly the meaning
+	# the vision remaps exist to preserve. The other five wear fixed tokens, the
+	# same way every other surface in the game does.
+	match family:
+		"salvage", "chart":
+			return band_color(band)
+		"metal":
+			return HULL
+		"mineral":
+			return TEAL
+		"component":
+			return GOLD
+		"restricted":
+			return THREAT
+		_:
+			return AMBER
+
+
 # --- ship liveries (save v6) -------------------------------------------------
 # Eight hulls and eight accents, all derived from the tokens above rather than
 # invented, so a painted ship still looks like it belongs in this game. Hulls are

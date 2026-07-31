@@ -287,7 +287,7 @@ func _cancel() -> void:
 	if main:
 		# The manual is first: it is the only one of these that can be open on top
 		# of another, so it has to be the first step off the ladder.
-		for panel in [main.manual_screen, main.port_panel, main.refit_panel, main.chart_panel]:
+		for panel in [main.manual_screen, main.hold_screen, main.port_panel, main.refit_panel, main.chart_panel]:
 			if panel != null and panel.is_open:
 				panel.close_panel()
 				return

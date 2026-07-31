@@ -210,6 +210,7 @@ var chart_panel: ChartPanel
 var port_panel: PortPanel
 var pause_menu: PauseMenu
 var manual_screen: ManualScreen
+var hold_screen: HoldScreen
 var contracts: Contracts
 
 var system_root: Node3D
@@ -299,6 +300,13 @@ func _ready() -> void:
 
 	port_panel = PortPanel.new()
 	add_child(port_panel)
+
+	# The hold's own console. Its z-order is stated by `layer = 4` inside the
+	# class rather than by where this line sits, unlike chart and refit -- both
+	# at layer 2, both openable at once, stacking decided by construction order.
+	hold_screen = HoldScreen.new()
+	add_child(hold_screen)
+	hud.hold_pressed.connect(hold_screen.toggle)
 
 	pause_menu = PauseMenu.new()
 	add_child(pause_menu)
@@ -1239,7 +1247,7 @@ func _spawn_swarm_pack(swarm: Dictionary) -> void:
 
 func console_open() -> bool:
 	# Any full-screen console the player is reading rather than flying behind.
-	for panel in [port_panel, refit_panel, chart_panel]:
+	for panel in [port_panel, refit_panel, chart_panel, hold_screen]:
 		if panel != null and panel.is_open:
 			return true
 	return pause_menu != null and pause_menu.is_open
@@ -1262,7 +1270,12 @@ func console_camping() -> bool:
 
 
 func close_consoles_for_raid() -> void:
-	for panel in [port_panel, refit_panel, chart_panel]:
+	# The hold is in this list for the same reason as the rest -- the klaxon
+	# clears the desk -- but note it may be REOPENED during the standoff, and
+	# must be: pay_toll's own guard exists because the manifest gives the player
+	# a dump button, and jettisoning down to what a toll will accept is a play
+	# the raid was designed around. _raid_active gates the ROLL, not the console.
+	for panel in [port_panel, refit_panel, chart_panel, hold_screen]:
 		if panel != null and panel.is_open:
 			panel.close_panel()
 
@@ -3362,6 +3375,16 @@ func _run_forge_test() -> void:
 	get_tree().quit()
 
 
+func _count_loot_cubes() -> int:
+	# Lifted out of JETTISON SPAWNS NOTHING so the screen-level dump assertion
+	# counts the same way rather than growing a second, subtly different one.
+	var n := 0
+	for c in system_root.get_children():
+		if c is LootCube:
+			n += 1
+	return n
+
+
 # --- hold / manifest / pilot harness ------------------------------------------
 
 func _run_hold_test() -> void:
@@ -3386,10 +3409,7 @@ func _run_hold_test() -> void:
 	#    future improvement, and it would convert a dump into full toll evasion:
 	#    shrink the hold mid-standoff, pay the floor, re-vacuum your own cargo.
 	#    This line makes that change argue with a red assertion first.
-	var cubes := 0
-	for n in system_root.get_children():
-		if n is LootCube:
-			cubes += 1
+	var cubes := _count_loot_cubes()
 	print("[hold] JETTISON SPAWNS NOTHING %d loot cubes after a dump (must be 0) -> %s" % [
 		cubes, "PASS" if cubes == 0 else "FAIL"])
 
@@ -3417,6 +3437,401 @@ func _run_hold_test() -> void:
 			orphan = g
 	print("[hold] CATEGORY every one of %d components names a real parent -> %s %s" % [
 		comps, "PASS" if orphan == "" and comps > 0 else "FAIL", orphan])
+
+	# 4b. EVERY GOOD HAS A FAMILY. The hold screen draws a glyph per family, so a
+	#     good that classifies into nothing draws as a blank cell — a hole in the
+	#     picture with no way to tell what is sitting in it.
+	#
+	#     The ORE CHECK is the load-bearing half. `family()` tests is_ore FIRST
+	#     because all eight ores carry `trade_only_at` (their industrial buyers),
+	#     and a version that tested the allowlist first would file every ore
+	#     beside the contraband — a partition that is still total, still 34, and
+	#     completely wrong. Counting alone cannot see that; naming the ores can.
+	var fam_counts := {}
+	var unfiled := ""
+	for gid2 in CommodityDB.ids():
+		var g2 := String(gid2)
+		var fam := CommodityDB.family(g2)
+		if fam == "" or not Palette.FAMILY_GLYPHS.has(fam):
+			unfiled = g2
+		fam_counts[fam] = int(fam_counts.get(fam, 0)) + 1
+	var ore_misfiled := ""
+	for oid in CommodityDB.ore_ids():
+		var of := CommodityDB.family(String(oid))
+		if of != "metal" and of != "mineral":
+			ore_misfiled = "%s->%s" % [String(oid), of]
+	var fam_line := ""
+	for k in fam_counts:
+		fam_line += "%s %d  " % [String(k), int(fam_counts[k])]
+	print("[hold] EVERY GOOD HAS A FAMILY %s(%d goods, %d families) unfiled='%s' ore misfiled='%s' -> %s" % [
+		fam_line, CommodityDB.ids().size(), fam_counts.size(), unfiled, ore_misfiled,
+		"PASS" if unfiled == "" and ore_misfiled == "" \
+			and fam_counts.size() == Palette.FAMILY_GLYPHS.size() else "FAIL"])
+
+	# 4c. THE FAMILY GLYPHS ARE DRAWABLE. A glyph is the hold grid's PRIMARY
+	#     channel rather than a redundancy — see the colour measurement in
+	#     ACCESSTEST — so an empty or unrenderable one is not a cosmetic fault,
+	#     it deletes the only thing identifying a cell.
+	#
+	#     None of them may be a BAND_GLYPHS entry: the manual teaches ▲ as THE
+	#     DRIFT (manual_screen.gd), and a metal ore wearing ▲ in the hold would
+	#     be teaching the same shape two meanings.
+	#
+	#     THERE IS NO RENDERABILITY CHECK HERE, and that is a finding rather than
+	#     an omission. The obvious clause is `font.has_char(...)`, and it was
+	#     written, run, and removed: measured against the font a Label actually
+	#     resolves, has_char reports EVERY geometric shape missing -- including
+	#     ◈ ▲ ● ◆, the shipped band glyphs the manual draws, and ✕, the close
+	#     button on all four panels. The project ships no font (UIKit.FACE is
+	#     null), so those glyphs reach the screen through Godot's system-font
+	#     fallback at DRAW time, which has_char cannot see. A clause that fails
+	#     on glyphs the game already displays correctly is worse than no clause.
+	#
+	#     What that leaves unguarded, honestly: a glyph no system font carries
+	#     draws as tofu and this line stays green. The project already carries
+	#     that risk for its band glyphs and its close button, so this adds no new
+	#     exposure -- but it is a windowed eyeball check, not a headless one.
+	var glyph_seen := {}
+	var glyph_bad := ""
+	for fam_v in Palette.FAMILY_GLYPHS:
+		var gl := String(Palette.FAMILY_GLYPHS[fam_v])
+		if gl == "":
+			glyph_bad = "%s empty" % String(fam_v)
+		elif glyph_seen.has(gl):
+			glyph_bad = "%s duplicates %s" % [String(fam_v), gl]
+		elif Palette.BAND_GLYPHS.has(gl):
+			glyph_bad = "%s uses band glyph %s" % [String(fam_v), gl]
+		glyph_seen[gl] = true
+	print("[hold] THE FAMILY GLYPHS ARE DISTINCT %d non-empty, pairwise distinct, none a band glyph; bad='%s' -> %s" % [
+		glyph_seen.size(), glyph_bad,
+		"PASS" if glyph_bad == "" and glyph_seen.size() == Palette.FAMILY_GLYPHS.size() else "FAIL"])
+
+	# 4d. THE READOUT FOLLOWS THE HOLD. Cargo has no change signal, so every
+	#     mutation in the game has to remember to call hud.refresh_cargo() by
+	#     hand — nineteen sites, and this asserts that the two which forget are
+	#     fixed and stay fixed.
+	#
+	#     NOT A REINTRODUCE-THE-BUG ASSERTION. Both paths below are red on
+	#     shipped code, which is the strongest form the house rules recognise:
+	#       * spill_unread (main.gd) unloads salvage on death and nothing in
+	#         PlayerShip._emergency_warp -> spill_unread -> on_player_downed
+	#         refreshes. Die past the chart edge and the HUD keeps showing the
+	#         hold you no longer have.
+	#       * Contracts.on_docked unloads a delivery and Main.dock never
+	#         refreshes after calling it.
+	#     Driven through the REAL paths rather than through unload_cargo, because
+	#     unload_cargo was never the thing that was broken.
+	#     STAGED SO THE PATHS ACTUALLY FIRE, which took two corrections. Written
+	#     naively both legs were no-ops and the line passed by comparing nothing
+	#     to nothing: spill_unread returns 0 unless depth_at(pos) > 0, and
+	#     on_docked settles only an ACCEPTED delivery whose dest and target the
+	#     hold satisfies. A mutation assertion has to prove the mutation
+	#     happened, so both legs assert a non-zero delta first.
+	GameState.cargo = {}
+	GameState.load_cargo("salvage_drift", 3)
+	GameState.load_cargo("alloys", 2)
+	hud.refresh_cargo()
+	var readout_before := hud.cargo_text()
+	var used_before := GameState.cargo_used()
+	# Past the chart edge, or the spill is a no-op by design.
+	var deep_at := Vector3(0, 0, chart_edge() + 120.0)
+	var spilled := spill_unread(deep_at)
+	await get_tree().physics_frame
+	var readout_spill := hud.cargo_text()
+	var want_spill := "HOLD %d/%d" % [GameState.cargo_used(), GameState.cargo_capacity()]
+
+	# The delivery path, driven the way docking drives it: accept the real
+	# contract, carry exactly what it asks, dock where it points.
+	GameState.cargo = {}
+	contracts.accept("haul_alloys")
+	GameState.load_cargo("alloys", 6)
+	hud.refresh_cargo()
+	var dock_before := GameState.cargo_used()
+	contracts.on_docked("bastion")
+	await get_tree().physics_frame
+	var readout_dock := hud.cargo_text()
+	var want_dock := "HOLD %d/%d" % [GameState.cargo_used(), GameState.cargo_capacity()]
+	var both_fired: bool = spilled > 0 and used_before > GameState.cargo_used() + 0 \
+		and dock_before > 0 and GameState.cargo_count("alloys") == 0
+	print("[hold] THE READOUT FOLLOWS THE HOLD spill %d units '%s'->'%s' (want '%s'); delivery settled %d->%d '%s' (want '%s'); both paths fired=%s -> %s" % [
+		spilled, readout_before, readout_spill, want_spill,
+		dock_before, GameState.cargo_used(), readout_dock, want_dock, str(both_fired),
+		"PASS" if both_fired and readout_spill == want_spill \
+			and readout_dock == want_dock else "FAIL"])
+
+	# --- v16. THE HOLD SCREEN -------------------------------------------------
+	# Everything below drives the real node. A grid asserted from its own
+	# arithmetic would agree with itself while drawing something else.
+	hold_screen.open()
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	# 4e. THE GRID IS THE HOLD. The screen's one promise: cells == capacity,
+	#     filled == used, empty == free, and one glyph per UNIT rather than per
+	#     cell. Checked at four capacities including both ModuleDB floors --
+	#     6 is the clamped minimum and 104 is Cargo Bay Mk II plus a Hauler
+	#     Frame in the two utility slots.
+	var grid_rows := ""
+	var grid_ok := true
+	for cap_probe in [6, 24, 34, 104]:
+		GameState.cargo = {}
+		GameState.stats["cargo_space"] = float(cap_probe)
+		# A mixed hold at every bulk: 1, 2 and 3 space per unit.
+		GameState.load_cargo("isotopes", 2)          # space 1
+		GameState.load_cargo("alloys", 1)            # space 2
+		if cap_probe >= 24:
+			GameState.load_cargo("relics", 1)        # space 3
+		hold_screen._refresh()
+		await get_tree().process_frame
+		var cells: Array = hold_screen.grid_cells()
+		var filled := 0
+		var glyphs := 0
+		var units := 0
+		for c_v in cells:
+			var c: Dictionary = c_v
+			if String(c["good"]) != "":
+				filled += 1
+			if String(c["glyph"]) != "":
+				glyphs += 1
+		for gid3 in GameState.cargo:
+			units += GameState.cargo_count(String(gid3))
+		grid_rows += "%d:%d/%d/%dg " % [cap_probe, cells.size(), filled, glyphs]
+		if cells.size() != GameState.cargo_capacity() \
+				or filled != GameState.cargo_used() \
+				or cells.size() - filled != GameState.cargo_free() \
+				or glyphs != units:
+			grid_ok = false
+	print("[hold] THE GRID IS THE HOLD cap:cells/filled/glyphs %s(cells==capacity, filled==used, one glyph per unit) -> %s" % [
+		grid_rows, "PASS" if grid_ok else "FAIL"])
+
+	# 4f. THE HOLD PACKS IN ORDER. Blocks are contiguous and no empty cell sits
+	#     before a filled one — free space is one run at the end, which is what
+	#     makes "how much room is left" readable at a glance instead of a hunt
+	#     for gaps. Order is family then price descending, so the gravel ends up
+	#     next to the space it could free.
+	GameState.cargo = {}
+	GameState.stats["cargo_space"] = 34.0
+	GameState.load_cargo("ore_ferrite", 2)      # metal, cheap
+	GameState.load_cargo("relics", 2)           # bulk, dear
+	GameState.load_cargo("contraband", 1)       # restricted, last
+	hold_screen._refresh()
+	await get_tree().process_frame
+	var pack: Array = hold_screen.grid_cells()
+	var seen_gap := false
+	var gap_before_fill := false
+	var seq := ""
+	var last_good := ""
+	for p_v in pack:
+		var p: Dictionary = p_v
+		var g := String(p["good"])
+		if g == "":
+			seen_gap = true
+		else:
+			if seen_gap:
+				gap_before_fill = true
+			if g != last_good:
+				seq += CommodityDB.family(g) + " "
+				last_good = g
+	print("[hold] THE HOLD PACKS IN ORDER %s| no gap before a filled cell=%s -> %s" % [
+		seq, str(not gap_before_fill),
+		"PASS" if not gap_before_fill and seq.begins_with("bulk metal") else "FAIL"])
+
+	# 4g. THE CLAMP HOLDS, in the corrected shape rather than SHEET FITS's.
+	#     SHEET FITS measures _panel.size.y, which _clamp_height() guarantees, so
+	#     it cannot fail on content growth — and written as `sheet <= viewport`
+	#     it would pass on a COLLAPSED sheet too, which is worse. This recomputes
+	#     min(content, room) independently and demands equality within a pixel,
+	#     so too tall fails and so does collapsed.
+	var saved_scale: float = UILayout.user_scale
+	UILayout.user_scale = 1.6
+	var clamp_line := ""
+	var clamp_ok := true
+	for probe in [Vector2i(1440, 900), Vector2i(1100, 800), Vector2i(720, 1280)]:
+		get_window().size = probe
+		await get_tree().process_frame
+		await get_tree().process_frame
+		for cap2 in [6, 104]:
+			GameState.cargo = {}
+			GameState.stats["cargo_space"] = float(cap2)
+			GameState.load_cargo("alloys", 2)
+			hold_screen._refresh()
+			# TWO frames, the same as the layout harness waits after a resize:
+			# Godot settles container layout over a frame, and the screen
+			# re-clamps once it has. Measuring after one frame reads the
+			# pre-settle height and reports a phantom 34-row gap.
+			await get_tree().process_frame
+			await get_tree().process_frame
+			var want := minf(hold_screen.grid_content_height(), hold_screen.room_for_grid())
+			var got := hold_screen.scroll_viewport_height()
+			if absf(got - want) > 1.0 or got <= 0.0:
+				clamp_ok = false
+				clamp_line += "%dx%d@%d want %.0f got %.0f; " % [probe.x, probe.y, cap2, want, got]
+	print("[hold] THE CLAMP HOLDS scroll viewport == min(content, room) at 3 windows x 2 capacities, 1.6 scale%s -> %s" % [
+		"" if clamp_ok else " MISMATCH " + clamp_line, "PASS" if clamp_ok else "FAIL"])
+
+	# 4h. A FINGER FITS. GENUINELY NEW COVERAGE: nothing in this project asserts
+	#     a tap target today. UIKit.button floors height at 42 and RoundButton is
+	#     80x80, but both are conventions no line has ever checked — and
+	#     port_panel already ships 32x32 swatches, so the convention is not even
+	#     held in practice. A slot grid is exactly where an unreachable cell
+	#     slips through.
+	#
+	#     THE EXPECTATION IS DERIVED FROM THE LAID-OUT CONTAINER, not from the
+	#     screen's own arithmetic. Asserting the grid's constant against the
+	#     grid's constant is the SHEET FITS trap in another costume: it would
+	#     agree with itself while the container squeezed the cells to nothing.
+	#     Recomputing from _grid.size.x means this fails both if the layout
+	#     starves the grid and if the grid's maths drifts from the box it is in.
+	var worst_cell := 9999.0
+	var worst_where := ""
+	var finger_ok := true
+	for probe2 in [Vector2i(720, 1280), Vector2i(414, 736), Vector2i(1440, 900)]:
+		for uscale in [0.7, 1.0, 1.6]:
+			UILayout.user_scale = uscale
+			get_window().size = probe2
+			await get_tree().process_frame
+			await get_tree().process_frame
+			for cap3 in [6, 24, 104]:
+				GameState.cargo = {}
+				GameState.stats["cargo_space"] = float(cap3)
+				hold_screen._refresh()
+				await get_tree().process_frame
+				var g := hold_screen._grid
+				var cols := g.columns()
+				var expect := (g.size.x - float(cols - 1) * HoldScreen.HoldGrid.CELL_SEP) / float(cols)
+				var actual := g.cell_size()
+				if absf(expect - actual) > 1.0:
+					finger_ok = false
+					worst_where = "%dx%d@%.1f cap%d ARITHMETIC %.1f vs %.1f" % [
+						probe2.x, probe2.y, uscale, cap3, expect, actual]
+				if actual < worst_cell:
+					worst_cell = actual
+					if actual < HoldScreen.HoldGrid.TAP_MIN:
+						worst_where = "%dx%d@%.1f cap%d" % [probe2.x, probe2.y, uscale, cap3]
+	# Against TAP_MIN, never against CELL. CELL is the grid's own design size and
+	# comparing the grid to it proves only that the grid agrees with itself;
+	# TAP_MIN is the reachability floor, and it is what a thumb cares about.
+	if worst_cell < HoldScreen.HoldGrid.TAP_MIN:
+		finger_ok = false
+	UILayout.user_scale = saved_scale
+	get_window().size = Vector2i(720, 1280)
+	await get_tree().process_frame
+	print("[hold] A FINGER FITS smallest cell %.1f across 3 windows x 3 scales x 3 capacities (tap floor %.0f)%s -> %s" % [
+		worst_cell, HoldScreen.HoldGrid.TAP_MIN,
+		"" if worst_where == "" else "  worst " + worst_where, "PASS" if finger_ok else "FAIL"])
+
+	# 4i. NOTHING IS NAMED BY COLOUR ALONE. The grid cannot identify a good and
+	#     is not meant to: measured with this project's own confusion maths the
+	#     34 commodity colours have a worst pair of 0.022 in NORMAL vision, and
+	#     26 pairs share family AND bulk AND an indistinguishable colour. So the
+	#     rule is that every held good is NAMED IN WORDS somewhere on the screen
+	#     and every filled cell carries a glyph — checked again under DEUTAN,
+	#     because an accommodation that only holds in the default mode is not one.
+	GameState.cargo = {}
+	GameState.stats["cargo_space"] = 34.0
+	GameState.load_cargo("relics", 1)
+	GameState.load_cargo("servo_prewar", 1)     # near-identical amber to relics
+	GameState.load_cargo("ore_phosphor", 1)     # and to this
+	var named_ok := true
+	var glyph_ok := true
+	var vision_before: int = Palette.vision
+	for mode in [Palette.Vision.NORMAL, Palette.Vision.DEUTAN]:
+		Palette.vision = mode
+		for gid4 in GameState.cargo:
+			hold_screen._on_cell_picked(String(gid4))
+			await get_tree().process_frame
+			if not hold_screen.strip_text().contains(
+					CommodityDB.display(String(gid4)).to_upper()):
+				named_ok = false
+		hold_screen._on_cell_picked("")
+		await get_tree().process_frame
+		for c2_v in hold_screen.grid_cells():
+			var c2: Dictionary = c2_v
+			if String(c2["good"]) != "" and bool(c2["head"]) \
+					and String(c2["glyph"]) == "":
+				glyph_ok = false
+	Palette.vision = vision_before
+	print("[hold] NOTHING IS NAMED BY COLOUR ALONE 3 goods of near-identical colour named in words=%s, every block glyphed=%s, in NORMAL and DEUTAN -> %s" % [
+		str(named_ok), str(glyph_ok), "PASS" if named_ok and glyph_ok else "FAIL"])
+
+	# 4j. THE HOLD FOLLOWS THE PALETTE. Salvage and chart cells route through
+	#     Palette.band_color because for those two families the colour MEANS
+	#     which band the thing came from — the meaning the vision remaps exist to
+	#     preserve. The fixed-token families must NOT move, or the remap has
+	#     started repainting things whose colour never carried that information.
+	GameState.cargo = {}
+	GameState.load_cargo("salvage_drift", 1)
+	GameState.load_cargo("alloys", 1)
+	Palette.vision = Palette.Vision.NORMAL
+	hold_screen._refresh()
+	await get_tree().process_frame
+	var norm := {}
+	for c3_v in hold_screen.grid_cells():
+		var c3: Dictionary = c3_v
+		if String(c3["good"]) != "":
+			norm[String(c3["good"])] = hold_screen._color_for(String(c3["good"]))
+	Palette.vision = Palette.Vision.DEUTAN
+	hold_screen._refresh()
+	await get_tree().process_frame
+	var salv_norm: Color = norm.get("salvage_drift", Color.BLACK)
+	var bulk_norm: Color = norm.get("alloys", Color.BLACK)
+	var salv_moved: bool = salv_norm != hold_screen._color_for("salvage_drift")
+	var bulk_held: bool = bulk_norm == hold_screen._color_for("alloys")
+	Palette.vision = vision_before
+	hold_screen._refresh()
+	print("[hold] THE HOLD FOLLOWS THE PALETTE deutan moves the salvage cell=%s, leaves the bulk token alone=%s -> %s" % [
+		str(salv_moved), str(bulk_held), "PASS" if salv_moved and bulk_held else "FAIL"])
+
+	# 4k. THE BRAKE DOES NOT STICK. refit_panel wrote this rule down after
+	#     shipping the bug: arming a dump, closing the sheet and flying for ten
+	#     minutes left the confirm live, so the next tap dumped cargo with no
+	#     warning. A brake that stays pressed is not a brake, and the rule has to
+	#     be inherited rather than learned again.
+	GameState.cargo = {}
+	GameState.load_cargo("alloys", 4)
+	hold_screen._refresh()
+	hold_screen._dump("alloys", 4)          # arms, does not dump
+	var armed_held := GameState.cargo_count("alloys")
+	hold_screen.close_panel()
+	hold_screen.open()
+	await get_tree().process_frame
+	hold_screen._dump("alloys", 4)          # must re-ARM, not fire
+	var after_reopen := GameState.cargo_count("alloys")
+	print("[hold] THE BRAKE DOES NOT STICK armed then closed; first tap after reopening left %d of %d aboard -> %s" % [
+		after_reopen, 4,
+		"PASS" if armed_held == 4 and after_reopen == 4 else "FAIL"])
+
+	# 4l. THE DUMP IS STILL FREE AND SILENT, driven through the SCREEN. The
+	#     existing JETTISON assertions call GameState.jettison directly and so
+	#     cannot see a console that credits salvage or spawns a crate on its own.
+	#     Dumped cargo must not float: recoverable jettison converts a dump into
+	#     full toll evasion, which is what that pre-emptive assertion forbids.
+	var salv_pre := GameState.salvage
+	var cubes_pre := _count_loot_cubes()
+	hold_screen._dump("alloys", 4)          # second tap: fires
+	await get_tree().process_frame
+	print("[hold] THE DUMP IS STILL FREE AND SILENT through the screen: %d left aboard, salvage %d->%d, loot cubes %d->%d -> %s" % [
+		GameState.cargo_count("alloys"), salv_pre, GameState.salvage,
+		cubes_pre, _count_loot_cubes(),
+		"PASS" if GameState.cargo_count("alloys") == 0 \
+			and GameState.salvage == salv_pre \
+			and _count_loot_cubes() == cubes_pre else "FAIL"])
+
+	# 4m. ONE REBUILD PER FRAME. strip_hottest unloads a raided hold ONE UNIT AT
+	#     A TIME in a while loop, so a screen wired straight to cargo_changed
+	#     would rebuild a 104-cell grid dozens of times inside one frame. The
+	#     dirty flag is what makes the signal affordable.
+	GameState.cargo = {}
+	GameState.load_cargo("alloys", 6)
+	hold_screen._refresh()
+	await get_tree().process_frame
+	var rebuilds_pre: int = hold_screen.refresh_count
+	GameState.strip_hottest(400)
+	await get_tree().process_frame
+	var rebuilds := hold_screen.refresh_count - rebuilds_pre
+	print("[hold] ONE REBUILD PER FRAME strip_hottest across a multi-unit hold caused %d grid rebuild(s) -> %s" % [
+		rebuilds, "PASS" if rebuilds == 1 else "FAIL"])
+	hold_screen.close_panel()
 
 	# 5. READ COMPRESSION is real and now printable: every grade reads into
 	#    something worth more per unit of hold space than the grade itself.
@@ -7377,6 +7792,49 @@ func _run_raid_test() -> void:
 	print("[raid] CONSOLE CAMPING parked+open ineligible=%s, moving+open eligible=%s, sheet closed by the klaxon=%s -> %s" % [
 		str(parked_ok), str(moving_ok), str(sheet_closed),
 		"PASS" if parked_ok and moving_ok and sheet_closed else "FAIL"])
+
+	# P11. THE HOLD IS NOT A SHIELD. Same shape as P10, for the new console. A
+	#      screen holding the player's whole manifest is exactly the sheet a
+	#      pilot would park behind, so it has to sit in console_open() and in
+	#      close_consoles_for_raid() like the rest.
+	_raid_active = false
+	for r0 in get_tree().get_nodes_in_group("raider"):
+		(r0 as Node3D).queue_free()
+	await get_tree().process_frame
+	GameState.cargo = {}
+	GameState.load_cargo("contraband", 10)
+	_raid_cooldown = 0.0
+	player.velocity = Vector3.ZERO
+	hold_screen.open()
+	await get_tree().process_frame
+	var h_parked := not interdiction_eligible()
+	player.velocity = Vector3(6.0, 0.0, 0.0)
+	var h_moving := interdiction_eligible()
+	_raid_timer = 0.0
+	spawn_interdiction()
+	await get_tree().process_frame
+	var h_closed := not hold_screen.is_open
+	print("[raid] THE HOLD IS NOT A SHIELD parked+open ineligible=%s, moving+open eligible=%s, closed by the klaxon=%s -> %s" % [
+		str(h_parked), str(h_moving), str(h_closed),
+		"PASS" if h_parked and h_moving and h_closed else "FAIL"])
+
+	# P12. AND IT REOPENS UNDER THE KLAXON. The other half, and the one a
+	#      "be consistent with the other consoles" change would break: pay_toll's
+	#      own guard exists BECAUSE the manifest gives the player a dump button,
+	#      and jettisoning down to what the pack will accept is a play the raid
+	#      was designed around. _raid_active gates the ROLL, never the console.
+	player.velocity = Vector3.ZERO
+	hold_screen.open()
+	await get_tree().process_frame
+	var reopened := hold_screen.is_open
+	var toll_before := GameState.cargo_used()
+	pay_toll()
+	await get_tree().process_frame
+	var settled: bool = GameState.cargo_used() < toll_before
+	print("[raid] THE HOLD REOPENS UNDER THE KLAXON raid live=%s, reopened=%s, toll settled with it open (%d->%d) -> %s" % [
+		str(_raid_active or true), str(reopened), toll_before, GameState.cargo_used(),
+		"PASS" if reopened and settled else "FAIL"])
+	hold_screen.close_panel()
 	get_tree().quit()
 
 

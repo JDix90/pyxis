@@ -447,6 +447,46 @@ static func chart_for_band(band: int) -> String:
 	return ""
 
 
+static func chart_band_of(id: String) -> int:
+	# Which band this SURVEY covers. The sibling of band_of, and it reads
+	# `chart_band` rather than `band` for the reason stated above the chart
+	# goods: the two keys are deliberately different, and a reader that reached
+	# for `band` here would come back with -1 for every chart in the game.
+	return int(get_good(id).get("chart_band", -1))
+
+
+static func family(id: String) -> String:
+	# WHAT KIND OF THING THIS IS, in one word, derived rather than stored.
+	#
+	# The hold screen draws one glyph per family, because colour cannot carry it
+	# — the 34 good colours were measured at a worst pair of 0.022 against the
+	# 0.20 threshold ACCESSTEST holds the deep bands to, and that is in NORMAL
+	# vision (see COLOUR IS NEVER THE ONLY TELL). The glyph is the primary
+	# channel here, so every good must land in exactly one family.
+	#
+	# NOTHING IS STORED. The warning above the ore block is about adding a data
+	# KEY that shadows `band` — which would let spawn_loot's regrade mint the
+	# wrong good — and this answers it by adding no key at all: every branch
+	# below reads a marker that is already there.
+	#
+	# ORDER IS LOAD-BEARING. `is_ore` is tested FIRST because all eight ores
+	# carry `trade_only_at` (their four industrial buyers), so a version that
+	# checked the allowlist first would file every ore beside the contraband.
+	# That partition is still total and still 34, which is exactly why the
+	# assertion in PYXIS_HOLDTEST names the ores rather than counting them.
+	if is_ore(id):
+		return ore_class(id)                  # "metal" | "mineral"
+	if is_chart(id):
+		return "chart"
+	if is_salvage(id):
+		return "salvage"
+	if is_component(id):
+		return "component"
+	if not (get_good(id).get("trade_only_at", []) as Array).is_empty():
+		return "restricted"
+	return "bulk"
+
+
 static func is_salvage(id: String) -> bool:
 	return get_good(id).has("band")
 

@@ -5,6 +5,15 @@ extends Node
 
 signal fit_changed(stats: Dictionary)
 signal salvage_changed(total: int)
+# v16. THE HOLD CHANGED, whoever changed it. Cargo is the one piece of state the
+# WORLD mutates while a screen is looking at it -- loot picked up, a toll taken,
+# a delivery settled on docking, salvage spilled on death -- so the nineteen
+# hand-written hud.refresh_cargo() calls were a rule enforced by memory, and two
+# sites had already forgotten: spill_unread and Contracts.on_docked both unload
+# and neither refreshes. Emitted from load_cargo and unload_cargo, which grep
+# confirms are the only two functions in the game that write `cargo` outside of
+# a reset or a save load.
+signal cargo_changed
 signal system_unlocked(id: String)
 # v15. The lane to `id` is now flyable — its jamming engine is dead. Deliberately
 # a second signal rather than a flag on the first: charting and opening happen at
@@ -615,6 +624,14 @@ func cargo_count(good: String) -> int:
 	return int(cargo.get(good, 0))
 
 
+func cargo_over() -> int:
+	# How much is aboard BEYOND capacity. cargo_free() clamps at zero and so
+	# cannot express this state at all, and cargo_overflow() answers a different
+	# question -- what a PROSPECTIVE swap would leave over -- and needs a slot to
+	# do it. A screen that is not a fitting screen has no slot to give it.
+	return maxi(0, cargo_used() - cargo_capacity())
+
+
 func hold_value(weighted := false) -> int:
 	# Base-price valuation of the hold. `weighted` applies each good's
 	# interdiction weight, which is what the raider roll reads: a hold of
@@ -643,6 +660,7 @@ func load_cargo(good: String, units: int) -> int:
 	if taken > 0:
 		cargo[good] = cargo_count(good) + taken
 		_queue_save()
+		cargo_changed.emit()
 	return taken
 
 
@@ -657,6 +675,7 @@ func unload_cargo(good: String, units: int) -> int:
 	else:
 		cargo[good] = have - removed
 	_queue_save()
+	cargo_changed.emit()
 	return removed
 
 
@@ -1109,6 +1128,45 @@ func stash_to_fit(slot: int, id: String, key: String) -> int:
 	for g_v in _stashable_order():
 		var g := String(g_v)
 		while cargo_overflow(slot, id) > 0 and cargo_count(g) > 0:
+			if store_cargo(key, g, 1) <= 0:
+				break
+			moved += 1
+	return moved
+
+
+func stash_would_fit_now(key: String) -> bool:
+	# The slot-free twin of stash_would_fit, for a console that has no fitting
+	# slot to name. The originals take a PROSPECTIVE swap (slot, id) and ask what
+	# it would leave over; here the hold is ALREADY over capacity and the
+	# question is only whether the bay can take the difference. Passing an
+	# arbitrary slot to get at the same answer would be a lie in the code even
+	# where the arithmetic happened to come out right.
+	var over := cargo_over()
+	if over <= 0:
+		return true
+	var room := warehouse_free(key)
+	var freed := 0
+	for g_v in _stashable_order():
+		var g := String(g_v)
+		var per := maxi(1, CommodityDB.space_of(g))
+		var movable := mini(cargo_count(g), room / per) if per > 0 else 0
+		freed += movable * per
+		room -= movable * per
+		if freed >= over:
+			return true
+	return freed >= over
+
+
+func stash_to_fit_now(key: String) -> int:
+	# ALL OR NOTHING, exactly as stash_to_fit is. A stash that half-fills the bay
+	# and leaves the player still over-full with a partly-emptied hold is the
+	# worst outcome available here.
+	if not stash_would_fit_now(key):
+		return 0
+	var moved := 0
+	for g_v in _stashable_order():
+		var g := String(g_v)
+		while cargo_over() > 0 and cargo_count(g) > 0:
 			if store_cargo(key, g, 1) <= 0:
 				break
 			moved += 1

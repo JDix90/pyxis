@@ -39,6 +39,13 @@ const BLUFF_BOTTOM := -296.0   # was -216, which overlapped the crack gauge.
 const ABILITY_SCALE := 1.15    # the centre button is the emphasised one
 
 signal refit_pressed
+# The HOLD readout is the door to the hold console. Deliberately NOT a fourth
+# RoundButton in the action dock: four buttons leave no centre slot, and the
+# ability would end up ~49 design units off centre against the dock's own rule
+# that it "gets the position the eye returns to" because it is "the button
+# pressed under pressure". The readout costs no dock width and is already where
+# a player looks to ask this question.
+signal hold_pressed
 signal chart_pressed
 signal pause_pressed
 
@@ -360,6 +367,14 @@ var _gain_timer: SceneTreeTimer = null
 
 func _ready() -> void:
 	add_to_group("hud")
+	# THE READOUT FOLLOWS THE HOLD WITHOUT BEING ASKED. Nineteen sites call
+	# refresh_cargo() by hand and two of them had already forgotten -- salvage
+	# spilled on death and a delivery settled on docking both left this label
+	# showing a hold the player no longer had. Connected in _ready and never in
+	# a resize handler: refit_panel records what re-connecting on size_changed
+	# does, which is that Godot cannot dedupe lambdas and a dragged window
+	# multiplies the connection.
+	GameState.cargo_changed.connect(refresh_cargo)
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -391,10 +406,18 @@ func _ready() -> void:
 	_value_label.pivot_offset = Vector2(0, 18)
 	top.add_child(_value_label)
 
+	# The one control in this stack that takes input. `top` is MOUSE_FILTER_IGNORE
+	# so a glance-only readout never eats a tap meant for the ship; this label
+	# opts back in for itself, and nothing around it changes.
 	_cargo_label = Label.new()
 	_cargo_label.text = "HOLD 0/24"
 	_cargo_label.add_theme_color_override("font_color", Palette.AMBER_DIM)
 	_cargo_label.add_theme_font_size_override("font_size", 12)
+	_cargo_label.mouse_filter = Control.MOUSE_FILTER_STOP
+	_cargo_label.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed \
+				and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			hold_pressed.emit())
 	top.add_child(_cargo_label)
 
 	# Hull integrity. The ship has always carried a bar over its own hull, which
@@ -815,6 +838,15 @@ func refresh_cargo() -> void:
 		Palette.THREAT if used >= cap else Palette.AMBER_DIM)
 
 
+func cargo_text() -> String:
+	# What the readout ACTUALLY SAYS, for the harness. Deliberately the rendered
+	# string rather than a recomputation of it: an assertion that recomputed
+	# "HOLD %d/%d" from GameState would agree with itself while the label on
+	# screen showed a hold the player emptied ten seconds ago, which is the exact
+	# defect THE READOUT FOLLOWS THE HOLD exists to catch.
+	return _cargo_label.text if _cargo_label != null else ""
+
+
 func gain_cargo(good: String) -> void:
 	refresh_cargo()
 	_gain_label.text = "+1 %s" % CommodityDB.short_name(good)
@@ -1029,6 +1061,14 @@ func _on_ability_pressed() -> void:
 
 
 func set_panels_locked(locked: bool) -> void:
+	# THE HOLD IS DELIBERATELY ABSENT FROM THIS, and it is not an oversight to
+	# tidy up later. Two callers reach here -- docking and a boss fight -- and
+	# the hold must stay reachable in both. During a fight because the apex wreck
+	# seeds 13 units of cargo among its spill and a full hold cannot take it, so
+	# dumping ore to make room is a real play; while docked because the bonded
+	# stash exit is a docked flow and locking it would put the exit behind the
+	# lock. Refit rewrites the fight's premise, which is why IT is locked; the
+	# hold only shows you what you are carrying.
 	# Console access is closed during a boss fight: refitting mid-encounter
 	# would let the player rewrite the fight's premise (and used to be an
 	# outright exploit — see PlayerShip._apply_fit).
