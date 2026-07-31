@@ -210,6 +210,7 @@ var chart_panel: ChartPanel
 var port_panel: PortPanel
 var pause_menu: PauseMenu
 var manual_screen: ManualScreen
+var hold_screen: HoldScreen
 var contracts: Contracts
 
 var system_root: Node3D
@@ -299,6 +300,13 @@ func _ready() -> void:
 
 	port_panel = PortPanel.new()
 	add_child(port_panel)
+
+	# The hold's own console. Its z-order is stated by `layer = 4` inside the
+	# class rather than by where this line sits, unlike chart and refit -- both
+	# at layer 2, both openable at once, stacking decided by construction order.
+	hold_screen = HoldScreen.new()
+	add_child(hold_screen)
+	hud.hold_pressed.connect(hold_screen.toggle)
 
 	pause_menu = PauseMenu.new()
 	add_child(pause_menu)
@@ -1239,7 +1247,7 @@ func _spawn_swarm_pack(swarm: Dictionary) -> void:
 
 func console_open() -> bool:
 	# Any full-screen console the player is reading rather than flying behind.
-	for panel in [port_panel, refit_panel, chart_panel]:
+	for panel in [port_panel, refit_panel, chart_panel, hold_screen]:
 		if panel != null and panel.is_open:
 			return true
 	return pause_menu != null and pause_menu.is_open
@@ -1262,7 +1270,12 @@ func console_camping() -> bool:
 
 
 func close_consoles_for_raid() -> void:
-	for panel in [port_panel, refit_panel, chart_panel]:
+	# The hold is in this list for the same reason as the rest -- the klaxon
+	# clears the desk -- but note it may be REOPENED during the standoff, and
+	# must be: pay_toll's own guard exists because the manifest gives the player
+	# a dump button, and jettisoning down to what a toll will accept is a play
+	# the raid was designed around. _raid_active gates the ROLL, not the console.
+	for panel in [port_panel, refit_panel, chart_panel, hold_screen]:
 		if panel != null and panel.is_open:
 			panel.close_panel()
 
