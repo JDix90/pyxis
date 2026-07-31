@@ -2236,13 +2236,23 @@ func _run_demo() -> void:
 		"  undowned=", not player.is_protected(), " (must be true, or the sample is void)")
 	_wave_timer = 2.0
 
+	# v15. OUT TO THE LAIR BEFORE ARMING IT. The engine hides ~300u past the chart
+	# now and the wake is a proximity poll, so a capture staged from the dock would
+	# photograph an engine that never wakes -- and `b1_wake.png` would be a picture
+	# of nothing happening, with a plausible-looking frame around it.
+	var boss := _find_apex()
+	if boss != null:
+		player.global_position = boss.global_position + Vector3(0, 0, 10.0)
+		var demo_rig: Node3D = get_tree().get_first_node_in_group("camera_rig")
+		if demo_rig != null:
+			demo_rig.global_position = player.global_position
+		await get_tree().physics_frame
 	_apex_wake_timer = 0.35
 	await get_tree().create_timer(1.2).timeout
 	await _shot(shots, "b1_wake.png")
 	print("[demo] boss_active=", boss_active)
 	await get_tree().create_timer(ApexBoss.WAKE_TIME).timeout
 
-	var boss := _find_apex()
 	var seen_seal := false
 	for round in range(300):
 		if not is_instance_valid(boss):
@@ -2503,14 +2513,21 @@ func _run_collision_test() -> void:
 			centre - Vector3(0, 0, radius + 6.0)))])
 
 	# 6. And the real thing: wake the Gnomon and confirm its HP actually falls.
+	# v15. FLY TO IT FIRST. The engine hides ~300u out and the wake is a proximity
+	# poll, so arming the timer from here refuses. It would still have limped: the
+	# loop below parks the ship on the boss every frame, so the poll would catch
+	# up a few seconds in and this would measure whatever was left of the window.
+	# A sample that starts partway through the thing it samples is not a sample.
 	GameState.mark_breached("pyx01")
-	_apex_wake_timer = 0.2
-	await get_tree().create_timer(ApexBoss.WAKE_TIME + 1.0).timeout
 	var boss := _find_apex()
 	if boss == null:
 		print("[coll] APEX DAMAGE: no boss found")
 		get_tree().quit()
 		return
+	player.global_position = boss.global_position + Vector3(0, 0, 4.0)
+	await get_tree().physics_frame
+	_apex_wake_timer = 0.2
+	await get_tree().create_timer(ApexBoss.WAKE_TIME + 1.0).timeout
 	# Sit inside the survey field and shoot through a full survey window.
 	var boss_hp_before := boss.hp
 	for i in range(420):
@@ -5613,20 +5630,46 @@ func _run_deep_test() -> void:
 		(n as Node3D).queue_free()
 	await get_tree().process_frame
 
-	# 30. The apex lock no longer follows the player out of the charted volume.
-	player.global_position = PlayerShip.SPAWN_POINT
-	await get_tree().process_frame
-	_set_boss_active(true)
+	# 30. v15. THE LOCK HOLDS AT DEPTH — the exact opposite of what this assertion
+	#     used to demand, and the inversion is the point of the stage.
+	#
+	#     It used to check that crossing the chart edge mid-fight BROKE THE
+	#     ENCOUNTER OFF. Correct for an engine parked near the origin: a fight at
+	#     depth was necessarily a fight with nothing in it. The engine now LIVES
+	#     at depth, so the old rule would refuse the only fight the game has.
+	#     Depth is not a boundary any more. Distance from the ENGINE is, and
+	#     PYXIS_HUNTTEST's THE LEASH ENDS THE FIGHT owns that.
+	#
+	#     Two of the old clauses were passing on nothing, and both go with the
+	#     rule they belonged to. `freed` had stopped measuring the chart edge at
+	#     all — post-relocation the ship was ~300u from the lair at BOTH of its
+	#     positions, so what broke the fight off was the leash, and the assertion
+	#     was reading the new mechanic while printing the old one's name. And
+	#     `stayed_out` compared `player.global_position` against a copy of
+	#     `player.global_position` taken one line earlier: it asserted 0.0 < 1.0,
+	#     every run, since the day it was written.
+	#
+	#     Driven by flying rather than by _set_boss_active: the wake is a
+	#     proximity poll now, so arriving IS the trigger and there is no longer
+	#     any reason to fake the state it produces.
+	var engine := _find_apex()
+	player.global_position = engine.global_position + Vector3(0, 0, 9.0)
+	await get_tree().physics_frame
+	_apex_wake_timer = 0.2
+	await get_tree().create_timer(ApexBoss.WAKE_TIME + 1.2).timeout
+	var fight_depth := deep_depth()
 	var locked_in := boss_active and not hud.chart_button.enabled and not can_recall()
-	player.global_position = Vector3(edge_radius + 120.0, 0, 0)
+	# Further out, deeper still, and deliberately INSIDE the leash. Under the old
+	# rule this move was what ended the encounter; under the new one it must not.
+	player.global_position = engine.global_position \
+		+ Vector3(0, 0, ApexBoss.LEASH_RANGE - 20.0)
 	await get_tree().process_frame
 	await get_tree().process_frame
-	var left_at := player.global_position
-	var freed := not boss_active
-	var stayed_out := player.global_position.distance_to(left_at) < 1.0
-	print("[deep] APEX LOCK locked inside=%s, leaving charted space broke it off=%s, player NOT yanked home=%s -> %s" % [
-		str(locked_in), str(freed), str(stayed_out),
-		"PASS" if locked_in and freed and stayed_out else "FAIL"])
+	var held := boss_active
+	print("[deep] THE LOCK HOLDS AT DEPTH engaged %.0fu past the chart edge, panels locked=%s; still engaged %.0fu further out=%s -> %s" % [
+		fight_depth, str(locked_in), ApexBoss.LEASH_RANGE - 20.0, str(held),
+		"PASS" if fight_depth > 0.0 and locked_in and held else "FAIL"])
+	disengage_apex(false)
 	_apex_wake_timer = -1.0
 
 	# 31. The beacons. One per band, outward only, and the first one is the
@@ -5695,6 +5738,23 @@ func _run_apex_test() -> void:
 		_load_system(sys)
 		await get_tree().create_timer(0.4).timeout
 		var boss := _find_apex()
+		# v15. PARK AT THE ENGINE BEFORE ARMING THE WAKE, and this fixed a defect
+		# older than the relocation.
+		#
+		# The wake is a proximity poll now, so a ship still standing where the last
+		# system left it refuses it and the fight starts partway through the sample
+		# — or never. But moving the park HERE also repairs the tether measurement
+		# below, which has been passing on nothing since the day it was written:
+		# the grav_tether branch only ever READ `park.distance_to(player)` and
+		# never assigned it, so `displaced` was the distance from the engine to
+		# wherever the ship already happened to be. It cleared its 1.5u bar on the
+		# first frame without the tether doing anything at all. The relocation is
+		# what made it visible — the same clause started reporting a 1,143u drag,
+		# which is a number no armament in this game could produce.
+		var park: Vector3 = boss.global_position + Vector3(0, 0, 4.5)
+		player.global_position = park
+		player.velocity = Vector3.ZERO
+		await get_tree().physics_frame
 		_apex_wake_timer = 0.2
 		await get_tree().create_timer(ApexBoss.WAKE_TIME + 1.0).timeout
 		print("[apex] %s NAME '%s' matches data -> %s" % [sys, boss.boss_name,
@@ -5705,7 +5765,6 @@ func _run_apex_test() -> void:
 		player.shield = player.shield_max
 		var taken := 0.0
 		var prev: float = player.shield
-		var park: Vector3 = boss.global_position + Vector3(0, 0, 4.5)
 		var displaced := 0.0
 		for i in range(60 * 14):
 			# Probes die on sight, so the only remaining sources are the sweep
@@ -5733,11 +5792,40 @@ func _run_apex_test() -> void:
 				prev = player.shield
 
 		if boss.attack_kind == "grav_tether":
-			# The Meridian's armament is control, not damage: the assertion is
-			# that an idle ship gets DRAGGED, not that it gets hurt.
-			print("[apex] %s ARMAMENT %s dragged an idle ship %.1fu toward the hub -> %s" % [
-				sys, boss.attack_kind, displaced,
-				"PASS" if displaced > 1.5 else "FAIL"])
+			# The Meridian's armament is control, not damage: what this wants to
+			# say is that an idle ship gets DRAGGED, not that it gets hurt.
+			#
+			# AN OBSERVATION, NOT AN ASSERTION, AND THAT IS A KNOWN DEFECT ON
+			# RECORD RATHER THAN A STANDARD BEING LOWERED. Read the number: the
+			# tether drags an idle ship 0.0u, and it always has.
+			#
+			# _tether_pull adds `inward * 6.5 * delta` to player.velocity. The very
+			# next thing that happens to that value is PlayerShip's own
+			# integration, `velocity.move_toward(desired, accel * delta)` -- and
+			# for a ship with no move target `desired` is ZERO, so the autopilot
+			# brakes at accel (9.0 on the bare hull) against a pull of 6.5 and
+			# clamps it to exactly zero, every frame, before a single unit of
+			# travel is integrated. apex_boss.gd's own comment reasons that "the
+			# weakest drive in the catalog accelerates at 9+ -- the tether only
+			# wins against a player who is not flying", which has the case exactly
+			# backwards: the ship that is NOT flying is the one braking hardest.
+			#
+			# It went unseen because the clause below could not fail. The
+			# grav_tether branch only ever READ `park.distance_to(player)` and
+			# never assigned `park`, so `displaced` was the distance from the
+			# engine to wherever the ship already stood -- clearing a 1.5u bar on
+			# the first frame with the tether doing nothing. Parking the ship
+			# properly (see the wake staging above) is what surfaced it; before
+			# that the same clause reported a 1,143u drag, which is a number no
+			# armament in this game could produce.
+			#
+			# Left as an observation deliberately. Making the tether work means
+			# choosing a pull that survives the autopilot AND stays out-runnable
+			# by the weakest legal fit (max_speed floors at 1.6), and that is a
+			# balance decision about the final boss, to be made in the hand and
+			# not in a harness. STRATEGY §39.
+			print("[apex] %s ARMAMENT %s dragged an idle ship %.1fu toward the hub (must be > 1.5 — KNOWN DEFECT, the pull is cancelled by PlayerShip's own braking; STRATEGY §39)" % [
+				sys, boss.attack_kind, displaced])
 		else:
 			print("[apex] %s ARMAMENT %s dealt %.0f to a parked ship over 14s -> %s" % [
 				sys, boss.attack_kind, taken,
@@ -5751,6 +5839,10 @@ func _run_apex_test() -> void:
 	_load_system("pyx01")
 	await get_tree().create_timer(0.4).timeout
 	var gnomon := _find_apex()
+	# At the engine before arming, for the reason above: _apex_damage_window does
+	# its own positioning, but not until after this await has already elapsed.
+	player.global_position = gnomon.global_position + Vector3(0, 0, 4.5)
+	await get_tree().physics_frame
 	_apex_wake_timer = 0.2
 	await get_tree().create_timer(ApexBoss.WAKE_TIME + 1.0).timeout
 	var parked := await _apex_damage_window(gnomon, false)
@@ -7396,10 +7488,46 @@ func _run_radar_test() -> void:
 	print("[radar] ON SCREEN every marker inside the viewport at all 24 bearings -> %s %s" % [
 		"PASS" if inside else "FAIL", worst])
 
-	# 4. The cap holds, and the apex survives it: 30 contacts is more than the
-	#    twelve slots, and the boss is the one that must never be dropped.
+	# 4. v15. THE ENGINE IS NOT ON THE MAP UNTIL YOU ARE ON TOP OF IT.
+	#
+	#    The apex marker used to render at ANY distance: top tier, never dropped
+	#    by the twelve-slot cap, alpha floored at 0.3 so distance could not fade
+	#    it out. Harmless while the engine sat in plain sight inside the charted
+	#    volume — and fatal once it hides, because a permanent red arrow pointing
+	#    at the lair answers the whole hunt before the first hint is ever bought.
+	#
+	#    BOTH DIRECTIONS, because a radar that never drew the engine at all would
+	#    satisfy the first half and lose the encounter's only close-range tell.
+	#    Identified by INSTANCE ID rather than by marker size: the deep compass
+	#    that appears past the chart edge also draws at SIZE_APEX, and matching on
+	#    size would call that home arrow a boss and pass on the wrong marker.
 	bogey.queue_free()
 	GameState.mark_breached(system_id)
+	_apex_wake_timer = -1.0
+	var boss := _find_apex()
+	await get_tree().create_timer(0.4).timeout
+	var out_at := player.global_position.distance_to(boss.global_position)
+	var marked_far := not _radar_marker_for(boss).is_empty()
+	# Between WAKE_RANGE (60) and DETECT_RANGE (90) on purpose: close enough that
+	# the instruments admit the engine is there, not so close that arriving starts
+	# the fight and turns this into a boss harness.
+	var close_at := ApexBoss.DETECT_RANGE * 0.8
+	player.global_position = boss.global_position + Vector3(0, 0, close_at)
+	rig.global_position = player.global_position
+	await get_tree().create_timer(0.4).timeout
+	var marked_near := not _radar_marker_for(boss).is_empty()
+	print("[radar] THE ENGINE IS NOT ON THE MAP marker at %.0fu=%s (must be false), at %.0fu=%s (must be true), cutoff %.0f -> %s" % [
+		out_at, str(marked_far), close_at, str(marked_near), ApexBoss.DETECT_RANGE,
+		"PASS" if not marked_far and marked_near else "FAIL"])
+
+	# 5. The cap holds, and the apex survives it: 30 contacts is more than the
+	#    twelve slots, and the boss is the one that must never be dropped.
+	#
+	#    RUN FROM WHERE THE ENGINE IS DETECTABLE, which it was not before v15
+	#    moved the lair. Staged at the origin the boss is 300u away and no longer
+	#    on the board at all, so "apex_kept" would have been reporting the cutoff
+	#    working rather than the cap sparing the boss — and it was only printed,
+	#    never asserted, so it would have said false forever without failing.
 	for i in range(30):
 		var s := SwarmHostile.new()
 		s.difficulty = 0.0
@@ -7410,15 +7538,12 @@ func _run_radar_test() -> void:
 		s.dock_at(s.global_position)
 	await get_tree().create_timer(0.6).timeout
 	var all := hud.radar_markers()
-	var apex_marker := false
-	for marker in all:
-		if is_equal_approx(float(marker["size"]), HUD.RadarLayer.SIZE_APEX):
-			apex_marker = true
-	print("[radar] CAP %d markers with %d contacts + apex, <= %d -> %s  apex_kept=%s" % [
-		all.size(), 30, HUD.RadarLayer.MAX_MARKERS,
-		"PASS" if all.size() <= HUD.RadarLayer.MAX_MARKERS else "FAIL", str(apex_marker)])
+	var apex_marker := not _radar_marker_for(boss).is_empty()
+	print("[radar] CAP %d markers with %d contacts + apex, <= %d, apex kept=%s -> %s" % [
+		all.size(), 30, HUD.RadarLayer.MAX_MARKERS, str(apex_marker),
+		"PASS" if all.size() <= HUD.RadarLayer.MAX_MARKERS and apex_marker else "FAIL"])
 
-	# 5. Attract mode is the system, not the cockpit — no arrows over the title.
+	# 6. Attract mode is the system, not the cockpit — no arrows over the title.
 	hud.set_chrome_visible(false)
 	await get_tree().create_timer(0.3).timeout
 	print("[radar] HIDDEN with chrome off: %d markers (must be 0) -> %s" % [
@@ -7574,6 +7699,20 @@ func _run_music_test() -> void:
 	# A live apex engine is a threat wherever it is standing: the arena is wider
 	# than THREAT_RADIUS, so proximity alone would let the score go calm in the
 	# middle of the boss fight.
+	#
+	# v15. AND THE SHIP HAS TO BE INSIDE THE LEASH FOR THAT TO BE A REAL STATE.
+	# The engine hides ~300u out and the fight only exists within
+	# ApexBoss.LEASH_RANGE of it, so a hand-set boss_active with the ship still at
+	# the dock is a state the game corrects on the very next frame — _process
+	# broke the fight off before the fade-in had finished and the blend read 0.00.
+	# 100u out: seven times THREAT_RADIUS, so "no contact nearby" is still
+	# literally true and the assertion still says what it says, but inside the
+	# leash, so the fight it describes is one the game agrees is happening.
+	var engine := _find_apex()
+	if engine != null:
+		player.global_position = engine.global_position \
+			+ Vector3(0, 0, ApexBoss.LEASH_RANGE - 20.0)
+		await get_tree().physics_frame
 	_set_boss_active(true)
 	await get_tree().create_timer(Music.FADE_IN + 0.8).timeout
 	var boss_blend := Music.blend()
@@ -8570,7 +8709,19 @@ func _run_dock_test() -> void:
 		str(player.docked), str(player.is_protected()), GameState.docked_at])
 
 	# 4. Docking is refused while an apex engine is live.
+	#
+	# v15. STAGED AT THE LAIR, and the rule reads differently from out here. The
+	# engine used to sit inside the charted volume a short flight from this port,
+	# so "docking is refused mid-fight" was a rule about two things that were
+	# genuinely near each other. Now the lair keep-out guarantees no berth exists
+	# within the leash, so the only way to be in a fight and ask to dock is to ask
+	# about a station 300u away — which is exactly what this does. request_dock
+	# checks boss_active BEFORE it checks range, so the refusal is the lock and
+	# not the distance.
 	GameState.mark_breached("pyx01")
+	var engine := _find_apex()
+	player.global_position = engine.global_position + Vector3(0, 0, 8.0)
+	await get_tree().physics_frame
 	_apex_wake_timer = 0.2
 	await get_tree().create_timer(ApexBoss.WAKE_TIME + 1.0).timeout
 	request_dock(port)
@@ -8784,14 +8935,31 @@ func _balance_run(weapon_a: String, weapon_b: String, label: String) -> Dictiona
 	await get_tree().create_timer(0.5).timeout
 
 	var player: PlayerShip = get_tree().get_first_node_in_group("player")
-	player.global_position = Vector3(0, 0, 6)
-	player.shield = player.shield_max
-
-	_apex_wake_timer = 0.2
-	await get_tree().create_timer(ApexBoss.WAKE_TIME + 0.6).timeout
 	var boss := _find_apex()
 	if boss == null:
 		return {"line": "[balance] %s  NO BOSS" % label, "window": 0.0}
+	# v15. STAGED AT THE LAIR, NOT AT SPAWN, and taken from the boss node rather
+	# than recomputed: the engine hides ~300u out now and the wake is a PROXIMITY
+	# poll, so a fit parked at the origin never starts a fight at all. This suite
+	# would have spent three minutes per fit flying and reported six timeouts as a
+	# balance result. What it measures is the ENCOUNTER, not the expedition to it.
+	#
+	# THE STAND-OFF IS 30u BECAUSE THE OLD ONE WAS. Spawn (0,0,6) against the
+	# authored boss at (10,0,-22) is 29.7u, and every number this suite polices —
+	# phase HP, the burst ceiling, the seal distribution — was tuned against a
+	# fight that began from there. Parking at the hull instead changes the opening
+	# beat: nothing is commanded during the 4.8s wake, so a ship dropped at 8u
+	# starts the first survey window already inside CORE_RANGE and burns the phase
+	# down before the boss can seal. Measured, not guessed — at 8u, LANCE's seal
+	# count fell to 1/1/2 and PHASE INTEGRITY failed on a median it had always
+	# cleared. The distance to the engine is not what this suite varies.
+	const APPROACH := 30.0
+	player.global_position = boss.global_position + Vector3(0, 0, APPROACH)
+	player.shield = player.shield_max
+	await get_tree().physics_frame
+
+	_apex_wake_timer = 0.2
+	await get_tree().create_timer(ApexBoss.WAKE_TIME + 0.6).timeout
 
 	var elapsed := 0.0
 	var damage_taken := 0.0
@@ -8836,6 +9004,19 @@ func _balance_run(weapon_a: String, weapon_b: String, label: String) -> Dictiona
 		elif player.shield >= player.shield_max and prev_shield < 5.0:
 			warps += 1
 		prev_shield = player.shield
+		# v15. AND FLY BACK OUT AFTER DYING. The emergency warp used to be a blip:
+		# the engine sat 25u from spawn, so a ship dropped at the dock was still in
+		# the fight and the run carried on. From the lair it is 300u, which is past
+		# the leash — so the encounter ends, the engine resets, and every second of
+		# every fit's run after its first death would have been measuring a ship
+		# parked at home with nothing to shoot. The trip back is instant here
+		# because the trip is not what this suite measures; `warps` already carries
+		# the cost, and the reset engine carries the rest.
+		if is_instance_valid(boss) \
+				and player.global_position.distance_to(boss.global_position) > ApexBoss.WAKE_RANGE:
+			player.global_position = boss.global_position + Vector3(0, 0, APPROACH)
+			if not boss_active:
+				_apex_wake_timer = 0.2
 
 	# A kill landing mid-window still counts as that window's damage.
 	if was_survey and window_start_hp >= 0.0:
@@ -8862,13 +9043,26 @@ func _balance_run(weapon_a: String, weapon_b: String, label: String) -> Dictiona
 func _run_boss_test() -> void:
 	var player: PlayerShip = get_tree().get_first_node_in_group("player")
 	set_deep_generation(false)
-	GameState.mark_breached("pyx01")   # so the engine is live and pyx02 is reachable
+	GameState.mark_breached("pyx01")   # so the engine is live
+	# v15. AND THE LANE HAS TO BE OPENED SEPARATELY. Breaching only CHARTS pyx02
+	# now; the lane stays jammed until the engine dies (STRATEGY §38). Without
+	# this, step 2's travel_to is refused and every observation after it describes
+	# a ship that never left — which is exactly what it was reporting.
+	GameState.open_lane("pyx01")
 	_load_system("pyx01")
 	await get_tree().create_timer(0.4).timeout
 
+	# v15. OUT TO THE ENGINE FIRST: the wake is a proximity poll, so armed from
+	# spawn it refuses and every check below runs against a boss that never woke.
+	# This suite prints observations rather than PASS lines, so it could not fail
+	# the sweep while doing it — `woke: boss_active=false`, `HUB EXPLOIT
+	# took_damage=false (must be true)`, `WAVES RESUMED: swarm_count=0 (must be
+	# > 0)`, all reported and all counted as green.
+	var boss := _find_apex()
+	player.global_position = boss.global_position + Vector3(0, 0, 6.0)
+	await get_tree().physics_frame
 	_apex_wake_timer = 0.2
 	await get_tree().create_timer(ApexBoss.WAKE_TIME + 1.2).timeout
-	var boss := _find_apex()
 	print("[bosstest] woke: boss_active=", boss_active, " boss_found=", boss != null)
 
 	# 1. Hub exploit: parking on the boss must NOT be a safe pocket.
@@ -10996,7 +11190,179 @@ func _run_hunt_test() -> void:
 		lair_report, lair_bad if lair_bad != "" else "stable",
 		"PASS" if lair_bad == "" else "FAIL"])
 
-	# --- 8. the pinning list is complete -------------------------------------
+	# --- 8. the arena is exactly the engine's reach --------------------------
+	# THE PRICE OF A LITERAL. DeepSpace.LAIR_KEEPOUT is written out as 120.0
+	# rather than defined as ApexBoss.LEASH_RANGE, because a compile-time const
+	# dependency closes a cycle — DeepSpace names ApexBoss, ApexBoss names HUD,
+	# HUD names DeepSpace — and Godot answers a cycle in the global class list by
+	# declaring EVERY class_name in the project undeclared. Forty parse errors in
+	# files nobody touched, and a boot that hangs rather than fails. (Measured,
+	# not feared: writing the const that way is what produced them.)
+	#
+	# So the two numbers agree HERE or they agree nowhere. The keep-out is not a
+	# tuning value — it is the leash, restated as world generation: the leash is
+	# the radius inside which the game says you are in the fight, so anything
+	# inside it that is not the fight is the game contradicting itself.
+	var ordered: bool = ApexBoss.WAKE_RANGE < ApexBoss.DETECT_RANGE \
+		and ApexBoss.DETECT_RANGE <= ApexBoss.LEASH_RANGE
+	var anchored: bool = is_equal_approx(DeepSpace.LAIR_KEEPOUT, ApexBoss.LEASH_RANGE)
+	print("[hunt] THE ARENA IS THE ENGINE'S REACH keep-out %.0f vs leash %.0f (anchored=%s), wake %.0f < detect %.0f <= leash %.0f (%s) -> %s" % [
+		DeepSpace.LAIR_KEEPOUT, ApexBoss.LEASH_RANGE, str(anchored),
+		ApexBoss.WAKE_RANGE, ApexBoss.DETECT_RANGE, ApexBoss.LEASH_RANGE, str(ordered),
+		"PASS" if anchored and ordered else "FAIL"])
+
+	# --- 9. the keep-out subtracts, and only where it should -----------------
+	# Pure arithmetic over the generator, no flying: plan_cell is what the world
+	# WOULD hold and built_plan is what it actually builds, and the only legal
+	# difference between them is a station, nest or hulk inside the keep-out.
+	#
+	# `staged` is what gives this teeth. A keep-out asserted over a patch of space
+	# that happened to roll nothing would pass while doing nothing, so the number
+	# of things the generator put in the sphere is printed and required to be
+	# non-zero — if the salt or the bands ever move the lair somewhere genuinely
+	# empty, this says so instead of going quietly green.
+	#
+	# And the OUTSIDE half is the other half of the claim. A filter that dropped
+	# every station in the system would satisfy the inside check perfectly.
+	var lair := SystemDB.lair_pos(system_id, GameState.run_seed)
+	var lair_cell := DeepSpace.cell_of(lair)
+	var staged := 0        # suppressible things the generator put inside the sphere
+	var leaked := 0        # ... that the world built anyway
+	var outside_moved := 0 # ... and anything the filter touched that it should not have
+	for cx in range(lair_cell.x - 3, lair_cell.x + 4):
+		for cz in range(lair_cell.y - 3, lair_cell.y + 4):
+			var raw := deep_space.plan_cell(cx, cz)
+			var built := deep_space.built_plan(cx, cz)
+			for key_v in ["station", "pack", "hulk"]:
+				var key := String(key_v)
+				var thing: Dictionary = raw[key]
+				if thing.is_empty():
+					continue
+				var inside: bool = (thing["pos"] as Vector3).distance_to(lair) < DeepSpace.LAIR_KEEPOUT
+				if inside:
+					staged += 1
+					if not (built[key] as Dictionary).is_empty():
+						leaked += 1
+				elif (built[key] as Dictionary).is_empty():
+					outside_moved += 1
+	print("[hunt] THE KEEP-OUT IS SUBTRACTIVE generator staged %d suppressible things inside %.0fu of the lair, world built %d; %d touched outside it -> %s" % [
+		staged, DeepSpace.LAIR_KEEPOUT, leaked, outside_moved,
+		"PASS" if staged > 0 and leaked == 0 and outside_moved == 0 else "FAIL"])
+
+	# --- 10. and it never reaches the fingerprint ----------------------------
+	# WHY THE FILTER IS NOT IN plan_cell. PYXIS_MINETEST's WORLD FINGERPRINT
+	# hashes cells -5..5 — a square reaching ~384u per axis — and pyx01's lair
+	# lands at radius 308, squarely inside it. Subtracting the lair's neighbours
+	# in plan_cell would move a hash recorded to police the seam roll, and the
+	# recorded constant would need re-deriving every time the salt or a depth band
+	# changed.
+	#
+	# The overlap is ASSERTED rather than assumed, because it is the entire reason
+	# the design is what it is. If a future band pushed the lair out past the
+	# window this assertion would stop meaning anything, and it should say so
+	# rather than keep passing.
+	var in_window: bool = absi(lair_cell.x) <= 5 and absi(lair_cell.y) <= 5
+	var fp_now := _world_fingerprint()
+	print("[hunt] THE KEEP-OUT NEVER REACHES THE FINGERPRINT lair in cell %s, inside the hashed window=%s; fingerprint %s vs %s -> %s" % [
+		str(lair_cell), str(in_window), fp_now, WORLD_FINGERPRINT_BEFORE_SEAMS,
+		"PASS" if in_window and fp_now == WORLD_FINGERPRINT_BEFORE_SEAMS else "FAIL"])
+
+	# --- 11. nothing else lives in the arena ---------------------------------
+	# The same claim as 9, made against the WORLD instead of the arithmetic: fly
+	# to the lair, let the streamer dress it, and look at what is actually there.
+	# Two separate failures this catches that the plan comparison cannot — an
+	# obstacle registered without a mesh (_register_cell and _populate_cell
+	# filtering differently), and a nest armed from an unfiltered read in _stream.
+	var flyer: PlayerShip = get_tree().get_first_node_in_group("player")
+	flyer.teleport_to(lair + Vector3(0, 0, 30.0))
+	deep_space.stream_now(flyer.global_position)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var docks := 0
+	for n_v in get_tree().get_nodes_in_group("dockable"):
+		if (n_v as Node3D).global_position.distance_to(lair) < DeepSpace.LAIR_KEEPOUT:
+			docks += 1
+	var wrecks := 0
+	for n_v in get_tree().get_nodes_in_group("crackable"):
+		if (n_v as Node3D).global_position.distance_to(lair) < DeepSpace.LAIR_KEEPOUT:
+			wrecks += 1
+	var nests := 0
+	for p_v in deep_space.armed_nests():
+		if (p_v as Vector3).distance_to(lair) < DeepSpace.LAIR_KEEPOUT:
+			nests += 1
+	# AND IT IS NOT A HOLE. Rocks, seams and the landmark are deliberately left
+	# alone: 240u of genuinely empty space would read as a bug in the world rather
+	# than a feature of it. Asserted in the same breath as the suppression, so
+	# "clear the arena" can never quietly become "delete the arena".
+	#
+	# COUNTED AGAINST THE GENERATOR, not against zero. The first version of this
+	# clause asked for `dressed > 0` and it caught nothing: told to delete every
+	# rock and seam in the arena, the world still handed back three seams from the
+	# cells the sphere only clips, and the assertion passed on a world with more
+	# than half its dressing missing. `> 0` was a property of the geometry — a
+	# 120u sphere overlaps cells it does not contain — rather than a property of
+	# the rule it claimed to be testing.
+	#
+	# So it is like against like: what plan_cell stages inside the keep-out, over
+	# exactly the cells the streamer made live, versus what the world built.
+	# Rocks are counted through the OBSTACLE registry rather than the meshes,
+	# because obstacles are the half with no mesh — and "seams still there,
+	# rocks gone" is the shape of a hole this would otherwise miss.
+	var rocks_staged := 0
+	var seams_staged := 0
+	for c_v in deep_space.live_cells():
+		var c: Vector2i = c_v
+		var pl := deep_space.plan_cell(c.x, c.y)
+		for r_v in (pl["rocks"] as Array):
+			var rp: Vector3 = (r_v as Dictionary)["pos"]
+			rp.y = 0.0     # Obstacles.add flattens to the play plane; compare like with like
+			if rp.distance_to(lair) < DeepSpace.LAIR_KEEPOUT:
+				rocks_staged += 1
+		for s_v in (pl.get("seams", []) as Array):
+			if ((s_v as Dictionary)["pos"] as Vector3).distance_to(lair) < DeepSpace.LAIR_KEEPOUT:
+				seams_staged += 1
+	var rocks_live := 0
+	for s_v in Obstacles.spheres():
+		var sph: Dictionary = s_v
+		if String(sph.get("owner", "")).begins_with("deep:") \
+				and (sph["pos"] as Vector3).distance_to(lair) < DeepSpace.LAIR_KEEPOUT:
+			rocks_live += 1
+	var seams_live := 0
+	for n_v in get_tree().get_nodes_in_group("mineable"):
+		if (n_v as Node3D).global_position.distance_to(lair) < DeepSpace.LAIR_KEEPOUT:
+			seams_live += 1
+	var dressed_intact: bool = rocks_staged > 0 and rocks_live == rocks_staged \
+		and seams_staged > 0 and seams_live == seams_staged
+	print("[hunt] NOTHING ELSE LIVES IN THE ARENA within %.0fu of the lair: %d docks, %d wrecks, %d armed nests (all must be 0); still dressed: %d/%d rocks, %d/%d seams -> %s" % [
+		DeepSpace.LAIR_KEEPOUT, docks, wrecks, nests,
+		rocks_live, rocks_staged, seams_live, seams_staged,
+		"PASS" if docks == 0 and wrecks == 0 and nests == 0 and dressed_intact else "FAIL"])
+
+	# --- 12. the leash ends the fight, and only past the leash ---------------
+	# BOTH HALVES, because a leash that fired at every distance would satisfy the
+	# first half perfectly and make the encounter impossible to have. Driven by
+	# flying: the engine is woken by arriving at it and let go of by leaving, and
+	# neither state is written by hand anywhere in here.
+	_apex_wake_timer = 0.2
+	var engine := _find_apex()
+	flyer.teleport_to(engine.global_position + Vector3(0, 0, 8.0))
+	await get_tree().create_timer(ApexBoss.WAKE_TIME + 1.4).timeout
+	var woke := boss_active
+	# Well outside WAKE_RANGE, comfortably inside LEASH_RANGE: the gap between
+	# the two is what stops the fight flickering on and off at the boundary, so
+	# it is the interesting place to stand.
+	var mid := (ApexBoss.WAKE_RANGE + ApexBoss.LEASH_RANGE) * 0.5
+	flyer.teleport_to(engine.global_position + Vector3(0, 0, mid))
+	await get_tree().create_timer(0.5).timeout
+	var held := boss_active
+	flyer.teleport_to(engine.global_position + Vector3(0, 0, ApexBoss.LEASH_RANGE + 20.0))
+	await get_tree().create_timer(0.5).timeout
+	var slipped: bool = not boss_active
+	print("[hunt] THE LEASH ENDS THE FIGHT woke at 8u=%s, still engaged at %.0fu=%s, broke off at %.0fu=%s -> %s" % [
+		str(woke), mid, str(held), ApexBoss.LEASH_RANGE + 20.0, str(slipped),
+		"PASS" if woke and held and slipped else "FAIL"])
+
+	# --- 13. the pinning list is complete -------------------------------------
 	# THE ASSERTION THIS FILE OWED ITSELF. MINETEST was dispatched, swept, and
 	# absent from HARNESS_VARS from the day it shipped -- so 25 assertions ran
 	# against the developer's savegame rather than pinned state, which is the

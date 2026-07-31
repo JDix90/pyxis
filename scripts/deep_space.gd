@@ -88,6 +88,44 @@ const PACK_INSET := 14.0
 const HULK_INSET := 12.0
 const ROCK_INSET := 4.0
 
+# --- the engine's arena ------------------------------------------------------
+# v15. NOTHING ELSE LIVES INSIDE THE ENGINE'S REACH.
+#
+# The apex used to sit at an authored point inside the charted volume, where the
+# generator never runs, so the question never came up. It hides out in the
+# expanse now — and the expanse is exactly where stations, nests and guarded
+# hulks come from. Left alone, the game would eventually roll a nest, a dock or a
+# standing garrison into the middle of a boss arena.
+#
+# IT IS ApexBoss.LEASH_RANGE, and the number is not chosen — the leash is the
+# radius inside which the game says you are in the fight, so anything inside it
+# that is not the fight is the game contradicting itself. It also comfortably
+# clears WAKE_RANGE (60), which is the floor that actually matters: a dock at 50u
+# would wake the engine on the approach and lock every console while the player
+# was still trying to berth.
+#
+# WRITTEN OUT RATHER THAN DERIVED, and that is not laziness. `const LAIR_KEEPOUT
+# := ApexBoss.LEASH_RANGE` is a compile-time dependency on that class, and the
+# chain closes: ApexBoss names HUD, HUD names DeepSpace. Godot answers a cycle in
+# the global class list by declaring EVERY class_name in the project undeclared —
+# a wall of parse errors in files that were never touched, and a boot that hangs
+# instead of failing. So the two constants agree by assertion instead:
+# PYXIS_HUNTTEST's THE ARENA IS THE ENGINE'S REACH reads both and fails if they
+# ever part company.
+#
+# WHAT IT DOES NOT TOUCH: rocks, seams and the landmark. A sphere of genuinely
+# empty space 240u across would read as a hole in the world — a bug, not a place.
+# The debris is still there, the ore is still on the debris, and the
+# supercell's landmark still stands where it stood. What is missing is everything
+# that would have brought its OWN encounter to the fight.
+#
+# The hulk is suppressed with the other two despite carrying no hostiles of its
+# own by default: it is the thing GUARD POSTS ride on (a standing garrison, which
+# is a nest by another name) and the thing TRAP_CHANCE rigs to spawn a pack the
+# moment it is cracked. Suppressing packs while leaving the object that mints one
+# would be a rule that only half held.
+const LAIR_KEEPOUT := 120.0
+
 # --- what the beacons say ----------------------------------------------------
 # Crossing a band plays an automated broadcast. This replaces the soft outer
 # limit the plan originally called for, and it is a better answer: a wall says
@@ -259,6 +297,19 @@ var _cold: MeshInstance3D
 var _cold_mat: StandardMaterial3D
 var _k_last := -1.0
 
+# Where this system's apex engine hides, resolved ONCE in configure() and held.
+# Not recomputed per cell: lair_pos hashes a string and builds a generator, and
+# this is asked four times per cell across the whole streaming window.
+#
+# Caching also pins it to the right moment. SystemBuilder positions the boss node
+# from GameState.run_seed and then builds this, so both read the salt on the same
+# frame — and a harness that re-pins the salt afterwards moves neither the boss
+# nor the hole in the world it stands in. The keep-out is guaranteed to be around
+# the engine that actually exists rather than around one a later assignment
+# implies.
+var _lair := Vector3.ZERO
+var _has_lair := false
+
 # Live cells, keyed by Vector2i. The value is the cell's content node, or null
 # for a cell that generated nothing — the key still has to be present, or an
 # empty cell is re-planned on every frame it stays in the window.
@@ -331,6 +382,11 @@ static func band_color(depth: float) -> Color:
 func configure(def: Dictionary, system_id: String) -> void:
 	_bounds = float(def.get("bounds", 40.0))
 	_id = system_id
+	# Asked of the DEF rather than of the position, because "this system has no
+	# apex" and "this system's apex hides at the origin" both come back as
+	# Vector3.ZERO from lair_pos and only one of them means there is no keep-out.
+	_has_lair = not ((def.get("apex", {}) as Dictionary).get("lair", {}) as Dictionary).is_empty()
+	_lair = SystemDB.lair_pos(system_id, GameState.run_seed) if _has_lair else Vector3.ZERO
 	var sf: Dictionary = def.get("starfield", {})
 	var seed_value := hash(system_id)
 
@@ -433,9 +489,13 @@ func cell_has_bay(system_id: String, cx: int, cz: int) -> bool:
 	# Re-derives a cell from the generator and reports whether it holds a station
 	# with a bay. GameState validates every saved deep bay key through this, so a
 	# stale or edited save self-corrects instead of carrying phantom stores.
+	# THROUGH THE ARENA FILTER, like every other consumer. A bay the generator
+	# describes but the world never builds is worse than no bay at all: the store
+	# would survive every validation pass and hold cargo the player could never
+	# reach, because the Port it belongs to is suppressed as lair keep-out.
 	if system_id != _id:
 		return false
-	var st: Dictionary = plan_cell(cx, cz).get("station", {})
+	var st: Dictionary = built_plan(cx, cz).get("station", {})
 	return not st.is_empty() and bool(st.get("storage", false))
 
 
@@ -599,6 +659,37 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 	return out
 
 
+func built_plan(cx: int, cz: int) -> Dictionary:
+	# WHAT THE WORLD ACTUALLY BUILDS, as opposed to what the generator said. The
+	# only difference is the lair keep-out, and the split is the whole reason the
+	# keep-out is safe.
+	#
+	# plan_cell stays untouched and stays the fingerprint's subject. Its rolls are
+	# one linear sequence and PYXIS_MINETEST's WORLD FINGERPRINT hashes cells
+	# -5..5 -- a square reaching ~384u per axis, which pyx01's Drift band lands
+	# squarely inside. Subtracting the lair's neighbours THERE would move the hash
+	# for a reason that has nothing to do with the seam roll it was recorded to
+	# police, and the recorded constant would have to be re-derived every time the
+	# salt or a depth band changed. Subtracting them HERE cannot: this function
+	# draws from no generator, is called by nothing that hashes, and runs at the
+	# moment a cell becomes real.
+	#
+	# So: plan_cell is the generator's word, built_plan is the world's, and every
+	# consumer that turns a cell into nodes, obstacles, armed nests or a save-file
+	# validation goes through this one.
+	var plan := plan_cell(cx, cz)
+	if not _has_lair:
+		return plan
+	# Mutated in place, which is only safe because plan_cell builds a fresh
+	# dictionary on every call and shares nothing between them.
+	for key_v in ["station", "pack", "hulk"]:
+		var key := String(key_v)
+		var thing: Dictionary = plan[key]
+		if not thing.is_empty() and (thing["pos"] as Vector3).distance_to(_lair) < LAIR_KEEPOUT:
+			plan[key] = {}
+	return plan
+
+
 # --- seams -------------------------------------------------------------------
 # Ore lives on the surface of rocks that were already there. Thin and poor near
 # home, thick and rich outward -- and that gradient is not flavour, it is the
@@ -747,7 +838,10 @@ func _stream(around: Vector3) -> void:
 			var key := Vector2i(cx, cz)
 			if not _cells.has(key):
 				_cells[key] = _register_cell(cx, cz)
-				var pack: Dictionary = plan_cell(cx, cz)["pack"]
+				# built_plan, not plan_cell: arming a nest is instantiation, and a
+				# nest armed inside the keep-out would ambush the player in the
+				# middle of the boss arena from a node that was never built.
+				var pack: Dictionary = built_plan(cx, cz)["pack"]
 				if not pack.is_empty() and not _sprung.has(key):
 					_armed[key] = pack
 				if _cells[key] != null:
@@ -817,7 +911,12 @@ func _register_cell(cx: int, cz: int):
 	# crosses a boundary, so the world is solid before it is visible -- flying
 	# through a rock that has not been dressed yet would be a far worse bug than
 	# seeing it appear a frame late.
-	var plan := plan_cell(cx, cz)
+	#
+	# built_plan, and this is the call site that MOST needs it: obstacles are the
+	# half of a cell that has no mesh. A station suppressed here but registered
+	# above would leave a docking ring's worth of invisible wall in the middle of
+	# the boss arena, with nothing on screen to explain it.
+	var plan := built_plan(cx, cz)
 	var rocks: Array = plan["rocks"]
 	var hulk: Dictionary = plan["hulk"]
 	var station: Dictionary = plan["station"]
@@ -861,7 +960,10 @@ func _register_cell(cx: int, cz: int):
 func _populate_cell(cx: int, cz: int, node: Node3D) -> void:
 	# The expensive half: meshes, a Derelict with its own kitbash, a Port with
 	# six silhouettes' worth of construction. Drained under a frame budget.
-	var plan := plan_cell(cx, cz)
+	#
+	# built_plan, matching _register_cell exactly. The two halves of a cell must
+	# be filtered the same way or they describe different worlds.
+	var plan := built_plan(cx, cz)
 	var rocks: Array = plan["rocks"]
 	var hulk: Dictionary = plan["hulk"]
 	var station: Dictionary = plan["station"]
@@ -1230,6 +1332,18 @@ func content_cell_count() -> int:
 		if _cells[key] != null:
 			n += 1
 	return n
+
+
+func armed_nests() -> Array:
+	# Where the loaded ambushes are, for PYXIS_HUNTTEST's arena assertion. A nest
+	# is the one piece of deep content with no node until it springs, so counting
+	# what is in the tree would report an empty arena that is merely a quiet one.
+	var out: Array = []
+	for key_v in _armed:
+		out.append((_armed[key_v] as Dictionary)["pos"])
+	return out
+
+
 func _process(_delta: float) -> void:
 	# Ahead of the early return: cells already registered still owe their meshes
 	# whether or not there is a rig to follow this frame.

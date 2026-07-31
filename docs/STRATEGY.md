@@ -2743,3 +2743,297 @@ which made `can_equip` refuse the very module the capture existed to photograph,
 and produced a shot of the wrong ship with a completely plausible-looking stat
 row. The screenshot was wrong in a way that looked right, which is the only kind
 of wrong that survives review.
+
+## 39. The Hunt — stage 2, the engines move into the deep
+
+Stage 1 built the door. Stage 2 moves it somewhere worth walking to.
+
+The apex engines used to sit at an authored point about 60% of the way to the
+chart edge — visible from the dock, permanently marked on the radar, reachable in
+under a minute. Now each one hides at a bearing and a depth this run rolled,
+**out past the beacons**, and finding it is the game.
+
+    pyx01  THE DRIFT     260-340u past the chart edge
+    pyx02  THE REACHES   620-780u
+    pyx03  THE QUIET    1150-1450u
+
+The bands are the difficulty curve of the hunt, not decoration. The first engine
+sits in the Drift so a pilot with the tutorial still fresh can brute-force it if
+the hints run dry; the last one is an expedition.
+
+`SystemDB.lair_pos(id, run_seed)` is the only function that answers "where". The
+builder calls it, the free hint calls it, the world generator calls it, every
+harness calls it — because the moment two places derive that position
+independently they will disagree, and **a hunt whose hints point somewhere the
+boss is not is worse than no hints at all.** It draws from its own salted stream,
+never from the generator the expanse rolls on: one draw taken from that linear
+sequence would move every rock, hulk, nest and station in the game.
+
+### Both blockers were the same assumption
+
+Two rules stood in the way, and neither was wrong when it was written. Both
+assumed the fight happens near the origin.
+
+`_wake_apex` **refused to wake the engine while the player was outside charted
+space.** Sound reasoning for a boss at the origin: waking it from four hundred
+units out would lock every console for a fight that was not visible, not
+reachable and not started. With the engine now *living* out there, depth is
+exactly the wrong question — the old rule would refuse to wake it anywhere it can
+now be found. The question that always meant something is proximity: **is the
+hunter here yet.** The timer kept its shape and became that poll.
+
+Crossing the chart edge mid-fight **auto-disengaged**, for the same reason and
+with the same fix. It is now a leash measured from the engine, not from the
+chart. Three ranges, and the ordering is the design:
+
+     60u  WAKE    the engine notices you. Arriving is deliberate.
+     90u  DETECT  the radar finally marks it. You are committed by then.
+    120u  LEASH   the fight ends. Leaving is deliberate too.
+
+The gap between wake and leash is what stops the encounter flickering on and off
+while a ship drifts at the boundary.
+
+### Breaking off no longer sends you home
+
+This was found while inverting the second blocker, and it is an exploit fix
+rather than a difficulty preference. BREAK OFF used to pull the ship back to
+spawn, which was the whole point of the button when the fight happened in sight
+of the dock. With the engine in the Quiet it would have been **a free instant
+trip home from fourteen hundred units out** — on a button, with a full hold,
+ignoring the raid taper and every band in between. Fly out heavy, tap the boss,
+break off, arrive home. The single best cargo route in the game, shipped
+alongside the horizon built to make the trip home matter.
+
+Breaking off now ends the **fight** and nothing else: the engine resets, you keep
+your position and your problem. Dying still warps you out, which is what keeps
+dying the expensive exit rather than the convenient one.
+
+### The radar was answering the question
+
+The apex marker rendered at **any** distance: top tier, never dropped by the
+twelve-slot cap, alpha floored at 0.3 so distance could not fade it out.
+Harmless while the engine stood in plain sight. Fatal the moment it hides — a
+permanent red arrow pointing at the lair answers the entire hunt before the first
+hint is ever bought. It is now gated on `DETECT_RANGE`, apex group only.
+
+`RADARTEST`'s cap assertion had to move out to the lair with it. Staged at the
+origin the boss is 300u away and no longer on the board at all, so `apex_kept`
+was reporting *the cutoff working* rather than *the cap sparing the boss* — and
+it was only ever printed, never asserted, so it would have said `false` forever
+without failing. It is asserted now, from where the engine is detectable.
+
+### The arena, and why the keep-out is not in `plan_cell`
+
+The engine now stands in generated space, which is where stations, nests and
+guarded hulks come from. Left alone the game would eventually roll a dock, a nest
+or a standing garrison into the middle of a boss arena. So nothing that offers a
+berth and nothing that fields its own hostiles exists within `LAIR_KEEPOUT` of
+the lair — **which is `ApexBoss.LEASH_RANGE`, restated as world generation.** The
+leash is the radius inside which the game says you are in the fight; anything
+inside it that is not the fight is the game contradicting itself.
+
+The approved plan put this in a `plan_cell` post-pass. Checking the fingerprint
+window first showed why that was wrong. `PYXIS_MINETEST`'s `WORLD FINGERPRINT`
+hashes cells -5..5 — a square reaching ~384u per axis — and pyx01's lair lands at
+radius 308, in cell (-5, -2), squarely inside it. Subtracting the lair's
+neighbours there would move a hash recorded to police the **seam roll**, and the
+recorded constant would need re-deriving every time the salt or a depth band
+changed.
+
+`_populate_cell` turned out to draw from no generator at all, so the whole
+keep-out runs at **instantiation** instead. `plan_cell` is the generator's word
+and stays untouched; `built_plan` is the world's, and every consumer that turns a
+cell into nodes, obstacles, armed nests or a save-file validation goes through
+it. The fingerprint is safe **by construction** rather than by assertion — and
+the assertion that proves it (`THE KEEP-OUT NEVER REACHES THE FINGERPRINT`) is
+written to fail if a future band ever pushes the lair out past the hashed window,
+because at that point it would stop meaning anything and should say so rather
+than keep passing.
+
+Four consumers, and the least obvious is the most important. `_register_cell` is
+the half of a cell that has **no mesh**: filter the station out of the meshes but
+not out of the obstacles and you leave a docking ring's worth of invisible wall
+in the middle of the arena, with nothing on screen to explain it. `cell_has_bay`
+goes through it too — a bay the generator describes but the world never builds
+would survive every validation pass and hold cargo the player could never reach.
+
+What the keep-out does **not** touch: rocks, seams and the supercell's landmark.
+240u of genuinely empty space would read as a hole in the world rather than a
+feature of it. The hulk *is* suppressed, despite carrying no hostiles by default:
+it is the thing guard posts ride on — a standing garrison is a nest by another
+name — and the thing `TRAP_CHANCE` rigs to spawn a pack the moment it is cracked.
+Suppressing nests while leaving the object that mints one would be a rule that
+only half held.
+
+### A constant that could not be derived
+
+`const LAIR_KEEPOUT := ApexBoss.LEASH_RANGE` is the obvious way to make two
+numbers agree, and it does not work here. It is a compile-time dependency, and
+the chain closes: DeepSpace names ApexBoss, ApexBoss names HUD, HUD names
+DeepSpace. **Godot answers a cycle in the global class list by declaring every
+`class_name` in the project undeclared** — a wall of parse errors in files nobody
+touched, in a boot that hangs rather than fails, and not one of them pointing at
+the line responsible. So the constant is written out and the two agree by
+assertion instead. `THE ARENA IS THE ENGINE'S REACH` reads both and fails if they
+ever part company.
+
+(Worth knowing before the next fresh worktree: the same wall of "not declared in
+the current scope" errors is also what a missing `.godot/` import cache looks
+like, and that was the *actual* cause the first time. Run the import once before
+concluding anything about your own code.)
+
+### The assertion that measured the geometry
+
+Red-first caught one of this stage's own assertions doing nothing. `NOTHING ELSE
+LIVES IN THE ARENA` closed with `dressed > 0` — the clause meant to stop "clear
+the arena" quietly becoming "delete the arena". Told to delete every rock and
+seam inside the keep-out, the world still handed back three seams and the
+assertion **passed on an arena with more than half its dressing missing**.
+
+`> 0` was a property of the geometry, not of the rule: a 120u sphere overlaps
+cells it does not contain, so something always survives. It now counts like
+against like — what `plan_cell` stages inside the keep-out, over exactly the
+cells the streamer made live, against what the world built — and rocks are
+counted through the **obstacle registry** rather than the meshes, because "seams
+still there, rocks gone" is the shape of a hole the mesh count would miss. Three
+different ways of deleting the dressing now go red; before, none did.
+
+That is the third time this project has shipped a green assertion that tested
+nothing, and the second time the tell was the same: a threshold that any
+plausible world satisfies.
+
+### The one suite that had to be re-staged
+
+`PYXIS_BALANCE` fights the engine to a conclusion with six fits, and it staged
+every one of them at spawn. Under a proximity wake that fight never starts: the
+suite would have spent three minutes per fit flying and reported six timeouts as
+a balance result. It is boss-relative now, taken from the node rather than
+recomputed.
+
+Its second problem only appears once the first is fixed. **Dying emergency-warps
+the ship home** — a blip when the engine sat 25u from spawn, and the end of the
+run when it sits 300u away, because the leash fires, the engine resets, and every
+second after a fit's first death would have measured a ship parked at the dock
+with nothing to shoot. The harness makes the trip back instantly, because the
+trip is not what it measures; `warps` already carries the cost and the reset
+engine carries the rest.
+
+### The interim hint
+
+Stage 3 buys intel. Until it ships, the lane-obstructed broadcast gives the band
+and the quadrant for free — "transmitting from THE DRIFT, bearing WEST". No
+bearing, no distance, deliberately too vague to fly straight to: a quadrant of
+the Drift is still tens of thousands of square units of nothing. It is the
+difference between a hunt and a needle in an infinite haystack.
+
+### What re-staging the boss suites turned up
+
+Moving the engine meant every harness that stages a fight had to be re-aimed at
+it. Four of them were arming the wake from spawn, which under a proximity poll
+means the fight never starts — and three of those four could not have failed for
+it, because they print observations rather than PASS lines.
+
+`PYXIS_BOSSTEST` was the worst of them. It reported `woke: boss_active=false`,
+`HUB EXPLOIT took_damage=false (must be true)`, `WARP-OUT boss_active=true (must
+be false)` and `WAVES RESUMED: swarm_count=0 (must be > 0)` — four checks, every
+one of them stating its own expectation and every one of them reporting the
+opposite — and the sweep counted the run as green, because zero PASS lines and
+zero FAIL lines is what a clean observation harness looks like. It also needed
+`open_lane` on top of `mark_breached`: under §38's two-tier gate, breaching only
+charts the next system, so its warp-out step was being refused and every
+observation after it described a ship that never left.
+
+`PYXIS_COLLISIONTEST`'s apex-damage check would have limped rather than failed —
+its loop parks the ship on the boss every frame, so the wake poll caught up a few
+seconds in and it measured whatever was left of the window. A sample that starts
+partway through the thing it is sampling is not a sample. It now reads
+`hp 1700 -> 968` instead of nothing at all.
+
+`PYXIS_DOCKTEST`'s boss lock reads differently from out here, and the change is
+worth stating: the keep-out guarantees **no berth exists within the leash**, so
+the only way to be in a fight and ask to dock is to ask about a station 300u
+away. `request_dock` checks `boss_active` before it checks range, so the refusal
+is still the lock rather than the distance — but the rule is now a defensive one
+covering a situation the world's geometry no longer produces.
+
+### The armament that had never fired
+
+Re-staging `PYXIS_APEXTEST` uncovered a defect older than this horizon, in the
+final boss.
+
+**The Meridian's graviton tether has never moved anybody.** `_tether_pull` adds
+`inward * 6.5 * delta` to `player.velocity`, and the next thing that happens to
+that value is PlayerShip's own integration:
+`velocity.move_toward(desired, accel * delta)`. For a ship with no move target
+`desired` is **zero**, so the autopilot brakes at `accel` — 9.0 on the bare hull —
+against a pull of 6.5, and clamps it to exactly zero every frame before a single
+unit of travel is integrated. `apex_boss.gd`'s own comment reasons that "the
+weakest drive in the catalog accelerates at 9+ — the tether only wins against a
+player who is not flying", which has the case precisely backwards: **the ship
+that is not flying is the one braking hardest.**
+
+The check that should have caught this could not fail. Its `grav_tether` branch
+only ever *read* `park.distance_to(player)` and never assigned `park`, so
+`displaced` was the distance from the engine to wherever the ship already
+happened to be standing — clearing its 1.5u bar on the first frame with the
+tether doing nothing at all. The relocation is what made it visible: the same
+clause started reporting a **1,143u drag**, a number no armament in this game
+could produce.
+
+The measurement is correct now and reports `0.0u`. It is deliberately an
+observation rather than an assertion, because the fix is not a bug fix: making
+the tether work means choosing a pull that survives the autopilot *and* stays
+out-runnable by the weakest legal fit (`max_speed` floors at 1.6), and that is a
+balance decision about the final boss to be made in the hand rather than in a
+harness. It is on record here and in the harness output until it is.
+
+Two lessons, and the second is the one worth keeping. An observation harness
+cannot fail, so a `(must be true)` printed beside `false` is not a warning — it
+is a silence. And **the relocation did not break any of this**; it made four
+already-broken things loud enough to read.
+
+### The assertion the relocation recalibrated
+
+`PYXIS_BALANCE` was the one suite that had never been run since the move, and
+running it produced the stage's last finding: **the encounter it measures is not
+the encounter it was calibrated on.**
+
+Its `PHASE INTEGRITY` check has two clauses. The floor — every run engages at
+least one seal — held in all thirty fight samples taken across five runs, never
+once reading zero. That is the clause carrying the real design catastrophe, the
+one apex_boss.gd's header names: a fit that bursts through "would never meet a
+seal, a probe, or the sweep".
+
+The median clause is the one that moved, and the cause is three lines in
+`_process`:
+
+    # Waves are the CHARTED system's pacing and they stop at its edge.
+    if depth > 0.0:
+        return
+
+Swarm waves do not spawn past the chart edge. Every previous calibration of that
+bar was taken from a fight near the origin **with waves arriving every 22 seconds
+into it**; the fight now happens 308u out and has none. Fewer incidental targets
+means the bot spends less time not shooting the boss, phases fall faster, and the
+fit meets fewer seals. Measured, seals per fit across five runs:
+
+    LANCE     2, 2, 2, 1, 1, 2      MIXED     2, 3, 3, 4
+    ARC       5, 4, 10, 3           TORP      3, 1, 3, 1, 4, 2
+    PULSE     2, 2, 1, 1, 3, 2      TORP+LNC  2, 2, 1, 1, 2
+
+Three of five runs failed, on four different fits, standalone and in-sweep alike
+— so it is not machine load, and it is not the stand-off distance either: the
+same spread appears at 8u and at the historically-matched 30u.
+
+**It is left failing on purpose.** The bar is a threshold to re-derive from the
+distribution above, and this suite's own comments record two previous rewrites
+caused by precisely the opposite instinct — v1 compared a number against a
+ceiling that capped it, v2 set a bar of 2 from six runs of a distribution nobody
+had measured, and PULSE's real floor turned out to be 1. Nudging the number until
+the sweep goes quiet would be the third instance of the same mistake, made by
+someone who had just finished writing up the first two.
+
+Arguably the new measurement is the better one: the suite's own header calls
+itself "the acceptance test for the encounter", and the encounter is now measured
+in isolation rather than with a swarm fight layered over it. That is an argument
+for re-deriving the bar, not for restoring the waves.
