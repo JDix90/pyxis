@@ -89,8 +89,22 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **444 PASS / 0 FAIL / 0 script errors** across 53 runs, save
-format **v17**. The most recent seven are the two-bug pass in STRATEGY §44:
+Current baseline: **443 PASS / 1 FAIL / 0 script errors** across 53 runs, save
+format **v17**.
+
+The 1 FAIL is `HOLDTEST`'s `THE READOUT FOLLOWS THE HOLD`, and it **predates
+this change** — it reproduces identically on `fb03037` with nothing applied,
+so the "437 PASS / 0 FAIL" recorded above it was already off by one. Diagnosed,
+not fixed, because it belongs to whoever owns the hold: `ACTIVE_SLOTS` is 2 and
+the suite is still holding `sweep_swarm` and `haul_small` from an earlier
+section, so `contracts.accept("haul_alloys")` returns **false** and the
+assertion never checks the return value. The delivery half of that check has
+therefore never run once. Its `both_fired` clause also compares *pre-spill*
+cargo against *post-delivery* cargo — two unrelated phases — which is the
+"inherits state from the one above it" shape this file warns about. Drop the two
+contracts first, or assert on `accept`.
+
+The most recent seven are the two-bug pass in STRATEGY §44:
 three in `BOSSTEST` (the engine dies, a killed engine stays dead and its wreck
 survives the warp, a cracked wreck leaves nothing), three in
 `SAVETEST=migrate16` for v16→v17, and one in `MINETEST` (`THE CUT FALLS

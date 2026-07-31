@@ -3675,3 +3675,51 @@ the authored garrison in `def["sentries"]` (hundreds of units away, unrelated to
 the lair), and deep-space nests (already suppressed inside `LAIR_KEEPOUT`). Only
 the engine node itself was ever the problem. Ambient pacing keeps respawning, as
 it should.
+
+### The suite the fix broke, and why it was the right kind of break
+
+`PYXIS_BALANCE` went red on the first full sweep after the apex fix, and the
+failure mode is worth keeping: **every fit after the first reported `NO BOSS`**,
+and `PHASE INTEGRITY` printed a row of zeros — `ARC 0/0/0/0/0; PULSE 0/0/0/0/0;
+…` — which is a suite measuring nothing rather than a balance result.
+
+The cause is the fix working. `_balance_run` fights pyx01's engine to a
+conclusion with six fits and a four-run resample pass, calling `_load_system`
+between each. The first fit killed the engine; from v17 on, a killed engine is
+not rebuilt, so the remaining twenty-odd runs had nothing to shoot at.
+
+The repair is one line in the harness, not a softening of the rule:
+`GameState.apex_down = []` at the top of each run, the same shape HUNTTEST
+already uses to restore `apex_killed` after asserting on it. A harness that
+deliberately replays an encounter the game gives **once** has to put the world
+back itself; that is a property of the measurement, not a hole in the fix.
+
+Two things make this a good failure rather than an annoying one. It was loud —
+`NO BOSS` on every line and a visible row of zeros, not a plausible-looking
+number that happened to be wrong. And it was caught by the *full sweep* rather
+than by the suites under change: `BOSSTEST`, `MINETEST`, `HUNTTEST` and
+`FEELTEST` were all green when it appeared. The per-suite runs during
+development would never have found it, which is the argument for the sweep being
+the gate rather than the suite you happen to be editing.
+
+### One standing FAIL that is not ours
+
+The same sweep surfaced `HOLDTEST`'s `THE READOUT FOLLOWS THE HOLD` failing, and
+it reproduces identically on a clean `fb03037` worktree — so the recorded
+"437 PASS / 0 FAIL" was already off by one before this change. Instrumented, the
+cause is immediate:
+
+```
+[dbg] accept=false active=[sweep_swarm, haul_small] slots_free=0
+```
+
+`ACTIVE_SLOTS` is 2 and both are still held from an earlier section of the same
+suite, so `contracts.accept("haul_alloys")` returns **false** and the assertion
+does not check. The delivery half of it has never executed; its `both_fired`
+clause compares pre-spill cargo against post-delivery cargo, two quantities from
+different phases, and is false for a reason unrelated to what the line claims to
+measure. Left for whoever owns the hold — the fix is to drop the two contracts
+first or to assert on `accept` — but recorded here because an assertion that has
+never once run is exactly the defect class §41 and §43 were written about, and
+finding a third one in the suite added most recently is the argument for reading
+every new check's *red* run rather than trusting its green one.

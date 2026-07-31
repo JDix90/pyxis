@@ -9540,6 +9540,17 @@ func _run_balance_test() -> void:
 func _balance_run(weapon_a: String, weapon_b: String, label: String) -> Dictionary:
 	GameState.equip(ModuleDB.Slot.WEAPON_A, weapon_a)
 	GameState.equip(ModuleDB.Slot.WEAPON_B, weapon_b)
+	# v17. UNDO THE KILL THE LAST FIT MADE. Every run here fights the same engine
+	# to a conclusion, and since v17 an engine that has been put down is not
+	# rebuilt -- so without this the first fit killed pyx01's and every fit after
+	# it reported NO BOSS. PHASE INTEGRITY then read a row of zeros, which is a
+	# suite measuring nothing rather than a balance result.
+	#
+	# Cleared per RUN and not once at the top, because the resample pass calls
+	# this again after four more kills. Same shape as HUNTTEST restoring
+	# apex_killed after it asserts on it: a harness that deliberately replays an
+	# encounter the game gives once has to put the world back itself.
+	GameState.apex_down = []
 	_load_system("pyx01")
 	await get_tree().create_timer(0.5).timeout
 
