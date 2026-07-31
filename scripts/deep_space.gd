@@ -1260,6 +1260,22 @@ func note_guard_died(key: Vector2i) -> void:
 	var origin: Vector3 = _guard_origin.get(key, Vector3.ZERO)
 	GameState.note_log("POST CLEARED — %s" % band_name(depth_at(origin)))
 
+	# WHAT THE POST WAS GUARDING AGAINST. A cleared post gives up its standing
+	# orders, and out here those orders point one way. Gated on band >= 2 for a
+	# reason that is not difficulty scaling: the Shoals are close enough to the
+	# chart that a post there is guarding a wreck, not keeping a watch on the
+	# engine, and letting it talk would hand out a bearing before the player had
+	# gone anywhere.
+	#
+	# +-15 degrees, the widest bearing channel in the game. This is the one hint
+	# you can earn purely by fighting, so it is deliberately the vaguest: it
+	# rewards clearing the deep without letting combat substitute for the desks
+	# that sell precision.
+	if band_of(depth_at(origin)) >= 2:
+		var main := get_tree().get_first_node_in_group("main")
+		if main != null and main.has_method("file_apex_intel"):
+			main.file_apex_intel("guard", origin, 15.0)
+
 
 func guards_at(key: Vector2i) -> Array:
 	# Harness support: the streaming window holds several guarded hulks at once,

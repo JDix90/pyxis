@@ -1232,6 +1232,80 @@ func _build_rumors() -> void:
 	note.add_theme_color_override("font_color", Color(0.6, 0.6, 0.66))
 	_body.add_child(note)
 
+	_build_hunt_desk()
+
+
+func _build_hunt_desk() -> void:
+	# THE SECOND THING SOLD OVER THIS BAR, and deliberately a separate row from
+	# the market rumour above it. They are different goods: one is news about
+	# prices that expires, the other is a line on a chart that does not. Folding
+	# the hunt into `_rumor_text`'s ladder would have made buying a bearing a
+	# matter of first exhausting every glut on the board.
+	var price := int(_port_def.get("hunt_price", 0))
+	if price <= 0:
+		return
+	var main := get_tree().get_first_node_in_group("main")
+	if main == null or not main.has_method("file_apex_intel"):
+		return
+	var sys_id := String(main.system_id)
+	# Nothing to sell once the engine is dead — and nothing to sell about a
+	# system that never had one.
+	var apex: Dictionary = SystemDB.get_system(sys_id).get("apex", {})
+	if apex.is_empty() or GameState.has_killed_apex(sys_id):
+		return
+
+	var err := float(_port_def.get("hunt_error", 0.0))
+	var rule := HSeparator.new()
+	_body.add_child(rule)
+
+	var head := Label.new()
+	head.text = "THE HUNT — %s" % String(apex.get("name", "THE ENGINE"))
+	head.add_theme_font_size_override("font_size", 12)
+	head.add_theme_color_override("font_color", Palette.GOLD)
+	_body.add_child(head)
+
+	var buy := Button.new()
+	buy.text = "BUY BEARING ±%d°   %s" % [int(round(err)), _comma(price)] if err > 0.0 \
+		else "BUY THE WORD   %s" % _comma(price)
+	buy.custom_minimum_size = Vector2(0, 36)
+	buy.add_theme_font_size_override("font_size", 12)
+	buy.disabled = GameState.salvage < price
+	buy.pressed.connect(func() -> void: _buy_hunt_intel(price, err))
+	_body.add_child(buy)
+
+	var note := Label.new()
+	note.text = ("A bearing to the engine, good to ±%d°. Plotted on the chart with everything else you have heard."
+		% int(round(err))) if err > 0.0 \
+		else "Which band it is transmitting from, and which quarter of the sky. No bearing — that is a deeper conversation."
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.add_theme_font_size_override("font_size", 10)
+	note.add_theme_color_override("font_color", Color(0.6, 0.6, 0.66))
+	_body.add_child(note)
+
+
+func _buy_hunt_intel(price: int, err: float) -> void:
+	var main := get_tree().get_first_node_in_group("main")
+	if main == null or not main.has_method("file_apex_intel"):
+		return
+	if GameState.salvage < price:
+		_reject()
+		return
+	# FILED FIRST, CHARGED SECOND. add_apex_hint refuses a reading it already
+	# holds, and a desk that took the money anyway would be selling the same
+	# sentence twice — the one thing a rumour desk must never do.
+	var player: Node3D = get_tree().get_first_node_in_group("player")
+	var from: Vector3 = player.global_position if player != null else Vector3.ZERO
+	if not main.file_apex_intel("watch" if err > 0.0 else "rumor", from, err):
+		_reject()
+		return
+	if not GameState.spend_salvage(price):
+		_reject()
+		return
+	Sfx.play("equip", -6.0, 1.2)
+	if main.hud:
+		main.hud.set_value(GameState.salvage)
+	_refresh()
+
 
 func _buy_rumor(price: int) -> void:
 	if GameState.salvage < price or not GameState.spend_salvage(price):

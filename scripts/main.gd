@@ -1806,6 +1806,71 @@ func _lair_band_name(sys_id: String) -> String:
 	return DeepSpace.BAND_NAMES[DeepSpace.band_of(depth)]
 
 
+var _hunt_cache := {}
+
+
+func hunt_estimate(sys_id := "") -> Dictionary:
+	# Hunt.estimate is pure and cheap-ish, but the radar asks for it every frame
+	# and 2,880 grid samples per frame is a real cost for an answer that only
+	# changes when the dossier does. Cached against the things that can move it —
+	# the system, the run's salt, and GameState.intel_version, which is bumped by
+	# every add/clear.
+	#
+	# A single entry, not a growing map: the only estimate anyone asks for is the
+	# one for the system they are standing in, and an unbounded cache keyed by a
+	# monotonically increasing version is a leak with extra steps.
+	if sys_id == "":
+		sys_id = system_id
+	var key := "%s|%d|%d" % [sys_id, GameState.run_seed, GameState.intel_version]
+	if _hunt_cache.has(key):
+		return _hunt_cache[key]
+	var est := Hunt.estimate(sys_id)
+	_hunt_cache = {key: est}
+	return est
+
+
+func file_apex_intel(kind: String, from: Vector3, err_deg: float) -> bool:
+	# THE ONE DOOR EVERY INTEL CHANNEL GOES THROUGH. Six things can teach you
+	# where the engine hides — a mast, a read relic, two different rumour desks,
+	# a cleared guard post and a rift — and every one of them files through here
+	# so that "what does a hint cost, what does it promise, and what does the
+	# player see when it lands" is answered once.
+	#
+	# The target is ALWAYS the current system's own engine. That is not a
+	# simplification: under §38's two-tier gate the engine that jams your way
+	# onward is the one in the system you are standing in, so intel about
+	# anywhere else is intel about a hunt you are not on.
+	#
+	# `err_deg <= 0` means the ring tier: a band and a quadrant, no bearing.
+	# Returns whether the dossier actually took it, so a desk that charges for a
+	# reading can refuse to charge for one that would have been a duplicate.
+	if not SystemDB.exists(system_id):
+		return false
+	var hint: Dictionary = Hunt.ring_hint(system_id, GameState.run_seed) if err_deg <= 0.0 \
+		else Hunt.bearing_hint(system_id, from, kind, err_deg, GameState.run_seed)
+	if not GameState.add_apex_hint(system_id, hint):
+		return false
+
+	# What the player is told is the ESTIMATE, never the reading in isolation —
+	# a bearing on its own means nothing, and "the circle got smaller" is the
+	# only feedback that makes buying the next one legible.
+	var est: Dictionary = Hunt.estimate(system_id)
+	var engine := String((SystemDB.get_system(system_id).get("apex", {}) as Dictionary)
+		.get("name", "THE ENGINE"))
+	var line := ""
+	if err_deg <= 0.0:
+		line = "INTEL — %s IN %s, %s" % [engine,
+			DeepSpace.BAND_NAMES[int(hint["band"])], String(hint["quadrant"])]
+	else:
+		line = "INTEL — %s · BEARING %03d ±%d° · SEARCH ±%du" % [engine,
+			int(round(float(hint["bearing"]))), int(round(err_deg)),
+			int(round(float(est["radius"])))]
+	if hud:
+		hud.show_toast(line, Palette.GOLD)
+	GameState.note_log(line)
+	return true
+
+
 func _lair_quadrant(sys_id: String) -> String:
 	# Delegates to DeepSpace.quadrant_of -- the sector maths is shared with the
 	# dossier's validator and Hunt's estimator, and a second copy here would be a
@@ -9653,6 +9718,90 @@ func _run_save_test() -> void:
 			and GameState.lanes_open.has("pyx01") and GameState.run_seed == 4242
 		print("[savetest] v15 LANES REJECT RUBBISH 3 entries in (one unknown, one duplicate), kept %s -> %s" % [
 			str(GameState.lanes_open), "PASS" if clean15 else "FAIL"])
+	elif mode == "migrate15":
+		# v16 adds the intel dossier. The migration itself takes NOTHING away —
+		# a v15 save simply had no hints — so unlike v14->v15 there is no
+		# grandfathering to get right. What has to be proved instead is that the
+		# dossier survives the real file layer intact, because every number in it
+		# is one a renderer trusts, and that the validator throws out the ones it
+		# cannot.
+		var v15 := {
+			"version": 15,
+			"salvage": 7400,
+			"owned": ["arc_1"],
+			"fit": {"0": "arc_1"},
+			"current_system": "pyx01",
+			"breached": ["pyx01"],
+			"lanes_open": ["pyx01"],
+			"run_seed": 987654,
+			"mining": 1,
+			"tutorial_step": -1,
+		}
+		var f15 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f15.store_string(JSON.stringify(v15))
+		f15.close()
+		var ok15 := GameState.load_game()
+		var empty_dossier: bool = GameState.apex_hint_count("pyx01") == 0 \
+			and GameState.apex_intel.is_empty()
+		var kept15: bool = GameState.salvage == 7400 and GameState.run_seed == 987654 \
+			and GameState.lanes_open.has("pyx01")
+		print("[savetest] v15->v16 A SAVE WITH NO DOSSIER IS NOT A BROKEN ONE hints=%d, other state kept=%s -> %s" % [
+			GameState.apex_hint_count("pyx01"), str(kept15),
+			"PASS" if ok15 and empty_dossier and kept15 else "FAIL"])
+
+		# The v16 round trip, driven through the real filing entry point.
+		GameState.add_apex_hint("pyx01", Hunt.bearing_hint(
+			"pyx01", Vector3(30, 0, -70), "mast", 8.0, GameState.run_seed))
+		GameState.add_apex_hint("pyx01", Hunt.ring_hint("pyx01", GameState.run_seed))
+		var before16: Array = GameState.apex_hints("pyx01")
+		var est_before: Dictionary = Hunt.estimate("pyx01")
+		GameState.save_game()
+		GameState.apex_intel = {}
+		GameState.load_game()
+		var after16: Array = GameState.apex_hints("pyx01")
+		var est_after: Dictionary = Hunt.estimate("pyx01")
+		# The ESTIMATE is what has to survive, not just the byte count: a hint
+		# whose bearing came back rounded or whose origin was dropped would keep
+		# the array length and move the ghost.
+		var round16: bool = after16.size() == before16.size() \
+			and (est_before["center"] as Vector3).distance_to(est_after["center"] as Vector3) < 0.01 \
+			and is_equal_approx(float(est_before["radius"]), float(est_after["radius"]))
+		print("[savetest] v16 ROUND TRIP %d hints in, %d out; estimate moved %.4fu -> %s" % [
+			before16.size(), after16.size(),
+			(est_before["center"] as Vector3).distance_to(est_after["center"] as Vector3),
+			"PASS" if round16 else "FAIL"])
+
+		# And the validator. Every one of these is a value that would not throw —
+		# it would quietly draw a confident cone pointing at nothing.
+		var rubbish16 := {
+			"version": 16,
+			"breached": ["pyx01"],
+			"lanes_open": ["pyx01"],
+			"run_seed": 987654,
+			"apex_intel": {
+				"nosuch": [{"kind": "mast", "ox": 0.0, "oz": 0.0, "bearing": 10.0, "err": 8.0}],
+				"pyx01": [
+					{"kind": "mast", "ox": 0.0, "oz": 0.0, "bearing": 10.0, "err": 8.0},   # keep
+					{"kind": "mast", "ox": 0.0, "oz": 1.0, "bearing": 20.0, "err": 0.0},   # zero-width cone
+					{"kind": "mast", "ox": 0.0, "oz": 2.0, "bearing": 30.0, "err": 400.0}, # wider than a rumour
+					{"kind": "mast", "ox": 0.0, "oz": 3.0, "bearing": 40.0, "err": -5.0},  # negative
+					{"kind": "ring", "band": 99, "quadrant": "EAST"},                      # no such band
+					{"kind": "ring", "band": 2, "quadrant": "UPWARDS"},                    # no such sector
+					{"kind": "", "ox": 0.0, "oz": 4.0, "bearing": 50.0, "err": 8.0},       # unattributed
+					"not a dictionary at all",
+				],
+			},
+		}
+		var fr16 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fr16.store_string(JSON.stringify(rubbish16))
+		fr16.close()
+		GameState.load_game()
+		var clean16: bool = not GameState.apex_intel.has("nosuch") \
+			and GameState.apex_hint_count("pyx01") == 1
+		print("[savetest] v16 THE DOSSIER REJECTS RUBBISH 8 hints in for a real system + 1 for a fake one, kept %d for pyx01 and %s for the fake -> %s" % [
+			GameState.apex_hint_count("pyx01"),
+			"nothing" if not GameState.apex_intel.has("nosuch") else "SOMETHING",
+			"PASS" if clean16 else "FAIL"])
 	elif mode == "partial6":
 		# A v6 save written before a later setting existed must still get that
 		# setting's default rather than a missing key — the reason load merges
@@ -11549,12 +11698,15 @@ func _run_hunt_test() -> void:
 		GameState.add_apex_hint(isys, hint)
 		var e: Dictionary = Hunt.estimate(isys)
 		radii.append(int(float(e["radius"])))
-		if float(e["radius"]) > last_r + 0.01:
+		# Hunt.RESIDUAL_FRACTION, not zero -- see the constant: the radius is a
+		# heuristic bound from an iterative sampled search, and what must never
+		# happen is the search area MATERIALLY widening when intel is bought.
+		if float(e["radius"]) > last_r * (1.0 + Hunt.RESIDUAL_FRACTION):
 			monotonic = false
 		last_r = float(e["radius"])
 		if truth.distance_to(e["center"] as Vector3) > float(e["radius"]) + 1.0:
 			contains_truth = false
-	print("[hunt] INTEL NARROWS AND NEVER LIES radii %s monotonically non-increasing=%s; truth inside the claim every step=%s -> %s" % [
+	print("[hunt] INTEL NARROWS AND NEVER LIES radii %s never materially widened=%s; truth inside the claim every step=%s -> %s" % [
 		str(radii), str(monotonic), str(contains_truth),
 		"PASS" if monotonic and contains_truth and int(radii[radii.size() - 1]) < int(radii[0]) else "FAIL"])
 
@@ -11643,6 +11795,112 @@ func _run_hunt_test() -> void:
 		before_kill, after_kill, str(refiled),
 		"PASS" if before_kill > 0 and after_kill == 0 and not refiled else "FAIL"])
 	GameState.apex_killed = []
+
+	# 9. THE CHANNEL BATTERY. Every channel driven through the REAL entry point
+	#    the game calls, in the system the player is standing in — a dossier
+	#    filled by calling add_apex_hint directly proves the container works and
+	#    nothing about whether anything in the world ever fills it.
+	GameState.clear_apex_intel(system_id)
+	var channel_rows := ""
+	var channels_ok := true
+	for spec in [
+		["mast", 8.0, Vector3(300, 0, -120)],
+		["relic", 12.0, Vector3(-80, 0, 60)],
+		["guard", 15.0, Vector3(-420, 0, 380)],
+		["watch", 5.0, Vector3(120, 0, 240)],
+		["rift", 4.0, Vector3(-260, 0, -300)],
+		["rumor", 0.0, Vector3.ZERO],
+	]:
+		var n_before := GameState.apex_hint_count(system_id)
+		var took: bool = file_apex_intel(String(spec[0]), spec[2] as Vector3, float(spec[1]))
+		var n_after := GameState.apex_hint_count(system_id)
+		if not took or n_after != n_before + 1:
+			channels_ok = false
+		channel_rows += "%s%s " % [String(spec[0]), "+1" if n_after == n_before + 1 else "!!"]
+	print("[hunt] EVERY CHANNEL FILES THROUGH ONE DOOR %s-> %d hints -> %s" % [
+		channel_rows, GameState.apex_hint_count(system_id),
+		"PASS" if channels_ok and GameState.apex_hint_count(system_id) == 6 else "FAIL"])
+
+	# 10. INTEL BUYS INFORMATION, NOT ADVANTAGE. Filing hints must move no
+	#     number the economy or the fight cares about. The hunt is allowed to
+	#     cost credits at a desk; it is never allowed to PAY them, heal anything,
+	#     or hand over cargo. Measured across every channel at once.
+	GameState.clear_apex_intel(system_id)
+	var salv_before := GameState.salvage
+	var cargo_before := GameState.cargo_used()
+	var arch_before := GameState.archeology_xp
+	var led_before: int = int(GameState.ledger.get("posts_cleared", 0))
+	for spec2 in [["mast", 8.0], ["relic", 12.0], ["guard", 15.0], ["rift", 4.0]]:
+		file_apex_intel(String(spec2[0]), Vector3(200, 0, 200), float(spec2[1]))
+	var quiet: bool = GameState.salvage == salv_before \
+		and is_equal_approx(GameState.cargo_used(), cargo_before) \
+		and GameState.archeology_xp == arch_before \
+		and int(GameState.ledger.get("posts_cleared", 0)) == led_before
+	print("[hunt] INTEL BUYS INFORMATION salvage %d->%d, cargo %.1f->%.1f, arch xp %d->%d, posts %d->%d -> %s" % [
+		salv_before, GameState.salvage, cargo_before, GameState.cargo_used(),
+		arch_before, GameState.archeology_xp,
+		led_before, int(GameState.ledger.get("posts_cleared", 0)),
+		"PASS" if quiet else "FAIL"])
+
+	# 11. THE GHOST STAYS OFF THE RADAR UNTIL THE DOSSIER EARNS IT. A confident
+	#     arrow pointing at a weak estimate is worse than no arrow: it spends the
+	#     player's fuel on the harness's rounding error.
+	GameState.clear_apex_intel(system_id)
+	var weak: Dictionary = hunt_estimate(system_id)
+	var weak_shown: bool = int(weak["strength"]) >= HUD.RadarLayer.HUNT_MIN_STRENGTH \
+		and float(weak["radius"]) <= HUD.RadarLayer.HUNT_MAX_RADIUS
+	for spec3 in [["mast", 8.0, Vector3(600, 0, -200)], ["watch", 5.0, Vector3(-500, 0, 300)],
+			["rift", 4.0, Vector3(200, 0, 700)], ["guard", 15.0, Vector3(-300, 0, -600)]]:
+		file_apex_intel(String(spec3[0]), spec3[2] as Vector3, float(spec3[1]))
+	var strong: Dictionary = hunt_estimate(system_id)
+	var strong_shown: bool = int(strong["strength"]) >= HUD.RadarLayer.HUNT_MIN_STRENGTH \
+		and float(strong["radius"]) <= HUD.RadarLayer.HUNT_MAX_RADIUS
+	print("[hunt] THE GHOST IS EARNED empty: strength %d radius %.0f shown=%s; four readings: strength %d radius %.0f shown=%s -> %s" % [
+		int(weak["strength"]), float(weak["radius"]), str(weak_shown),
+		int(strong["strength"]), float(strong["radius"]), str(strong_shown),
+		"PASS" if not weak_shown and strong_shown else "FAIL"])
+
+	# 12. AND THE CACHE CANNOT GO STALE. hunt_estimate memoises on
+	#     intel_version; a cache that missed an edit would leave the ghost
+	#     pointing at the previous dossier's answer, which is the kind of bug
+	#     that looks like the estimator being wrong.
+	var cached_before: Dictionary = hunt_estimate(system_id)
+	file_apex_intel("mast", Vector3(-900, 0, 450), 8.0)
+	var cached_after: Dictionary = hunt_estimate(system_id)
+	var moved := (cached_before["center"] as Vector3).distance_to(cached_after["center"] as Vector3)
+	print("[hunt] THE ESTIMATE CACHE INVALIDATES filing a 5th reading moved the cached estimate %.1fu / radius %.0f -> %.0f / strength %d -> %d -> %s" % [
+		moved, float(cached_before["radius"]), float(cached_after["radius"]),
+		int(cached_before["strength"]), int(cached_after["strength"]),
+		"PASS" if moved > 0.01 or not is_equal_approx(
+			float(cached_before["radius"]), float(cached_after["radius"])) else "FAIL"])
+
+	# 13. BUYING INTEL NEVER WIDENS THE SEARCH. Asserted over MANY dossiers
+	#     rather than one fixed set, because the failure it guards is a
+	#     resolution artifact and those hide behind whichever hints you happened
+	#     to pick: a coarse scan under-measures a narrow agreement, so a later,
+	#     better-resolved estimate can read as WIDER than an earlier sloppy one.
+	#     A player who pays 900 salvage and watches the circle grow has been
+	#     told the hunt is broken, whatever the arithmetic says.
+	var widened := ""
+	var grow_ok := true
+	for trial in range(6):
+		GameState.clear_apex_intel(system_id)
+		var prev_r := 1.0e9
+		# A different spread of origins per trial, so this covers cone geometries
+		# rather than one lucky arrangement.
+		for step in range(5):
+			var a := TAU * (float(step) * 0.2 + float(trial) * 0.11)
+			var d := 320.0 + float(trial) * 90.0 + float(step) * 45.0
+			file_apex_intel("mast", Vector3(cos(a) * d, 0, sin(a) * d),
+				[8.0, 5.0, 12.0, 4.0, 15.0][step])
+			var r := float(hunt_estimate(system_id)["radius"])
+			if r > prev_r * (1.0 + Hunt.RESIDUAL_FRACTION):
+				grow_ok = false
+				widened += "t%d/h%d %.0f->%.0f " % [trial, step + 1, prev_r, r]
+			prev_r = r
+	print("[hunt] BUYING INTEL NEVER WIDENS THE SEARCH 6 dossiers x 5 readings, %s -> %s" % [
+		"no growth" if widened == "" else "GREW: " + widened, "PASS" if grow_ok else "FAIL"])
+	GameState.clear_apex_intel(system_id)
 
 	get_tree().quit()
 

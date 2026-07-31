@@ -115,6 +115,15 @@ const SYSTEMS := {
 				# goods), which is exactly right — you unload contraband over
 				# the bar here, you do not restock from it.
 				"services": ["rumors", "games", "fence", "contracts", "paint"],
+				# v16. THE CHEAP RUNG OF THE HUNT. `hunt_error` 0 means the ring
+				# tier -- a band and a quadrant, no bearing -- which is the same
+				# shape the free lane-obstructed broadcast gives. What 500
+				# salvage buys is hearing it for a system you have not been
+				# jammed out of yet, over a bar, in the charted volume. The
+				# Watch sells the sharp version, and it is 900 and 1,200 units
+				# past the edge of the map.
+				"hunt_price": 500,
+				"hunt_error": 0.0,
 				# The back room takes both kinds of awkward cargo. Stolen goods
 				# are on this list because they are restricted to here, the Void
 				# and the Anchor — and a port that is named as one of a good's

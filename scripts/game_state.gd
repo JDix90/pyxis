@@ -1426,6 +1426,28 @@ func identify(salvage_id: String, output_id: String, at_lab: bool) -> bool:
 	# player anything, and "did 0->1 arrive fast enough" is the whole question the
 	# first play-test has to answer.
 	last_read_tiered = mark_archeology(ARCHEOLOGY_PER_READ)
+
+	# SOMEBODY ELSE'S CHART, read properly. `index_cartographic` is the one
+	# salvage in the catalog that literally IS a survey somebody else made, so it
+	# is the natural carrier for a bearing — and reading it is already a
+	# deliberate, paid-for act at a lab bench rather than something that happens
+	# to you. The reading is taken from where the ship is, because that is where
+	# the chart is being cross-referenced against known positions, which is
+	# exactly the geometry a cone from here describes.
+	#
+	# ±12°: wider than a mast, because a mast measures the engine live and this
+	# infers it from someone else's decade-old survey.
+	if salvage_id == "index_cartographic":
+		var tree := Engine.get_main_loop() as SceneTree
+		if tree != null:
+			var main: Node = tree.get_first_node_in_group("main")
+			if main != null and main.has_method("file_apex_intel"):
+				var player: Node3D = tree.get_first_node_in_group("player") as Node3D
+				var from := Vector3.ZERO
+				if player != null:
+					from = player.global_position
+				main.file_apex_intel("relic", from, 12.0)
+
 	_queue_save()
 	return true
 

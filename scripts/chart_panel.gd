@@ -17,6 +17,8 @@ var _sheet: Panel
 var _map: Control
 var _title: Label
 var _detail: Label
+var _plot: Control
+var _plot_note: Label
 var _travel_button: Button
 var _recall_button: Button
 var _selected := ""
@@ -102,6 +104,26 @@ func _build() -> void:
 	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(_detail)
 
+	# v16. THE SURVEY PLOT. Everything the dossier knows about this system's
+	# engine, drawn as the picture it actually is: an annulus you were told about
+	# for free, the cones you have paid for, and the circle where they agree.
+	#
+	# It lives here rather than on the map above because it is a DIFFERENT SPACE.
+	# The map is the chart — systems and lanes, tens of units apart. This is one
+	# system's deep, thousands of units across, and overlaying the two would put
+	# a 1,400-unit search circle on top of a 40-unit system node.
+	_plot = Control.new()
+	_plot.custom_minimum_size = Vector2(0, 150)
+	_plot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_plot.draw.connect(_draw_plot)
+	col.add_child(_plot)
+
+	_plot_note = Label.new()
+	_plot_note.add_theme_font_size_override("font_size", 10)
+	_plot_note.add_theme_color_override("font_color", Palette.AMBER_DIM)
+	_plot_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(_plot_note)
+
 	# Above WARP, because when it is showing it is the more urgent of the two:
 	# you are outside the charted volume and this is the way back in. Hidden
 	# entirely inside a system rather than disabled — an always-present button
@@ -129,6 +151,116 @@ func _node_pos(id: String) -> Vector2:
 	return Vector2(
 		lerpf(pad, _map.size.x - pad, p.x),
 		lerpf(pad, _map.size.y - pad, p.y))
+
+
+func _hunt_is_live(id: String) -> bool:
+	# A plot is worth drawing only for a system with an engine still in it that
+	# you have actually heard of. An uncharted system's dossier is not empty —
+	# it is none of your business yet.
+	if id == "" or not SystemDB.exists(id):
+		return false
+	if (SystemDB.get_system(id).get("apex", {}) as Dictionary).is_empty():
+		return false
+	return GameState.is_system_charted(id) and not GameState.has_killed_apex(id)
+
+
+func _refresh_plot() -> void:
+	var live := _hunt_is_live(_selected)
+	_plot.visible = live
+	_plot_note.visible = live
+	if not live:
+		return
+	_plot.queue_redraw()
+	var est: Dictionary = Hunt.estimate(_selected)
+	var n := GameState.apex_hint_count(_selected)
+	var engine := String((SystemDB.get_system(_selected).get("apex", {}) as Dictionary)
+		.get("name", "THE ENGINE"))
+	if n == 0:
+		_plot_note.text = "%s — no intel. It is transmitting from somewhere in the shaded band." % engine
+	else:
+		_plot_note.text = "%s — %d reading%s, search area ±%du." % [
+			engine, n, "" if n == 1 else "s", int(round(float(est["radius"])))]
+
+
+func _draw_plot() -> void:
+	# A TOP-DOWN PICTURE OF ONE SYSTEM'S DEEP, drawn in the same orientation the
+	# radar and the world use (world +x right, world +z down), so a cone that
+	# points down-left here points down-left when you fly it.
+	if not _hunt_is_live(_selected):
+		return
+	var s := SystemDB.get_system(_selected)
+	var bounds := float(s.get("bounds", 40.0))
+	var lair: Dictionary = (s.get("apex", {}) as Dictionary).get("lair", {})
+	var band: Array = lair.get("depth", [200.0, 300.0])
+	var r_min := bounds + float(band[0])
+	var r_max := bounds + float(band[1])
+
+	var size := _plot.size
+	var mid := size * 0.5
+	# Scaled off the band's OUTER edge, so the whole searchable region is always
+	# on screen whatever the system — pyx01's band is 340u out and pyx03's is
+	# 1,450, and a fixed scale would render one of them as a dot.
+	var scale := (minf(size.x, size.y) * 0.5 - 6.0) / maxf(r_max, 1.0)
+	var to_plot := func(w: Vector3) -> Vector2:
+		return mid + Vector2(w.x, w.z) * scale
+
+	# 1. The charted volume you started from, for scale.
+	_plot.draw_arc(mid, bounds * scale, 0.0, TAU, 48,
+		Color(Palette.TEAL.r, Palette.TEAL.g, Palette.TEAL.b, 0.35), 1.0, true)
+
+	# 2. The authored band — the free information, and the clamp every estimate
+	#    lives inside. Drawn as a thick ring rather than two thin circles so it
+	#    reads as an AREA to search, not as two boundaries.
+	var band_col := Color(Palette.AMBER.r, Palette.AMBER.g, Palette.AMBER.b, 0.13)
+	_plot.draw_arc(mid, (r_min + r_max) * 0.5 * scale, 0.0, TAU, 64,
+		band_col, maxf((r_max - r_min) * scale, 1.0), true)
+	_plot.draw_arc(mid, r_min * scale, 0.0, TAU, 64,
+		Color(Palette.AMBER.r, Palette.AMBER.g, Palette.AMBER.b, 0.30), 1.0, true)
+	_plot.draw_arc(mid, r_max * scale, 0.0, TAU, 64,
+		Color(Palette.AMBER.r, Palette.AMBER.g, Palette.AMBER.b, 0.30), 1.0, true)
+
+	# 3. Every reading on file. A bearing draws its cone from where the
+	#    instrument stood; a rumour shades its quadrant. Both are drawn out to
+	#    the band's edge, because that is as far as either can claim.
+	for h_v in GameState.apex_hints(_selected):
+		var h: Dictionary = h_v
+		if String(h.get("kind", "")) == "ring":
+			var q := String(h.get("quadrant", ""))
+			var q_from := -PI * 0.25
+			if q == "SOUTH":
+				q_from = PI * 0.25
+			elif q == "WEST":
+				q_from = PI * 0.75
+			elif q == "NORTH":
+				q_from = PI * 1.25
+			_plot.draw_arc(mid, (r_min + r_max) * 0.5 * scale, q_from, q_from + PI * 0.5, 24,
+				Color(Palette.GOLD.r, Palette.GOLD.g, Palette.GOLD.b, 0.22),
+				maxf((r_max - r_min) * scale, 1.0), true)
+			continue
+		var origin := to_plot.call(Vector3(float(h.get("ox", 0.0)), 0.0, float(h.get("oz", 0.0)))) as Vector2
+		var bearing := deg_to_rad(float(h.get("bearing", 0.0)))
+		var err := deg_to_rad(float(h.get("err", 0.0)))
+		# The two edges of the cone. Length is generous on purpose — a cone is a
+		# direction, not a distance, and stopping it short would imply a range
+		# the reading never claimed.
+		var reach := (r_max + bounds) * 2.0 * scale
+		var edge_col := Color(Palette.GOLD.r, Palette.GOLD.g, Palette.GOLD.b, 0.33)
+		_plot.draw_line(origin, origin + Vector2(cos(bearing - err), sin(bearing - err)) * reach,
+			edge_col, 1.0, true)
+		_plot.draw_line(origin, origin + Vector2(cos(bearing + err), sin(bearing + err)) * reach,
+			edge_col, 1.0, true)
+		_plot.draw_circle(origin, 2.0, Color(Palette.GOLD.r, Palette.GOLD.g, Palette.GOLD.b, 0.5))
+
+	# 4. And where they agree. Drawn LAST so it sits on top of its own evidence,
+	#    and only once there is evidence — a circle covering the whole band on an
+	#    empty dossier would read as a result rather than as the absence of one.
+	if GameState.apex_hint_count(_selected) > 0:
+		var est: Dictionary = Hunt.estimate(_selected)
+		var c := to_plot.call(est["center"] as Vector3) as Vector2
+		var rad := maxf(float(est["radius"]) * scale, 2.0)
+		_plot.draw_circle(c, rad, Color(Palette.TEAL.r, Palette.TEAL.g, Palette.TEAL.b, 0.16))
+		_plot.draw_arc(c, rad, 0.0, TAU, 40, Palette.TEAL, 1.5, true)
+		_plot.draw_circle(c, 2.5, Palette.TEAL)
 
 
 func _draw_map() -> void:
@@ -291,6 +423,7 @@ func _on_travel() -> void:
 
 func _refresh() -> void:
 	_map.queue_redraw()
+	_refresh_plot()
 	_refresh_recall()
 	if _selected == "":
 		return

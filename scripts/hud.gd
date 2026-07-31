@@ -69,6 +69,17 @@ class RadarLayer:
 	const TIER_SITE := 2
 	const TIER_HOSTILE := 3
 	const TIER_SEAM := 4
+	# v16. Appended at the BOTTOM, the same way TIER_SEAM was, so nothing above
+	# it renumbered. Below the seams on purpose: the hunt ghost is the least
+	# certain thing on the board -- it is not a contact, it is a guess -- and
+	# when the 12-marker cap bites it should be the first thing to go.
+	const TIER_HUNT := 5
+	# What the dossier has to be worth before the ghost appears at all. Three
+	# agreeing hints and a search circle under 200u is the point where an arrow
+	# is honest guidance rather than a confident lie: below that the estimate
+	# still spans more sky than the radar can meaningfully point at.
+	const HUNT_MIN_STRENGTH := 3
+	const HUNT_MAX_RADIUS := 200.0
 
 	# Contact alpha falls off over this many units — at which point a marker sits
 	# at its floor and everything further away looks identical. Sixty is right
@@ -132,6 +143,31 @@ class RadarLayer:
 				"color": Palette.TEAL,
 				"size": SIZE_APEX,
 			})
+
+		# v16. THE HUNT GHOST. Not a contact — a place the dossier says to look,
+		# drawn at the ESTIMATE and therefore honestly wrong by whatever error
+		# the player has not yet bought out. It is deliberately the same shape
+		# as every other marker rather than a special icon: what makes it a
+		# guess is that it moves when you buy a reading, and that the engine is
+		# not there when you arrive.
+		#
+		# Gated, because a weak estimate pointing confidently is worse than
+		# nothing. Below HUNT_MIN_STRENGTH the hints do not agree enough to
+		# average, and above HUNT_MAX_RADIUS the circle is wider than the arrow
+		# could usefully aim inside.
+		if main != null and main.has_method("hunt_estimate"):
+			var est: Dictionary = main.hunt_estimate()
+			if int(est.get("strength", 0)) >= HUNT_MIN_STRENGTH \
+					and float(est.get("radius", 1.0e9)) <= HUNT_MAX_RADIUS:
+				var ghost: Vector3 = est.get("center", Vector3.ZERO)
+				found.append({
+					"id": 1,
+					"tier": TIER_HUNT,
+					"dist": player.global_position.distance_to(ghost),
+					"screen": _project(cam, ghost, centre, rect),
+					"color": Palette.GOLD,
+					"size": SIZE_NORMAL,
+				})
 
 		for spec in [
 			["apex", TIER_APEX, Palette.THREAT, SIZE_APEX],

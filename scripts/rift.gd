@@ -18,6 +18,12 @@ const CRATE_MAX := 36
 const PULSES := 3
 const EVAPORATE_SHARE := 0.30
 const SCATTER := 7.0
+# How close you must be standing to read the engine off an open shear, and the
+# half-angle a shear can promise. The sharpest channel in the game at +-4, and
+# the only one that cannot be sought out: a shear opens where it opens, on a
+# fuse, and either you were near enough to work it or you were not.
+const INTEL_READ_RANGE := 26.0
+const INTEL_ERROR_DEG := 4.0
 
 var band := 2                 # the band of the DEPTH it sits at
 var pulse_interval := 75.0    # a var so the harness can drive it without waiting
@@ -28,6 +34,10 @@ var _crates: Array = []
 var _tear: MeshInstance3D
 var _tear_mat: StandardMaterial3D
 var _spin := 0.0
+# One reading per shear. Without this the pulse loop would refile every 75
+# seconds and a player parked on a tear would narrow the estimate for free --
+# the same "precision must be bought" rule add_apex_hint enforces for masts.
+var _intel_read := false
 
 
 func _ready() -> void:
@@ -106,6 +116,17 @@ func pulse() -> void:
 	_pulse_timer = pulse_interval
 
 	var tree := get_tree()
+	# THE TEAR SHOWS WHAT IS BEHIND IT. Read on the pulse rather than on spawn,
+	# because the pulse is the moment the shear is widest and the moment the
+	# player is provably still working it -- a reading handed over at spawn
+	# would pay for flying past.
+	if not _intel_read:
+		var p: Node3D = tree.get_first_node_in_group("player")
+		var m2 := tree.get_first_node_in_group("main")
+		if p != null and m2 != null and m2.has_method("file_apex_intel") \
+				and p.global_position.distance_to(global_position) <= INTEL_READ_RANGE:
+			_intel_read = true
+			m2.file_apex_intel("rift", global_position, INTEL_ERROR_DEG)
 	Sfx.play("klaxon", -9.0, 1.3)
 	FX.shockwave(get_parent(), global_position, Palette.band_color(_rich_band()), 9.0, 0.8)
 	var rig := tree.get_first_node_in_group("camera_rig")
