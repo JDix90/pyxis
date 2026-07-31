@@ -46,6 +46,7 @@ const HARNESS_VARS := [
 	"PYXIS_DOCKTEST",
 	"PYXIS_ECONDEMO",
 	"PYXIS_ENVTEST",
+	"PYXIS_MANUALTEST",
 	"PYXIS_FEELTEST",
 	"PYXIS_FORGETEST",
 	"PYXIS_GSATEST",
@@ -182,6 +183,7 @@ var refit_panel: RefitPanel
 var chart_panel: ChartPanel
 var port_panel: PortPanel
 var pause_menu: PauseMenu
+var manual_screen: ManualScreen
 var contracts: Contracts
 
 var system_root: Node3D
@@ -276,6 +278,12 @@ func _ready() -> void:
 	add_child(pause_menu)
 	hud.pause_pressed.connect(toggle_pause)
 
+	# One manual, two doors. Built here rather than inside either menu because
+	# both the title screen and the pause sheet open the same node -- a second
+	# copy would be a second thing to keep true.
+	manual_screen = ManualScreen.new()
+	add_child(manual_screen)
+
 	contracts = Contracts.new()
 	add_child(contracts)
 	contracts.changed.connect(func() -> void: hud.set_contracts(contracts.rows()))
@@ -292,6 +300,7 @@ func _ready() -> void:
 	add_child(title_screen)
 	title_screen.new_game_pressed.connect(start_new_game)
 	title_screen.continue_pressed.connect(continue_game)
+	title_screen.manual_pressed.connect(manual_screen.open)
 
 	Sfx.set_muted(GameState.audio_muted)
 
@@ -568,6 +577,14 @@ func _ready() -> void:
 		_load_system(GameState.current_system)
 		_enter_playing()
 		_run_env_test()
+		return
+
+	if OS.get_environment("PYXIS_MANUALTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_manual_test()
 		return
 
 	if OS.get_environment("PYXIS_STREAMTEST") != "":
@@ -10230,6 +10247,212 @@ func _run_stream_test() -> void:
 
 
 # --- the world's two responses -----------------------------------------------
+
+func _run_manual_test() -> void:
+	# The manual is the one screen whose whole job is to be TRUE. Everything here
+	# checks a property rather than a wording: the prose is free to change, the
+	# derivations and the pause contract are not.
+	var manual := manual_screen
+	await get_tree().process_frame
+
+	# --- 1. every entry in the contents opens a real page ---------------------
+	# The contents list and the router are the same data, but "the same data"
+	# only helps if the router actually has a branch for each id -- a typo in
+	# _refresh's match falls through to the default and silently shows the
+	# contents again, which reads as a dead button.
+	var dead := ""
+	for entry_v in ManualScreen.PAGES:
+		var id := String((entry_v as Dictionary)["id"])
+		manual._page = id
+		manual._refresh()
+		await get_tree().process_frame
+		var head := ""
+		for c in manual._body.get_children():
+			var l := c as Label
+			if l != null and l.text != "":
+				head = l.text
+				break
+		# The contents page's own heading is what a fallen-through id renders.
+		if head == "" or head == "PILOT'S MANUAL":
+			dead = id
+	print("[manual] EVERY ENTRY OPENS A PAGE %d entries, none falls through to the contents (%s) -> %s" % [
+		ManualScreen.PAGES.size(), dead if dead != "" else "none",
+		"PASS" if dead == "" and ManualScreen.PAGES.size() > 0 else "FAIL"])
+
+	# --- 2. it never touches the pause state ---------------------------------
+	# THE load-bearing property. It opens over the title screen (running) and
+	# over the pause sheet (stopped), so a node that paused on open would freeze
+	# the title and one that unpaused on close would resume the game out from
+	# under the pause menu. Checked from BOTH states, because a bug that only
+	# appears in one of them is exactly what a single-state check misses.
+	var pause_drift := ""
+	for want_paused in [false, true]:
+		get_tree().paused = bool(want_paused)
+		manual.open()
+		await get_tree().process_frame
+		if get_tree().paused != bool(want_paused):
+			pause_drift = "open() changed it from %s" % str(want_paused)
+		manual.close_panel()
+		await get_tree().process_frame
+		if get_tree().paused != bool(want_paused):
+			pause_drift = "close_panel() changed it from %s" % str(want_paused)
+	get_tree().paused = false
+	print("[manual] NEVER TOUCHES PAUSE opened and closed from both a running and a stopped tree (%s) -> %s" % [
+		pause_drift if pause_drift != "" else "unchanged both ways",
+		"PASS" if pause_drift == "" else "FAIL"])
+
+	# --- 3. cancel backs out exactly one step --------------------------------
+	# The same ladder rule the rest of the game follows, and the reason
+	# pause_menu._unhandled_input carries an explicit guard: _unhandled_input is
+	# delivered in TREE order, so the manual's higher CanvasLayer buys it drawing
+	# priority and no input priority at all.
+	manual.open()
+	manual._page = String(ManualScreen.PAGES[0]["id"])
+	var esc := InputEventAction.new()
+	esc.action = "cancel"
+	esc.pressed = true
+	manual._unhandled_input(esc)
+	var backed_to_contents: bool = manual._page == "contents" and manual.is_open
+	manual._unhandled_input(esc)
+	var closed: bool = not manual.is_open
+	var still_running: bool = not get_tree().paused
+	print("[manual] CANCEL BACKS OUT ONE STEP section->contents=%s, contents->closed=%s, game not resumed under it=%s -> %s" % [
+		str(backed_to_contents), str(closed), str(still_running),
+		"PASS" if backed_to_contents and closed and still_running else "FAIL"])
+
+	# --- 4. the page agrees with the data ------------------------------------
+	# HONEST ABOUT ITS REACH: this is a DRIFT detector, not a hardcode detector.
+	# It cannot tell a derived 12 from a typed 12 today, because both render the
+	# same glyphs -- but the day REACTOR_TIERS or the ore table moves, a typed
+	# number stops agreeing and this goes red, which is the failure that actually
+	# costs a player something. Assertion 6 below is the one that proves a
+	# derivation outright, on the one input that can be changed at runtime.
+	manual.open()
+	manual._page = "ship"
+	manual._refresh()
+	await get_tree().process_frame
+	var before_text := _manual_text(manual)
+	var real_power := ModuleDB.reactor_power(0)
+	var mentions_power: bool = before_text.contains(str(real_power))
+	var mentions_slots: bool = before_text.contains(str(ModuleDB.SLOT_NAMES.size()))
+	manual._page = "deep"
+	manual._refresh()
+	await get_tree().process_frame
+	var deep_text := _manual_text(manual)
+	var names_all_bands := true
+	for band_name in DeepSpace.BAND_NAMES:
+		if not deep_text.contains(String(band_name)):
+			names_all_bands = false
+	manual._page = "living"
+	manual._refresh()
+	await get_tree().process_frame
+	var living_text := _manual_text(manual)
+	var mentions_ore: bool = living_text.contains(str(CommodityDB.ore_ids().size()))
+	print("[manual] THE NUMBERS ARE DERIVED reactor %d=%s, %d slots=%s, all %d bands named=%s, %d ores=%s -> %s" % [
+		real_power, str(mentions_power), ModuleDB.SLOT_NAMES.size(), str(mentions_slots),
+		DeepSpace.BAND_NAMES.size(), str(names_all_bands),
+		CommodityDB.ore_ids().size(), str(mentions_ore),
+		"PASS" if mentions_power and mentions_slots and names_all_bands and mentions_ore else "FAIL"])
+
+	# --- 6. the legend recolours with the HUD it explains --------------------
+	# The one input here that CAN be changed at runtime, so the one place a
+	# derivation can be proved outright rather than inferred. It matters on its
+	# own terms too: a player on a colour-vision mode sees a recoloured band on
+	# the HUD, and a manual still printing the default palette would be teaching
+	# them the wrong colour for the thing in front of them.
+	var vision_before := Palette.vision
+	manual.open()
+	manual._page = "deep"
+	manual._refresh()
+	await get_tree().process_frame
+	var swatches_normal := _manual_swatches(manual)
+	Palette.vision = Palette.Vision.DEUTAN
+	manual._refresh()
+	await get_tree().process_frame
+	var swatches_mode := _manual_swatches(manual)
+	Palette.vision = vision_before
+	var moved := 0
+	for i in range(mini(swatches_normal.size(), swatches_mode.size())):
+		if Color(swatches_normal[i]) != Color(swatches_mode[i]):
+			moved += 1
+	manual.close_panel()
+	print("[manual] THE LEGEND FOLLOWS THE PALETTE %d swatches, %d recoloured under a colour-vision mode -> %s" % [
+		swatches_normal.size(), moved,
+		"PASS" if swatches_normal.size() > 0 and moved > 0 else "FAIL"])
+
+	# --- 5. the clamp does its job, in BOTH directions -----------------------
+	# NOT written as `panel <= viewport`, and that is the whole point of this
+	# assertion existing. STRATEGY §36 records that SHEET FITS is shaped exactly
+	# that way and is therefore structurally incapable of failing: the clamp
+	# guarantees the value it measures. Written that way here it was worse -- with
+	# _clamp_height() deleted outright the sheet COLLAPSED to 32 rows and the
+	# check still passed, because a collapsed sheet fits a viewport beautifully.
+	#
+	# So it states what the clamp is actually for: the scroll viewport must be
+	# exactly min(content, available). Too tall fails it, and so does collapsed.
+	get_window().size = Vector2i(1440, 900)
+	GameState.set_setting("ui_scale", 1.6)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var worst := 0.0
+	var worst_page := ""
+	var clamp_wrong := ""
+	for entry_v in ManualScreen.PAGES:
+		manual._page = String((entry_v as Dictionary)["id"])
+		manual._refresh()
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var avail_scroll := maxf(manual._root.size.y - ManualScreen.SHEET_MARGIN,
+			ManualScreen.MIN_SHEET)
+		var content_h := manual._body.get_combined_minimum_size().y
+		var want := minf(content_h, avail_scroll)
+		var got := manual._scroll.custom_minimum_size.y
+		if absf(got - want) > 1.0:
+			clamp_wrong = "%s: viewport %.0f, wanted min(content %.0f, room %.0f)" % [
+				manual._page, got, content_h, avail_scroll]
+		var h: float = manual._panel.size.y
+		if h > worst:
+			worst = h
+			worst_page = manual._page
+	var avail: float = manual._root.size.y
+	manual.close_panel()
+	print("[manual] THE CLAMP HOLDS worst page '%s' is %.0f rows of %.0f, every page's viewport = min(content, room) (%s) -> %s" % [
+		worst_page, worst, avail, clamp_wrong if clamp_wrong != "" else "exact on all pages",
+		"PASS" if worst <= avail and clamp_wrong == "" else "FAIL"])
+	get_tree().quit()
+
+
+func _manual_swatches(manual: ManualScreen) -> Array:
+	# Every legend chip on the page, in order. ColorRect rather than Label, so it
+	# reads the colour the player actually sees rather than the name beside it.
+	var out: Array = []
+	_swatches_under(manual._body, out)
+	return out
+
+
+func _swatches_under(node: Node, out: Array) -> void:
+	for c in node.get_children():
+		var r := c as ColorRect
+		if r != null:
+			out.append(r.color)
+		_swatches_under(c, out)
+
+
+func _manual_text(manual: ManualScreen) -> String:
+	# Every Label on the page, flattened. Recursive because _row and _legend both
+	# nest their text inside a container.
+	return _labels_under(manual._body)
+
+
+func _labels_under(node: Node) -> String:
+	var out := ""
+	for c in node.get_children():
+		var l := c as Label
+		if l != null:
+			out += l.text + "\n"
+		out += _labels_under(c)
+	return out
+
 
 func _run_env_test() -> void:
 	# The lighting model and the landmark pass. Both are about the same claim:

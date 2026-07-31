@@ -285,7 +285,9 @@ func _cancel() -> void:
 	# receiving input the moment the tree is paused.
 	var main := get_tree().get_first_node_in_group("main")
 	if main:
-		for panel in [main.port_panel, main.refit_panel, main.chart_panel]:
+		# The manual is first: it is the only one of these that can be open on top
+		# of another, so it has to be the first step off the ladder.
+		for panel in [main.manual_screen, main.port_panel, main.refit_panel, main.chart_panel]:
 			if panel != null and panel.is_open:
 				panel.close_panel()
 				return
