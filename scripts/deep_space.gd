@@ -781,6 +781,14 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 	# comments above give. Reads out["pack"] and keep_out — products of the
 	# shared stream — and never draws from `rng`.
 	#
+	# The red-verify taught the rule more precisely than it was written: a
+	# draw from `rng` HERE, after every existing draw, moves NOTHING — the
+	# fingerprint stayed green on it — because trailing the stream is exactly
+	# what makes appending safe. The same draw at the TOP of this function
+	# moved the fingerprint on the first run. So the salted stream is not
+	# protecting today's cells from this block; it is protecting this block
+	# from tomorrow's edits, and the NEXT appended feature from this one.
+	#
 	# EVERY DRAW HAPPENS BEFORE THE GATE. The salted stream's shape must not
 	# depend on what the shared stream rolled (a pack in this cell, a station
 	# nearby): a conditional draw would make the convoy's OWN determinism

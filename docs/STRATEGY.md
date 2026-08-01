@@ -4866,6 +4866,19 @@ procession vs the Drift's band violet; saturation is the separator. The
 colour-vision audit owed since stage 2 is still owed, and now covers 14
 tints.
 
+### What the red-verify taught about the fingerprint
+
+The stream-purity red failed to fail: a draw from the shared per-cell rng
+placed at the END of `plan_cell` moved nothing, because trailing the stream
+is exactly what makes appending safe — every consumed draw already
+happened. The same draw at the TOP moved the fingerprint immediately
+(3962927774 vs 3836096557). So the WORLD FINGERPRINT guards stream
+**order**, not stream **touching**, and the convoy's salted stream is not
+protecting today's cells from the convoy block — it is protecting the
+convoy from tomorrow's edits, and the next appended feature from the
+convoy. A red-verify that passes is not always a broken test; sometimes it
+is the rule being more precise than the person who wrote it down.
+
 ### The two hazards that are features until they are not
 
 A convoy kill at NEUTRAL pays nothing and costs −1 standing; four kills
