@@ -498,7 +498,7 @@ func enemies_of(faction: String) -> Array:
 	return out
 
 
-func shift_faction(a: String, b: String, amount: int) -> void:
+func shift_faction(a: String, b: String, amount: int, quiet := false) -> void:
 	# THE ONLY MUTATOR, and it moves both directions of one pair at once —
 	# deltas are symmetric by design (HORIZON-4 §2), so there is nothing else a
 	# caller could mean. Player actions are the only legitimate callers; nothing
@@ -520,7 +520,14 @@ func shift_faction(a: String, b: String, amount: int) -> void:
 	# The A10 line: politics the player changed and cannot see is not politics,
 	# it is a haunting. One log line, only for shifts the player is party to —
 	# third-party shifts get their line from the contract copy that caused them.
-	if a == FactionDB.SURVEYOR or b == FactionDB.SURVEYOR:
+	# `quiet` is for callers that have ALREADY narrated the cause. A toll writes
+	# "TOLL PAID — 400 IN CARGO" and a held muster writes "THE LINE HELD"; a
+	# second entry stating the obvious consequence burns another of only ten
+	# logbook slots on one moment, and LOGTEST's FIVE SITES WIRED went red
+	# proving it. Finding A10 — politics you cannot see is a haunting — is
+	# satisfied without the line now: stage 5 put a permanent STANDING row on
+	# every dock sheet. Callers with no other record stay loud.
+	if not quiet and (a == FactionDB.SURVEYOR or b == FactionDB.SURVEYOR):
 		var other := b if a == FactionDB.SURVEYOR else a
 		note_log("%s — STANDING %s" % [FactionDB.display_name(other),
 			"RISES" if amount > 0 else "FALLS"])

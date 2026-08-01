@@ -717,8 +717,17 @@ func flag_for_band(band: int) -> String:
 	# GUARD_DESIGNATION[3] is "UNFLAGGED — NO PATTERN ON FILE" and [4] is
 	# "UNREADABLE — IT DOES NOT ANSWER". Claiming them for a known faction now
 	# would spend stage 6's reveal early, and would make the designation a lie.
-	if band >= 3:
-		return FactionDB.FERAL
+	# v18 STAGE 6. THE DEEP CHANGES HANDS. Stages 3-5 left bands 3 and 4
+	# deliberately unflagged so the shipped designations stayed honest —
+	# GUARD_DESIGNATION[3] "UNFLAGGED — NO PATTERN ON FILE" and [4]
+	# "UNREADABLE — IT DOES NOT ANSWER". They were never nobody's; they were
+	# nobody the register could name. Now they have names, and the designations
+	# are still true: the register still cannot read them, and the beacon at
+	# band 4 still does not answer.
+	if band >= 4:
+		return "unknown_b"     # THE HOLLOWING holds the Quiet
+	if band == 3:
+		return "unknown_a"     # THE TALLY holds the Reaches
 	return SystemDB.faction_of(_id)
 
 
@@ -1224,10 +1233,16 @@ func _spring(key: Vector2i, pack: Dictionary) -> void:
 		s.difficulty = float(pack["difficulty"])
 		s.hp_scale = float(pack["hp_scale"])
 		s.faction = flag
+		# THE TALLY'S TELL, and it is one line: everything else the expanse
+		# seeds carries HOSTILE_LEASH so a pack picked up 400u out does not
+		# follow you home. The Tally has no leash. It does not lose you, it
+		# does not give up, and the only way it stops is if you stop it —
+		# which is the whole of what "it counts what passes" means in play.
+		# Legible without a tooltip: the thing behind you is still there.
 		s.tint = pack["tint"]
 		# One crate of the good thing, the same way a raider carries what it took.
 		s.drop_good = drop if i == 0 else ""
-		s.despawn_radius = HOSTILE_LEASH
+		s.despawn_radius = 0.0 if flag == "unknown_a" else HOSTILE_LEASH
 		root.add_child(s)
 		s.global_position = origin + Vector3(rng.randf_range(-2.5, 2.5), 0.0,
 			rng.randf_range(-2.5, 2.5))
@@ -1236,7 +1251,7 @@ func _spring(key: Vector2i, pack: Dictionary) -> void:
 		var h := Hostile.new()
 		h.difficulty = float(pack["difficulty"])
 		h.faction = flag
-		h.despawn_radius = HOSTILE_LEASH
+		h.despawn_radius = 0.0 if flag == "unknown_a" else HOSTILE_LEASH
 		root.add_child(h)
 		h.global_position = origin
 

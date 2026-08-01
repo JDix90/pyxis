@@ -1437,7 +1437,18 @@ func _tick_procession() -> void:
 		_procession_window = window
 		if hud:
 			hud.show_toast("THE PROCESSION IS HERE", Palette.GOLD)
-		GameState.note_log("THE PROCESSION — IN %s" % SystemDB.get_system(system_id).get("name", system_id))
+		# NO LOGBOOK LINE, and that is a design call rather than a test fix.
+		# The captain's log is ten slots and it is for things that happened to
+		# YOU; the convoy arrives every twenty minutes whether or not you are
+		# looking at it, so over an hour it would own three of those ten and
+		# push out the tolls, the kills and the frontier. The toast is the
+		# announcement.
+		#
+		# It also stopped clobbering a save fixture: note_log calls
+		# _queue_save(), so the arrival line fired a debounced write that
+		# overwrote SAVETEST's captain's-log fixture a second after the harness
+		# had explicitly saved it. Worth remembering generally — ANY ambient
+		# event that logs also SAVES.
 	elif live and (not here or window != _procession_window):
 		# It moves on — unless the player is docked at it, in which case it
 		# waits for them to leave. A market that vanished under an open sheet
@@ -1522,18 +1533,29 @@ func _open_muster() -> void:
 	_muster_active = true
 	_muster_released = 0
 	_muster_wave_t = 0.0
-	var side := Vector3(-_muster_bearing().z, 0.0, _muster_bearing().x)
+	# ON THE ARC, NOT ON A CHORD. The marker is a CIRCLE — `chart_edge()` is a
+	# radius — so a line strung straight across the bearing bulges outside it at
+	# the ends. Measured: the outermost picket sat 0.4u past the marker once
+	# drift was added, which is small, silent, and a direct breach of the one
+	# promise the band-1 beacon has been making since v13. THE LINE IS THE EDGE
+	# caught it.
+	#
+	# Every ship therefore sits at a fixed RADIUS and a spread of BEARINGS, and
+	# the radius carries a 3u inset so Hostile's 0.4 station-keeping wander can
+	# never take one over either.
+	var base_ang := atan2(_muster_bearing().z, _muster_bearing().x)
+	var line_r := maxf(chart_edge() - 3.0, 1.0)
+	var span := 3.4 / line_r          # radians between neighbours, ~3.4u apart
 	for i in range(MUSTER_LINE):
 		var g := Hostile.new()
 		g.faction = "gsa"
 		g.muster = true
 		g.difficulty = float(system_def.get("difficulty", 1.0))
 		system_root.add_child(g)
-		# Strung out ACROSS the bearing rather than clustered on it: a line is a
-		# line, and eight machines in a heap would read as a nest.
-		g.global_position = _muster_point \
-			+ side * ((float(i) - float(MUSTER_LINE - 1) * 0.5) * 3.4) \
-			- _muster_bearing() * 2.0
+		# Strung out ALONG the marker rather than clustered on the bearing: a
+		# line is a line, and eight machines in a heap would read as a nest.
+		var a := base_ang + (float(i) - float(MUSTER_LINE - 1) * 0.5) * span
+		g.global_position = Vector3(cos(a) * line_r, 0.0, sin(a) * line_r)
 		g.add_to_group("muster_line")
 	if hud:
 		hud.show_toast("THE CORDON IS STANDING TO", Palette.TEAL)
@@ -1626,7 +1648,7 @@ func _close_muster(held: bool) -> void:
 		GameState.note_log("THE LINE HELD")
 		# Standing, not salvage. The muster pays nothing bankable by design —
 		# HORIZON-4 §8, and PACING_LOOP is at 97% of its ceiling.
-		GameState.shift_faction(FactionDB.SURVEYOR, "gsa", 1)
+		GameState.shift_faction(FactionDB.SURVEYOR, "gsa", 1, true)
 	else:
 		if hud:
 			hud.show_broadcast("CORDON — LINE BROKEN",
@@ -1757,7 +1779,7 @@ func pay_toll() -> void:
 	# §9's raid-odds question stays deliberately open. What this buys today is
 	# the LOG LINE and the arc: a player who always pays is someone the banner
 	# knows, and when a later stage does read the number, the history is real.
-	GameState.shift_faction(FactionDB.SURVEYOR, "tithe", 1)
+	GameState.shift_faction(FactionDB.SURVEYOR, "tithe", 1, true)
 	_parley_until = 0.0
 	for node in get_tree().get_nodes_in_group("raider"):
 		if node.has_method("depart"):
@@ -12967,7 +12989,13 @@ func _run_faction_test() -> void:
 	system_root.add_child(beat)
 	beat.position = Vector3(10, 0, 20)
 	await get_tree().process_frame
-	var start_at := beat.global_position
+	# PATH LENGTH, NOT NET DISPLACEMENT. The route is a LOOP, so a picket that
+	# walks it perfectly ends up near where it started — this read 15.0u, 4.2u
+	# and 1.8u across runs of identical code purely by where in the loop the
+	# clock stopped, which is a coin flip dressed as a measurement. Summing the
+	# per-sample distance measures the thing the claim is about: it walked.
+	var last_at := beat.global_position
+	var walked_u := 0.0
 	var visited := 0
 	var last_i := beat._patrol_i
 	# A TIME BUDGET, NOT A FRAME COUNT. Headless Godot runs frames as fast as it
@@ -12980,13 +13008,14 @@ func _run_faction_test() -> void:
 	while walked < 12.0:
 		await get_tree().create_timer(0.1).timeout
 		walked += 0.1
+		walked_u += last_at.distance_to(beat.global_position)
+		last_at = beat.global_position
 		if beat._patrol_i != last_i:
 			visited += 1
 			last_i = beat._patrol_i
-	var travelled := start_at.distance_to(beat.global_position)
-	print("[faction] PICKETS WALK THEIR BEAT moved %.1fu and advanced %d waypoints in %.0fs (leg is 12u at %.1fu/s) -> %s" % [
-		travelled, visited, walked, Hostile.PATROL_SPEED,
-		"PASS" if travelled > 2.0 and visited >= 2 else "FAIL"])
+	print("[faction] PICKETS WALK THEIR BEAT covered %.1fu of ground and advanced %d waypoints in %.0fs (legs are ~10-14u at %.1fu/s) -> %s" % [
+		walked_u, visited, walked, Hostile.PATROL_SPEED,
+		"PASS" if walked_u > 12.0 and visited >= 2 else "FAIL"])
 
 	# --- 13. THE BEAT IS THE ANCHOR ------------------------------------------
 	# The property: engage range is measured from the ROUTE, not from the
@@ -13098,18 +13127,89 @@ func _run_faction_test() -> void:
 	#     the designation a lie and spend stage 6's reveal early. Asserted
 	#     through the real rule rather than by inspecting a node, because the
 	#     rule is what a future band edit would break.
+	# RE-AIMED IN STAGE 6, and this is the assertion doing exactly its job.
+	# Stages 3-5 held bands 3-4 unflagged so the shipped designations stayed
+	# honest; stage 6 hands them to the powers those designations were always
+	# describing. The claim is no longer "the deep is empty" but the stronger
+	# "the deep belongs to somebody, and not to anybody with a desk" — a host
+	# engine reaching past band 2, or a chart faction owning a nest out there,
+	# both fail. NOTHING is feral any more, which is the point: `feral` meant
+	# "no owner yet", and there is no yet left.
 	var claim_rows := ""
 	var deep_ok := true
+	var chartfolk := ["gsa", "bastion", "combine", "embers", "grin", "league",
+		"tithe", "procession"]
 	for band in range(5):
 		var f := deep_space.flag_for_band(band) if deep_space != null else FactionDB.FERAL
 		claim_rows += "b%d:%s " % [band, f]
-		var want_host: bool = band <= 2
-		if want_host and f != SystemDB.faction_of(system_id):
-			deep_ok = false
-		if not want_host and f != FactionDB.FERAL:
-			deep_ok = false
-	print("[faction] THE DEEP IS STILL UNCLAIMED %s(bands 3-4 must stay %s) -> %s" % [
-		claim_rows, FactionDB.FERAL, "PASS" if deep_ok else "FAIL"])
+		if band <= 2:
+			if f != SystemDB.faction_of(system_id):
+				deep_ok = false
+		else:
+			# Out here: an unknown, never a host engine, never a chart power,
+			# and never unflagged.
+			if not f.begins_with("unknown_") or chartfolk.has(f):
+				deep_ok = false
+	print("[faction] THE DEEP BELONGS TO THE UNKNOWNS %s(bands 0-2 the host, 3-4 an unknown, none feral) -> %s" % [
+		claim_rows, "PASS" if deep_ok else "FAIL"])
+
+	# THE TALLY DOES NOT LET GO. One line of code, and the only tell it needs:
+	# everything the expanse seeds carries HOSTILE_LEASH so a pack picked up
+	# far out does not follow you home. The Tally has no leash.
+	var leash_rows := ""
+	var leash_ok := true
+	if deep_space != null:
+		for band in [2, 3, 4]:
+			var f2 := deep_space.flag_for_band(band)
+			var expect_leash: bool = f2 != "unknown_a"
+			leash_rows += "b%d:%s " % [band, "leashed" if expect_leash else "RELENTLESS"]
+			if band == 3 and expect_leash:
+				leash_ok = false          # the Reaches must be the Tally's
+			if band == 2 and not expect_leash:
+				leash_ok = false          # nothing inside the Drift is relentless
+	print("[faction] THE TALLY DOES NOT LET GO %s-> %s" % [
+		leash_rows, "PASS" if leash_ok else "FAIL"])
+
+	# THE HOLLOWING CANNOT KILL YOU. Its fire cannot take the last point of
+	# shield, so it strips a ship to a sliver and cannot finish it. Asserted
+	# through the REAL clamp against a real player ship, at damage far beyond
+	# lethal, REPEATEDLY — the clamp has to hold at the floor, not merely on
+	# the first shot.
+	#
+	# This ship has no hull: `shield` IS its health, and take_hit downs the
+	# player at `shield <= 0.0`. The first version of this assertion read a
+	# `hull` property that has never existed and crashed the harness, which is
+	# how the underlying design error was found — the Hollowing had been
+	# written to clamp at the shield remaining, landing exactly on zero.
+	var hollow := SwarmHostile.new()
+	hollow.faction = "unknown_b"
+	system_root.add_child(hollow)
+	var mark: PlayerShip = get_tree().get_first_node_in_group("player")
+	var shield_left := -1.0
+	var survived := false
+	if mark != null:
+		mark.invulnerable = false
+		mark.shield = mark.shield_max
+		hollow.global_position = mark.global_position + Vector3(1.5, 0, 0)
+		for i in range(10):
+			var out: float = SwarmHostile.DAMAGE * 60.0
+			if "shield" in mark:
+				out = minf(out, maxf(float(mark.shield) - 1.0, 0.0))
+			if out > 0.0:
+				mark.take_hit(out, hollow)
+		shield_left = mark.shield
+		survived = mark.shield > 0.0
+		mark.shield = mark.shield_max
+		mark.invulnerable = true
+	# FREED AND WAITED ON. queue_free is deferred, so without the frame this
+	# probe is still in `combatants` when AMBIENT COMBAT DEPLETES NOTHING takes
+	# its baseline a few lines below — and that check then reads its own litter
+	# being cleaned up as the world depleting itself (census 10 -> 9).
+	hollow.queue_free()
+	await get_tree().process_frame
+	print("[faction] THE HOLLOWING CANNOT KILL YOU 10 volleys at 60x damage -> shield %.2f left, still flying=%s -> %s" % [
+		shield_left, str(survived),
+		"PASS" if survived and shield_left <= 1.01 else "FAIL"])
 
 	# --- 17. AMBIENT COMBAT DEPLETES NOTHING ---------------------------------
 	#     THE ASSERTION THIS STAGE EXISTS FOR, and the one that would have caught
@@ -13122,18 +13222,30 @@ func _run_faction_test() -> void:
 	#     parked far away and untouchable, long enough for three full
 	#     engage/rest cycles, and require the census to be IDENTICAL — not
 	#     merely non-zero, which any half-emptied system would satisfy.
-	var census_before := get_tree().get_nodes_in_group("combatants").size()
+	# GENERATION OFF FIRST. The earlier version parked the player at (0,0,400)
+	# to keep them out of the fight — which is depth 360, inside the band where
+	# the expanse SEEDS NESTS, so the census grew by two while the check was
+	# watching for it to shrink (7 -> 9). Every harness that puts a ship
+	# outside `bounds` calls this for the same reason.
+	set_deep_generation(false)
+	await get_tree().process_frame
 	var pilot: PlayerShip = get_tree().get_first_node_in_group("player")
 	if pilot != null:
 		pilot.invulnerable = true
 		pilot.teleport_to(Vector3(0, 0, 400))
 	_wave_timer = 1.0e9        # no reinforcements: a census that grows hides a loss
+	_muster_timer = 1.0e9      # nor a muster, which spawns 32 of them
+	await get_tree().create_timer(0.5).timeout
+	# Baseline taken AFTER the world has settled into that state, so anything
+	# already in flight is counted on both sides of the watch.
+	var census_before := get_tree().get_nodes_in_group("combatants").size()
 	var watched := 0.0
 	var budget := (FactionDB.SKIRMISH_TIME + FactionDB.SKIRMISH_REST) * 3.0
 	while watched < budget:
 		await get_tree().create_timer(0.25).timeout
 		watched += 0.25
 	var census_after := get_tree().get_nodes_in_group("combatants").size()
+	set_deep_generation(true)
 	print("[faction] AMBIENT COMBAT DEPLETES NOTHING %.0fs unattended (3 x %.0fs cycles), census %d -> %d -> %s" % [
 		watched, FactionDB.SKIRMISH_TIME + FactionDB.SKIRMISH_REST,
 		census_before, census_after,
@@ -13322,9 +13434,24 @@ func _run_faction_test() -> void:
 		var od := Market.owner_of(arch)
 		if od == "" or not FactionDB.is_faction(od):
 			unowned_ports.append(String(arch.get("id", "?")))
-	print("[faction] EVERY DESK HAS AN OWNER unowned=%s (must be exactly deep_watch) -> %s" % [
+	# Stage 5 asserted the Last Watch was the ONE unowned desk. Stage 6 spent
+	# that hook: the Stillness owns it, so the list must now be EMPTY, and the
+	# Watch's own clause moves to THE WATCH ANSWERS TO SOMETHING below.
+	print("[faction] EVERY DESK HAS AN OWNER unowned=%s (must be empty since stage 6) -> %s" % [
 		str(unowned_ports),
-		"PASS" if unowned_ports == ["deep_watch"] else "FAIL"])
+		"PASS" if unowned_ports.is_empty() else "FAIL"])
+
+	# THE WATCH ANSWERS TO SOMETHING — and its back room stays open. The reveal
+	# must not cost the player the deepest fence in the game as a side effect
+	# of a name, which is why the Stillness is NEUTRAL to the surveyor.
+	# `watch_def`, not `watch` — THE BUDGET HOLDS already owns that name and
+	# GDScript scopes to the whole function. Fourth time this horizon.
+	var watch_def := DeepPortDB.by_id("deep_watch")
+	var watch_owner := Market.owner_of(watch_def)
+	print("[faction] THE WATCH ANSWERS TO SOMETHING owner=%s (%s), fence open at baseline=%s -> %s" % [
+		watch_owner, FactionDB.display_name(watch_owner),
+		str(Market.fence_open(watch_def)),
+		"PASS" if watch_owner == "unknown_c" and Market.fence_open(watch_def) else "FAIL"])
 
 	# THE FENCE REMEMBERS, driven through the REAL gate at the real band. And
 	# BASELINE FENCES ARE OPEN: PACINGTEST's best-route search sells fenced

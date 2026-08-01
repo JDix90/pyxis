@@ -136,7 +136,18 @@ const ARCHETYPES := [
 		"id": "deep_watch",
 		"name": "THE LAST WATCH",
 		"kind": "cantina",
-		# NO OWNER, DELIBERATELY, and do not "fix" it. "Still lit. Nobody is
+		# v18 STAGE 6. THE REVEAL. "Still lit. Nobody is sure who is paying for
+		# it" has been in this file since the deep ports shipped, and the
+		# answer is THE STILLNESS — the one of the three that does not move
+		# and does not care about you. It keeps a light on 1,200 units past
+		# the last beacon and trades with anyone who reaches it, and nothing
+		# in the game explains why. That is the intended note, not a gap.
+		#
+		# It is NEUTRAL to the surveyor in FactionDB, which is what keeps this
+		# fence open: a reveal that closed the deepest back room in the game
+		# would be a name costing the player a service.
+		"owner": "unknown_c",
+		# The old note, kept because the reasoning still applies to the SHAPE: "Still lit. Nobody is
 		# sure who is paying for it" is the hook stage 6 spends — the intended
 		# answer is one of the three unknowns, and assigning it to a known
 		# faction now would spend the best mystery in the port data on
