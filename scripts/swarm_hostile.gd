@@ -250,8 +250,11 @@ func _refresh_enemies() -> void:
 	_enemies = GameState.enemies_of(faction)
 
 
-func _targetable(n: Node3D) -> bool:
-	if n == null or not is_instance_valid(n) or not n.is_inside_tree():
+func _targetable(n) -> bool:
+	# Untyped for the same reason as Hostile._targetable — see the note there.
+	# A typed Node3D parameter crashes on a cached target that has since been
+	# freed, at the call boundary, before the validity check can run.
+	if not is_instance_valid(n) or not (n as Node3D).is_inside_tree():
 		return false
 	if n.is_in_group("player"):
 		return not n.docked

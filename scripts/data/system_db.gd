@@ -140,6 +140,27 @@ const SYSTEMS := {
 			Vector3(-6, 0, -12), Vector3(-14, 0, -13),
 			Vector3(8, 0, -16), Vector3(15, 0, -20),
 		],
+		# v18. THE CORDON'S BEAT. Absolute world waypoints, walked as a loop.
+		#
+		# THE ROUTES ARE THE ENTITY BUDGET. Ambient picket-vs-sentry combat is
+		# an AUTHORING decision, not an emergent one: each route is drawn to
+		# pass within engage range of exactly ONE sentry post, so a system has
+		# as many standing skirmishes as it has routes and no more. That is what
+		# keeps the count legible on a 720-wide phone and the frame budget
+		# knowable — see HORIZON-4 §7.
+		#
+		# Every waypoint must sit inside `bounds`: the band-1 beacon has
+		# promised since v13 that patrols do not operate past the marker, and
+		# THE CORDON STOPS AT THE MARKER checks this table rather than waiting
+		# for a picket to be built and then dragging it home.
+		#
+		# Route 1 covers the Anchor approach and the derelict lane, crossing the
+		# post at (-6, 0, -12). Route 2 walks the Cantina side and crosses
+		# (8, 0, -16)'s neighbourhood on its northern leg.
+		"patrols": [
+			[Vector3(-16, 0, 3), Vector3(-9, 0, -9), Vector3(-2, 0, -14), Vector3(-10, 0, 6)],
+			[Vector3(11, 0, 21), Vector3(17, 0, 6), Vector3(9, 0, -13), Vector3(2, 0, 12)],
+		],
 		"swarm": {"interval": 22.0, "pack_min": 4, "pack_max": 6, "cap": 10, "first_delay": 6.0},
 		"difficulty": 1.0,
 		"loot_mult": 1.0,
@@ -233,6 +254,14 @@ const SYSTEMS := {
 			Vector3(-9, 0, -11), Vector3(6, 0, -7),
 			Vector3(19, 0, -15), Vector3(-17, 0, -19),
 		],
+		# Three routes: PYX-02 is the Combine's industrial heart and the
+		# Authority escorts its shipping. Crossing (6,0,-7), (-9,0,-11) and
+		# (19,0,-15) respectively — one post each, per PYX-01's note.
+		"patrols": [
+			[Vector3(26, 0, 16), Vector3(12, 0, 2), Vector3(4, 0, -9), Vector3(16, 0, 8)],
+			[Vector3(-30, 0, 25), Vector3(-18, 0, 8), Vector3(-7, 0, -9), Vector3(-22, 0, 12)],
+			[Vector3(30, 0, -22), Vector3(21, 0, -13), Vector3(8, 0, -20), Vector3(24, 0, -28)],
+		],
 		"swarm": {"interval": 14.0, "pack_min": 5, "pack_max": 8, "cap": 16, "first_delay": 4.0},
 		"difficulty": 1.5,
 		"loot_mult": 1.35,
@@ -322,6 +351,16 @@ const SYSTEMS := {
 			Vector3(-11, 0, -13), Vector3(-2, 0, -17), Vector3(7, 0, -11),
 			Vector3(14, 0, -19), Vector3(0, 0, -6), Vector3(-18, 0, -21),
 			Vector3(19, 0, -24),
+		],
+		# Four routes, the heaviest presence on the chart: Bastion Yards is the
+		# Authority's own military yard, and PYX-03 is where the Cordon has the
+		# most to lose. Crossing (0,0,-6), (-11,0,-13), (7,0,-11) and
+		# (14,0,-19).
+		"patrols": [
+			[Vector3(-18, 0, 12), Vector3(-8, 0, 2), Vector3(2, 0, -8), Vector3(-12, 0, 4)],
+			[Vector3(-26, 0, -4), Vector3(-16, 0, -10), Vector3(-9, 0, -15), Vector3(-20, 0, -6)],
+			[Vector3(16, 0, 4), Vector3(9, 0, -6), Vector3(5, 0, -13), Vector3(13, 0, -2)],
+			[Vector3(28, 0, -22), Vector3(19, 0, -16), Vector3(12, 0, -21), Vector3(24, 0, -27)],
 		],
 		"swarm": {"interval": 34.0, "pack_min": 3, "pack_max": 4, "cap": 6, "first_delay": 12.0},
 		"difficulty": 2.2,

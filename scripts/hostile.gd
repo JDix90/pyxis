@@ -53,6 +53,34 @@ var standoff := 0.0
 # so every existing spawner is untouched by construction.
 var faction := FactionDB.FERAL
 
+# --- the beat (v18, Horizon 4 stage 2a) --------------------------------------
+# Absolute world waypoints. Set by the spawner before add_child, like tint and
+# faction. EMPTY on every machine that shipped before the Cordon, and empty
+# means "hold station and drift" — the behaviour every authored sentry has
+# always had — so this whole block is inert for sentries by construction.
+#
+# The route is a LOOP: after the last waypoint comes the first. A ping-pong
+# route needs a direction flag and an end-detection branch to say the same
+# thing on screen.
+var patrol: Array[Vector3] = []
+# How fast a picket walks its beat. Deliberately under the player's 5.75 and
+# well under a swarm's 7.5: a patrol is a presence, not a pursuer, and one that
+# could run the player down would be a second raider wearing a badge.
+const PATROL_SPEED := 3.2
+# How near counts as arrived. Larger than it looks because the drift is applied
+# on top, so a tighter radius makes a picket jitter at a corner instead of
+# turning it.
+const PATROL_ARRIVE := 1.6
+# How far off its route a picket will step to engage, and how far a target may
+# get before it gives up and resumes. The GAP between them is hysteresis — the
+# same reason the apex has WAKE 60 against LEASH 120. Without it a contact
+# sitting near the boundary flickers a picket between engaging and walking off
+# every frame.
+const PATROL_ENGAGE := 12.0
+const PATROL_RELEASE := 25.0
+
+var _patrol_i := 0
+
 # Enemy list cached against GameState.faction_version — the matrix moves only
 # on player actions, so recomputing it per frame would be paying every tick
 # for something that changes a few times an hour.
@@ -89,6 +117,13 @@ func _ready() -> void:
 	# player", and an allied ship in it would be counted, swept and cleaned up
 	# as an enemy by every one of them.
 	add_to_group("combatants")
+	# Faction paint, and it outranks band and raid tint — FactionDB.TINTS'
+	# precedence note (faction > raid > band), because allegiance is the thing
+	# combat decisions hang on. Applied only when the spawner has NOT already
+	# set a tint by hand, so a deep guard's band colour and a corsair's crimson
+	# are untouched; and BEFORE _build_mesh, which reads `tint`.
+	if tint.a <= 0.0:
+		tint = FactionDB.tint_of(faction)
 	max_hp = BASE_HP * difficulty * hp_scale
 	hp = max_hp
 	# _home is captured on the FIRST FRAME, not here. _ready fires from
@@ -187,7 +222,19 @@ func _process(delta: float) -> void:
 			return
 	rotation.y += delta * 0.8
 	var t := Time.get_ticks_msec() / 1000.0
-	global_position = _home + Vector3(sin(t * 0.5 + _drift_phase), 0, cos(t * 0.4 + _drift_phase)) * 0.4
+	var wander := Vector3(sin(t * 0.5 + _drift_phase), 0, cos(t * 0.4 + _drift_phase)) * 0.4
+	if patrol.is_empty():
+		# Station-keeping: the shipped behaviour, unchanged.
+		global_position = _home + wander
+	else:
+		# THE TWO BRANCHES CANNOT BE UNIFIED, and the difference is the bug that
+		# would otherwise ship. Station-keeping ASSIGNS `_home + wander`; a
+		# patrol ADDS the wander as a nudge. A moving picket whose position were
+		# assigned from a wander term would have its travel overwritten every
+		# frame and never leave the spot — which is this file's own
+		# _home-on-frame-one defect, reintroduced from the other direction.
+		_walk_beat(delta)
+		global_position += wander * delta
 
 	var cam := get_viewport().get_camera_3d()
 	var bar := get_node_or_null("HPBar")
@@ -204,15 +251,77 @@ func _refresh_enemies() -> void:
 	_enemies = GameState.enemies_of(faction)
 
 
-func _targetable(n: Node3D) -> bool:
-	# Alive, in the world, and legal to shoot. The docked check is the one rule
-	# that outranks everything including aggro: safety at port has to be total,
-	# or it is not safety.
-	if n == null or not is_instance_valid(n) or not n.is_inside_tree():
+func _walk_beat(delta: float) -> void:
+	# A picket is only ever in one of two positions: standing off something it
+	# is fighting, or walking to its next waypoint. There is deliberately NO
+	# "returning" state — a picket with nothing to shoot walking to its next
+	# waypoint IS returning, and a third state would be a second thing to keep
+	# true for no visible difference.
+	var goal: Vector3
+	var target := _combat_target(delta)
+	if target != null and _worth_leaving_the_beat(target):
+		# Stand off rather than close. A picket is a gun emplacement that
+		# happens to move; one that charged would be indistinguishable on
+		# screen from the raiders it exists to stop.
+		var away := global_position - target.global_position
+		away.y = 0.0
+		if away.length() < 0.01:
+			away = Vector3(1, 0, 0)
+		goal = target.global_position + away.normalized() * (ENGAGE_RANGE * 0.8)
+	else:
+		goal = patrol[_patrol_i]
+		if global_position.distance_to(goal) <= PATROL_ARRIVE:
+			_patrol_i = (_patrol_i + 1) % patrol.size()
+			goal = patrol[_patrol_i]
+
+	var step := goal - global_position
+	step.y = 0.0
+	if step.length() > 0.01:
+		# Expressed as a target position rather than an impulse, per §13's
+		# lesson: an impulse makes speed a function of how often the caller
+		# ticks. Clamped to the remaining distance so a long frame cannot
+		# overshoot a waypoint and start the picket oscillating around it.
+		var move := step.normalized() * PATROL_SPEED * delta
+		global_position += move if move.length() < step.length() else step
+	global_position.y = 0.0
+	global_position = Obstacles.resolve(global_position, 0.5)
+
+
+func _worth_leaving_the_beat(target: Node3D) -> bool:
+	# THE PARLEY IS THE PLAYER'S CONVERSATION (finding A3). break_parley fires
+	# when a raider takes damage from ANYONE, so a picket that peeled onto a pack
+	# mid-standoff would answer the demand on the player's behalf and delete the
+	# choice the whole interdiction is built around — permanently, everywhere in
+	# charted space.
+	if target.is_in_group("raider") and "standoff" in target \
+			and float(target.standoff) > 0.0:
 		return false
-	if n.is_in_group("player"):
+	# MEASURED FROM THE ROUTE, NOT FROM THE PICKET, and that is the whole
+	# function. A picket measuring from itself would drift outward along its own
+	# engagements — every individual step looking correct while charted space
+	# quietly went unguarded. The waypoint it is walking to is the anchor, so a
+	# contact the ROUTE never comes near is a contact the Cordon never chases,
+	# however close the picket happens to drift mid-leg.
+	var post: Vector3 = patrol[_patrol_i]
+	var reach := PATROL_RELEASE if _target == target else PATROL_ENGAGE
+	return post.distance_to(target.global_position) <= reach
+
+
+func _targetable(n) -> bool:
+	# UNTYPED PARAMETER, DELIBERATELY. `n: Node3D` looks tidier and is a crash:
+	# `_aggro` and `_target` can hold a node that was freed since it was cached,
+	# and GDScript validates an Object argument against the declared class AT
+	# THE CALL BOUNDARY — so a freed node fails there, before is_instance_valid
+	# below ever runs, with "the Object-derived class of argument 1 (previously
+	# freed) is not a subclass". The validity check has to be reachable, and it
+	# is only reachable if the parameter does not demand a live typed object.
+	#
+	# is_instance_valid(null) is false, so it covers the null case too.
+	if not is_instance_valid(n) or not (n as Node3D).is_inside_tree():
+		return false
+	if (n as Node3D).is_in_group("player"):
 		return not n.docked
-	return n.is_in_group("combatants")
+	return (n as Node3D).is_in_group("combatants")
 
 
 func _combat_target(delta: float) -> Node3D:

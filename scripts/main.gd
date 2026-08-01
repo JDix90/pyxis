@@ -12288,14 +12288,29 @@ func _run_faction_test() -> void:
 	var feral_enemies := GameState.enemies_of(FactionDB.FERAL)
 	var feral_ok: bool = feral_enemies.size() == 1 \
 		and feral_enemies[0] == FactionDB.SURVEYOR
+	# WIDENED IN STAGE 2a, and the widening is the point rather than a
+	# concession. The original clause was "every live flag is feral", which was
+	# the right claim while nothing else flew — but the Cordon now legitimately
+	# puts `gsa` pickets in charted space, so that form would fail on correct
+	# code forever. The invariant that actually matters survives intact: THE
+	# ONLY FLAG IN THE SKY THAT WANTS THE PLAYER DEAD IS STILL FERAL. Adding a
+	# faction is allowed; adding a second thing that shoots at you is not, and
+	# would be a design decision rather than a side effect.
 	var live_flags := {}
 	for n_v in get_tree().get_nodes_in_group("combatants"):
 		live_flags[String((n_v as Node3D).faction)] = true
-	var all_feral: bool = live_flags.keys().size() <= 1 \
-		and (live_flags.is_empty() or live_flags.has(FactionDB.FERAL))
-	print("[faction] FERAL IS THE SHIPPED WORLD feral hates %s, live flags in-system %s -> %s" % [
-		str(feral_enemies), str(live_flags.keys()),
-		"PASS" if feral_ok and all_feral else "FAIL"])
+	var hostile_flags: Array = []
+	for f_v in live_flags:
+		var f := String(f_v)
+		if not FactionDB.is_faction(f):
+			hostile_flags.append("%s(unknown)" % f)
+		elif GameState.faction_band(f, FactionDB.SURVEYOR) == FactionDB.Band.HOSTILE:
+			hostile_flags.append(f)
+	var only_feral_hunts: bool = hostile_flags.size() == 1 \
+		and String(hostile_flags[0]) == FactionDB.FERAL
+	print("[faction] FERAL IS THE ONLY THING HUNTING YOU feral hates %s, live flags %s, of which hostile-to-player %s -> %s" % [
+		str(feral_enemies), str(live_flags.keys()), str(hostile_flags),
+		"PASS" if feral_ok and only_feral_hunts else "FAIL"])
 
 	# --- 3. targeting honours the table --------------------------------------
 	# Driven through the real target selector on a real node at every band,
@@ -12501,6 +12516,148 @@ func _run_faction_test() -> void:
 	print("[faction] THE ROSTER IS CLOSED %d factions, %d baseline refs to nothing %s -> %s" % [
 		FactionDB.ids().size(), unknown_refs.size(), str(unknown_refs),
 		"PASS" if unknown_refs.is_empty() else "FAIL"])
+
+	# --- 11. THE CORDON STOPS AT THE MARKER ----------------------------------
+	# The band-1 beacon has promised since v13 that "security patrols do not
+	# operate beyond this marker", DEEPTEST pins the words, and this is the
+	# clause that makes the words true of SHIPS. Checked over the AUTHORED
+	# TABLE rather than over built nodes: it fires on the authoring mistake,
+	# before a picket exists, which is strictly earlier than a runtime clamp
+	# (which would drag the picket home and hide the error) could manage.
+	var outside: Array = []
+	var route_total := 0
+	for sid_v in SystemDB.ids():
+		var sid := String(sid_v)
+		var edge := SystemDB.bounds_of(sid)
+		for route_v in SystemDB.get_system(sid).get("patrols", []):
+			route_total += 1
+			for p_v in (route_v as Array):
+				var p: Vector3 = p_v
+				if Vector3(p.x, 0.0, p.z).length() >= edge:
+					outside.append("%s %s" % [sid, str(p)])
+	print("[faction] THE CORDON STOPS AT THE MARKER %d routes across %d systems, %d waypoints past the edge %s -> %s" % [
+		route_total, SystemDB.ids().size(), outside.size(), str(outside),
+		"PASS" if outside.is_empty() and route_total > 0 else "FAIL"])
+
+	# --- 12. PICKETS WALK THEIR BEAT -----------------------------------------
+	# Driven through the real node over real frames. This is the assertion that
+	# catches the assign-vs-add trap in _process: a picket whose position were
+	# assigned from the wander term would be overwritten every frame and sit
+	# still forever, which reads on screen as "the Cordon is deployed" and is
+	# in fact a garrison of statues.
+	var beat := Hostile.new()
+	beat.faction = "gsa"
+	beat.patrol = [Vector3(6, 0, 6), Vector3(6, 0, -6), Vector3(-6, 0, -6)] as Array[Vector3]
+	system_root.add_child(beat)
+	beat.position = Vector3(6, 0, 6)
+	await get_tree().process_frame
+	var start_at := beat.global_position
+	var visited := 0
+	var last_i := beat._patrol_i
+	# A TIME BUDGET, NOT A FRAME COUNT. Headless Godot runs frames as fast as it
+	# can, so `for i in range(360): await process_frame` is an unknown and
+	# machine-dependent amount of SIMULATED time — it measured 8u of a 12u leg
+	# on the first run and would have been a flake on any other box. The beat is
+	# specified in units per second, so the test has to be specified in seconds:
+	# a 12u leg at PATROL_SPEED 3.2 takes 3.75s, so 12s covers three of them.
+	var walked := 0.0
+	while walked < 12.0:
+		await get_tree().create_timer(0.1).timeout
+		walked += 0.1
+		if beat._patrol_i != last_i:
+			visited += 1
+			last_i = beat._patrol_i
+	var travelled := start_at.distance_to(beat.global_position)
+	print("[faction] PICKETS WALK THEIR BEAT moved %.1fu and advanced %d waypoints in %.0fs (leg is 12u at %.1fu/s) -> %s" % [
+		travelled, visited, walked, Hostile.PATROL_SPEED,
+		"PASS" if travelled > 2.0 and visited >= 2 else "FAIL"])
+
+	# --- 13. THE BEAT IS THE ANCHOR ------------------------------------------
+	# The property: engage range is measured from the ROUTE, not from the
+	# picket. A picket measuring from itself drifts outward along its own
+	# engagements, every individual step looking correct while charted space
+	# quietly goes unguarded.
+	#
+	# THE FIRST VERSION OF THIS CHECK PASSED ON BROKEN CODE, and the reason is
+	# worth recording because it is this project's recurring failure: a chain of
+	# contacts marching away from the route cannot ratchet anything, because
+	# _combat_target returns the NEAREST enemy — the picket locks onto the first
+	# one and stays there under both implementations. It measured a world in
+	# which the bug cannot express itself.
+	#
+	# The discriminating case is a contact near the MIDDLE OF A LEG and far from
+	# both of its endpoints. Route-measuring never engages it; self-measuring
+	# engages the moment the picket walks past. Asserted as a PURE FUNCTION call
+	# at a placed position rather than over frames: no timing, no flake, and it
+	# names the property directly.
+	var anchor := Hostile.new()
+	anchor.faction = "gsa"
+	# A 40u leg. Its midpoint is 20u from either end.
+	anchor.patrol = [Vector3(0, 0, -20), Vector3(0, 0, 20)] as Array[Vector3]
+	system_root.add_child(anchor)
+	anchor.position = Vector3.ZERO
+	await get_tree().process_frame
+	anchor._patrol_i = 1                      # walking toward (0, 0, 20)
+	anchor._enemies_version = -1
+
+	# Mid-leg bait: 10u from the picket standing at the midpoint, but 22.4u from
+	# the waypoint it is walking to — outside PATROL_ENGAGE either way you
+	# measure the ROUTE, inside it if you measure the PICKET.
+	var mid_bait := SwarmHostile.new()
+	system_root.add_child(mid_bait)
+	mid_bait.global_position = Vector3(10, 0, 0)
+	# Control: a contact genuinely near the waypoint, which must be engaged.
+	# Without it "returns false" is satisfied by a function that always refuses.
+	var post_bait := SwarmHostile.new()
+	system_root.add_child(post_bait)
+	post_bait.global_position = Vector3(8, 0, 20)
+	await get_tree().process_frame
+
+	var d_pick := anchor.global_position.distance_to(mid_bait.global_position)
+	var d_post := Vector3(0, 0, 20).distance_to(mid_bait.global_position)
+	var chases_midleg := anchor._worth_leaving_the_beat(mid_bait)
+	var chases_at_post := anchor._worth_leaving_the_beat(post_bait)
+	print("[faction] THE BEAT IS THE ANCHOR mid-leg contact %.1fu from the picket / %.1fu from its waypoint (engage %.0f): chased=%s | control at the waypoint chased=%s -> %s" % [
+		d_pick, d_post, Hostile.PATROL_ENGAGE, str(chases_midleg), str(chases_at_post),
+		"PASS" if not chases_midleg and chases_at_post else "FAIL"])
+	for n in [anchor, mid_bait, post_bait]:
+		if is_instance_valid(n):
+			n.queue_free()
+
+	# --- 14. THE PARLEY IS IMMUNE (finding A3) -------------------------------
+	# break_parley fires when a raider takes damage from ANYONE, so a picket
+	# that peeled onto a pack mid-standoff would answer the demand on the
+	# player's behalf and delete the choice the interdiction is built around —
+	# permanently, everywhere in charted space. Asserted as a REFUSAL TO
+	# ENGAGE rather than as "the standoff survived": the picket must not pick
+	# the fight in the first place.
+	var guard := Hostile.new()
+	guard.faction = "gsa"
+	guard.patrol = [Vector3(0, 0, 0), Vector3(4, 0, 0)] as Array[Vector3]
+	system_root.add_child(guard)
+	guard.position = Vector3.ZERO
+	var demanding := SwarmHostile.new()
+	demanding.add_to_group("raider")
+	demanding.standoff = 30.0
+	system_root.add_child(demanding)
+	demanding.global_position = Vector3(3, 0, 0)
+	await get_tree().process_frame
+	guard._enemies_version = -1
+	# Force the raider to be a legal target for the flag, so the ONLY thing
+	# that can refuse the engagement is the parley clause itself.
+	GameState.shift_faction("gsa", "tithe", -12)
+	demanding.faction = "tithe"
+	guard._enemies_version = -1
+	var engages_parleying := guard._worth_leaving_the_beat(demanding)
+	demanding.standoff = 0.0
+	var engages_after := guard._worth_leaving_the_beat(demanding)
+	print("[faction] THE PARLEY IS IMMUNE picket engages during standoff=%s, after it lapses=%s -> %s" % [
+		str(engages_parleying), str(engages_after),
+		"PASS" if not engages_parleying and engages_after else "FAIL"])
+	if is_instance_valid(guard):
+		guard.queue_free()
+	if is_instance_valid(demanding):
+		demanding.queue_free()
 
 	_clear_faction_matrix()
 	await get_tree().create_timer(0.2).timeout

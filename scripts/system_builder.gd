@@ -23,8 +23,13 @@ static func build(def: Dictionary, container: Node3D, opts := {}) -> void:
 	_build_port(def, container)
 	_build_deep_space(def, container, String(opts.get("system_id", "")))
 	# Attract mode and the guided first run want the place without the ambush.
+	# The Cordon is behind the SAME flag rather than a new one: nothing shoots
+	# at a menu, and a title screen playing over a picket-vs-sentry skirmish is
+	# noise. The tutorial suppresses both for the reason it already suppresses
+	# sentries.
 	if not bool(opts.get("skip_sentries", false)):
 		_build_sentries(def, container)
+		_build_patrols(def, container)
 
 
 static func _build_deep_space(def: Dictionary, container: Node3D, system_id: String) -> void:
@@ -433,3 +438,33 @@ static func _build_sentries(def: Dictionary, container: Node3D) -> void:
 		h.difficulty = mult
 		container.add_child(h)
 		h.position = pos
+
+
+static func _build_patrols(def: Dictionary, container: Node3D) -> void:
+	# v18. THE CORDON. A picket is a Hostile with a route and a flag — not a new
+	# class. The airframe is the same machine the expanse already dresses out as
+	# "GSA PICKET — DECOMMISSIONED"; this is the living version, and the tell is
+	# paint, per the raider precedent.
+	#
+	# This function does NOT police the data. The chart-edge rule is checked by
+	# PYXIS_FACTIONTEST's THE CORDON STOPS AT THE MARKER, over the authored
+	# table, before anything is built — which is strictly earlier than a runtime
+	# clamp (it would drag a picket home and hide the mistake) or an assert
+	# (stripped from release builds, and this codebase uses none).
+	var mult := float(def.get("difficulty", 1.0))
+	for route_v in def.get("patrols", []):
+		var route: Array = route_v
+		if route.is_empty():
+			continue
+		var h := Hostile.new()
+		h.difficulty = mult
+		h.faction = "gsa"
+		var pts: Array[Vector3] = []
+		for p_v in route:
+			pts.append(p_v as Vector3)
+		h.patrol = pts
+		container.add_child(h)
+		# After add_child, like every other spawner in this file: a node has to
+		# be in the tree before global_position means anything, and Hostile._home
+		# is captured on the first frame precisely because of it.
+		h.position = pts[0]
