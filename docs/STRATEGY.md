@@ -4452,3 +4452,86 @@ a single-spike measure ranging 17–48ms against a bound of 40; it went red once
 in-sweep and passed 4 of 4 alone. That is a third flaky assertion, and the fix
 is the one §41 already describes: re-derive the bar from the distribution
 rather than nudge it until the sweep goes quiet. Recorded, not done.
+
+## 52. Factions — stage 4, THE MUSTER
+
+A massed column gathers 75u outside the charted volume and marches in. The
+Cordon amasses **at the chart edge** and holds the line there.
+
+### The fiction resolves the constitutional problem
+
+The band-1 beacon has promised since v13 that *"security patrols do not operate
+beyond this marker"*, DEEPTEST pins the words, and stage 2a turned them into an
+assertion about ships. A relief fleet sallying out to meet the column would
+break all three at once.
+
+So it does not sally. **The Cordon forms up ON the marker and waits.** The
+player can fly out and meet the column early — alone, past the line, exactly as
+the beacon warned — or stand with the Cordon and let it come. The event
+*teaches* the game's territorial rule instead of bending it, and `THE LINE IS
+THE EDGE` asserts no cordon ship is ever past the marker.
+
+The column comes down the **survey hull's bearing**, which already means
+"outside" in every system: the direction the hull drifted, the direction the
+unlock hint sends you, and now the direction things come from.
+
+### The march
+
+`SwarmHostile` gained its first non-orbit movement. Everything it has ever done
+is expressed relative to a thing it is circling; a column is expressed relative
+to a *place*, at 2.8u/s — `MAX_SPEED` 7.5 would cross 75u in ten seconds and
+the event would be over before the advisory finished reading.
+
+It is held until something is genuinely in reach, checked against
+`ATTACK_RANGE`, not against "has a target": `_combat_target` returns the
+nearest hated thing at *any* distance, so a column that halted the moment it
+could see the far side of the line would never cross at all.
+
+### Set-piece ships are exempt from the ambient floor
+
+§51's `SKIRMISH_HP_FLOOR` exists so the world does not empty itself unwatched.
+A muster is announced, bounded and cleaned up after — and **supposed to
+resolve.** A line that could not break and a column that could not be stopped
+would be two crowds of machines shooting each other forever, which is the
+opposite of a set-piece.
+
+### Nothing bankable, and the printer that revealed
+
+The muster drops no loot, pays no salvage, and reports kills as `"muster"` —
+a kind no contract in `contract_db` asks for, so the fastest `kill_swarm`
+filler in the game cannot be farmed. `PACING_LOOP` sits at 97% of its ceiling
+and a recurring event that paid would be recurring income whatever it was
+called.
+
+Writing that gate exposed **a money printer stage 2a shipped.**
+`Hostile._die` paid loot and kill credit on *any* player kill, so a Cordon
+picket was worth 14 crates and a `kill_sentry` tick. Pickets never return fire
+— the WARY floor guarantees it — and they **rebuild on every `_load_system`**.
+Warp out and back and you minted a fresh row of non-retaliating piñatas on
+demand. That is §27's deep-hulk printer with a badge on.
+
+The rule is now three questions, not one:
+
+    1. did the PLAYER do it        (stage 1's attribution)
+    2. was it HOSTILE to them      (closes the picket printer)
+    3. is it a MUSTER ship         (closes the event)
+
+and shooting something that was not shooting at you costs standing instead.
+
+### Radar clusters by force
+
+32 machines on a 12-marker board is a border of identical arrows. A muster
+renders **one marker per force**, at the centroid, by marking every muster node
+`seen` — the dedup mechanism that already existed — so the cap is sidestepped
+rather than the tier system reworked.
+
+### The assertion that was passing on timing
+
+`THE MUSTER CARRIES NOTHING` originally ran *after* the budget sweep. That loop
+runs until the column is exhausted, so the muster had often already resolved
+and there was nothing left to shoot: it reported `-1 cubes` and passed or
+failed on timing rather than on the payout ban. Moved above the sweep, the
+red-verify reports the real failure — **2 cubes dropped**.
+
+That is the fourth green-assertion-testing-nothing this project has caught, and
+the third this horizon. The tell each time was the same: **elaborate setup.**
