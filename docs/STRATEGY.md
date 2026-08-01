@@ -4738,13 +4738,28 @@ and a sentry to *both* lose hull and *both* still be flying — the contested
 border and the depletion guarantee in one line, neither clause satisfiable by
 breaking the other.
 
-Its first version placed the pair 4u apart and **passed with the clock bug
-still in**, because at 4u acquisition and fire coincide and the clock never got
-the chance to burn on an approach. The red-verify is what said so — the fix was
-green, the revert was green, and only the muster assertion moved. So the picket
-starts ~32u out and has to close: 7.8s of travel against a 6s clock, which
-under the old rule meant breaking off *before* arrival and standing down on the
-doorstep. A fixture that starts in range cannot see a bug about getting there. `THE MUSTER IS A FIGHT` requires both
+It took **two** red-verifies to make it true, and each revealed a different way
+the same assertion lied.
+
+*First:* the pair was placed 4u apart, so acquisition and fire coincided and the
+clock never got the chance to burn on an approach. It passed on reverted code.
+The picket now starts ~32u out and has to close — 7.8s of travel against a 6s
+clock, which under the old rule meant breaking off *before* arrival and standing
+down on the doorstep.
+
+*Second:* it still passed. Staged inside charted space, the pair sat among
+PYX-01's four authored sentries and the two pickets the garrison check had just
+deployed, and **both fixtures were taking fire from machines that were not the
+other fixture**. It is staged at radius 200 with generation off now, where
+nothing else exists.
+
+Only then did it read what it claims to: reverted, picket **120/120**, sentry
+**120/120** — two machines four units apart for eight seconds, neither firing.
+
+Neither flaw was visible in the test's own text; both were found by reverting
+the fix and watching the check stay green. **A fixture that starts in range
+cannot see a bug about getting there, and a fixture with company cannot see who
+shot it.** `THE MUSTER IS A FIGHT` requires both
 sides to lose hull before the event ends, and deliberately does not require the
 line to win: who wins is emergent and is supposed to be.
 
