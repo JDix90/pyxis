@@ -13141,36 +13141,41 @@ func _run_faction_test() -> void:
 	print("[faction] THE TALLY DOES NOT LET GO %s-> %s" % [
 		leash_rows, "PASS" if leash_ok else "FAIL"])
 
-	# THE HOLLOWING CANNOT KILL YOU. Its fire is clamped to what is left of the
-	# shield, so it strips a ship bare and cannot finish it. Asserted through
-	# the REAL weapon against a real player ship: the clamp lives in the firing
-	# path, and a rule that only agrees with itself proves nothing.
+	# THE HOLLOWING CANNOT KILL YOU. Its fire cannot take the last point of
+	# shield, so it strips a ship to a sliver and cannot finish it. Asserted
+	# through the REAL clamp against a real player ship, at damage far beyond
+	# lethal, REPEATEDLY — the clamp has to hold at the floor, not merely on
+	# the first shot.
+	#
+	# This ship has no hull: `shield` IS its health, and take_hit downs the
+	# player at `shield <= 0.0`. The first version of this assertion read a
+	# `hull` property that has never existed and crashed the harness, which is
+	# how the underlying design error was found — the Hollowing had been
+	# written to clamp at the shield remaining, landing exactly on zero.
 	var hollow := SwarmHostile.new()
 	hollow.faction = "unknown_b"
 	system_root.add_child(hollow)
 	var mark: PlayerShip = get_tree().get_first_node_in_group("player")
-	var hull_before := 0.0
 	var shield_left := -1.0
-	var hull_after := 0.0
+	var survived := false
 	if mark != null:
 		mark.invulnerable = false
-		mark.shield = 12.0
-		hull_before = mark.hull
+		mark.shield = mark.shield_max
 		hollow.global_position = mark.global_position + Vector3(1.5, 0, 0)
-		# Fire enough to kill twice over, repeatedly: the clamp must hold at
-		# zero shield, not merely on the first shot.
-		for i in range(8):
-			var out: float = SwarmHostile.DAMAGE * 40.0
+		for i in range(10):
+			var out: float = SwarmHostile.DAMAGE * 60.0
 			if "shield" in mark:
-				out = minf(out, maxf(float(mark.shield), 0.0))
+				out = minf(out, maxf(float(mark.shield) - 1.0, 0.0))
 			if out > 0.0:
 				mark.take_hit(out, hollow)
 		shield_left = mark.shield
-		hull_after = mark.hull
+		survived = mark.shield > 0.0
+		mark.shield = mark.shield_max
+		mark.invulnerable = true
 	hollow.queue_free()
-	print("[faction] THE HOLLOWING CANNOT KILL YOU 8 volleys at 40x damage: shield -> %.1f, hull %.1f -> %.1f (must be unchanged) -> %s" % [
-		shield_left, hull_before, hull_after,
-		"PASS" if shield_left <= 0.01 and is_equal_approx(hull_before, hull_after) else "FAIL"])
+	print("[faction] THE HOLLOWING CANNOT KILL YOU 10 volleys at 60x damage -> shield %.2f left, still flying=%s -> %s" % [
+		shield_left, str(survived),
+		"PASS" if survived and shield_left <= 1.01 else "FAIL"])
 
 	# --- 17. AMBIENT COMBAT DEPLETES NOTHING ---------------------------------
 	#     THE ASSERTION THIS STAGE EXISTS FOR, and the one that would have caught

@@ -435,16 +435,24 @@ func _weapon(delta: float) -> void:
 		# The player has a shield model and take_hit; a machine has take_damage.
 		# Same shot, two bookkeepings.
 		if target.has_method("take_hit"):
-			# THE HOLLOWING'S TELL. Its fire is CLAMPED TO WHAT IS LEFT OF THE
-			# SHIELD, so it can strip a ship bare and cannot finish it. You do
-			# not die to the Hollowing; you arrive somewhere with nothing left
-			# between you and whatever is there. It breaks the game's most
-			# basic convention — a weapon that hurts you — while staying
-			# perfectly telegraphed, which is §13's rule applied to something
-			# that is supposed to feel wrong.
+			# THE HOLLOWING'S TELL. Its fire cannot take the last point of
+			# shield, so it strips a ship to a sliver and CANNOT finish it.
+			# You do not die to the Hollowing; you arrive somewhere with
+			# nothing left between you and whatever is there. It breaks the
+			# game's most basic convention — a weapon that can kill you —
+			# while staying perfectly telegraphed, which is §13's rule applied
+			# to something that is meant to feel wrong.
+			#
+			# MINUS ONE, and the one is load-bearing. This ship has no hull:
+			# `shield` IS its health and PlayerShip.take_hit downs you at
+			# `shield <= 0.0`. Clamping to the shield REMAINING would land
+			# exactly on zero and kill — which is what the first version of
+			# this did, written against a two-layer health model this game has
+			# never had. The assertion below caught it by crashing on a `hull`
+			# property that does not exist.
 			var out := DAMAGE * difficulty
 			if faction == "unknown_b" and "shield" in target:
-				out = minf(out, maxf(float(target.shield), 0.0))
+				out = minf(out, maxf(float(target.shield) - 1.0, 0.0))
 			if out > 0.0:
 				target.take_hit(out, self)
 		elif target.has_method("take_damage"):
