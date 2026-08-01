@@ -15506,6 +15506,13 @@ func _run_hunt_test() -> void:
 	# standing somewhere it was never built. Without this the sweep below reads
 	# its own initial values and reports "hidden, and it did not come back",
 	# which is what a missing port looks like when nobody asks.
+	# AND THE ENGINE HAS TO BE ALIVE. _build_hunt_desk refuses to sell a hunt
+	# for a system whose engine is already dead, which is correct -- and which
+	# earlier sections of this harness make true. Both preconditions are
+	# restored here rather than assumed, and both are reported below, because
+	# a desk that never rendered and a row correctly suppressed produce the
+	# same silence.
+	GameState.apex_killed.erase("pyx01")
 	if system_id != "pyx01":
 		_load_system("pyx01")
 		await get_tree().create_timer(0.4).timeout
