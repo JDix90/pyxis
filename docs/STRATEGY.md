@@ -4267,3 +4267,81 @@ So pickets are excluded, **counted, and the count asserted against the routes
 the system authored** — following this line's own precedent, where the
 deep-guard count was already printed rather than swallowed for exactly that
 reason. It now catches two distinct failures where it caught one.
+
+## 50. Factions — stage 2b, the hulls move outside the cordon
+
+The survey hull no longer sits twenty units from the Anchor. It is 100u past
+PYX-01's chart edge, 130u past PYX-02's, 150u past PYX-03's — and each one sits
+on **the bearing its old authored point already lay on** (243, 304, 257
+degrees), so the fiction is that the field drifted rather than that a designer
+moved it.
+
+`SystemDB.derelict_pos` is the only function that answers "where", for the same
+reason `lair_pos` is: two places deriving it independently will disagree, and
+the tutorial's broadcast, the expanse's keep-out and four harnesses all need
+the same answer. It draws from **no RNG at all** — an authored bearing takes
+no number out of the sequence the expanse rolls from — so `WORLD FINGERPRINT`
+cannot move.
+
+### Clearances that are provable rather than lucky
+
+    depth 100 / 130 / 150   all band 1, where PACK_CHANCE is 0.0
+    hull-to-lair gap        >= 160u against LAIR_KEEPOUT 120, for ANY bearing
+
+The band matters because the Shoals generate **no procedural packs at all**, so
+a tutorial-fresh pilot's first trip past the marker meets exactly the authored
+sentries and nothing else. The gap is checked against the authored band
+*minimum* rather than against this run's rolled lair: the two bearings are
+independent, so a seed that happens to separate them proves nothing about the
+seed that does not.
+
+`HULL_KEEPOUT` is **40**, not the lair's 120, and the difference is what each
+protects. A lair is an ARENA — the leash says everything inside it is the
+fight, so nothing that is not the fight may be there. A hull is a DESTINATION
+with a 6.5u interaction range: it needs elbow room, not solitude. It suppresses
+stations and hulks — two crackables a few units apart, one of which charts the
+next system, is the most confusing object this game could produce — and
+deliberately leaves nests alone, because something drifting in to guard a wreck
+out past the cordon is the fiction working rather than the generator misfiring.
+
+### The tutorial ends one step earlier than it used to
+
+It used to finish by OPENING the world: the breach charted PYX-02 and handed
+over a frontier. The survey hull is outside charted space now, so the guided
+run teaches the verb on a small **training hull** on the old berth and then
+tells you where to go and use it — a bearing and a distance, read from
+`derelict_pos` so the copy cannot disagree with the world.
+
+`counts_as_survey` carries the progression, and the flag already existed: deep
+hulks have used it since the expanse shipped, and it already means "charts
+nothing, wakes nothing, files no bearing". **No new gate was designed and no
+new class was added.** With two crackables in PYX-01, three call sites that
+said `get_first_node_in_group("crackable")` stopped having a defensible answer
+and now go through `_find_survey_hull()`; the tutorial's own two go through a
+`training_hull` group.
+
+### The relocation was a stealth pay rise, and PACINGTEST caught it
+
+`spawn_loot` re-grades a fraction of every drop by **the band it is spilled
+in**. Move the hull from depth 0 to depth 100 and the identical hull, cracked
+identically, starts paying band-1 salvage:
+
+| | before | after the move | after compensation |
+|---|---|---|---|
+| derelict yield | 5022/hull | **5423/hull** | 5067/hull |
+| `MIDTIER` (binding) | 2.92 | **2.98** | **2.92** |
+| `CEILING` | 0.041 | 0.042 | 0.041 |
+
+2.98 against a hard ceiling of 3.00 **passes**, and is still wrong. Nobody
+asked for that raise; it fell out of a geometry change. And 0.02 of headroom is
+not headroom — the next change to touch loot anywhere would have broken the
+binding assertion for a reason that had nothing to do with it.
+
+Loot came down 70 → 64, 95 → 87, 130 → 119 to hand it back, and the reasoning
+is written into `system_db.gd` rather than only into a commit. The player gets
+**the same hull for the same work, further away.**
+
+This is finding A8 of HORIZON-4 resolved the way the doc demanded — "the number
+will move, and it must be recorded rather than reasoned about" — and it is the
+second time this horizon that the honest answer was to measure, decide, and
+measure again rather than to argue about whether a change was neutral.

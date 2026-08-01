@@ -90,12 +90,14 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **467 PASS / 1 FAIL / 0 script errors** across 55 runs, save
-format **v18** — measured on Godot 4.6.stable, headless. 468 assertion lines,
-of which one is the standing HOLDTEST failure below.
+Current baseline: **468 PASS / 1 FAIL / 0 script errors** across 55 runs, save
+format **v18** — measured on Godot 4.6.stable, headless. 470 assertion lines:
+one is the standing HOLDTEST failure below, and one is `RAIDTEST`'s documented
+flake, which failed in the sweep and then passed **4 of 4** re-runs alone. Both
+were confirmed rather than assumed.
 
 That measurement covers factions stage 1 (STRATEGY §47), the opening bearing
-(§48) and the Cordon (§49). All three were *written* without a Godot binary to
+(§48), the Cordon (§49) and the hull relocation (§50). All three were *written* without a Godot binary to
 hand, and running one afterwards is what caught the defects worth knowing
 about:
 
