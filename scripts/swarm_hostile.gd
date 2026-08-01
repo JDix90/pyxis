@@ -207,6 +207,21 @@ func _physics_process(delta: float) -> void:
 	# returns the nearest hated thing at ANY distance — a column that halted the
 	# moment it could see the far side of the line would never cross at all.
 	if march_to != Vector3.ZERO:
+		# THE LEASH APPLIES TO A MARCHER TOO — checked HERE because the march
+		# step returns before the leash check below, so a leashed dart that was
+		# walking a beat never reached it and marched forever after the player
+		# left. Invisible for three stages because the only marchers were
+		# muster ships, which carry NO leash by design (the event ends the
+		# event); convoy darts are the first leashed marchers, and AND THE
+		# LEASH CLEANS IT UP counted 4 of them still walking an empty sky.
+		# Inside the march branch rather than hoisted above it, so the shipped
+		# drift path (docked player, no target, no despawn) stays word for
+		# word what it was.
+		if despawn_radius > 0.0 and Vector3(
+				player.global_position.x - global_position.x, 0.0,
+				player.global_position.z - global_position.z).length() > despawn_radius:
+			_give_up()
+			return
 		var engaged: bool = target != null \
 			and global_position.distance_to(target.global_position) <= ATTACK_RANGE * 2.0
 		if not engaged:

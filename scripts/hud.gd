@@ -217,6 +217,45 @@ class RadarLayer:
 				"size": float(spec_m[2]),
 			})
 
+		# --- deep convoy clusters (chartfolk traffic) --------------------
+		# ONE MARKER PER CONVOY — the muster pass's dedup trick, bucketed by
+		# the convoy_id meta instead of by group, because two convoys can be
+		# live at once and a single centroid over both would point at empty
+		# space between them. TIER_SITE, not TIER_APEX: a neutral convoy is
+		# a place to look at, not a threat that outranks the port and the
+		# way home. Painted the faction's colour, which is the entire reason
+		# the six chartfolk tints exist.
+		var conv_pos := {}
+		var conv_n := {}
+		var conv_col := {}
+		for node_c in get_tree().get_nodes_in_group("deep_convoy"):
+			var nc := node_c as Node3D
+			if not is_instance_valid(nc):
+				continue
+			seen[nc.get_instance_id()] = true
+			var cid := String(nc.get_meta("convoy_id", ""))
+			if cid == "":
+				continue
+			conv_pos[cid] = (conv_pos.get(cid, Vector3.ZERO) as Vector3) \
+				+ nc.global_position
+			conv_n[cid] = int(conv_n.get(cid, 0)) + 1
+			if not conv_col.has(cid):
+				conv_col[cid] = FactionDB.tint_of(String(nc.faction))
+		for cid_v in conv_pos.keys():
+			var cid2 := String(cid_v)
+			var conv_at: Vector3 = (conv_pos[cid2] as Vector3) / float(conv_n[cid2])
+			var conv_scr := _project(cam, conv_at, centre, rect)
+			if inset.grow(-OFFSCREEN_PAD + EDGE_MARGIN).has_point(conv_scr):
+				continue
+			found.append({
+				"id": cid2.hash(),
+				"tier": TIER_SITE,
+				"dist": player.global_position.distance_to(conv_at),
+				"screen": conv_scr,
+				"color": conv_col[cid2] as Color,
+				"size": SIZE_NORMAL,
+			})
+
 		for spec in [
 			["apex", TIER_APEX, Palette.THREAT, SIZE_APEX],
 			["dockable", TIER_PORT, Palette.TEAL, SIZE_NORMAL],

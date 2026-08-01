@@ -5735,6 +5735,7 @@ func _run_deep_test() -> void:
 	var found_posts := 0
 	var deep_seen := 0
 	var picket_seen := 0
+	var convoy_seen := 0
 	for n in get_tree().get_nodes_in_group("hostiles"):
 		if not (n is Hostile):
 			continue
@@ -5744,6 +5745,14 @@ func _run_deep_test() -> void:
 		# the cheap way to notice guards leaking into the charted volume.
 		if n.is_in_group("deep_guard"):
 			deep_seen += 1
+			continue
+		# A convoy escort is the same class walking somebody's cargo past the
+		# chart. It carries a patrol route, so this clause must come BEFORE
+		# the picket one — classified by route it would land in the picket
+		# count and break picket_seen == routes for a reason that has nothing
+		# to do with the Cordon.
+		if n.is_in_group("deep_convoy"):
+			convoy_seen += 1
 			continue
 		# v18. A CORDON PICKET IS NOT AN AUTHORED SENTRY. It is the same class
 		# with a route, and being 36u from the nearest sentry post is the whole
@@ -5765,8 +5774,8 @@ func _run_deep_test() -> void:
 	# one that also catches the Cordon failing to deploy — which would otherwise
 	# be invisible, since a missing picket makes every other clause here happier.
 	var routes: int = (SystemDB.get_system(system_id).get("patrols", []) as Array).size()
-	print("[deep] SENTRY POSTS %d sentries, %d authored posts, furthest any of them sits from its post %.2fu (drift is 0.4), %d deep guards and %d pickets excluded (%d routes authored) -> %s" % [
-		found_posts, posts.size(), worst_post, deep_seen, picket_seen, routes,
+	print("[deep] SENTRY POSTS %d sentries, %d authored posts, furthest any of them sits from its post %.2fu (drift is 0.4), %d deep guards / %d pickets / %d convoy escorts excluded (%d routes authored) -> %s" % [
+		found_posts, posts.size(), worst_post, deep_seen, picket_seen, convoy_seen, routes,
 		"PASS" if found_posts == posts.size() and found_posts > 0 and worst_post <= 0.6
 			and picket_seen == routes
 			else "FAIL"])
@@ -6755,6 +6764,119 @@ func _run_deep_test() -> void:
 	print("[deep] STATION IDS %d distinct across 841 cells, cap is %d archetypes, all known=%s -> %s" % [
 		seen_ids.size(), DeepPortDB.count(), str(all_known),
 		"PASS" if seen_ids.size() <= DeepPortDB.count() and all_known else "FAIL"])
+
+	# 15. THE PACK REMEMBERS ITS BAND. Regression for a bug that hid behind a
+	#     green suite: plan_cell's pack dict carried no "band" key, _spring
+	#     read `pack.get("band", 0)`, and every nest in the Reaches and the
+	#     Quiet flew the HOST ENGINE's flag with a 140u leash. THE DEEP
+	#     BELONGS TO THE UNKNOWNS stayed green throughout because it asserts
+	#     flag_for_band() — the rule — and never looked at a spawned ship.
+	#     So this one asserts the NODES, through _spring itself — the function
+	#     that read the missing key — with generation OFF and the sky cleared,
+	#     because the first version swept through the real trigger and counted
+	#     twelve members: the nest plus the guard posts of every neighbouring
+	#     cell the teleport streamed in, host-flagged and unleashed, which is
+	#     §54's crowd problem wearing a new hat. THE DEEP IS TRAVELLED drives
+	#     the real trigger end to end; THIS one isolates the exact function
+	#     the bug lived in.
+	for n_15 in get_tree().get_nodes_in_group("hostiles"):
+		(n_15 as Node3D).queue_free()
+	await get_tree().process_frame
+	var band_key := _deep_probe(3, "pack")
+	var band_plan := deep_space.plan_cell(band_key.x, band_key.y)
+	var band_static: int = int((band_plan["pack"] as Dictionary).get("band", -1))
+	deep_space._sprung.erase(band_key)
+	deep_space._spring(band_key, (band_plan["pack"] as Dictionary).duplicate(true))
+	await get_tree().process_frame
+	var nest_n := 0
+	var nest_flag_ok := true
+	var nest_leash_ok := true
+	for n_15b in get_tree().get_nodes_in_group("hostiles"):
+		var hn := n_15b as Node3D
+		if not is_instance_valid(hn) or hn.is_queued_for_deletion():
+			continue
+		nest_n += 1
+		if String(hn.faction) != "unknown_a":
+			nest_flag_ok = false
+		if float(hn.despawn_radius) != 0.0:
+			nest_leash_ok = false
+	print("[deep] THE PACK REMEMBERS ITS BAND plan band=%d (want 3), %d members sprung, all unknown_a=%s, all unleashed=%s -> %s" % [
+		band_static, nest_n, str(nest_flag_ok), str(nest_leash_ok),
+		"PASS" if band_static == 3 and nest_n > 0 and nest_flag_ok and nest_leash_ok else "FAIL"])
+	# By hand, and immediately: these have NO leash — left alive they chase
+	# the harness through every assertion that follows.
+	for n_15c in get_tree().get_nodes_in_group("hostiles"):
+		(n_15c as Node).free()
+
+	# 16. THE DEEP IS TRAVELLED. The convoy content, driven end to end through
+	#     the real machinery: plan (twice — the salted stream must produce the
+	#     same convoy both times, or unrelated content is leaking into its
+	#     draws), then stand on the anchor and let the real trigger spring it,
+	#     then read faction, paint, leash, beat and march off every member.
+	var trav_key := _deep_probe(2, "convoy")
+	var trav_a: Dictionary = deep_space.plan_cell(trav_key.x, trav_key.y)["convoy"]
+	var trav_b: Dictionary = deep_space.plan_cell(trav_key.x, trav_key.y)["convoy"]
+	var trav_same: bool = str(trav_a) == str(trav_b) and not trav_a.is_empty()
+	deep_space._sprung.erase(trav_key)
+	# TELEPORT FIRST, THEN GENERATION ON. The trap section left it off, and
+	# the order matters: enabling it with the player parked on the last
+	# section's site would spring whatever is armed THERE into this census.
+	player.global_position = trav_a.get("pos", Vector3.ZERO)
+	deep_space.set_generation(true)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var trav_want := int(trav_a["escorts"]) + int(trav_a["darts"])
+	var trav_n := 0
+	var trav_ok := true
+	var trav_beat := 0
+	var trav_march := 0
+	for c_16 in get_tree().get_nodes_in_group("deep_convoy"):
+		var cn := c_16 as Node3D
+		if not is_instance_valid(cn):
+			continue
+		trav_n += 1
+		if String(cn.faction) != String(trav_a["faction"]) \
+				or cn.tint != FactionDB.tint_of(String(trav_a["faction"])) \
+				or float(cn.despawn_radius) != DeepSpace.HOSTILE_LEASH:
+			trav_ok = false
+		if cn is Hostile and (cn as Hostile).patrol.size() == 2:
+			trav_beat += 1
+		if cn is SwarmHostile and (cn as SwarmHostile).march_to != Vector3.ZERO:
+			trav_march += 1
+	print("[deep] THE DEEP IS TRAVELLED cell %s plans same twice=%s, %d/%d members, flag/paint/leash all correct=%s, escorts on the beat=%d/%d, darts marching=%d/%d -> %s" % [
+		str(trav_key), str(trav_same), trav_n, trav_want, str(trav_ok),
+		trav_beat, int(trav_a["escorts"]), trav_march, int(trav_a["darts"]),
+		"PASS" if trav_same and trav_n == trav_want and trav_ok
+			and trav_beat == int(trav_a["escorts"])
+			and trav_march == int(trav_a["darts"]) else "FAIL"])
+
+	# 17. THE DEEP BUDGET HOLDS. Both halves in one print. Static: the
+	#     worst-case window this feature can now produce — a full band-3
+	#     convoy, a full Reaches nest with escort, a full guard post — from
+	#     the constants, not from a lucky spawn. Dynamic: the live census
+	#     with a real convoy in the sky (sprung in 16, the sky cleared in 15)
+	#     stays under the same cap.
+	var deep_ship_budget := 20
+	var worst_static := (2 + 5) + (int(DeepSpace.PACK_MAX[3]) + 1) + 4
+	var census_now := 0
+	for n_17 in get_tree().get_nodes_in_group("hostiles"):
+		if is_instance_valid(n_17) and not (n_17 as Node).is_queued_for_deletion():
+			census_now += 1
+	print("[deep] THE DEEP BUDGET HOLDS worst-case window %d vs budget %d, live census with a convoy sprung %d -> %s" % [
+		worst_static, deep_ship_budget, census_now,
+		"PASS" if worst_static <= deep_ship_budget and census_now <= deep_ship_budget else "FAIL"])
+	# Cleanup doubles as the leash measurement: walk the player far past
+	# HOSTILE_LEASH and every convoy member must give itself up. The count is
+	# taken from the deep_convoy group so whatever the Quiet arms around the
+	# far point cannot pollute it.
+	player.global_position = Vector3(4000.0, 0.0, 4000.0)
+	await get_tree().create_timer(0.6).timeout
+	var trav_left := 0
+	for c_17 in get_tree().get_nodes_in_group("deep_convoy"):
+		if is_instance_valid(c_17):
+			trav_left += 1
+	print("[deep] AND THE LEASH CLEANS IT UP convoy members left after the player leaves: %d (must be 0) -> %s" % [
+		trav_left, "PASS" if trav_left == 0 else "FAIL"])
 	get_tree().quit()
 
 
@@ -13251,6 +13373,17 @@ func _run_faction_test() -> void:
 	# engine reaching past band 2, or a chart faction owning a nest out there,
 	# both fail. NOTHING is feral any more, which is the point: `feral` meant
 	# "no owner yet", and there is no yet left.
+	#
+	# NARROWED, NOT WEAKENED, when chartfolk convoys arrived: this claim is
+	# about TERRITORY — flag_for_band is who owns the ground, who the nests
+	# and guard posts answer to — and territory is still the unknowns' alone.
+	# A convoy is TRAFFIC: it holds no ground, springs once per cell per
+	# session, walks a 24u beat and leashes away when the player leaves.
+	# What would still fail here is ownership — a chart flag coming back from
+	# flag_for_band. What no longer contradicts it is a bastion escort
+	# WALKING past band 2, because transit was never the thing this line
+	# pinned. THE DEEP IS TRAVELLED asserts the traffic; this asserts the
+	# ground; the two together are the actual design.
 	var claim_rows := ""
 	var deep_ok := true
 	var chartfolk := ["gsa", "bastion", "combine", "embers", "grin", "league",
@@ -13825,6 +13958,111 @@ func _run_faction_test() -> void:
 	print("[faction] STANDING IS VISIBLE dock line at NEUTRAL=%s, follows the matrix to HOSTILE=%s -> %s" % [
 		str(visible_ok), str(visible_moves),
 		"PASS" if visible_ok and visible_moves else "FAIL"])
+
+	# --- 22. CHARTFOLK CONVOYS: the payout and the hunt ----------------------
+	# A CONVOY IS NOT A NEST. Both halves in one measurement, because either
+	# alone passes on broken code: "a league kill pays nothing" is satisfied
+	# by an economy that pays nobody, and "a tithe kill pays" is satisfied by
+	# one that pays for everything. Probe ships driven through the real class
+	# and the real _die, the muster section's shape.
+	_clear_faction_matrix()
+	var conv_pilot: PlayerShip = get_tree().get_first_node_in_group("player")
+	_clear_loot_cubes()
+	var conv_neutral := SwarmHostile.new()
+	conv_neutral.faction = "league"
+	conv_neutral.add_to_group("deep_convoy")
+	system_root.add_child(conv_neutral)
+	conv_neutral.global_position = conv_pilot.global_position + Vector3(4, 0, 0)
+	await get_tree().process_frame
+	conv_neutral.take_damage(99999.0, conv_pilot)
+	await get_tree().process_frame
+	var conv_neutral_cubes := _count_loot_cubes()
+	var conv_delta := int(GameState.faction_deltas.get(
+		FactionDB.pair_key(FactionDB.SURVEYOR, "league"), 0))
+	_clear_loot_cubes()
+	var conv_tithe := SwarmHostile.new()
+	conv_tithe.faction = "tithe"
+	conv_tithe.add_to_group("deep_convoy")
+	system_root.add_child(conv_tithe)
+	conv_tithe.global_position = conv_pilot.global_position + Vector3(4, 0, 0)
+	await get_tree().process_frame
+	conv_tithe.take_damage(99999.0, conv_pilot)
+	await get_tree().process_frame
+	var conv_tithe_cubes := _count_loot_cubes()
+	var conv_tithe_delta := int(GameState.faction_deltas.get(
+		FactionDB.pair_key(FactionDB.SURVEYOR, "tithe"), 0))
+	_clear_loot_cubes()
+	print("[faction] A CONVOY IS NOT A NEST league kill: %d cubes (want 0), standing delta %d (want -1); tithe kill: %d cubes (want %d), standing delta %d (want 0) -> %s" % [
+		conv_neutral_cubes, conv_delta, conv_tithe_cubes, SwarmHostile.LOOT_COUNT,
+		conv_tithe_delta,
+		"PASS" if conv_neutral_cubes == 0 and conv_delta == -1
+			and conv_tithe_cubes == SwarmHostile.LOOT_COUNT
+			and conv_tithe_delta == 0 else "FAIL"])
+	_clear_faction_matrix()
+
+	# THE TALLY HUNTS. The matrix change that makes the Reaches dangerous for
+	# everyone, measured on real nodes at weapons range: a Tally pack and a
+	# convoy squad must BOTH lose hull — the convoy answers through the aggro
+	# path, since its own row still says nothing about the unknowns — and
+	# every ship on both sides must still be flying at the end, because the
+	# ambient HP floor is what keeps NPC combat from resolving unwatched.
+	# Neither clause alone survives broken code: "both lost hull" passes a
+	# massacre, "all still flying" passes two crowds ignoring each other.
+	var hunt_pilot: PlayerShip = get_tree().get_first_node_in_group("player")
+	hunt_pilot.invulnerable = true
+	hunt_pilot.teleport_to(Vector3(0, 0, -300))
+	var hunt_tally := []
+	var hunt_convoy := []
+	for i_h in range(3):
+		var t_h := SwarmHostile.new()
+		t_h.faction = "unknown_a"
+		system_root.add_child(t_h)
+		t_h.global_position = Vector3(200 + i_h * 2, 0, -300)
+		hunt_tally.append(t_h)
+	var hc_escort := Hostile.new()
+	hc_escort.faction = "league"
+	system_root.add_child(hc_escort)
+	hc_escort.global_position = Vector3(206, 0, -300)
+	hunt_convoy.append(hc_escort)
+	for i_h2 in range(2):
+		var c_h := SwarmHostile.new()
+		c_h.faction = "league"
+		system_root.add_child(c_h)
+		c_h.global_position = Vector3(206 + i_h2 * 2, 0, -302)
+		hunt_convoy.append(c_h)
+	await get_tree().process_frame
+	var hunt_tally_hp0 := 0.0
+	var hunt_convoy_hp0 := 0.0
+	for t_v in hunt_tally:
+		hunt_tally_hp0 += float(t_v.hp)
+	for c_v in hunt_convoy:
+		hunt_convoy_hp0 += float(c_v.hp)
+	var hunt_t := 0.0
+	while hunt_t < FactionDB.SKIRMISH_TIME + 6.0:
+		await get_tree().create_timer(0.25).timeout
+		hunt_t += 0.25
+	var hunt_tally_hp := 0.0
+	var hunt_convoy_hp := 0.0
+	var hunt_all_alive := true
+	for t_v2 in hunt_tally:
+		if not is_instance_valid(t_v2) or float(t_v2.hp) <= 0.0:
+			hunt_all_alive = false
+		else:
+			hunt_tally_hp += float(t_v2.hp)
+	for c_v2 in hunt_convoy:
+		if not is_instance_valid(c_v2) or float(c_v2.hp) <= 0.0:
+			hunt_all_alive = false
+		else:
+			hunt_convoy_hp += float(c_v2.hp)
+	print("[faction] THE TALLY HUNTS after %.0fs: tally %.0f -> %.0f hp, convoy %.0f -> %.0f hp, every ship still flying=%s -> %s" % [
+		hunt_t, hunt_tally_hp0, hunt_tally_hp, hunt_convoy_hp0, hunt_convoy_hp,
+		str(hunt_all_alive),
+		"PASS" if hunt_tally_hp < hunt_tally_hp0 and hunt_convoy_hp < hunt_convoy_hp0
+			and hunt_all_alive else "FAIL"])
+	for probe_v in hunt_tally + hunt_convoy:
+		if is_instance_valid(probe_v):
+			(probe_v as Node).free()
+	hunt_pilot.invulnerable = false
 
 	_clear_faction_matrix()
 	await get_tree().create_timer(0.2).timeout

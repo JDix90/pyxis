@@ -4812,3 +4812,70 @@ it as held and prints why.
 three defects was subtle in play — a player found all three in a single
 session. They were subtle only to a suite that measured positions, counts and
 payouts, and never once measured whether anybody shot at anybody.
+
+## 55. Chartfolk convoys: the deep gets traffic (v18)
+
+The known seven had desks and set-pieces and nothing in the sky. Now bands
+2–3 (200–1000u out) carry sparse faction convoys: 1–2 escorts walking a 24u
+beat plus 3–5 darts marching it, painted in their faction's colour, sprung
+once per cell per session off the nest machinery. Roughly 7% of eligible
+cells; a cell rolls a pack or a convoy, never both.
+
+### Territory versus traffic
+
+`THE DEEP BELONGS TO THE UNKNOWNS` was in direct tension with this feature,
+and the resolution is a distinction, not a workaround: the claim is about
+**territory** — `flag_for_band`, who the nests and guard posts answer to —
+and territory stays the unknowns' alone. A convoy is **traffic**: it holds
+no ground, springs once, walks its beat and leashes away. The assertion body
+is untouched; its comment now says which half it pins, and `THE DEEP IS
+TRAVELLED` pins the other.
+
+### The nests never knew their band
+
+The prerequisite fix. `plan_cell`'s pack dict carried no `"band"` key and
+`_spring` read `pack.get("band", 0)` — so every nest in the Reaches and the
+Quiet flew the HOST ENGINE's flag with a 140u leash. The Tally's one tell —
+no leash, it does not lose interest — never once fired from a real nest.
+
+`THE DEEP BELONGS TO THE UNKNOWNS` stayed green the whole time because it
+asserts `flag_for_band()`, the rule, and never looked at a ship. The rule
+was right; every node was wrong. **Assert on nodes, not only on rules** —
+the same lesson §54 taught about the tutorial, from the other direction.
+`THE PACK REMEMBERS ITS BAND` now springs a real Reaches nest and reads the
+flag and the leash off every member.
+
+### The Tally counts what crosses its ground
+
+`unknown_a` went from WARY to HOSTILE toward the seven chart powers. The
+convoys' own rows still say nothing about the unknowns — they never fire
+first, they answer through the aggro path. So the Reaches is now dangerous
+for everyone: a Tally pack will cross to a convoy and open fire, both sides
+grind to the ambient HP floor, and the player can stumble into a border
+skirmish a long way from any border. Two accepted consequences, recorded:
+a Tally pack fighting a convoy is not chasing the player (the tell softens
+while the traffic lives), and it will also hunt deep tithe raiders.
+
+### Six factions got paint the day they got ships
+
+bastion cobalt, combine forge-yellow, embers coal-orange, grin acid
+chartreuse, league relay-green, procession ash-lavender — chosen against
+what shares a deep screen (band violet/bile, Tally bone, tithe crimson,
+THREAT beams, TEAL/AMBER markers). The weakest co-occurring pair is
+procession vs the Drift's band violet; saturation is the separator. The
+colour-vision audit owed since stage 2 is still owed, and now covers 14
+tints.
+
+### The two hazards that are features until they are not
+
+A convoy kill at NEUTRAL pays nothing and costs −1 standing; four kills
+flip the pair HOSTILE and from the fifth every kill pays full loot. That
+ramp is accepted because the real price is elsewhere: HOSTILE standing
+closes that faction's fence — and the grin, league, combine and bastion
+fences are the deep stations. The income side is bounded per cell per
+session by `_sprung`, the same contract as nests.
+
+Convoy members force-join `"hostiles"` (both classes do, structurally), so
+neutral traffic reads as red on an unclustered radar and trips the threat
+music at close range. Accepted for now; the radar cluster (one marker per
+convoy, faction-tinted, TIER_SITE) is the visible half of the fix.

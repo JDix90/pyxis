@@ -158,6 +158,18 @@ const TINTS := {
 	"armillary": Color(1.00, 0.45, 0.20),  # ember orange, its system's palette
 	"meridian": Color(0.45, 0.40, 1.00),   # anchorage indigo, likewise
 	"tithe": Color(0.86, 0.12, 0.20),      # RAID_TINT verbatim: the raiders ARE the Tithe
+	# The known six get paint the day they get ships (deep convoys). Chosen
+	# against what actually shares a DEEP screen: band-2 violet packs, band-3
+	# bile-green packs and guards, Tally bone-white, tithe crimson, THREAT
+	# beams, and the TEAL/AMBER/HULL radar markers. The nearest co-occurring
+	# neighbour of each is named so the owed palette audit has its worklist;
+	# THE PAINTS KEEP THEIR DISTANCE prints the measured minimum.
+	"bastion": Color(0.20, 0.38, 1.00),    # charter cobalt — gsa is cyan-shifted
+	"combine": Color(1.00, 0.85, 0.00),    # forge-pour yellow — the deep sky has none
+	"embers": Color(0.95, 0.42, 0.05),     # coal orange — hotter than tithe crimson
+	"grin": Color(0.72, 0.92, 0.15),       # acid chartreuse — bile green is pale mint
+	"league": Color(0.10, 0.80, 0.35),     # relay green — a go-lamp, vs TEAL's blue cast
+	"procession": Color(0.80, 0.68, 0.92), # ash lavender — greyer than the Drift violet
 	# The unknowns read as WRONG rather than as another team colour: a bleached
 	# bone-white for the thing that counts, and a near-black violet for the
 	# thing that empties. Neither is a hue any charted faction flies.
@@ -215,14 +227,19 @@ const BASELINE := {
 	"procession": {"gsa": -1, "bastion": -1, "combine": -1, "embers": -1,
 		"grin": -1, "league": -1, "tithe": -2,
 		"gnomon": -4, "armillary": -4, "meridian": -4},
-	# The unknowns are WARY of everyone and everyone should be wary back — but
-	# nobody on the chart has met them, so the known factions' rows say nothing
-	# about them and these rows do not move until their stage.
-	# WARY of everyone who has a name, per the original brief — and two of the
-	# three are lethal to the surveyor because they hold the Reaches and the
-	# Quiet, where the shipped designations have always said something is.
-	"unknown_a": {"surveyor": -6, "gsa": -2, "bastion": -2, "combine": -2,
-		"embers": -2, "grin": -2, "league": -2, "tithe": -2, "procession": -2},
+	# Nobody on the chart has met the unknowns, so the known factions' rows say
+	# nothing about them — which is load-bearing twice over: a convoy in the
+	# Reaches never fires FIRST at a Tally pack (nothing in its enemy list),
+	# and answers only through the aggro path when shot.
+	#
+	# THE TALLY COUNTS WHAT CROSSES ITS GROUND. It went from WARY to HOSTILE
+	# toward every chart power the day convoys started transiting the Reaches
+	# (deep_space.gd's convoy content) — territory is what the designation has
+	# always claimed, and territory that tolerated traffic would be a word,
+	# not a fact. gsa stays -2: the Cordon never operates past the marker, so
+	# hostility toward it would be dead data pretending to be design.
+	"unknown_a": {"surveyor": -6, "gsa": -2, "bastion": -6, "combine": -6,
+		"embers": -6, "grin": -6, "league": -6, "tithe": -6, "procession": -6},
 	"unknown_b": {"surveyor": -6, "gsa": -2, "bastion": -2, "combine": -2,
 		"embers": -2, "grin": -2, "league": -2, "tithe": -2, "procession": -2},
 	# THE STILLNESS IS NEUTRAL TO THE SURVEYOR, and that is the strangest thing
