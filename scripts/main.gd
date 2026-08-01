@@ -13390,9 +13390,21 @@ func _run_faction_test() -> void:
 	# whose waypoints sit inside PATROL_ENGAGE of the sentry, so the "is this
 	# worth leaving the beat for" gate says yes rather than the test measuring
 	# a machine that correctly declined.
-	bord_picket.patrol = [Vector3(18, 0, 22), Vector3(20, 0, 24)] as Array[Vector3]
+	#
+	#     AND IT HAS TO CLOSE. The first version placed the pair 4u apart — inside
+	#     weapons range on frame one — and PASSED with the skirmish-clock bug
+	#     still in, because acquisition and fire coincided so the clock never had
+	#     the chance to burn on the approach. The red-verify is what said so.
+	#     That is not the case this is about: a picket walking a beat ACQUIRES a
+	#     sentry from across the system and has to travel. The start is ~32u out,
+	#     which is 7.8s of approach at PATROL_SPEED against a 6s clock, so under
+	#     the old rule the picket broke off BEFORE arriving and was standing down
+	#     when it got there. Waypoint 0 sits 4u from the sentry so the
+	#     leave-the-beat gate (PATROL_ENGAGE 12, measured from the waypoint) says
+	#     yes from the start and the picket is closing rather than declining.
+	bord_picket.patrol = [Vector3(18, 0, 22), Vector3(18, 0, -10)] as Array[Vector3]
 	system_root.add_child(bord_picket)
-	bord_picket.position = Vector3(18, 0, 22)
+	bord_picket.position = Vector3(18, 0, -10)
 	var bord_sentry := Hostile.new()
 	bord_sentry.faction = "gnomon"
 	system_root.add_child(bord_sentry)
@@ -13401,15 +13413,18 @@ func _run_faction_test() -> void:
 	var bord_pmax := bord_picket.max_hp
 	var bord_smax := bord_sentry.max_hp
 	var bord_t := 0.0
-	while bord_t < FactionDB.SKIRMISH_TIME + 6.0:
+	# Long enough for the 7.8s approach AND a burst on arrival; short enough that
+	# a picket that broke off en route (the old rule) is still resting when the
+	# window closes.
+	while bord_t < 18.0:
 		await get_tree().create_timer(0.25).timeout
 		bord_t += 0.25
 	var bord_alive: bool = is_instance_valid(bord_picket) and is_instance_valid(bord_sentry) \
 		and bord_picket.hp > 0.0 and bord_sentry.hp > 0.0
 	var bord_traded: bool = bord_alive \
 		and bord_picket.hp < bord_pmax and bord_sentry.hp < bord_smax
-	print("[faction] THE BORDER IS CONTESTED after %.0fs at %.1fu: picket %.0f/%.0f hp, sentry %.0f/%.0f hp, both still flying=%s -> %s" % [
-		bord_t, 4.0,
+	print("[faction] THE BORDER IS CONTESTED after %.0fs closing from %.0fu: picket %.0f/%.0f hp, sentry %.0f/%.0f hp, both still flying=%s -> %s" % [
+		bord_t, 32.0,
 		bord_picket.hp if is_instance_valid(bord_picket) else -1.0, bord_pmax,
 		bord_sentry.hp if is_instance_valid(bord_sentry) else -1.0, bord_smax,
 		str(bord_alive), "PASS" if bord_traded and bord_alive else "FAIL"])
@@ -13628,6 +13643,15 @@ func _run_faction_test() -> void:
 	while fig_t < 120.0:
 		await get_tree().create_timer(0.25).timeout
 		fig_t += 0.25
+		# BREAK BEFORE SAMPLING, NOT AFTER. _close_muster calls depart() on every
+		# ship, which removes it from the muster groups immediately — so a sample
+		# taken on the closing tick reads 0hp for BOTH sides and satisfies "both
+		# lost hull" no matter what happened. The first version of this printed
+		# `line 960 -> 0 hp, column peak 816 -> 0 hp -> PASS` on a run that was
+		# genuinely a fight, and would have printed exactly the same thing on one
+		# that was not. Only live events are sampled.
+		if not _muster_active:
+			break
 		var fig_lh := 0.0
 		var fig_ch := 0.0
 		for node in get_tree().get_nodes_in_group("muster_line"):

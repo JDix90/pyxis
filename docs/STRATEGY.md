@@ -4734,9 +4734,17 @@ payout ban and its logging. Every one of those is true of an event where not
 one shot is fired.
 
 **A guarantee needs a partner.** `THE BORDER IS CONTESTED` now requires a picket
-and a sentry within weapons range to *both* lose hull and *both* still be
-flying — the contested border and the depletion guarantee in one line, neither
-clause satisfiable by breaking the other. `THE MUSTER IS A FIGHT` requires both
+and a sentry to *both* lose hull and *both* still be flying — the contested
+border and the depletion guarantee in one line, neither clause satisfiable by
+breaking the other.
+
+Its first version placed the pair 4u apart and **passed with the clock bug
+still in**, because at 4u acquisition and fire coincide and the clock never got
+the chance to burn on an approach. The red-verify is what said so — the fix was
+green, the revert was green, and only the muster assertion moved. So the picket
+starts ~32u out and has to close: 7.8s of travel against a 6s clock, which
+under the old rule meant breaking off *before* arrival and standing down on the
+doorstep. A fixture that starts in range cannot see a bug about getting there. `THE MUSTER IS A FIGHT` requires both
 sides to lose hull before the event ends, and deliberately does not require the
 line to win: who wins is emergent and is supposed to be.
 
