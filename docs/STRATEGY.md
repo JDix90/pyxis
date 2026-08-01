@@ -4535,3 +4535,112 @@ red-verify reports the real failure — **2 cubes dropped**.
 
 That is the fourth green-assertion-testing-nothing this project has caught, and
 the third this horizon. The tell each time was the same: **elaborate setup.**
+
+## 53. Factions — stage 6, the deep gets its names
+
+THE TALLY holds the Reaches. THE HOLLOWING holds the Quiet. THE STILLNESS
+keeps the light on at the Last Watch.
+
+They are **named for what they leave behind**, because nobody has ever spoken
+to one. Every other faction in this game is named by somebody who deals with
+it — a charter, a combine, a banner. These are named by the survey register
+describing an effect it cannot account for. The ids were fixed in stage 1 as
+`unknown_a/b/c` precisely so this moment cost no migration: ids are permanent
+save keys, names are copy.
+
+### Bands 3 and 4 change hands, and the designations stay true
+
+Stages 3–5 deliberately left the Reaches and the Quiet unflagged so the shipped
+data stayed honest: `GUARD_DESIGNATION[3]` is *"UNFLAGGED — NO PATTERN ON
+FILE"* and `[4]` is *"UNREADABLE — IT DOES NOT ANSWER"*. Those bands were never
+nobody's — they were **nobody the register could name.** Now they have names
+and both lines are still literally true: the register still cannot read them,
+and band 4's beacon still does not answer.
+
+`THE DEEP IS STILL UNCLAIMED` became `THE DEEP BELONGS TO THE UNKNOWNS`, and
+the replacement is the stronger claim — a host engine reaching past band 2 or a
+chart power owning a nest out there now both fail, and **nothing is `feral` any
+more**, because `feral` meant "no owner yet" and there is no yet left.
+
+### One tell each, not one weapon each
+
+§13 binds the unknowns too: alien has to read as a convention broken **in the
+open**, never as a mechanic the player cannot see.
+
+| | the tell |
+|---|---|
+| **THE TALLY** | No leash. Everything the expanse seeds carries `HOSTILE_LEASH` so a pack picked up far out does not follow you home. This one has none. It does not lose you. |
+| **THE HOLLOWING** | Cannot take your last point of shield. It strips a ship to a sliver and cannot finish it. |
+| **THE STILLNESS** | Neutral, and it trades. Two of these kill you on sight; the third sells you a drink and nothing explains why. |
+
+The Stillness is the answer to *"Still lit. Nobody is sure who is paying for
+it"*, which has been in `deep_port_db.gd` since the deep ports shipped. Its
+neutrality is load-bearing in both directions: stage 5's fence gate shuts a
+back room to a HOSTILE player, so a hostile Stillness would have **bricked the
+deepest fence in the game as a side effect of a name.**
+
+### The design error, and the test that could not be written
+
+The Hollowing was first built to clamp its fire to the shield **remaining** —
+"it drains your shield but never your hull". That describes a two-layer health
+model **this game has never had.** `PlayerShip` has no hull: `shield` *is* its
+health, and `take_hit` downs the player at `shield <= 0.0`. Clamping to the
+shield remaining lands exactly on zero.
+
+So the faction whose entire identity is *cannot kill you* would have killed
+you — reliably, out in the Quiet, where dying costs the most.
+
+**It was found because the assertion crashed**, on a `hull` property that does
+not exist. That is the first time in this project's history that a wrong TEST
+exposed a wrong DESIGN rather than a wrong implementation: the check could not
+even be *written* against the model that had been assumed. The clamp leaves the
+last point now, and `THE HOLLOWING CANNOT KILL YOU` red-verifies to
+`shield 0.00 left, still flying=false`.
+
+### The Cordon's line was a chord across a circle
+
+`THE LINE IS THE EDGE` went red at **0.4u past the marker**. The muster's line
+was strung straight across the bearing — but `chart_edge()` is a RADIUS, so a
+straight line on a circular boundary bulges outside it at the ends, and
+`Hostile`'s 0.4 station-keeping wander pushed the outermost picket over.
+
+Small, silent, and a direct breach of the promise the band-1 beacon has been
+making since v13. Stage 2a turned those words into an assertion about ships
+exactly so this could not creep in, and three stages later it caught it. The
+line sits on an **arc** now — fixed radius, spread of bearings — with a 3u
+inset the wander cannot overcome.
+
+### An ambient event that logs also saves
+
+`SAVETEST`'s captain's-log fixture came back with `THE PROCESSION — IN PYX-01`
+as its tenth entry. `note_log` calls `_queue_save()`, so the convoy's arrival
+fired a debounced write a second after the harness had explicitly saved, and
+overwrote it.
+
+The fix is a design call rather than a test fix. The log is ten slots and it is
+for **things that happened to you**; a convoy arriving every twenty minutes
+would own three of them within an hour and push out the tolls, the kills and
+the frontier. The toast announces it; the log stays the player's.
+
+That is the third time this horizon a *logging* side effect reached a suite
+with nothing to do with the feature. Written down as a rule:
+**anything ambient that logs, saves.**
+
+### Two of my own assertions were measuring the wrong quantity
+
+Both passed alone and failed in-sweep, which is the worst way for a check to be
+wrong.
+
+`PICKETS WALK THEIR BEAT` measured **net displacement on a closed loop** — a
+picket that walks its route perfectly ends up where it started, so the reading
+was decided by where in the loop the clock stopped. It read 15.0u, 4.2u and
+1.8u across runs of identical code. It sums path length now.
+
+`AMBIENT COMBAT DEPLETES NOTHING` parked the player at depth 360 to keep them
+out of the fight — **inside the band where the expanse seeds nests**, so the
+census grew by two while the assertion watched for it to shrink. It disables
+deep generation first now, as every harness that puts a ship outside `bounds`
+already did.
+
+The second is the assertion working: it noticed machines appearing in a census
+that was supposed to hold still. It simply could not tell me they were its own.
