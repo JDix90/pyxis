@@ -4152,3 +4152,118 @@ with `swarm 98/kill` and `sentry 671/kill` — non-zero, which is the direct
 evidence that player-attributed kills still pay. Had attribution been wired
 backwards, those two would have read zero and `MIDTIER` would have collapsed
 through its floor. The 0.01 is loot-roll noise.
+
+## 49. Factions — stage 2a, the Cordon
+
+The Authority gets ships. Nine patrol routes across three systems — two in
+PYX-01, three in PYX-02, four in PYX-03, scaling with how much the Authority
+has to lose — walked as loops by `Hostile` nodes flying the `gsa` flag.
+
+**A picket is not a new class.** It is the same machine the expanse already
+dresses out as *"GSA PICKET — DECOMMISSIONED"* (`GUARD_DESIGNATION[1]`), alive
+and painted, and the tell is paint rather than a new silhouette — the raider
+precedent, applied again. Stage 1 had already built the hard half: a `gsa`
+picket refuses to fire on the player at any standing, and pays nothing when it
+kills, both asserted before a single route existed. **Stage 2a writes movement,
+not targeting.**
+
+### The routes are the entity budget
+
+Each route is drawn to pass within engage range of exactly **one** sentry post.
+A system therefore has as many standing skirmishes as it has routes and no
+more, which is what keeps NPC-vs-NPC combat legible on a 720-wide phone and the
+frame cost knowable. This is the §7 promise — "the entity count of ambient
+NPC-vs-NPC combat is a route-authoring decision, not an emergent one" — made
+literal in the data.
+
+### Three decisions that removed code rather than adding it
+
+**There is no "returning" state.** A picket with nothing to shoot walking to
+its next waypoint *is* returning. A third state would be a second thing to keep
+true for no visible difference.
+
+**The route is a loop.** Ping-pong needs a direction flag and an end-detection
+branch to say the same thing on screen.
+
+**The chart-edge rule is policed by the harness, over the authored table.**
+Three options, two rejected: a runtime clamp would drag a picket home and
+satisfy the assertion while hiding the authoring mistake; an `assert()` is
+stripped from release builds *and* would be the first in this codebase
+(`assert(` appears zero times). A data-level check fires on the authoring
+mistake before a picket is ever built, which is strictly earlier than either —
+the shape `DeepPortDB.violations()` and STATIONTEST's guard-rail sweep already
+use.
+
+### The anchor, and why measuring from the picket is fatal
+
+`_worth_leaving_the_beat` measures engage range from **the waypoint the picket
+is walking to**, never from the picket. A picket measuring from itself drifts
+outward along its own engagements — every individual step looking correct while
+charted space quietly goes unguarded. The beat is the anchor, and the hysteresis
+pair (12 to pick a fight, 25 to keep one) is the same shape as the apex's
+WAKE 60 against LEASH 120.
+
+### Two branches that cannot be unified
+
+Station-keeping **assigns** `_home + wander`; a patrol **adds** `wander * delta`.
+A moving picket whose position were assigned from a wander term would have its
+travel overwritten every frame and never leave the spot — this file's own
+`_home`-on-frame-one defect, reintroduced from the other direction. `PICKETS
+WALK THEIR BEAT` red-verifies to `moved 0.4u, 0 waypoints`.
+
+### The parley is the player's conversation
+
+`break_parley` fires when a raider takes damage from *anyone*, so a picket that
+peeled onto a pack mid-standoff would answer the demand on the player's behalf
+and delete the choice the interdiction is built around — permanently, everywhere
+in charted space. Finding A3, closed: a picket refuses to engage a raider whose
+`standoff` is live, and the assertion checks the **refusal to engage** rather
+than "the standoff survived", because the picket must not pick the fight in the
+first place.
+
+### What the engine caught that review did not
+
+**A crash in stage 1's shipped code.** `_targetable(n: Node3D)` dies on a
+cached `_aggro`/`_target` that has since been freed: GDScript validates an
+Object argument against its declared class **at the call boundary**, so the
+freed node fails there, before `is_instance_valid` inside can run. Six script
+errors per run. Stage 1's own suite never froze a node mid-test, so it never
+saw one; the Cordon's longer runs do. Both hostile classes take an untyped
+parameter now, with the reasoning written above it.
+
+**And an assertion of mine that passed on broken code — the third time this
+project has shipped one.** `THE BEAT IS THE ANCHOR` originally marched a chain
+of contacts away from the route to prove a picket would not ratchet outward.
+It cannot: `_combat_target` returns the *nearest* enemy, so the picket locks
+onto the first contact and stays put under the bug exactly as under the fix.
+The setup was elaborate and measured a world in which the defect cannot express
+itself.
+
+The rewrite is a **contact near the middle of a leg and far from both
+endpoints** — 10u from a picket standing mid-leg, 22.4u from the waypoint it is
+walking to. Route-measuring ignores it; self-measuring chases it. Asserted as a
+pure-function call at a placed position rather than over frames: no timing, no
+flake, and both clauses flip when the bug returns. A positive control (a contact
+genuinely near the waypoint, which *must* be engaged) sits beside it, because
+"returns false" is otherwise satisfied by a function that always refuses.
+
+Two lessons, and the second is the general one. Frame counts are not time —
+headless Godot runs frames as fast as it can, so `for i in range(360): await
+process_frame` was an unknown and machine-dependent amount of simulated time,
+and it measured 8u of a 12u leg on the first run. Both timed checks are
+specified in seconds now, because the thing they measure is specified in units
+per second. And: **be most suspicious of an assertion whose setup is elaborate.**
+The elaborate ones are where a world that cannot express the bug hides.
+
+### One assertion got stronger rather than excluded
+
+The sweep came back with `SENTRY POSTS` failing — it sweeps every `Hostile` and
+requires each within 0.6u of an authored post, and a picket is a `Hostile` 36u
+away by design. The cheap fix is to skip pickets. That makes the line *weaker*:
+a Cordon that silently failed to deploy would make every remaining clause
+happier and nothing would say so.
+
+So pickets are excluded, **counted, and the count asserted against the routes
+the system authored** — following this line's own precedent, where the
+deep-guard count was already printed rather than swallowed for exactly that
+reason. It now catches two distinct failures where it caught one.

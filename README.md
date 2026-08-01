@@ -90,13 +90,14 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **463 PASS / 1 FAIL / 0 script errors** across 55 runs, save
-format **v18** — measured on Godot 4.6.stable, headless, in one clean sweep.
-464 assertion lines, of which one is the standing HOLDTEST failure below.
+Current baseline: **467 PASS / 1 FAIL / 0 script errors** across 55 runs, save
+format **v18** — measured on Godot 4.6.stable, headless. 468 assertion lines,
+of which one is the standing HOLDTEST failure below.
 
-That measurement covers factions stage 1 (STRATEGY §47) and the opening bearing
-(§48). Both were *written* without a Godot binary to hand, and running one
-afterwards is what caught the three defects worth knowing about:
+That measurement covers factions stage 1 (STRATEGY §47), the opening bearing
+(§48) and the Cordon (§49). All three were *written* without a Godot binary to
+hand, and running one afterwards is what caught the defects worth knowing
+about:
 
 - **Two fatal parse errors** — a multi-line boolean missing its `\`
   continuations, and a `var` colliding with one declared earlier in the same
@@ -111,6 +112,22 @@ afterwards is what caught the three defects worth knowing about:
   the log block. **Worth remembering generally: `shift_faction` has a side
   effect on the logbook**, so any harness that pins log contents must file
   standing changes before it fills the ring.
+- **A crash in already-shipped code**, found only because the Cordon's longer
+  runs actually free nodes mid-test: `_targetable(n: Node3D)` dies on a cached
+  target that has since been freed, because GDScript validates an Object
+  argument against its declared class **at the call boundary** — so the freed
+  node fails there, before the `is_instance_valid` check inside can run. The
+  parameter is untyped in both hostile classes now. Six script errors per run,
+  and stage 1's own suite never froze a node so it never saw one.
+- **Two assertions of mine that passed on broken code.** `THE BEAT IS THE
+  ANCHOR` marched a chain of contacts away from a patrol route to prove a
+  picket would not ratchet outward — but `_combat_target` returns the *nearest*
+  enemy, so the picket locks onto the first one and stays put under the bug as
+  well as under the fix. It measured a world where the defect cannot express
+  itself. Rewritten around a contact mid-leg and far from both endpoints, as a
+  pure-function call rather than over frames. That is the third time this
+  project has shipped a green assertion that tested nothing; **red-verify
+  everything, and be suspicious when the setup is elaborate.**
 
 Both flaky lines the previous baseline warned about — `RAIDTEST`'s `THE HOLD IS
 NOT A SHIELD` and `DEEPTEST`'s `STARFIELD` — came in green first try on an
@@ -146,7 +163,16 @@ is measuring a starfield that has not been rebuilt yet.
 
 Re-run the tag alone before believing either.
 
-The most recent is factions stage 1 — the allegiance layer (STRATEGY §47), which
+The most recent is **the Cordon** (STRATEGY §49) — factions stage 2a. Nine
+patrol routes across three systems, each crossing exactly one sentry post so
+ambient NPC-vs-NPC combat is an authoring decision rather than an emergent one.
+A picket is a `Hostile` with a route and a flag, not a new class. It adds four
+assertions to `PYXIS_FACTIONTEST` and rewrites `DEEPTEST`'s `SENTRY POSTS`,
+which now excludes pickets *and asserts their count against the routes
+authored* — so it catches the Cordon failing to deploy as well as sentries
+drifting off station, where before it caught only the second.
+
+Before that, factions stage 1 — the allegiance layer (STRATEGY §47), which
 adds `PYXIS_FACTIONTEST` (10) and `SAVETEST=migrate17` (3) and bumps the save to
 **v18**. It ships no content by design: the world after it is bit-identical to
 the world before it, so every assertion is about a rule. Two of the ten exist
