@@ -15501,6 +15501,14 @@ func _run_hunt_test() -> void:
 	# left to sell -- it never did for the current system, and filing the free
 	# broadcast is what made that visible. Both directions: the button is gone
 	# with a ring on file and back without one.
+	# THE DESK HAS TO EXIST TO BE READ. HUNTTEST travels between systems, and
+	# the cantina is a pyx01 port -- an earlier section can leave the harness
+	# standing somewhere it was never built. Without this the sweep below reads
+	# its own initial values and reports "hidden, and it did not come back",
+	# which is what a missing port looks like when nobody asks.
+	if system_id != "pyx01":
+		_load_system("pyx01")
+		await get_tree().create_timer(0.4).timeout
 	var desk_port: Port = null
 	for node_d in get_tree().get_nodes_in_group("dockable"):
 		if node_d is Port and String((node_d as Port).port_id) == "cantina":
@@ -15525,9 +15533,10 @@ func _run_hunt_test() -> void:
 		await get_tree().process_frame
 		desk_returns = _panel_text_contains(port_panel, "BUY THE WORD")
 		port_panel.close_panel()
-	print("[hunt] THE WORD IS SOLD ONCE with a ring on file the desk offers nothing=%s, without one it offers it again=%s, salvage unmoved=%s -> %s" % [
-		str(desk_hidden), str(desk_returns), str(GameState.salvage == desk_salvage),
-		"PASS" if desk_hidden and desk_returns
+	print("[hunt] THE WORD IS SOLD ONCE desk found=%s; with a ring on file it offers nothing=%s, without one it offers it again=%s, salvage unmoved=%s -> %s" % [
+		str(desk_port != null), str(desk_hidden), str(desk_returns),
+		str(GameState.salvage == desk_salvage),
+		"PASS" if desk_port != null and desk_hidden and desk_returns
 			and GameState.salvage == desk_salvage else "FAIL"])
 	GameState.breached = word_breached
 	GameState.lanes_open = word_lanes
