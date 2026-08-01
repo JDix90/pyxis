@@ -4644,3 +4644,114 @@ already did.
 
 The second is the assertion working: it noticed machines appearing in a census
 that was supposed to hold still. It simply could not tell me they were its own.
+
+## 54. The playtest found what 489 assertions could not (v18)
+
+The horizon shipped, the sweep was green, and the first thing the player said
+was: *"I'm not really seeing the factions, and I'm not seeing the local
+security patrols at all. The massive swarm formed, came to the edge of charted
+space, and then just left without any battle."*
+
+All three observations were correct. Three defects, and every one of them was
+sitting behind an assertion that passed.
+
+### The garrison had two halves and only one was restored
+
+A new game builds its system with the garrison held back — nothing shoots at a
+player still being told which key moves the ship — and then restores it **in
+place** five seconds after the finale, because a rebuild there would delete the
+breach loot the player just earned.
+
+Stage 2a added the Cordon to the hold-back and did not add it to the put-back.
+`SystemBuilder.build()` gained `_build_patrols`; `spawn_sentries()` did not. So
+a player who pressed NEW SURVEY got sentries and **no pickets at all** until
+they warped out of PYX-01 — the headline feature of the horizon, invisible for
+the whole first session, on the one path every new player takes.
+
+Every Cordon assertion in FACTIONTEST drives `SystemBuilder.build()`. Not one
+drove the path out of the tutorial. And `TUTORIALTEST` — which *does* drive the
+real path — printed `sentries=%d` from a counter that lumped pickets in with
+standing machines, so "sentries=6" was equally true with the Cordon deployed
+and without it.
+
+The suppress list and the restore list are one function now
+(`SystemBuilder.build_garrison`), so the next thing added to the garrison
+cannot go missing from one of them. `_count_sentries` excludes pickets,
+`_count_pickets` exists, and both harnesses assert against the authored route
+count.
+
+**The rule: assert the path the player takes, not the function it wraps.**
+
+### The muster could never have been a fight
+
+Measured over a whole event, twice: line 960hp → **960hp**, column 816hp →
+**816hp**, closed at 23.75s. Twenty-four ships marched seventy-five units,
+touched the edge, and dissolved. Not one point of damage in either direction,
+every single run.
+
+Two independent causes, and each alone was enough.
+
+**The breach test measured the wrong circle.** The Cordon stands *inside* the
+marker — it must, because the band-1 beacon has promised since v13 that patrols
+do not operate beyond it. "The line breaks when a column ship gets inside the
+marker" therefore fires the instant the first attacker closes to engage the
+line, by construction, before a shot. Two decisions that were individually
+right and jointly fatal. Breach is measured against the **line** now, plus
+`MUSTER_BREACH_MARGIN` — 10.0, derived from the orbit envelope of a ship that
+is merely *fighting* the line (ORBIT_RADIUS 3.2 + weave 1.2 + separation 1.8 =
+6.2 worst case).
+
+**The skirmish clock counted acquisition, not fire.** `_pick_target` returns the
+nearest hated thing at *any* distance — deliberately, since that is what lets a
+picket decide whether something is worth leaving the beat for. But the clock
+started ticking the moment that pointer went non-null, so a machine spent its
+six seconds on a contact eighty units away that it could not shoot, broke off,
+and was resting when the contact arrived. `SKIRMISH_TIME`'s own comment says
+*"six seconds of FIRE cannot finish that"*. It was written as a weapons timer
+and implemented as an acquisition timer.
+
+This one was never about the muster. It made **every** faction fight in the
+game invisible — a picket walking its beat past a sentry thirty units away
+burned its clock the whole way in and was standing down by the time it arrived.
+
+The clock now counts only while the target is inside weapons range
+(`ENGAGE_RANGE` for Hostile, `ATTACK_RANGE` for SwarmHostile). Player targets
+are exempt exactly as before, so no balance figure ever measured against these
+classes moves.
+
+Measured after both fixes: first contact at 24s, sustained exchange to 43.5s,
+line 960 → 745hp, column 24 ships → 3, LINE HELD. A set-piece.
+
+### Why the sweep was happy
+
+`AMBIENT COMBAT DEPLETES NOTHING` is satisfied *perfectly* by a world in which
+nobody ever fires. It asserted a guarantee with no partner asserting that
+anything happens, so the cheapest way to satisfy it was to break combat
+entirely — and that is what shipped, green, for three stages.
+
+Section 19 checks the muster's warning, its line position, its budget, its
+payout ban and its logging. Every one of those is true of an event where not
+one shot is fired.
+
+**A guarantee needs a partner.** `THE BORDER IS CONTESTED` now requires a picket
+and a sentry within weapons range to *both* lose hull and *both* still be
+flying — the contested border and the depletion guarantee in one line, neither
+clause satisfiable by breaking the other. `THE MUSTER IS A FIGHT` requires both
+sides to lose hull before the event ends, and deliberately does not require the
+line to win: who wins is emergent and is supposed to be.
+
+### And an event with no bound
+
+Both of the muster's exits are emergent — the column is wiped, or one gets
+through. A balance change making neither happen would leave `_muster_active`
+true forever, and since `muster_eligible()` and `interdiction_eligible()` both
+refuse while one is live, a single stall would silently brick **both** event
+systems for the session. `MUSTER_TIMEOUT` (300s, against a measured 43s) closes
+it as held and prints why.
+
+### The honest summary
+
+489 assertions, 55 runs, green, and the feature did not work. Not one of the
+three defects was subtle in play — a player found all three in a single
+session. They were subtle only to a suite that measured positions, counts and
+payouts, and never once measured whether anybody shot at anybody.

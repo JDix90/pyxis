@@ -360,6 +360,13 @@ func _combat_target(delta: float) -> Node3D:
 	if picked == null or picked.is_in_group("player"):
 		_skirmish = maxf(_skirmish - delta, 0.0)
 		return picked
+	# THE CLOCK COUNTS FIRE, NOT ACQUISITION — Hostile._combat_target carries the
+	# reasoning and the measurement. ATTACK_RANGE here rather than ENGAGE_RANGE
+	# because that is this class's weapon: a dart closing from eighty units out
+	# is travelling, not fighting, and must not spend its six seconds doing it.
+	if global_position.distance_to(picked.global_position) > ATTACK_RANGE:
+		_skirmish = maxf(_skirmish - delta, 0.0)
+		return picked
 	_skirmish += delta
 	if _skirmish >= FactionDB.SKIRMISH_TIME:
 		_skirmish = 0.0

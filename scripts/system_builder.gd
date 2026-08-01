@@ -29,8 +29,7 @@ static func build(def: Dictionary, container: Node3D, opts := {}) -> void:
 	# noise. The tutorial suppresses both for the reason it already suppresses
 	# sentries.
 	if not bool(opts.get("skip_sentries", false)):
-		_build_sentries(def, container, String(opts.get("system_id", "")))
-		_build_patrols(def, container)
+		build_garrison(def, container, String(opts.get("system_id", "")))
 
 
 static func _build_deep_space(def: Dictionary, container: Node3D, system_id: String) -> void:
@@ -462,10 +461,26 @@ static func _build_port(def: Dictionary, container: Node3D) -> void:
 		Obstacles.add(port.position, Port.HULL_OBSTACLE_RADIUS)
 
 
-static func build_sentries(def: Dictionary, container: Node3D, system_id := "") -> void:
-	# Public so the tutorial can arm a system in place, without a rebuild that
-	# would wipe whatever the player just earned.
+static func build_garrison(def: Dictionary, container: Node3D, system_id := "") -> void:
+	# EVERYTHING `skip_sentries` HOLDS BACK, IN ONE FUNCTION, and that is the
+	# whole point of it existing. Public so the tutorial can arm a system in
+	# place, without a rebuild that would wipe whatever the player just earned.
+	#
+	# It was two calls at the top of build() and ONE call on the deferred path,
+	# and stage 2a added the Cordon to the first without touching the second.
+	# The result shipped: a player who pressed NEW SURVEY got sentries five
+	# seconds after the tutorial and NO PICKETS AT ALL until they warped, so
+	# the headline feature of the horizon was invisible for the entire first
+	# session. Nothing asserted it because the assertions all drove
+	# SystemBuilder.build() — the path the player does NOT take out of the
+	# tutorial. THE GARRISON IS WHAT THE TUTORIAL HELD BACK now drives the real
+	# one.
+	#
+	# So the suppress list and the restore list are the same list, by
+	# construction rather than by agreement, and the next thing added to the
+	# garrison cannot go missing from one of them.
 	_build_sentries(def, container, system_id)
+	_build_patrols(def, container)
 
 
 static func _build_sentries(def: Dictionary, container: Node3D, system_id := "") -> void:
