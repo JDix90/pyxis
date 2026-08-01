@@ -15474,8 +15474,20 @@ func _run_hunt_test() -> void:
 	# means "%03d, plus or minus twenty" by that noun, and spending it on a
 	# ninety-degree quarter is what sent a playtester down one straight line.
 	var word_says_quarter: bool = word_body.findn("quarter") >= 0
-	var word_avoids_bearing: bool = word_body.findn("bearing") < 0
+	# The OLD CONSTRUCTION specifically -- "bearing NORTH" -- not the word
+	# itself. The new copy says "that is a quarter of the sky, NOT A BEARING",
+	# which is the correction, and an assertion that banned the noun outright
+	# would have forbidden the sentence doing the teaching.
+	var word_avoids_bearing: bool = word_body.findn(
+		"bearing %s" % _lair_quadrant(system_id)) < 0
+	# Selected explicitly rather than trusting open()'s default: open() reads
+	# GameState.current_system and returns EARLY if the sheet is already up, so
+	# an assertion that merely opened it would be reading whatever the last
+	# section left on screen -- which is how a check like this passes on a
+	# panel it never actually refreshed.
 	chart_panel.open()
+	chart_panel._selected = system_id
+	chart_panel._refresh()
 	await get_tree().process_frame
 	var word_chart_agrees: bool = not _panel_text_contains(chart_panel, "no intel")
 	chart_panel.close_panel()
@@ -15499,6 +15511,13 @@ func _run_hunt_test() -> void:
 	var desk_salvage := GameState.salvage
 	if desk_port != null:
 		port_panel.open_for(desk_port)
+		# THE DESK IS ON THE RUMOURS TAB, and open_for lands on the port's
+		# FIRST service. Without this the sweep would read a market list, find
+		# no BUY button in either direction, and report the row hidden because
+		# it was looking at the wrong page -- an assertion agreeing with itself
+		# about a screen it never opened.
+		port_panel._tab = "rumors"
+		port_panel._refresh()
 		await get_tree().process_frame
 		desk_hidden = not _panel_text_contains(port_panel, "BUY THE WORD")
 		GameState.clear_apex_intel(system_id)
