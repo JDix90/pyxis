@@ -1413,11 +1413,38 @@ func close_consoles_for_raid() -> void:
 			panel.close_panel()
 
 
+func _raid_wants_the_player() -> bool:
+	# Whether ANY raider still counts the player as prey. Asked through the one
+	# dispatcher, so a raider the player has shot -- _aggro is the player --
+	# still counts and a fight in progress is never cut short underneath them.
+	for n in get_tree().get_nodes_in_group("raider"):
+		if is_instance_valid(n) and GameState.hostile_to_player(n):
+			return true
+	return false
+
+
+func is_playing() -> bool:
+	# The RULE the attract gate means, rather than a rendering of it. Chrome
+	# visibility happens to track this today, but chrome is a picture and this
+	# is the fact -- CameraRig's hotkeys and the harness both ask here.
+	return state == State.PLAYING
+
+
 func interdiction_eligible() -> bool:
 	# Every exclusion here is a place where being jumped would be unfair rather
 	# than tense: docked is the game's one safe state, the tutorial has not
 	# taught combat yet, an apex fight is already the hardest thing on offer, and
 	# a warp is a cutscene.
+	#
+	# AND THE BANNER HAS TO WANT YOU. Tithe standing is not decoration: enemies_of
+	# has read it since stage 1, so a player who has paid their way out of
+	# HOSTILE is not prey, and a pack spawned to interdict somebody it will not
+	# fire on is a klaxon with nothing behind it. See faction_db's note on the
+	# tithe baseline for why that band is three tolls deep rather than one.
+	#
+	# spawn_interdiction() stays UNGATED on purpose -- it is public so the
+	# harness can force a raid without gambling on a dice roll, and two suites
+	# call it directly.
 	#
 	# Consoles count too. They do not pause the game, so a raid could begin while
 	# the player was reading the refit list — the klaxon fires behind a sheet
@@ -1432,7 +1459,8 @@ func interdiction_eligible() -> bool:
 		and (not console_open() or console_camping()) \
 		and not _raid_active \
 		and not muster_active() \
-		and _raid_cooldown <= 0.0
+		and _raid_cooldown <= 0.0 \
+		and GameState.faction_band(FactionDB.SURVEYOR, "tithe") == FactionDB.Band.HOSTILE
 
 
 func procession_system(window: int) -> String:
@@ -1785,6 +1813,21 @@ func _tick_interdiction(delta: float) -> void:
 			_parley_until = 0.0
 			if hud:
 				hud.hide_parley()
+		# A PACK THAT HAS LOST INTEREST LEAVES, and before this it could not.
+		# Paying a toll lifts Tithe standing out of HOSTILE, which is the whole
+		# point of paying -- but a raider whose flag no longer counts the player
+		# as prey then has no target, and carries no leash in charted space. It
+		# drifted forever, _count_raiders() never reached zero, and _raid_active
+		# latched for the session: no further raids, and because muster_eligible
+		# reads the same flag, NO MUSTERS EITHER. A warp was the only cure, and
+		# nothing told the player that.
+		#
+		# Routed through depart(), the exit raiders already use when paid off:
+		# it sheds every group at once and pays nothing back.
+		if _parley_until <= 0.0 and not _raid_wants_the_player():
+			for n_lapsed in get_tree().get_nodes_in_group("raider"):
+				if is_instance_valid(n_lapsed) and n_lapsed.has_method("depart"):
+					n_lapsed.depart()
 		if _count_raiders() == 0:
 			_raid_active = false
 			_raid_cooldown = RAID_COOLDOWN
@@ -8389,6 +8432,45 @@ func _run_raid_test() -> void:
 		"PASS" if _count_raiders() == 0 and not _raid_active
 			and _raid_cooldown > 0.0 else "FAIL"])
 
+	# P3b. A LAPSED RAID CLEANS ITSELF UP — the sibling deadlock, found by
+	#      reading rather than by playing, because it takes a session to see.
+	#      PAY ENDS covers the pack that was PAID. This covers the pack that
+	#      simply stopped caring: paying a toll lifts Tithe standing out of
+	#      HOSTILE, and a raider that no longer counts the player as prey has
+	#      no target and no leash in charted space. It drifted forever,
+	#      _count_raiders() never reached zero, and _raid_active latched for
+	#      the session — taking every future raid AND every muster with it.
+	#
+	#      Both directions in one measurement, because "the pack leaves" alone
+	#      is satisfied by a cleanup that ends every raid the instant it begins.
+	_clear_faction_matrix()
+	GameState.shift_faction(FactionDB.SURVEYOR, "tithe", 3)   # -6 -> -3, WARY
+	spawn_interdiction()
+	_parley_until = 0.0
+	for i_lapse in range(30):
+		await get_tree().physics_frame
+	_tick_interdiction(0.01)
+	var lapsed_left := _count_raiders()
+	var lapsed_clear := not _raid_active
+	var muster_back := muster_eligible() or not _raid_active
+	# The other direction: a banner that DOES want the player keeps its pack.
+	_clear_faction_matrix()
+	spawn_interdiction()
+	_parley_until = 0.0
+	for i_hot in range(30):
+		await get_tree().physics_frame
+	_tick_interdiction(0.01)
+	var hostile_stays := _count_raiders() > 0
+	for n_cleanup in get_tree().get_nodes_in_group("raider"):
+		if is_instance_valid(n_cleanup) and n_cleanup.has_method("depart"):
+			n_cleanup.depart()
+	_raid_active = false
+	_clear_faction_matrix()
+	print("[raid] A LAPSED RAID CLEANS ITSELF UP at WARY: %d raiders left (want 0), _raid_active cleared=%s, eligibility recovered=%s; at HOSTILE the pack stays=%s -> %s" % [
+		lapsed_left, str(lapsed_clear), str(muster_back), str(hostile_stays),
+		"PASS" if lapsed_left == 0 and lapsed_clear and muster_back
+			and hostile_stays else "FAIL"])
+
 	# P4. THE TOLL TAKES HOT CARGO, and pays nothing back. Contraband went first
 	#     (weight x value), the removed value covers the toll, and no loot exists
 	#     anywhere a departing raider stood.
@@ -8765,6 +8847,50 @@ func _run_radar_test() -> void:
 				worst = "bearing %d -> (%.0f, %.0f)" % [ang, p.x, p.y]
 	print("[radar] ON SCREEN every marker inside the viewport at all 24 bearings -> %s %s" % [
 		"PASS" if inside else "FAIL", worst])
+
+	# 3b. THE READOUT FOLLOWS THE HEADING. The cockpit's answer to the six
+	#     channels that hand out bearings. Driven by turning the real ship and
+	#     reading the RENDERED label -- an assertion that recomputed the bearing
+	#     would agree with itself while the label showed a heading from ten
+	#     seconds ago, which is what cargo_text() and _chrome_height() were both
+	#     added to stop.
+	#
+	#     Parked deliberately: with no speed and no target PlayerShip leaves
+	#     rotation.y alone, so this measures the readout rather than the
+	#     autopilot, and it exercises the "a parked ship holds its heading"
+	#     property at the same time.
+	player.velocity = Vector3.ZERO
+	player.has_move_target = false
+	if player.has_method("clear_target"):
+		player.clear_target()
+	var hdg_rows := ""
+	var hdg_ok := true
+	var hdg_last := ""
+	for want_deg in [0, 90, 180, 270]:
+		# The exact inverse of hud's -basis.z read: a yaw whose forward vector
+		# points at want_deg in the atan2(z, x) convention every producer uses.
+		var rads := deg_to_rad(float(want_deg))
+		player.rotation.y = atan2(-cos(rads), -sin(rads))
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var want := "HDG %03d · %s" % [want_deg,
+			DeepSpace.quadrant_of(Vector3(cos(rads), 0.0, sin(rads)))]
+		var got := hud.heading_text()
+		hdg_rows += "%s|" % got
+		if got != want:
+			hdg_ok = false
+			hdg_rows += "(want %s)" % want
+		hdg_last = got
+	# And it must still be MOVING at the end -- a label latched by a broken
+	# rate-limit would have matched every row above if the first one happened
+	# to be right and nothing ever rebuilt it.
+	player.rotation.y = atan2(-cos(0.0), -sin(0.0))
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var hdg_moves: bool = hud.heading_text() != hdg_last
+	print("[radar] THE READOUT FOLLOWS THE HEADING %s all four cardinals=%s, still updating after the last=%s -> %s" % [
+		hdg_rows, str(hdg_ok), str(hdg_moves),
+		"PASS" if hdg_ok and hdg_moves else "FAIL"])
 
 	# 4. v15. THE ENGINE IS NOT ON THE MAP UNTIL YOU ARE ON TOP OF IT.
 	#
@@ -9881,7 +10007,48 @@ func _run_input_test() -> void:
 	var click_moves := player.has_move_target
 	print("[input] DEVICE SPLIT touch_on_empty_moves=%s (must be true)  click_on_empty_moves=%s (must be false)" % [
 		str(touch_moves), str(click_moves)])
+
+	# THE HOLD HAS A SECOND DOOR. §54's rule, applied: assert the path the
+	# PLAYER takes, not the function it wraps. Calling hold_screen.toggle()
+	# here would pass with no action declared in project.godot, no key bound
+	# and no handler written — it would test that a method toggles a boolean,
+	# which was never in doubt. So this builds a real InputEventKey on the
+	# real physical keycode and pushes it through the real dispatcher.
+	#
+	# The third clause is the attract guard: CameraRig keeps receiving events
+	# behind the title screen (only SHIP input is disabled there), so without
+	# is_playing() the manifest slides up over the menu.
+	hold_screen.close_panel()
+	await get_tree().process_frame
+	var opened := await _press_hold_key()
+	var closed := not await _press_hold_key()
+	_enter_attract()
+	hold_screen.close_panel()
+	await get_tree().process_frame
+	var attract_ignored := not await _press_hold_key()
+	_enter_playing()
+	await get_tree().process_frame
+	print("[input] THE HOLD HAS A SECOND DOOR i opens=%s, i closes again=%s, refused behind the title=%s -> %s" % [
+		str(opened), str(closed), str(attract_ignored),
+		"PASS" if opened and closed and attract_ignored else "FAIL"])
 	get_tree().quit()
+
+
+func _press_hold_key() -> bool:
+	# One press-and-release of the physical I key, through Input itself, and
+	# the resulting state of the manifest. Two frames: Godot buffers input by
+	# one, and the sheet's visibility settles on the next.
+	var down := InputEventKey.new()
+	down.physical_keycode = KEY_I
+	down.pressed = true
+	Input.parse_input_event(down)
+	await get_tree().process_frame
+	var up := InputEventKey.new()
+	up.physical_keycode = KEY_I
+	up.pressed = false
+	Input.parse_input_event(up)
+	await get_tree().process_frame
+	return hold_screen.is_open
 
 
 func _distinct(items: Array) -> int:
@@ -12225,11 +12392,16 @@ func _run_access_test() -> void:
 	# --- 5. rebinding -------------------------------------------------------
 	GameState.reset_bindings()
 	var before := _keys_for("move_up")
-	var ok := GameState.rebind("move_up", KEY_I)
+	# KEY_Y, not KEY_I: I is toggle_hold's shipped default now, and a probe that
+	# rebinds move_up onto another action's real key would be measuring the
+	# conflict-stealing loop by accident instead of the rebind it names. Y is
+	# unclaimed and carries no plausible future semantic (unlike M for map or
+	# C for chart).
+	var ok := GameState.rebind("move_up", KEY_Y)
 	var after := _keys_for("move_up")
 	print("[access] REBIND move_up %s -> %s (accepted=%s) -> %s" % [
 		str(before), str(after), str(ok),
-		"PASS" if ok and after.has(KEY_I) and not after.has(KEY_W) else "FAIL"])
+		"PASS" if ok and after.has(KEY_Y) and not after.has(KEY_W) else "FAIL"])
 
 	# A key already spoken for is TAKEN from its old owner, never shared. Two
 	# actions on one key is not a binding, it is a bug found mid-flight.
@@ -12245,6 +12417,25 @@ func _run_access_test() -> void:
 	print("[access] NO SHARED KEY move_up=%s move_down=%s, no overlap=%s, both still bound=%s -> %s" % [
 		str(up), str(down), str(no_overlap), str(both_bound),
 		"PASS" if no_overlap and both_bound else "FAIL"])
+
+	# EVERY ACTION IS REBINDABLE OR RESERVED, and this is the clause NO SHARED
+	# KEY structurally cannot see. That assertion drives rebind() and can only
+	# police actions rebind() knows about; an action declared in project.godot
+	# and left out of REBINDABLE is invisible to the conflict loop, so it can
+	# sit on another action's key forever and every rebinding assertion above
+	# stays green. So: assert the INVARIANT -- the InputMap and the list agree,
+	# with `cancel` the one authored exception named right here.
+	var declared: Array = []
+	for a_v in InputMap.get_actions():
+		var a := String(a_v)
+		if not a.begins_with("ui_"):
+			declared.append(a)
+	declared.sort()
+	var accounted: Array = GameState.REBINDABLE.duplicate()
+	accounted.append("cancel")
+	accounted.sort()
+	print("[access] EVERY ACTION IS REBINDABLE OR RESERVED declared=%s accounted=%s -> %s" % [
+		str(declared), str(accounted), "PASS" if declared == accounted else "FAIL"])
 
 	# Cancel is not rebindable, and that is deliberate: it is the way out of
 	# every console and of the settings page that would fix a bad binding.

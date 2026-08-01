@@ -235,6 +235,25 @@ func _unhandled_input(event: InputEvent) -> void:
 		var player: Node3D = get_tree().get_first_node_in_group("player")
 		if player and player.has_method("activate_ability"):
 			player.activate_ability()
+	elif event.is_action_pressed("toggle_hold"):
+		# THE SECOND DOOR, onto the same room. The HOLD readout has opened this
+		# sheet since it existed (hud.hold_pressed -> hold_screen.toggle), touch
+		# is the primary platform, and a hotkey is an ADDITIVE desktop layer --
+		# never the advertised door. The manual says so on the desktop page only.
+		#
+		# GATED ON PLAYING. Attract mode disables only SHIP input and merely
+		# HIDES the chrome, so the readout's door is shut there by being
+		# invisible while this rig keeps taking events -- an ungated hotkey
+		# would slide the manifest up over the title screen.
+		#
+		# Pause needs nothing: this node is PROCESS_MODE_INHERIT while PauseMenu
+		# and ManualScreen are ALWAYS, so a paused tree stops delivering here at
+		# all and the key is correctly dead, exactly like every other hotkey.
+		var main := get_tree().get_first_node_in_group("main")
+		if main != null and main.has_method("is_playing") and main.is_playing():
+			var hold := get_tree().get_first_node_in_group("hold_screen")
+			if hold != null and hold.has_method("toggle"):
+				hold.toggle()
 
 
 func _mouse_button(event: InputEventMouseButton) -> void:

@@ -192,8 +192,23 @@ const TINTS := {
 # treat the feral row as frozen.
 const BASELINE := {
 	"feral": {"surveyor": -6},
+	# -6 AGAINST THE TITHE, NOT -4, AND THE DIFFERENCE IS A WHOLE MECHANIC.
+	# At -4 the banner sat EXACTLY on the HOSTILE/WARY boundary, so one paid
+	# toll (+1) crossed a band in a single act -- the "tap" this file's own note
+	# above forbids -- and because interdiction eligibility now reads this band,
+	# that single toll bought permanent immunity from every future raid AND,
+	# through muster_eligible's shared flag, every future muster. Three tolls is
+	# an arc; one was a switch nobody knew they had thrown.
+	#
+	# The way back needs nothing new: shoot a Tithe ship while they are merely
+	# WARY and _die's unprovoked -1 puts the player straight back on their list.
+	#
+	# RAIDTEST's CONSOLE CAMPING and THE HOLD IS NOT A SHIELD both pay a toll
+	# and then read interdiction_eligible(). At -4 those go red; at -6 the toll
+	# lands at -5, still HOSTILE, and they stay green. That coupling is why this
+	# number is not free to "restore" without reading those two assertions.
 	"surveyor": {"feral": -6, "gnomon": -6, "armillary": -6, "meridian": -6,
-		"tithe": -4},
+		"tithe": -6},
 	# The Authority: order, democracy, prosperity — stated values, and a cordon
 	# that shoots machines, not people. WARY of the smuggling network it cannot
 	# catch, HOSTILE to the engines jamming its lanes and to the banner taxing

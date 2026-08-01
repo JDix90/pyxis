@@ -81,6 +81,12 @@ class RadarLayer:
 	# certain thing on the board -- it is not a contact, it is a guess -- and
 	# when the 12-marker cap bites it should be the first thing to go.
 	const TIER_HUNT := 5
+	# Every tier, in tier order, by the NAME THE MANUAL PRINTS. The manual's
+	# rows stay hand-written -- each carries a colour and a sentence, which is
+	# copy, not data -- but COVERAGE becomes assertable: a tier added here
+	# without a legend row turns THE MANUAL IS TRUE TO THE DEVICE AND TO THE
+	# HUD red, naming the tier nobody documented.
+	const TIER_NAMES := ["HOME", "APEX", "PORT", "SITE", "HOSTILE", "SEAM", "GHOST"]
 	# What the dossier has to be worth before the ghost appears at all. Three
 	# agreeing hints and a search circle under 200u is the point where an arrow
 	# is honest guidance rather than a confident lie: below that the estimate
@@ -406,6 +412,13 @@ var _boss_fill: ColorRect
 var _boss_plates: HBoxContainer
 var _cargo_label: Label
 var _hull_label: Label
+var _heading_label: Label
+# Last rendered heading, so the string is rebuilt only when it CHANGES. Same
+# guard and same reason as set_deep_tag's sub-unit short-circuit: a heading
+# moves every frame, and a per-frame String build for an unchanged value is
+# what that pattern exists to avoid. -1 forces the first build.
+var _heading_deg := -1
+var _heading_word := ""
 var _tutorial_box: VBoxContainer
 var _tutorial_step_label: Label
 var _tutorial_text: Label
@@ -508,6 +521,27 @@ func _ready() -> void:
 	_hull_label.add_theme_color_override("font_color", Palette.TEAL)
 	_hull_label.add_theme_font_size_override("font_size", 12)
 	top.add_child(_hull_label)
+
+	# WHICH WAY THE NOSE IS POINTING, and it is overdue. Six channels hand the
+	# player a bearing -- the free relay, two paid desks, the mast, the relic,
+	# the rift -- and until this label nothing in the cockpit read one back. The
+	# playtest that produced it did not report a wrong hint; it reported a hint
+	# in a vocabulary the ship did not speak.
+	#
+	# HDG, not BRG. A BEARING in this game is a direction TO something (the
+	# desks quote one, the shear quotes one); a HEADING is where you are
+	# pointing. Spending the same noun on both is exactly the confusion the
+	# apex hint fix is undoing, so the readout gets its own word.
+	#
+	# %03d matches the paid channel's "BEARING %03d" digit for digit, so a
+	# hint and the instrument compare directly instead of by translation.
+	# SIZE_LABEL and AMBER_DIM match HOLD directly above: a glance readout,
+	# not an alarm.
+	_heading_label = Label.new()
+	_heading_label.text = "HDG --- · ----"
+	_heading_label.add_theme_color_override("font_color", Palette.AMBER_DIM)
+	_heading_label.add_theme_font_size_override("font_size", 12)
+	top.add_child(_heading_label)
 
 	_gain_label = Label.new()
 	_gain_label.add_theme_color_override("font_color", Palette.GOLD)
@@ -927,6 +961,13 @@ func cargo_text() -> String:
 	return _cargo_label.text if _cargo_label != null else ""
 
 
+func heading_text() -> String:
+	# cargo_text()'s sibling, and for cargo_text()'s reason: an assertion that
+	# recomputed the bearing from the ship would agree with itself while the
+	# label showed a heading from ten seconds ago.
+	return _heading_label.text if _heading_label != null else ""
+
+
 func gain_cargo(good: String) -> void:
 	refresh_cargo()
 	_gain_label.text = "+1 %s" % CommodityDB.short_name(good)
@@ -1170,6 +1211,25 @@ func _process(_delta: float) -> void:
 	_hull_label.text = "HULL %d%%" % int(round(frac * 100.0))
 	_hull_label.add_theme_color_override("font_color",
 		Palette.TEAL if frac > 0.6 else (Palette.AMBER if frac > 0.25 else Palette.THREAT))
+
+	# THE ONE SOURCE OF TRUTH, ASKED RATHER THAN RE-DERIVED. DeepSpace's note
+	# above quadrant_of forbids a second copy of the sector maths -- the moment
+	# two of them derive "which quarter is that" independently they disagree at
+	# a boundary -- so this feeds it the ship's own forward vector. quadrant_of
+	# is pure over a direction, so a direction is a legal argument.
+	#
+	# Ship forward is -basis.z, and atan2(z, x) is the producers' expression
+	# verbatim. A PARKED ship holds its last heading, which is what a compass
+	# does; an EMP tumble spins the readout, which is the tell and not a bug.
+	var fwd := -player.global_transform.basis.z
+	# The modulo is load-bearing: round(359.6) is 360, and HDG 360 is not a
+	# heading anybody quotes.
+	var hdg := int(round(fposmod(rad_to_deg(atan2(fwd.z, fwd.x)), 360.0))) % 360
+	var quarter := DeepSpace.quadrant_of(Vector3(fwd.x, 0.0, fwd.z))
+	if hdg != _heading_deg or quarter != _heading_word:
+		_heading_deg = hdg
+		_heading_word = quarter
+		_heading_label.text = "HDG %03d · %s" % [hdg, quarter]
 
 	var info: Dictionary = player.ability_info()
 	if info.is_empty():

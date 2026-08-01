@@ -498,6 +498,24 @@ func enemies_of(faction: String) -> Array:
 	return out
 
 
+func hostile_to_player(node) -> bool:
+	# The one dispatcher every consumer asks, so "is this thing my enemy" has a
+	# single answer instead of four that agree by luck.
+	#
+	# UNTYPED, for _auto_targetable's reason: a typed parameter is checked
+	# before the call, and freed nodes arrive here routinely from group walks.
+	#
+	# NO METHOD MEANS HOSTILE. ApexBoss is in "hostiles" and carries no faction
+	# at all -- it IS the fight -- and a default that spared it would make the
+	# engine untappable and silent. Anything else unflagged is hostile by
+	# construction too, which is the shipped world exactly.
+	if not is_instance_valid(node):
+		return false
+	if not (node as Node).has_method("fights_the_player"):
+		return true
+	return bool(node.fights_the_player())
+
+
 func shift_faction(a: String, b: String, amount: int, quiet := false) -> void:
 	# THE ONLY MUTATOR, and it moves both directions of one pair at once —
 	# deltas are symmetric by design (HORIZON-4 §2), so there is nothing else a
@@ -575,8 +593,15 @@ func shake_enabled() -> bool:
 # `cancel` is the escape hatch out of every console and the pause menu, and a
 # player who binds it to a key they cannot reach has no way back to the settings
 # page that would let them fix it. It stays on Escape.
+#
+# `toggle_hold` IS IN THIS LIST AND HAS TO BE. The list drives two things that
+# look unrelated: the settings rows, and rebind()'s conflict-stealing loop
+# below. An action outside it is INVISIBLE to that loop, so a player could bind
+# move_up to I and end up with two live actions on one key -- which is exactly
+# what NO SHARED KEY forbids, arriving through the one door that assertion
+# cannot see.
 const REBINDABLE := ["move_up", "move_down", "move_left", "move_right",
-	"ability", "cycle_target"]
+	"ability", "cycle_target", "toggle_hold"]
 
 
 func apply_bindings() -> void:

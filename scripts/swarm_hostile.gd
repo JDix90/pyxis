@@ -345,6 +345,24 @@ func _march_step(delta: float) -> void:
 	_core_mat.emission_energy_multiplier = 2.4 + sin(_phase * 2.0) * 0.6
 
 
+
+func fights_the_player() -> bool:
+	# WHAT THE "hostiles" GROUP MEANT ALL ALONG. Both hostile classes join that
+	# group unconditionally in _ready and cannot stop -- it is load-bearing in a
+	# dozen places that read it as "things opposed to the player". What CAN move
+	# is the handful of consumers that use it to decide what the player may
+	# shoot, lock, or hear threat music for.
+	#
+	# THE SECOND CLAUSE IS WHY THE STANDING RAMP STILL WORKS. A machine the
+	# player has chosen to attack ANSWERS, and the moment it does it is an
+	# ordinary target again: tappable, auto-targetable, worth the music. Without
+	# it a deliberate attack on a neutral would produce return fire the player
+	# could not lock on to, which is a worse world than the one this fixes.
+	if GameState.faction_band(faction, FactionDB.SURVEYOR) == FactionDB.Band.HOSTILE:
+		return true
+	var p := get_tree().get_first_node_in_group("player")
+	return p != null and (_target == p or _aggro == p)
+
 func _refresh_enemies() -> void:
 	if _enemies_version == GameState.faction_version:
 		return
