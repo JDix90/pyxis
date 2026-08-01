@@ -12967,7 +12967,13 @@ func _run_faction_test() -> void:
 	system_root.add_child(beat)
 	beat.position = Vector3(10, 0, 20)
 	await get_tree().process_frame
-	var start_at := beat.global_position
+	# PATH LENGTH, NOT NET DISPLACEMENT. The route is a LOOP, so a picket that
+	# walks it perfectly ends up near where it started — this read 15.0u, 4.2u
+	# and 1.8u across runs of identical code purely by where in the loop the
+	# clock stopped, which is a coin flip dressed as a measurement. Summing the
+	# per-sample distance measures the thing the claim is about: it walked.
+	var last_at := beat.global_position
+	var walked_u := 0.0
 	var visited := 0
 	var last_i := beat._patrol_i
 	# A TIME BUDGET, NOT A FRAME COUNT. Headless Godot runs frames as fast as it
@@ -12980,13 +12986,14 @@ func _run_faction_test() -> void:
 	while walked < 12.0:
 		await get_tree().create_timer(0.1).timeout
 		walked += 0.1
+		walked_u += last_at.distance_to(beat.global_position)
+		last_at = beat.global_position
 		if beat._patrol_i != last_i:
 			visited += 1
 			last_i = beat._patrol_i
-	var travelled := start_at.distance_to(beat.global_position)
-	print("[faction] PICKETS WALK THEIR BEAT moved %.1fu and advanced %d waypoints in %.0fs (leg is 12u at %.1fu/s) -> %s" % [
-		travelled, visited, walked, Hostile.PATROL_SPEED,
-		"PASS" if travelled > 2.0 and visited >= 2 else "FAIL"])
+	print("[faction] PICKETS WALK THEIR BEAT covered %.1fu of ground and advanced %d waypoints in %.0fs (legs are ~10-14u at %.1fu/s) -> %s" % [
+		walked_u, visited, walked, Hostile.PATROL_SPEED,
+		"PASS" if walked_u > 12.0 and visited >= 2 else "FAIL"])
 
 	# --- 13. THE BEAT IS THE ANCHOR ------------------------------------------
 	# The property: engage range is measured from the ROUTE, not from the
@@ -13193,18 +13200,30 @@ func _run_faction_test() -> void:
 	#     parked far away and untouchable, long enough for three full
 	#     engage/rest cycles, and require the census to be IDENTICAL — not
 	#     merely non-zero, which any half-emptied system would satisfy.
-	var census_before := get_tree().get_nodes_in_group("combatants").size()
+	# GENERATION OFF FIRST. The earlier version parked the player at (0,0,400)
+	# to keep them out of the fight — which is depth 360, inside the band where
+	# the expanse SEEDS NESTS, so the census grew by two while the check was
+	# watching for it to shrink (7 -> 9). Every harness that puts a ship
+	# outside `bounds` calls this for the same reason.
+	set_deep_generation(false)
+	await get_tree().process_frame
 	var pilot: PlayerShip = get_tree().get_first_node_in_group("player")
 	if pilot != null:
 		pilot.invulnerable = true
 		pilot.teleport_to(Vector3(0, 0, 400))
 	_wave_timer = 1.0e9        # no reinforcements: a census that grows hides a loss
+	_muster_timer = 1.0e9      # nor a muster, which spawns 32 of them
+	await get_tree().create_timer(0.5).timeout
+	# Baseline taken AFTER the world has settled into that state, so anything
+	# already in flight is counted on both sides of the watch.
+	var census_before := get_tree().get_nodes_in_group("combatants").size()
 	var watched := 0.0
 	var budget := (FactionDB.SKIRMISH_TIME + FactionDB.SKIRMISH_REST) * 3.0
 	while watched < budget:
 		await get_tree().create_timer(0.25).timeout
 		watched += 0.25
 	var census_after := get_tree().get_nodes_in_group("combatants").size()
+	set_deep_generation(true)
 	print("[faction] AMBIENT COMBAT DEPLETES NOTHING %.0fs unattended (3 x %.0fs cycles), census %d -> %d -> %s" % [
 		watched, FactionDB.SKIRMISH_TIME + FactionDB.SKIRMISH_REST,
 		census_before, census_after,
