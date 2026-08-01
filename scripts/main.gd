@@ -1437,7 +1437,18 @@ func _tick_procession() -> void:
 		_procession_window = window
 		if hud:
 			hud.show_toast("THE PROCESSION IS HERE", Palette.GOLD)
-		GameState.note_log("THE PROCESSION — IN %s" % SystemDB.get_system(system_id).get("name", system_id))
+		# NO LOGBOOK LINE, and that is a design call rather than a test fix.
+		# The captain's log is ten slots and it is for things that happened to
+		# YOU; the convoy arrives every twenty minutes whether or not you are
+		# looking at it, so over an hour it would own three of those ten and
+		# push out the tolls, the kills and the frontier. The toast is the
+		# announcement.
+		#
+		# It also stopped clobbering a save fixture: note_log calls
+		# _queue_save(), so the arrival line fired a debounced write that
+		# overwrote SAVETEST's captain's-log fixture a second after the harness
+		# had explicitly saved it. Worth remembering generally — ANY ambient
+		# event that logs also SAVES.
 	elif live and (not here or window != _procession_window):
 		# It moves on — unless the player is docked at it, in which case it
 		# waits for them to leave. A market that vanished under an open sheet
