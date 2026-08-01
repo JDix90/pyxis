@@ -4427,3 +4427,28 @@ world obsolete, find the property that survived and state it more strongly.**
 Deleting the check loses the guarantee; loosening it keeps a check that cannot
 fail. This is the second time this horizon that widening produced a better
 assertion than the one it replaced.
+
+### §51 postscript — two numbers, measured rather than argued about
+
+Stage 3's sweep read `MIDTIER` at **2.95** against 2.92 the run before, and a
+5% jump in the derelict term. The instinct is to cut loot again. **Six samples
+of identical code say do not:** 2.84, 2.89, 2.90, 2.92, 2.94, 2.95 — mean
+**2.91**, exactly where it sat before stage 3. The derelict term alone swings
+4771–5339 per hull, ±6%, which is most of the spread.
+
+So the stage-2b compensation was right and stage 3 moved nothing. Tuning from
+the single 2.95 would have been the mistake §41 records this project making
+twice with `PHASE INTEGRITY` — setting a bar against one look at a
+distribution nobody had measured — with the sign flipped.
+
+**Write the spread down, because the ceiling is close.** `MIDTIER` is 2.91 ±
+0.05 against a hard 3.00, so a good roll reads 2.95 and real headroom is about
+0.04. Anyone adding income needs four samples, not one.
+
+The same session's `STREAMTEST` failure is the same shape. Its **mean** is
+stable across every sweep — 6.93, 6.97, 6.98, 7.37, 7.40ms — and did not move
+when stage 3 put NPC-vs-NPC combat into a live system. Its **worst** clause is
+a single-spike measure ranging 17–48ms against a bound of 40; it went red once
+in-sweep and passed 4 of 4 alone. That is a third flaky assertion, and the fix
+is the one §41 already describes: re-derive the bar from the distribution
+rather than nudge it until the sweep goes quiet. Recorded, not done.
