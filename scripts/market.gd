@@ -29,6 +29,33 @@ const EVENT_KINDS := {
 }
 
 
+static func owner_of(port_def: Dictionary) -> String:
+	# v18 stage 5. Which faction runs this desk. "" is legitimate — the Last
+	# Watch answers to nobody, and the Procession's convoy def may choose the
+	# same — and every gate below treats unowned as ungated, so a missing owner
+	# fails OPEN rather than locking a counter by accident.
+	return String(port_def.get("owner", ""))
+
+
+static func fence_open(port_def: Dictionary) -> bool:
+	# THE ONE STANDING GATE IN STAGE 5, and deliberately the only one. The
+	# fence is the faction-flavoured service — the Cantina's back room, the
+	# Void, the Long Haven — so it is the counter that plausibly knows your
+	# name. Market, outfitter and repair stay open at every standing: a hostile
+	# port that refused repairs would be a death trap, and that is a design
+	# decision nobody has made.
+	#
+	# GATES, NEVER PRICES (HORIZON-4 §9). This function returns a bool and no
+	# price function anywhere consults standing — which is what keeps the
+	# sellback/outfit guard rail (max sellback < min outfit_mult, swept
+	# pairwise by STATIONTEST) safe BY CONSTRUCTION rather than by re-proof at
+	# every band. NO PRICE MOVES WITH STANDING asserts it stays that way.
+	var owner := owner_of(port_def)
+	if owner == "" or not FactionDB.is_faction(owner):
+		return true
+	return GameState.faction_band(FactionDB.SURVEYOR, owner) != FactionDB.Band.HOSTILE
+
+
 static func _key(port_id: String, good: String) -> String:
 	return port_id + "|" + good
 

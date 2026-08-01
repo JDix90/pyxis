@@ -4345,3 +4345,193 @@ This is finding A8 of HORIZON-4 resolved the way the doc demanded — "the numbe
 will move, and it must be recorded rather than reasoned about" — and it is the
 second time this horizon that the honest answer was to measure, decide, and
 measure again rather than to argue about whether a change was neutral.
+
+## 51. Factions — stage 3, the engines own their systems
+
+Every ambient machine in a charted system now flies its host engine's flag.
+The sentries standing over the lanes, the waves that keep arriving, the probes
+an apex vents — all of it belongs to THE GNOMON, THE ARMILLARY or THE MERIDIAN,
+which retcons something that was always latent: the dead frontier's automata
+were never masterless, and silencing an engine is **taking a system off a
+government** rather than switching off a machine.
+
+The interdiction raiders become **THE TITHE**, pulled forward from stage 5
+because it costs one line and because stage 2a's picket parley exemption was
+guarding a case that could not occur while raiders were `feral` and the Cordon
+was neutral to `feral`. Crimson paint, a demand, a toll and a parley all
+shipped long before the faction layer; now they have an owner.
+
+**Bands 3 and 4 stay unflagged**, and that restraint is the design. The Reaches
+and the Quiet belong to the three powers nobody has a word for yet, and the
+shipped data already says so — `GUARD_DESIGNATION[3]` is *"UNFLAGGED — NO
+PATTERN ON FILE"* and `[4]` is *"UNREADABLE — IT DOES NOT ANSWER"*. Claiming
+them for a known faction now would spend stage 6's reveal early **and make the
+designation a lie.** `THE DEEP IS STILL UNCLAIMED` asserts the rule rather than
+a node, so a future band edit cannot quietly annex them.
+
+### The problem stage 3 creates, and the fix that was not enough
+
+A picket and a sentry are **the same machine** — both `Hostile`, both taking
+the system's `difficulty`, neither setting `hp_scale`:
+
+    120 hp against 14 damage every 1.15s = 12.17 dps -> 9.9 SECONDS to a kill
+
+and because `difficulty` scales hp and damage *together*, it is 9.9 seconds in
+every system. Left alone, the moment sentries became `gnomon` and pickets were
+already `gsa`, ambient skirmishing would have traded the Cordon away within half
+a minute of the player arriving — tier 1's entire visible payload deleting
+itself while the player was somewhere else.
+
+The disengage timeout (finding A6) is the obvious answer, and **on its own it
+does not work.** Breaking off does not undo damage: three six-second bursts
+still land 219 against 120. `AMBIENT COMBAT DEPLETES NOTHING` caught it at
+**census 9 → 5** in 54 unattended seconds, and it would have shipped otherwise
+looking entirely correct.
+
+So there is a second half. `SKIRMISH_HP_FLOOR` — fire from another combatant
+wears a machine down but **cannot take it below half hull**. A sentry sitting
+at half strength is visible evidence that the border is contested, which is the
+whole reason the routes were drawn to cross a post in the first place; the last
+half of any hull belongs to the player.
+
+> **The property this protects, stated once so nobody trades it away later:
+> ONLY THE PLAYER DEPLETES THE WORLD.** Sentries do not respawn, and that has
+> always been fine because clearing a post is work the player did. A world that
+> empties itself unwatched is a different thing, and not one anybody asked for.
+
+Census now holds 9 → 9, and red-verifies to 9 → 8 with the floor removed.
+
+### The floor's own trap, caught before the sweep
+
+Gated on *"the attacker is not the player"*, the floor would have caught
+`ApexBoss` scrapping its own pending probes — `take_damage(99999, self)` on a
+phase change — and left them alive at half hull **through the phase they exist
+to be cleared by**. It is gated on the `combatants` group instead, which
+`ApexBoss` is not in. The lesson generalises: "not the player" and "another
+combatant" are not the same set, and the gap between them is every machine that
+damages something without being a faction.
+
+### Three assertions re-aimed rather than weakened
+
+Making picket-vs-sentry combat real broke three checks written for a world
+where it was not. Each was rewritten to its actual claim:
+
+| was | is | why |
+|---|---|---|
+| `FERAL IS THE ONLY THING HUNTING YOU` | `ONE FLAG HUNTS YOU, AND IT OWNS THE SYSTEM` | `feral` is no longer in the sky at all; the surviving claim is *stronger* — exactly one player-hostile flag, and it is the host |
+| Cordon floor: target `== null` | target is **not the player** | a picket with sentries around it legitimately has a target; asserting emptiness fails on correct code and says nothing about the floor |
+| `PICKETS WALK THEIR BEAT` on a central route | same test in empty sky | it was measuring a firefight instead of a patrol |
+
+The first is the pattern worth naming: **when a stage makes an assertion's
+world obsolete, find the property that survived and state it more strongly.**
+Deleting the check loses the guarantee; loosening it keeps a check that cannot
+fail. This is the second time this horizon that widening produced a better
+assertion than the one it replaced.
+
+### §51 postscript — two numbers, measured rather than argued about
+
+Stage 3's sweep read `MIDTIER` at **2.95** against 2.92 the run before, and a
+5% jump in the derelict term. The instinct is to cut loot again. **Six samples
+of identical code say do not:** 2.84, 2.89, 2.90, 2.92, 2.94, 2.95 — mean
+**2.91**, exactly where it sat before stage 3. The derelict term alone swings
+4771–5339 per hull, ±6%, which is most of the spread.
+
+So the stage-2b compensation was right and stage 3 moved nothing. Tuning from
+the single 2.95 would have been the mistake §41 records this project making
+twice with `PHASE INTEGRITY` — setting a bar against one look at a
+distribution nobody had measured — with the sign flipped.
+
+**Write the spread down, because the ceiling is close.** `MIDTIER` is 2.91 ±
+0.05 against a hard 3.00, so a good roll reads 2.95 and real headroom is about
+0.04. Anyone adding income needs four samples, not one.
+
+The same session's `STREAMTEST` failure is the same shape. Its **mean** is
+stable across every sweep — 6.93, 6.97, 6.98, 7.37, 7.40ms — and did not move
+when stage 3 put NPC-vs-NPC combat into a live system. Its **worst** clause is
+a single-spike measure ranging 17–48ms against a bound of 40; it went red once
+in-sweep and passed 4 of 4 alone. That is a third flaky assertion, and the fix
+is the one §41 already describes: re-derive the bar from the distribution
+rather than nudge it until the sweep goes quiet. Recorded, not done.
+
+## 52. Factions — stage 4, THE MUSTER
+
+A massed column gathers 75u outside the charted volume and marches in. The
+Cordon amasses **at the chart edge** and holds the line there.
+
+### The fiction resolves the constitutional problem
+
+The band-1 beacon has promised since v13 that *"security patrols do not operate
+beyond this marker"*, DEEPTEST pins the words, and stage 2a turned them into an
+assertion about ships. A relief fleet sallying out to meet the column would
+break all three at once.
+
+So it does not sally. **The Cordon forms up ON the marker and waits.** The
+player can fly out and meet the column early — alone, past the line, exactly as
+the beacon warned — or stand with the Cordon and let it come. The event
+*teaches* the game's territorial rule instead of bending it, and `THE LINE IS
+THE EDGE` asserts no cordon ship is ever past the marker.
+
+The column comes down the **survey hull's bearing**, which already means
+"outside" in every system: the direction the hull drifted, the direction the
+unlock hint sends you, and now the direction things come from.
+
+### The march
+
+`SwarmHostile` gained its first non-orbit movement. Everything it has ever done
+is expressed relative to a thing it is circling; a column is expressed relative
+to a *place*, at 2.8u/s — `MAX_SPEED` 7.5 would cross 75u in ten seconds and
+the event would be over before the advisory finished reading.
+
+It is held until something is genuinely in reach, checked against
+`ATTACK_RANGE`, not against "has a target": `_combat_target` returns the
+nearest hated thing at *any* distance, so a column that halted the moment it
+could see the far side of the line would never cross at all.
+
+### Set-piece ships are exempt from the ambient floor
+
+§51's `SKIRMISH_HP_FLOOR` exists so the world does not empty itself unwatched.
+A muster is announced, bounded and cleaned up after — and **supposed to
+resolve.** A line that could not break and a column that could not be stopped
+would be two crowds of machines shooting each other forever, which is the
+opposite of a set-piece.
+
+### Nothing bankable, and the printer that revealed
+
+The muster drops no loot, pays no salvage, and reports kills as `"muster"` —
+a kind no contract in `contract_db` asks for, so the fastest `kill_swarm`
+filler in the game cannot be farmed. `PACING_LOOP` sits at 97% of its ceiling
+and a recurring event that paid would be recurring income whatever it was
+called.
+
+Writing that gate exposed **a money printer stage 2a shipped.**
+`Hostile._die` paid loot and kill credit on *any* player kill, so a Cordon
+picket was worth 14 crates and a `kill_sentry` tick. Pickets never return fire
+— the WARY floor guarantees it — and they **rebuild on every `_load_system`**.
+Warp out and back and you minted a fresh row of non-retaliating piñatas on
+demand. That is §27's deep-hulk printer with a badge on.
+
+The rule is now three questions, not one:
+
+    1. did the PLAYER do it        (stage 1's attribution)
+    2. was it HOSTILE to them      (closes the picket printer)
+    3. is it a MUSTER ship         (closes the event)
+
+and shooting something that was not shooting at you costs standing instead.
+
+### Radar clusters by force
+
+32 machines on a 12-marker board is a border of identical arrows. A muster
+renders **one marker per force**, at the centroid, by marking every muster node
+`seen` — the dedup mechanism that already existed — so the cap is sidestepped
+rather than the tier system reworked.
+
+### The assertion that was passing on timing
+
+`THE MUSTER CARRIES NOTHING` originally ran *after* the budget sweep. That loop
+runs until the column is exhausted, so the muster had often already resolved
+and there was nothing left to shoot: it reported `-1 cubes` and passed or
+failed on timing rather than on the payout ban. Moved above the sweep, the
+red-verify reports the real failure — **2 cubes dropped**.
+
+That is the fourth green-assertion-testing-nothing this project has caught, and
+the third this horizon. The tell each time was the same: **elaborate setup.**

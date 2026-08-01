@@ -53,6 +53,9 @@ const ARCHETYPES := [
 		"id": "deep_relay",
 		"name": "SHOAL RELAY",
 		"kind": "station",
+		# v18 stage 5: the frontier homesteaders. "Somebody has to be first out"
+		# was always the League's line.
+		"owner": "league",
 		"min_band": 1,
 		"freeport": true,
 		"blurb": "A fuel spar and a shopfront. Somebody has to be first out.",
@@ -68,6 +71,7 @@ const ARCHETYPES := [
 		"id": "deep_haven",
 		"name": "THE LONG HAVEN",
 		"kind": "den",
+		"owner": "grin",
 		"min_band": 2,
 		"freeport": true,
 		"blurb": "Nobody here asks what is in the crate.",
@@ -87,6 +91,7 @@ const ARCHETYPES := [
 		"id": "deep_forge",
 		"name": "THE COLD FORGE",
 		"kind": "depot",
+		"owner": "combine",
 		"min_band": 2,
 		"freeport": false,
 		"blurb": "Somebody's yard, a long way from anybody's law.",
@@ -110,6 +115,7 @@ const ARCHETYPES := [
 		"id": "deep_yard",
 		"name": "BLACKWATCH YARD",
 		"kind": "military",
+		"owner": "bastion",
 		"min_band": 3,
 		"freeport": false,
 		"blurb": "Guns for the places nobody is coming to help you.",
@@ -130,6 +136,11 @@ const ARCHETYPES := [
 		"id": "deep_watch",
 		"name": "THE LAST WATCH",
 		"kind": "cantina",
+		# NO OWNER, DELIBERATELY, and do not "fix" it. "Still lit. Nobody is
+		# sure who is paying for it" is the hook stage 6 spends — the intended
+		# answer is one of the three unknowns, and assigning it to a known
+		# faction now would spend the best mystery in the port data on
+		# tidiness. THE WATCH ANSWERS TO NOBODY asserts this stays true.
 		"min_band": 4,
 		"freeport": true,
 		"blurb": "Still lit. Nobody is sure who is paying for it.",

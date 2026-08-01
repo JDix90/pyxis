@@ -105,6 +105,11 @@ const SYSTEMS := {
 			"id": "anchor",
 			"name": "WAYPOINT ANCHOR",
 			"kind": "station",
+			# v18 stage 5. WHO RUNS THE DESK. The five port-grown factions get
+			# their names on doors they already own (HORIZON-4 §3); standing with
+			# the owner is what the fence gate and the dock line read. The
+			# Anchor is the Authority's — it carries the Commission desk.
+			"owner": "gsa",
 			"pos": Vector3(-17, 0, 7),
 			"freeport": true,
 			"bias": {},
@@ -133,6 +138,7 @@ const SYSTEMS := {
 				"id": "cantina",
 				"name": "THE EMBERS CANTINA",
 				"kind": "cantina",
+				"owner": "embers",
 				"pos": Vector3(12, 0, 26),
 				"freeport": true,
 				# The demand end of the contraband route: an entertainment
@@ -254,6 +260,7 @@ const SYSTEMS := {
 			"id": "cinderworks",
 			"name": "CINDERWORKS",
 			"kind": "colony",
+			"owner": "combine",
 			"pos": Vector3(27, 0, 14),
 			"freeport": false,
 			"bias": {"alloys": 0.68, "volatiles": 0.72, "isotopes": 1.35, "cores": 1.25, "relics": 1.05},
@@ -269,6 +276,7 @@ const SYSTEMS := {
 				"id": "depot",
 				"name": "FORGELINE DEPOT",
 				"kind": "depot",
+				"owner": "combine",
 				"pos": Vector3(-31, 0, 27),
 				"freeport": false,
 				"bias": {"alloys": 0.80, "volatiles": 0.85, "isotopes": 1.20, "cores": 1.15, "relics": 1.0},
@@ -355,6 +363,7 @@ const SYSTEMS := {
 			"id": "bastion",
 			"name": "BASTION YARDS",
 			"kind": "military",
+			"owner": "bastion",
 			"pos": Vector3(-19, 0, 13),
 			"freeport": false,
 			"bias": {"alloys": 1.30, "volatiles": 1.10, "isotopes": 0.75, "cores": 0.95, "relics": 1.40},
@@ -372,6 +381,7 @@ const SYSTEMS := {
 				"id": "void",
 				"name": "THE GRINNING VOID",
 				"kind": "den",
+				"owner": "grin",
 				"pos": Vector3(30, 0, 24),
 				"freeport": true,
 				# The supply end: the Void is where contraband comes from, so it

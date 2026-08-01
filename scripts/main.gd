@@ -193,6 +193,76 @@ const TOLL_FRACTION := 0.15
 const TOLL_FLOOR := 400
 const PARLEY_WINDOW := 6.0
 
+# --- THE MUSTER (v18, stage 4) -----------------------------------------------
+# A massed swarm gathers 75u outside the charted volume and marches in; the
+# Cordon amasses at the chart edge and holds the line there.
+#
+# THE FICTION RESOLVES THE CONSTITUTIONAL PROBLEM. The band-1 beacon has
+# promised since v13 that "security patrols do not operate beyond this marker",
+# DEEPTEST pins the words, and stage 2a turned them into an assertion about
+# ships. So the Cordon does NOT sally out to meet the column: it forms up ON the
+# marker and waits. A player can fly out and meet the column early — alone, past
+# the line, exactly as the beacon warned — or stand with the Cordon. The event
+# teaches the game's territorial rule instead of bending it.
+#
+# The column comes down the SURVEY HULL'S BEARING, which is already "the wound"
+# in each system: the direction the derelict drifted, the direction the unlock
+# hint sends you, and now the direction things come from.
+const MUSTER_ROLL_INTERVAL := 300.0
+const MUSTER_CHANCE := 0.25
+# Minimum spacing, independent of the roll. At a 25% chance every five minutes
+# the gap between musters is geometric and can be two rolls; a hard floor stops
+# the rare double from reading as a bug.
+const MUSTER_COOLDOWN := 420.0
+# Between the warning and the first ship. Long enough to finish reading the
+# broadcast, close a console, and decide whether to fly out or stay in.
+const MUSTER_WARN := 45.0
+const MUSTER_DEPTH := 75.0
+# THE ENTITY BUDGET, and it is provisional until measured on the phone target.
+# SwarmHostile's separation scan is O(n^2) over the whole `swarm` group every
+# physics tick, and the biggest thing that ships today is PYX-02's cap of 16.
+# 24 is 2.25x that in checks; the line adds 8 more machines that do not join
+# `swarm` at all. THE BUDGET HOLDS asserts the live count never passes the sum.
+const MUSTER_COLUMN := 24
+const MUSTER_LINE := 8
+# Fed in waves rather than dropped at once: 24 ships appearing on one frame is
+# a hitch, and a column that arrives in ranks reads as a column.
+const MUSTER_WAVE := 6
+const MUSTER_WAVE_GAP := 7.0
+# Distinct paint. The column is CHAFF — hollow airframes, a weapon rather than a
+# cargo run — and it carries nothing. Saying that in colour as well as in the
+# broadcast is what stops the player learning to expect a payout that is not
+# coming.
+const MUSTER_TINT := Color(0.95, 0.85, 0.25)
+
+# --- THE PROCESSION (v18, stage 5) -------------------------------------------
+# The nomad fleet: the known faction that shows up rather than sits still. Its
+# smallest real form is a dockable, non-combat convoy that visits one system
+# per window and moves on — a MOVING PORT, reusing Port.def exactly the way
+# deep stations do, so it needs no new panel, no new class, and (crucially) no
+# entry in SystemDB: the market-event roll, the rumour loop and STATIONTEST's
+# registry sweeps never learn it exists, so it cannot start a shortage at the
+# Anchor by construction.
+#
+# WHERE IT IS IS A PURE FUNCTION of (window, run_seed) — the lair_pos
+# discipline. No save state, no spawn timer to persist: the same window in the
+# same run always answers the same system, so it is deterministic within a run
+# and fresh across runs, and a reload cannot duplicate or strand it.
+const PROCESSION_PERIOD := 1200.0     # one window ~= twenty minutes of play
+const PROCESSION_DEF := {
+	"id": "procession",
+	"name": "THE PROCESSION",
+	"kind": "convoy",
+	"owner": "procession",
+	"freeport": true,
+	# A market only — no fence, no outfitter, no repair. They trade what the
+	# deep produces and owe nobody a service. Biases are the pilgrim shape:
+	# they prize relics and carry cores to spare.
+	"services": ["market"],
+	"bias": {"relics": 1.30, "cores": 0.85, "isotopes": 1.10},
+	"stock": [],
+}
+
 # Unstable rifts: roughly one per twenty minutes of play, never two at once,
 # always in the current system at a depth reachable within the rift's own life.
 const RIFT_ROLL_INTERVAL := 240.0
@@ -250,6 +320,18 @@ var _parley_toll := 0
 var _parley_until := 0.0
 var _rift_timer := RIFT_ROLL_INTERVAL
 var live_rift: Rift = null
+
+var _muster_timer := MUSTER_ROLL_INTERVAL
+var _muster_cooldown := 0.0
+var _muster_warn := -1.0
+var _muster_active := false
+var _muster_point := Vector3.ZERO      # where the line forms, on the chart edge
+var _muster_origin := Vector3.ZERO     # where the column gathers, 75u out
+var _muster_released := 0
+var _muster_wave_t := 0.0
+
+var _procession: Port = null
+var _procession_window := -1
 
 
 func _ready() -> void:
@@ -918,6 +1000,9 @@ func _load_system(id: String) -> void:
 	# that a freed reference compares equal to null — it does, and relying on
 	# that subtlety is how the next bug hides.
 	live_rift = null
+	# The convoy died with it too, same rule. _tick_procession will re-seat it
+	# if this window's system is the one being loaded.
+	_procession = null
 	_raid_timer = RAID_ROLL_INTERVAL
 
 	for child in system_root.get_children():
@@ -1313,7 +1398,247 @@ func interdiction_eligible() -> bool:
 		and docked_port == null \
 		and (not console_open() or console_camping()) \
 		and not _raid_active \
+		and not muster_active() \
 		and _raid_cooldown <= 0.0
+
+
+func procession_system(window: int) -> String:
+	# Which system the convoy visits in a given window. Pure — the builder, the
+	# harness and any future rumour desk must all agree, and hash(window|seed)
+	# draws nothing from any stream the world rolls on.
+	var ids := SystemDB.ids()
+	ids.sort()   # dictionary key order is not a contract; the route is
+	return String(ids[hash("%d|procession|%d" % [window, GameState.run_seed]) % ids.size()])
+
+
+func _tick_procession() -> void:
+	var window := int(GameState.played_seconds / PROCESSION_PERIOD)
+	var here: bool = procession_system(window) == system_id \
+		and state == State.PLAYING and not tutorial_active()
+	var live := _procession != null and is_instance_valid(_procession)
+
+	if here and not live:
+		var p := Port.new()
+		p.port_id = "procession"
+		p.port_name = "THE PROCESSION"
+		p.kind = "convoy"
+		p.def = PROCESSION_DEF.duplicate(true)
+		system_root.add_child(p)
+		# Parked at two-thirds bounds on a bearing the window picks — off the
+		# lanes, inside the chart, nudged out of anything solid. Not a
+		# collision sphere of its own: a convoy you can fly through is wrong,
+		# but a convoy that blocks a lane for twenty minutes is worse, and
+		# stage 5 keeps the smallest honest version.
+		var ang := TAU * float(hash("%d|procession_ang" % window) % 360) / 360.0
+		p.position = Obstacles.resolve(
+			Vector3(cos(ang), 0.0, sin(ang)) * SystemDB.bounds_of(system_id) * 0.66,
+			Port.HULL_OBSTACLE_RADIUS)
+		_procession = p
+		_procession_window = window
+		if hud:
+			hud.show_toast("THE PROCESSION IS HERE", Palette.GOLD)
+		GameState.note_log("THE PROCESSION — IN %s" % SystemDB.get_system(system_id).get("name", system_id))
+	elif live and (not here or window != _procession_window):
+		# It moves on — unless the player is docked at it, in which case it
+		# waits for them to leave. A market that vanished under an open sheet
+		# would strand the panel on a freed node.
+		if docked_port != _procession:
+			_procession.queue_free()
+			_procession = null
+
+
+func muster_active() -> bool:
+	return _muster_active or _muster_warn > 0.0
+
+
+func muster_eligible() -> bool:
+	# The same posture as interdiction_eligible, for the same reason: an event
+	# that begins behind a console, during a cutscene, or on top of another
+	# event is not tense, it is unfair. A muster also refuses while a raid is
+	# live — two klaxons and two spawn systems on one screen is noise, and the
+	# rift already established that events in this game do not overlap.
+	return state == State.PLAYING \
+		and not warping \
+		and not boss_active \
+		and not tutorial_active() \
+		and not _raid_active \
+		and not muster_active() \
+		and _muster_cooldown <= 0.0 \
+		and deep_depth() <= 0.0
+
+
+func _tick_muster(delta: float) -> void:
+	if _muster_cooldown > 0.0:
+		_muster_cooldown -= delta
+
+	if _muster_warn > 0.0:
+		_muster_warn -= delta
+		if _muster_warn <= 0.0:
+			_muster_warn = -1.0
+			_open_muster()
+		return
+
+	if _muster_active:
+		_tick_muster_battle(delta)
+		return
+
+	_muster_timer -= delta
+	if _muster_timer <= 0.0:
+		_muster_timer = MUSTER_ROLL_INTERVAL
+		if muster_eligible() and randf() < MUSTER_CHANCE:
+			_warn_muster()
+
+
+func _muster_bearing() -> Vector3:
+	# The survey hull's bearing — the direction that already means "outside" in
+	# this system. Derived from SystemDB.derelict_pos so the column, the hull
+	# and the tutorial's assignment broadcast all name one direction.
+	var hull := SystemDB.derelict_pos(system_id)
+	var flat := Vector3(hull.x, 0.0, hull.z)
+	if flat.length() < 0.01:
+		return Vector3(0, 0, -1)
+	return flat.normalized()
+
+
+func _warn_muster() -> void:
+	var dir := _muster_bearing()
+	_muster_point = dir * chart_edge()
+	_muster_origin = dir * (chart_edge() + MUSTER_DEPTH)
+	_muster_warn = MUSTER_WARN
+	var deg := int(round(fposmod(rad_to_deg(atan2(dir.z, dir.x)), 360.0)))
+	if hud:
+		hud.show_broadcast("CORDON ADVISORY — MASS CONTACT",
+			"Massed unflagged contacts forming %du beyond the marker, bearing %03d. "
+				% [int(MUSTER_DEPTH), deg]
+			+ "The cordon is standing to at the edge of charted space. We do not "
+			+ "operate past the marker and we are not coming out. Hold the line "
+			+ "with us or stay clear of it.", Palette.THREAT)
+	GameState.note_log("CORDON ADVISORY — MASS CONTACT BEARING %03d" % deg)
+
+
+func _open_muster() -> void:
+	# The line forms first, so the player sees the Cordon standing to before
+	# anything appears out in the dark.
+	_muster_active = true
+	_muster_released = 0
+	_muster_wave_t = 0.0
+	var side := Vector3(-_muster_bearing().z, 0.0, _muster_bearing().x)
+	for i in range(MUSTER_LINE):
+		var g := Hostile.new()
+		g.faction = "gsa"
+		g.muster = true
+		g.difficulty = float(system_def.get("difficulty", 1.0))
+		system_root.add_child(g)
+		# Strung out ACROSS the bearing rather than clustered on it: a line is a
+		# line, and eight machines in a heap would read as a nest.
+		g.global_position = _muster_point \
+			+ side * ((float(i) - float(MUSTER_LINE - 1) * 0.5) * 3.4) \
+			- _muster_bearing() * 2.0
+		g.add_to_group("muster_line")
+	if hud:
+		hud.show_toast("THE CORDON IS STANDING TO", Palette.TEAL)
+	Sfx.play("klaxon", -10.0, 0.9)
+	_release_muster_wave()
+
+
+func _release_muster_wave() -> void:
+	var n := mini(MUSTER_WAVE, MUSTER_COLUMN - _muster_released)
+	if n <= 0:
+		return
+	var side := Vector3(-_muster_bearing().z, 0.0, _muster_bearing().x)
+	var host := SystemDB.faction_of(system_id)
+	for i in range(n):
+		var c := SwarmHostile.new()
+		c.faction = host
+		c.muster = true
+		c.tint = MUSTER_TINT
+		c.difficulty = float(system_def.get("difficulty", 1.0))
+		c.march_to = _muster_point
+		# NO despawn_radius. A column is not a nest that followed the player out
+		# and it must not evaporate because they flew home to watch from the
+		# dock; the event ends when the event ends.
+		system_root.add_child(c)
+		c.global_position = _muster_origin \
+			+ side * randf_range(-9.0, 9.0) \
+			+ _muster_bearing() * randf_range(-4.0, 4.0)
+		c.add_to_group("muster_column")
+	_muster_released += n
+	FX.ring_pulse(self, _muster_origin, MUSTER_TINT, 6.0, 1.0)
+
+
+func _muster_census(group: String) -> int:
+	var n := 0
+	for node in get_tree().get_nodes_in_group(group):
+		if is_instance_valid(node):
+			n += 1
+	return n
+
+
+func _tick_muster_battle(delta: float) -> void:
+	_muster_wave_t -= delta
+	if _muster_wave_t <= 0.0 and _muster_released < MUSTER_COLUMN:
+		_muster_wave_t = MUSTER_WAVE_GAP
+		_release_muster_wave()
+
+	var column := _muster_census("muster_column")
+	# THE LINE BREAKS when a column ship gets inside the marker. Measured on
+	# depth rather than on distance to the line point, because the line is the
+	# CHART EDGE and a ship that went round the end of it has still crossed.
+	var breached := false
+	for node in get_tree().get_nodes_in_group("muster_column"):
+		var n := node as Node3D
+		if is_instance_valid(n) and deep_space != null \
+				and deep_space.depth_at(n.global_position) <= 0.0:
+			breached = true
+			break
+	if breached:
+		_close_muster(false)
+		return
+	if _muster_released >= MUSTER_COLUMN and column == 0:
+		_close_muster(true)
+
+
+func _close_muster(held: bool) -> void:
+	_muster_active = false
+	_muster_cooldown = MUSTER_COOLDOWN
+	_muster_warn = -1.0
+	for group in ["muster_column", "muster_line"]:
+		for node in get_tree().get_nodes_in_group(group):
+			var n := node as Node3D
+			if not is_instance_valid(n):
+				continue
+			# Out of the muster groups FIRST. depart() sheds the combat groups
+			# and then tweens for 1.8s before freeing, so a ship that is
+			# visually leaving would otherwise still be counted by
+			# _muster_census for almost two seconds — and the census is what
+			# decides whether the next muster's budget is clear.
+			n.remove_from_group(group)
+			if n.has_method("depart"):
+				n.depart()          # theater, no loot, no credit — the paid exit
+			else:
+				n.queue_free()
+	if held:
+		if hud:
+			hud.show_broadcast("CORDON — LINE HELD",
+				"The contact is broken up. Charted space is intact. The Authority "
+				+ "notes the assistance of every vessel that stood with us.",
+				Palette.GOLD)
+		GameState.note_log("THE LINE HELD")
+		# Standing, not salvage. The muster pays nothing bankable by design —
+		# HORIZON-4 §8, and PACING_LOOP is at 97% of its ceiling.
+		GameState.shift_faction(FactionDB.SURVEYOR, "gsa", 1)
+	else:
+		if hud:
+			hud.show_broadcast("CORDON — LINE BROKEN",
+				"Contacts are through the marker and dispersing into charted "
+				+ "space. Expect elevated activity until we can re-form.",
+				Palette.THREAT)
+		GameState.note_log("THE LINE BROKE")
+		# The consequence, expressed through a knob that already exists rather
+		# than through a new punishment: the survivors dissolve into ordinary
+		# wave pressure that arrives faster for a while. No port lockdowns, no
+		# damage states — 14's "weather, not a tax".
+		_wave_timer = minf(_wave_timer, 3.0)
 
 
 func interdiction_taper() -> float:
@@ -1426,6 +1751,13 @@ func pay_toll() -> void:
 		return
 	GameState.note_ledger("tolls_paid", 1)
 	GameState.note_log("TOLL PAID — %s IN CARGO" % _comma_int(taken))
+	# v18 stage 5. The Tithe remembers being paid. +1 per toll, through the one
+	# mutator, bounded by DELTA_SPAN like everything else — and it cannot reach
+	# FRIENDLY patrols or discounts because nothing reads tithe standing yet;
+	# §9's raid-odds question stays deliberately open. What this buys today is
+	# the LOG LINE and the arc: a player who always pays is someone the banner
+	# knows, and when a later stage does read the number, the history is real.
+	GameState.shift_faction(FactionDB.SURVEYOR, "tithe", 1)
 	_parley_until = 0.0
 	for node in get_tree().get_nodes_in_group("raider"):
 		if node.has_method("depart"):
@@ -1717,6 +2049,9 @@ func _tick_market(delta: float) -> void:
 		_rift_timer = RIFT_ROLL_INTERVAL
 		if randf() < RIFT_CHANCE:
 			spawn_rift()
+
+	_tick_muster(delta)
+	_tick_procession()
 
 	_event_roll_timer -= delta
 	if _event_roll_timer <= 0.0:
@@ -12844,6 +13179,246 @@ func _run_faction_test() -> void:
 	for n in [red, blue]:
 		if is_instance_valid(n):
 			n.queue_free()
+
+	# --- 19. THE MUSTER --------------------------------------------------------
+	#     Driven through the REAL event rather than by hand-placing ships: the
+	#     claims are about what the event does, and a staged tableau would prove
+	#     only that a tableau can be built.
+	GameState.reset_to_starter()
+	GameState.run_seed = RUN_SEED_PINNED
+	_muster_cooldown = 0.0
+	_muster_timer = 1.0e9        # no spontaneous second muster mid-measurement
+	var salv_before := GameState.salvage
+	var log_before := GameState.log_lines().size()
+
+	# WARNING PRECEDES SPAWN. The 45s advisory is the whole reason the event is
+	# not an ambush, so "nothing exists yet" is the assertion, not a nicety.
+	_warn_muster()
+	await get_tree().process_frame
+	var early := _muster_census("muster_column") + _muster_census("muster_line")
+	var warned: bool = _muster_warn > 0.0 and muster_active()
+	print("[faction] WARNING PRECEDES SPAWN advisory live=%s, ships in the sky during the warning=%d -> %s" % [
+		str(warned), early, "PASS" if warned and early == 0 else "FAIL"])
+
+	# AND IT BLOCKS AN INTERDICTION. Two klaxons and two spawn systems on one
+	# screen is the collision finding A5 names.
+	print("[faction] ONE EVENT AT A TIME interdiction eligible during a muster=%s -> %s" % [
+		str(interdiction_eligible()),
+		"PASS" if not interdiction_eligible() else "FAIL"])
+
+	# Skip the wait rather than sit through it: the advisory's LENGTH is a feel
+	# number, and what this suite measures is what happens on either side of it.
+	_muster_warn = 0.01
+	await get_tree().create_timer(0.4).timeout
+
+	# THE LINE IS THE EDGE. The band-1 beacon has promised since v13 that
+	# patrols do not operate past the marker; stage 2a made that an assertion
+	# about pickets, and the muster is the one event that could quietly break it
+	# by spawning a fleet outside to meet the column.
+	var line_depth_worst := -1.0e9
+	for node in get_tree().get_nodes_in_group("muster_line"):
+		var n := node as Node3D
+		if is_instance_valid(n) and deep_space != null:
+			line_depth_worst = maxf(line_depth_worst, deep_space.depth_at(n.global_position))
+	var column_out := 0
+	for node in get_tree().get_nodes_in_group("muster_column"):
+		var n2 := node as Node3D
+		if is_instance_valid(n2) and deep_space != null \
+				and deep_space.depth_at(n2.global_position) > 0.0:
+			column_out += 1
+	print("[faction] THE LINE IS THE EDGE deepest cordon ship %.1fu past the marker (must be <= 0), %d column ships outside it -> %s" % [
+		line_depth_worst, column_out,
+		"PASS" if line_depth_worst <= 0.0 and column_out > 0 else "FAIL"])
+
+	# ORDER MATTERS HERE. This runs BEFORE the budget sweep below, because that
+	# loop runs until the column is exhausted — and a muster that resolves during
+	# it leaves nothing alive to shoot, which made this check report "-1 cubes"
+	# and pass or fail on timing rather than on the payout ban.
+	# THE MUSTER CARRIES NOTHING. Both halves in one measurement: a column ship
+	# killed BY THE PLAYER drops no crate and ticks no contract. Either clause
+	# alone passes on broken code — "pays nothing" is satisfied by an economy
+	# that pays nobody.
+	var muster_kills := [0]
+	var muster_tally := func(kind: String) -> void:
+		if kind == "muster":
+			muster_kills[0] += 1
+	hostile_killed.connect(muster_tally)
+	var contract_seen := [0]
+	var contract_tally := func(_k: String) -> void: contract_seen[0] += 1
+	if contracts != null:
+		hostile_killed.connect(contract_tally)
+	_clear_loot_cubes()
+	var victim: Node3D = null
+	for node in get_tree().get_nodes_in_group("muster_column"):
+		if is_instance_valid(node):
+			victim = node as Node3D
+			break
+	var pilot2: PlayerShip = get_tree().get_first_node_in_group("player")
+	var cubes_after := -1
+	if victim != null and pilot2 != null:
+		victim.take_damage(99999.0, pilot2)
+		await get_tree().process_frame
+		cubes_after = _count_loot_cubes()
+	hostile_killed.disconnect(muster_tally)
+	if contracts != null:
+		hostile_killed.disconnect(contract_tally)
+	var no_contract := not ContractDB.CONTRACTS.keys().any(
+		func(k: String) -> bool:
+			return String(ContractDB.CONTRACTS[k].get("kind", "")) == "kill_muster")
+	print("[faction] THE MUSTER CARRIES NOTHING player-killed a column ship: %d cubes, reported kind counted as muster=%d, any contract wants kill_muster=%s -> %s" % [
+		cubes_after, muster_kills[0], str(not no_contract),
+		"PASS" if cubes_after == 0 and muster_kills[0] == 1 and no_contract else "FAIL"])
+
+	# THE BUDGET HOLDS. Measured at the PEAK across the whole event, because a
+	# wave-fed spawner's worst moment is not its first: run until the column is
+	# fully released and watch the live count the whole way.
+	var peak := 0
+	var watch := 0.0
+	while watch < MUSTER_WAVE_GAP * (float(MUSTER_COLUMN) / float(MUSTER_WAVE) + 1.0):
+		await get_tree().create_timer(0.25).timeout
+		watch += 0.25
+		peak = maxi(peak, _muster_census("muster_column") + _muster_census("muster_line"))
+		if not _muster_active:
+			break
+	print("[faction] THE BUDGET HOLDS peak live muster ships %d vs budget %d (column %d + line %d) -> %s" % [
+		peak, MUSTER_COLUMN + MUSTER_LINE, MUSTER_COLUMN, MUSTER_LINE,
+		"PASS" if peak > 0 and peak <= MUSTER_COLUMN + MUSTER_LINE else "FAIL"])
+
+	# ORDINARY WAVES ARE UNTOUCHED (finding A7). The muster must not overload
+	# `boss_active` or the wave gate — that would lock HUD panels for an event
+	# the player may be nowhere near, and BOSSTEST's WAVES RESUMED already
+	# polices the second pause-source.
+	print("[faction] ORDINARY WAVES ARE UNTOUCHED panels locked=%s during a live muster (must be false) -> %s" % [
+		str(boss_active), "PASS" if not boss_active else "FAIL"])
+
+	# And it pays no salvage, whatever else it does.
+	_close_muster(true)
+	await get_tree().create_timer(0.3).timeout
+	var still_live := _muster_census("muster_column") + _muster_census("muster_line")
+	print("[faction] THE MUSTER PAYS NO SALVAGE salvage %d -> %d, outcome logged=%s, ships still counted after close=%d (must be 0) -> %s" % [
+		salv_before, GameState.salvage,
+		str(GameState.log_lines().size() > log_before), still_live,
+		"PASS" if GameState.salvage == salv_before and still_live == 0 else "FAIL"])
+	_muster_cooldown = 0.0
+	_muster_timer = 1.0e9
+
+	# --- 20. STAGE 5: the desks, the gate, and the convoy ----------------------
+	_clear_faction_matrix()
+
+	# EVERY DESK HAS AN OWNER, AND THE WATCH HAS NONE. Swept over the authored
+	# tables, both of them, because ownership is what the dock line and the
+	# fence gate read — an unowned port is silently ungated, which is correct
+	# for exactly one address in the game. The exemption is asserted BY NAME:
+	# "some port may be unowned" is a rule that cannot fail.
+	var unowned_ports: Array = []
+	for sid_v in SystemDB.ids():
+		for pd_v in SystemDB.ports_of(String(sid_v)):
+			var pd: Dictionary = pd_v
+			var o := Market.owner_of(pd)
+			if o == "" or not FactionDB.is_faction(o):
+				unowned_ports.append(String(pd.get("id", "?")))
+	for arch_v in DeepPortDB.ARCHETYPES:
+		var arch: Dictionary = arch_v
+		var od := Market.owner_of(arch)
+		if od == "" or not FactionDB.is_faction(od):
+			unowned_ports.append(String(arch.get("id", "?")))
+	print("[faction] EVERY DESK HAS AN OWNER unowned=%s (must be exactly deep_watch) -> %s" % [
+		str(unowned_ports),
+		"PASS" if unowned_ports == ["deep_watch"] else "FAIL"])
+
+	# THE FENCE REMEMBERS, driven through the REAL gate at the real band. And
+	# BASELINE FENCES ARE OPEN: PACINGTEST's best-route search sells fenced
+	# goods, so a baseline that closed any fence would un-fly the measured
+	# route and move the binding MIDTIER for a reason nobody asked for.
+	var void_def := SystemDB.port_def_by_id("void")
+	var open_baseline := Market.fence_open(void_def)
+	for i in range(200):
+		GameState.shift_faction(FactionDB.SURVEYOR, "grin", -5)
+	var shut_hostile := not Market.fence_open(void_def)
+	_clear_faction_matrix()
+	var all_open := true
+	for sid_v2 in SystemDB.ids():
+		for pd_v2 in SystemDB.ports_of(String(sid_v2)):
+			if not Market.fence_open(pd_v2):
+				all_open = false
+	print("[faction] THE FENCE REMEMBERS open at baseline=%s, shut at HOSTILE=%s, every fence open at pinned state=%s -> %s" % [
+		str(open_baseline), str(shut_hostile), str(all_open),
+		"PASS" if open_baseline and shut_hostile and all_open else "FAIL"])
+
+	# NO PRICE MOVES WITH STANDING — the assertion that turns "gates, never
+	# prices" from a promise into a property. Every good at one chart port and
+	# one deep archetype, priced at baseline and at both extremes, must match
+	# to the credit. This is what keeps STATIONTEST's sellback/outfit guard
+	# rail safe by construction instead of by re-proof at every band.
+	var price_moved := ""
+	var cantina_def := SystemDB.port_def_by_id("cantina")
+	var probe_defs := [void_def, cantina_def, DeepPortDB.by_id("deep_haven")]
+	var base_prices := {}
+	for d_v in probe_defs:
+		var d: Dictionary = d_v
+		for g_v in CommodityDB.ids():
+			var g := String(g_v)
+			base_prices["%s|%s" % [d.get("id"), g]] = [
+				Market.buy_price(d, String(d.get("id")), g, 1),
+				Market.sell_price(d, String(d.get("id")), g, 1)]
+	for extreme in [12, -24]:
+		GameState.shift_faction(FactionDB.SURVEYOR, "grin", extreme)
+		GameState.shift_faction(FactionDB.SURVEYOR, "embers", extreme)
+		for d_v2 in probe_defs:
+			var d2: Dictionary = d_v2
+			for g_v2 in CommodityDB.ids():
+				var g2 := String(g_v2)
+				var key := "%s|%s" % [d2.get("id"), g2]
+				var now := [Market.buy_price(d2, String(d2.get("id")), g2, 1),
+					Market.sell_price(d2, String(d2.get("id")), g2, 1)]
+				if now != base_prices[key] and price_moved == "":
+					price_moved = "%s at shift %d: %s -> %s" % [key, extreme,
+						str(base_prices[key]), str(now)]
+	_clear_faction_matrix()
+	print("[faction] NO PRICE MOVES WITH STANDING %d goods x 3 desks x 2 extremes, first divergence: %s -> %s" % [
+		CommodityDB.ids().size(), "none" if price_moved == "" else price_moved,
+		"PASS" if price_moved == "" else "FAIL"])
+
+	# THE CONVOY KEEPS ITS SCHEDULE, AND THE REGISTRY NEVER LEARNS ITS NAME.
+	# Purity: the same window answers the same system, always. Coverage: over
+	# many windows it visits more than one system, or "moving port" is a lie.
+	# And it must never enter SystemDB.port_ids(), which feeds the market-event
+	# roll and the rumour loop — the same isolation the deep ports rely on.
+	var w_same: bool = procession_system(7) == procession_system(7)
+	# `route_seen`, not `visited` — section 12 already owns that name, and
+	# GDScript scopes variables to the whole function. The same collision
+	# already cost one boot-refusing parse error this horizon (`charted`).
+	var route_seen := {}
+	for w in range(40):
+		route_seen[procession_system(w)] = true
+	var registered: bool = SystemDB.port_ids().has("procession")
+	print("[faction] THE CONVOY KEEPS ITS SCHEDULE window-stable=%s, %d systems over 40 windows, in the port registry=%s -> %s" % [
+		str(w_same), route_seen.keys().size(), str(registered),
+		"PASS" if w_same and route_seen.keys().size() >= 2 and not registered else "FAIL"])
+
+	# STANDING IS VISIBLE — against the RENDERED sheet, because preview_stats
+	# taught this project that correct numbers can fail to reach a screen. The
+	# dock line must show the same band the gate reads, and must CHANGE when
+	# the matrix does.
+	var cantina_port: Port = null
+	for node in get_tree().get_nodes_in_group("dockable"):
+		if node is Port and (node as Port).port_id == "cantina":
+			cantina_port = node as Port
+			break
+	var visible_ok := false
+	var visible_moves := false
+	if cantina_port != null and port_panel != null:
+		port_panel.open_for(cantina_port)
+		visible_ok = _panel_text_contains(port_panel, "STANDING: NEUTRAL")
+		for i in range(200):
+			GameState.shift_faction(FactionDB.SURVEYOR, "embers", -5)
+		port_panel._refresh()
+		visible_moves = _panel_text_contains(port_panel, "STANDING: HOSTILE")
+		port_panel.close_panel()
+	_clear_faction_matrix()
+	print("[faction] STANDING IS VISIBLE dock line at NEUTRAL=%s, follows the matrix to HOSTILE=%s -> %s" % [
+		str(visible_ok), str(visible_moves),
+		"PASS" if visible_ok and visible_moves else "FAIL"])
 
 	_clear_faction_matrix()
 	await get_tree().create_timer(0.2).timeout
