@@ -128,9 +128,14 @@ const FACTIONS := {
 	"league": {"name": "THE RELAY LEAGUE"},
 	"tithe": {"name": "THE TITHE"},
 	"procession": {"name": "THE PROCESSION"},
-	"unknown_a": {"name": "NO PATTERN ON FILE"},
-	"unknown_b": {"name": "NO PATTERN ON FILE"},
-	"unknown_c": {"name": "NO PATTERN ON FILE"},
+	# v18 stage 6. NAMED FOR WHAT THEY LEAVE BEHIND, because nobody has ever
+	# spoken to one — every other faction in this game is named by somebody who
+	# deals with it, and these are named by the survey register describing an
+	# effect. The ids were chosen in stage 1 precisely so this could happen
+	# without a save migration: they are permanent keys, the names are copy.
+	"unknown_a": {"name": "THE TALLY"},
+	"unknown_b": {"name": "THE HOLLOWING"},
+	"unknown_c": {"name": "THE STILLNESS"},
 }
 
 # --- faction paint -----------------------------------------------------------
@@ -153,6 +158,12 @@ const TINTS := {
 	"armillary": Color(1.00, 0.45, 0.20),  # ember orange, its system's palette
 	"meridian": Color(0.45, 0.40, 1.00),   # anchorage indigo, likewise
 	"tithe": Color(0.86, 0.12, 0.20),      # RAID_TINT verbatim: the raiders ARE the Tithe
+	# The unknowns read as WRONG rather than as another team colour: a bleached
+	# bone-white for the thing that counts, and a near-black violet for the
+	# thing that empties. Neither is a hue any charted faction flies.
+	"unknown_a": Color(0.88, 0.90, 0.84),
+	"unknown_b": Color(0.24, 0.10, 0.32),
+	"unknown_c": Color(0.55, 0.60, 0.62),
 }
 
 # --- the baseline matrix -----------------------------------------------------
@@ -207,11 +218,22 @@ const BASELINE := {
 	# The unknowns are WARY of everyone and everyone should be wary back — but
 	# nobody on the chart has met them, so the known factions' rows say nothing
 	# about them and these rows do not move until their stage.
-	"unknown_a": {"surveyor": -2, "gsa": -2, "bastion": -2, "combine": -2,
+	# WARY of everyone who has a name, per the original brief — and two of the
+	# three are lethal to the surveyor because they hold the Reaches and the
+	# Quiet, where the shipped designations have always said something is.
+	"unknown_a": {"surveyor": -6, "gsa": -2, "bastion": -2, "combine": -2,
 		"embers": -2, "grin": -2, "league": -2, "tithe": -2, "procession": -2},
-	"unknown_b": {"surveyor": -2, "gsa": -2, "bastion": -2, "combine": -2,
+	"unknown_b": {"surveyor": -6, "gsa": -2, "bastion": -2, "combine": -2,
 		"embers": -2, "grin": -2, "league": -2, "tithe": -2, "procession": -2},
-	"unknown_c": {"surveyor": -2, "gsa": -2, "bastion": -2, "combine": -2,
+	# THE STILLNESS IS NEUTRAL TO THE SURVEYOR, and that is the strangest thing
+	# about it. It owns the Last Watch — the station 1,200 units out that is
+	# "still lit, nobody is sure who is paying for it" — and it will trade with
+	# you. Two of these things kill you on sight; the third sells you a drink
+	# and no one knows why. It also has to be non-hostile for a mechanical
+	# reason that agrees with the fiction: stage 5's fence gate closes a back
+	# room to a HOSTILE player, and bricking the deepest fence in the game as a
+	# side effect of a name would be the reveal costing the player a service.
+	"unknown_c": {"gsa": -2, "bastion": -2, "combine": -2,
 		"embers": -2, "grin": -2, "league": -2, "tithe": -2, "procession": -2},
 }
 

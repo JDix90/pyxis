@@ -388,7 +388,7 @@ func _sell(good: String, units: int) -> void:
 		var fence_owner := Market.owner_of(_port_def)
 		if fence_owner != "" and FactionDB.is_faction(fence_owner):
 			_fence_marked = true
-			GameState.shift_faction(FactionDB.SURVEYOR, fence_owner, 1)
+			GameState.shift_faction(FactionDB.SURVEYOR, fence_owner, 1, true)
 	if GameState.SMUGGLING_GOODS.has(good) and Market.fences(_port_def, good):
 		if GameState.mark_smuggling(n):
 			var m0 := get_tree().get_first_node_in_group("main")

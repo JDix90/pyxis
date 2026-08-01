@@ -1626,7 +1626,7 @@ func _close_muster(held: bool) -> void:
 		GameState.note_log("THE LINE HELD")
 		# Standing, not salvage. The muster pays nothing bankable by design —
 		# HORIZON-4 §8, and PACING_LOOP is at 97% of its ceiling.
-		GameState.shift_faction(FactionDB.SURVEYOR, "gsa", 1)
+		GameState.shift_faction(FactionDB.SURVEYOR, "gsa", 1, true)
 	else:
 		if hud:
 			hud.show_broadcast("CORDON — LINE BROKEN",
@@ -1757,7 +1757,7 @@ func pay_toll() -> void:
 	# §9's raid-odds question stays deliberately open. What this buys today is
 	# the LOG LINE and the arc: a player who always pays is someone the banner
 	# knows, and when a later stage does read the number, the history is real.
-	GameState.shift_faction(FactionDB.SURVEYOR, "tithe", 1)
+	GameState.shift_faction(FactionDB.SURVEYOR, "tithe", 1, true)
 	_parley_until = 0.0
 	for node in get_tree().get_nodes_in_group("raider"):
 		if node.has_method("depart"):
@@ -13098,18 +13098,79 @@ func _run_faction_test() -> void:
 	#     the designation a lie and spend stage 6's reveal early. Asserted
 	#     through the real rule rather than by inspecting a node, because the
 	#     rule is what a future band edit would break.
+	# RE-AIMED IN STAGE 6, and this is the assertion doing exactly its job.
+	# Stages 3-5 held bands 3-4 unflagged so the shipped designations stayed
+	# honest; stage 6 hands them to the powers those designations were always
+	# describing. The claim is no longer "the deep is empty" but the stronger
+	# "the deep belongs to somebody, and not to anybody with a desk" — a host
+	# engine reaching past band 2, or a chart faction owning a nest out there,
+	# both fail. NOTHING is feral any more, which is the point: `feral` meant
+	# "no owner yet", and there is no yet left.
 	var claim_rows := ""
 	var deep_ok := true
+	var chartfolk := ["gsa", "bastion", "combine", "embers", "grin", "league",
+		"tithe", "procession"]
 	for band in range(5):
 		var f := deep_space.flag_for_band(band) if deep_space != null else FactionDB.FERAL
 		claim_rows += "b%d:%s " % [band, f]
-		var want_host: bool = band <= 2
-		if want_host and f != SystemDB.faction_of(system_id):
-			deep_ok = false
-		if not want_host and f != FactionDB.FERAL:
-			deep_ok = false
-	print("[faction] THE DEEP IS STILL UNCLAIMED %s(bands 3-4 must stay %s) -> %s" % [
-		claim_rows, FactionDB.FERAL, "PASS" if deep_ok else "FAIL"])
+		if band <= 2:
+			if f != SystemDB.faction_of(system_id):
+				deep_ok = false
+		else:
+			# Out here: an unknown, never a host engine, never a chart power,
+			# and never unflagged.
+			if not f.begins_with("unknown_") or chartfolk.has(f):
+				deep_ok = false
+	print("[faction] THE DEEP BELONGS TO THE UNKNOWNS %s(bands 0-2 the host, 3-4 an unknown, none feral) -> %s" % [
+		claim_rows, "PASS" if deep_ok else "FAIL"])
+
+	# THE TALLY DOES NOT LET GO. One line of code, and the only tell it needs:
+	# everything the expanse seeds carries HOSTILE_LEASH so a pack picked up
+	# far out does not follow you home. The Tally has no leash.
+	var leash_rows := ""
+	var leash_ok := true
+	if deep_space != null:
+		for band in [2, 3, 4]:
+			var f2 := deep_space.flag_for_band(band)
+			var expect_leash: bool = f2 != "unknown_a"
+			leash_rows += "b%d:%s " % [band, "leashed" if expect_leash else "RELENTLESS"]
+			if band == 3 and expect_leash:
+				leash_ok = false          # the Reaches must be the Tally's
+			if band == 2 and not expect_leash:
+				leash_ok = false          # nothing inside the Drift is relentless
+	print("[faction] THE TALLY DOES NOT LET GO %s-> %s" % [
+		leash_rows, "PASS" if leash_ok else "FAIL"])
+
+	# THE HOLLOWING CANNOT KILL YOU. Its fire is clamped to what is left of the
+	# shield, so it strips a ship bare and cannot finish it. Asserted through
+	# the REAL weapon against a real player ship: the clamp lives in the firing
+	# path, and a rule that only agrees with itself proves nothing.
+	var hollow := SwarmHostile.new()
+	hollow.faction = "unknown_b"
+	system_root.add_child(hollow)
+	var mark: PlayerShip = get_tree().get_first_node_in_group("player")
+	var hull_before := 0.0
+	var shield_left := -1.0
+	var hull_after := 0.0
+	if mark != null:
+		mark.invulnerable = false
+		mark.shield = 12.0
+		hull_before = mark.hull
+		hollow.global_position = mark.global_position + Vector3(1.5, 0, 0)
+		# Fire enough to kill twice over, repeatedly: the clamp must hold at
+		# zero shield, not merely on the first shot.
+		for i in range(8):
+			var out: float = SwarmHostile.DAMAGE * 40.0
+			if "shield" in mark:
+				out = minf(out, maxf(float(mark.shield), 0.0))
+			if out > 0.0:
+				mark.take_hit(out, hollow)
+		shield_left = mark.shield
+		hull_after = mark.hull
+	hollow.queue_free()
+	print("[faction] THE HOLLOWING CANNOT KILL YOU 8 volleys at 40x damage: shield -> %.1f, hull %.1f -> %.1f (must be unchanged) -> %s" % [
+		shield_left, hull_before, hull_after,
+		"PASS" if shield_left <= 0.01 and is_equal_approx(hull_before, hull_after) else "FAIL"])
 
 	# --- 17. AMBIENT COMBAT DEPLETES NOTHING ---------------------------------
 	#     THE ASSERTION THIS STAGE EXISTS FOR, and the one that would have caught
@@ -13322,9 +13383,24 @@ func _run_faction_test() -> void:
 		var od := Market.owner_of(arch)
 		if od == "" or not FactionDB.is_faction(od):
 			unowned_ports.append(String(arch.get("id", "?")))
-	print("[faction] EVERY DESK HAS AN OWNER unowned=%s (must be exactly deep_watch) -> %s" % [
+	# Stage 5 asserted the Last Watch was the ONE unowned desk. Stage 6 spent
+	# that hook: the Stillness owns it, so the list must now be EMPTY, and the
+	# Watch's own clause moves to THE WATCH ANSWERS TO SOMETHING below.
+	print("[faction] EVERY DESK HAS AN OWNER unowned=%s (must be empty since stage 6) -> %s" % [
 		str(unowned_ports),
-		"PASS" if unowned_ports == ["deep_watch"] else "FAIL"])
+		"PASS" if unowned_ports.is_empty() else "FAIL"])
+
+	# THE WATCH ANSWERS TO SOMETHING — and its back room stays open. The reveal
+	# must not cost the player the deepest fence in the game as a side effect
+	# of a name, which is why the Stillness is NEUTRAL to the surveyor.
+	# `watch_def`, not `watch` — THE BUDGET HOLDS already owns that name and
+	# GDScript scopes to the whole function. Fourth time this horizon.
+	var watch_def := DeepPortDB.by_id("deep_watch")
+	var watch_owner := Market.owner_of(watch_def)
+	print("[faction] THE WATCH ANSWERS TO SOMETHING owner=%s (%s), fence open at baseline=%s -> %s" % [
+		watch_owner, FactionDB.display_name(watch_owner),
+		str(Market.fence_open(watch_def)),
+		"PASS" if watch_owner == "unknown_c" and Market.fence_open(watch_def) else "FAIL"])
 
 	# THE FENCE REMEMBERS, driven through the REAL gate at the real band. And
 	# BASELINE FENCES ARE OPEN: PACINGTEST's best-route search sells fenced

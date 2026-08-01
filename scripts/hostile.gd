@@ -435,7 +435,18 @@ func _weapon(delta: float) -> void:
 		# The player has a shield model and take_hit; a machine has take_damage.
 		# Same shot, two bookkeepings.
 		if target.has_method("take_hit"):
-			target.take_hit(DAMAGE * difficulty, self)
+			# THE HOLLOWING'S TELL. Its fire is CLAMPED TO WHAT IS LEFT OF THE
+			# SHIELD, so it can strip a ship bare and cannot finish it. You do
+			# not die to the Hollowing; you arrive somewhere with nothing left
+			# between you and whatever is there. It breaks the game's most
+			# basic convention — a weapon that hurts you — while staying
+			# perfectly telegraphed, which is §13's rule applied to something
+			# that is supposed to feel wrong.
+			var out := DAMAGE * difficulty
+			if faction == "unknown_b" and "shield" in target:
+				out = minf(out, maxf(float(target.shield), 0.0))
+			if out > 0.0:
+				target.take_hit(out, self)
 		elif target.has_method("take_damage"):
 			target.take_damage(DAMAGE * difficulty, self)
 
