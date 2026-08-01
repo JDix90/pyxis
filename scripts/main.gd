@@ -235,6 +235,34 @@ const MUSTER_WAVE_GAP := 7.0
 # coming.
 const MUSTER_TINT := Color(0.95, 0.85, 0.25)
 
+# --- THE PROCESSION (v18, stage 5) -------------------------------------------
+# The nomad fleet: the known faction that shows up rather than sits still. Its
+# smallest real form is a dockable, non-combat convoy that visits one system
+# per window and moves on — a MOVING PORT, reusing Port.def exactly the way
+# deep stations do, so it needs no new panel, no new class, and (crucially) no
+# entry in SystemDB: the market-event roll, the rumour loop and STATIONTEST's
+# registry sweeps never learn it exists, so it cannot start a shortage at the
+# Anchor by construction.
+#
+# WHERE IT IS IS A PURE FUNCTION of (window, run_seed) — the lair_pos
+# discipline. No save state, no spawn timer to persist: the same window in the
+# same run always answers the same system, so it is deterministic within a run
+# and fresh across runs, and a reload cannot duplicate or strand it.
+const PROCESSION_PERIOD := 1200.0     # one window ~= twenty minutes of play
+const PROCESSION_DEF := {
+	"id": "procession",
+	"name": "THE PROCESSION",
+	"kind": "convoy",
+	"owner": "procession",
+	"freeport": true,
+	# A market only — no fence, no outfitter, no repair. They trade what the
+	# deep produces and owe nobody a service. Biases are the pilgrim shape:
+	# they prize relics and carry cores to spare.
+	"services": ["market"],
+	"bias": {"relics": 1.30, "cores": 0.85, "isotopes": 1.10},
+	"stock": [],
+}
+
 # Unstable rifts: roughly one per twenty minutes of play, never two at once,
 # always in the current system at a depth reachable within the rift's own life.
 const RIFT_ROLL_INTERVAL := 240.0
@@ -301,6 +329,9 @@ var _muster_point := Vector3.ZERO      # where the line forms, on the chart edge
 var _muster_origin := Vector3.ZERO     # where the column gathers, 75u out
 var _muster_released := 0
 var _muster_wave_t := 0.0
+
+var _procession: Port = null
+var _procession_window := -1
 
 
 func _ready() -> void:
@@ -969,6 +1000,9 @@ func _load_system(id: String) -> void:
 	# that a freed reference compares equal to null — it does, and relying on
 	# that subtlety is how the next bug hides.
 	live_rift = null
+	# The convoy died with it too, same rule. _tick_procession will re-seat it
+	# if this window's system is the one being loaded.
+	_procession = null
 	_raid_timer = RAID_ROLL_INTERVAL
 
 	for child in system_root.get_children():
@@ -1368,6 +1402,51 @@ func interdiction_eligible() -> bool:
 		and _raid_cooldown <= 0.0
 
 
+func procession_system(window: int) -> String:
+	# Which system the convoy visits in a given window. Pure — the builder, the
+	# harness and any future rumour desk must all agree, and hash(window|seed)
+	# draws nothing from any stream the world rolls on.
+	var ids := SystemDB.ids()
+	ids.sort()   # dictionary key order is not a contract; the route is
+	return String(ids[hash("%d|procession|%d" % [window, GameState.run_seed]) % ids.size()])
+
+
+func _tick_procession() -> void:
+	var window := int(GameState.played_seconds / PROCESSION_PERIOD)
+	var here: bool = procession_system(window) == system_id \
+		and state == State.PLAYING and not tutorial_active()
+	var live := _procession != null and is_instance_valid(_procession)
+
+	if here and not live:
+		var p := Port.new()
+		p.port_id = "procession"
+		p.port_name = "THE PROCESSION"
+		p.kind = "convoy"
+		p.def = PROCESSION_DEF.duplicate(true)
+		system_root.add_child(p)
+		# Parked at two-thirds bounds on a bearing the window picks — off the
+		# lanes, inside the chart, nudged out of anything solid. Not a
+		# collision sphere of its own: a convoy you can fly through is wrong,
+		# but a convoy that blocks a lane for twenty minutes is worse, and
+		# stage 5 keeps the smallest honest version.
+		var ang := TAU * float(hash("%d|procession_ang" % window) % 360) / 360.0
+		p.position = Obstacles.resolve(
+			Vector3(cos(ang), 0.0, sin(ang)) * SystemDB.bounds_of(system_id) * 0.66,
+			Port.HULL_OBSTACLE_RADIUS)
+		_procession = p
+		_procession_window = window
+		if hud:
+			hud.show_toast("THE PROCESSION IS HERE", Palette.GOLD)
+		GameState.note_log("THE PROCESSION — IN %s" % SystemDB.get_system(system_id).get("name", system_id))
+	elif live and (not here or window != _procession_window):
+		# It moves on — unless the player is docked at it, in which case it
+		# waits for them to leave. A market that vanished under an open sheet
+		# would strand the panel on a freed node.
+		if docked_port != _procession:
+			_procession.queue_free()
+			_procession = null
+
+
 func muster_active() -> bool:
 	return _muster_active or _muster_warn > 0.0
 
@@ -1672,6 +1751,13 @@ func pay_toll() -> void:
 		return
 	GameState.note_ledger("tolls_paid", 1)
 	GameState.note_log("TOLL PAID — %s IN CARGO" % _comma_int(taken))
+	# v18 stage 5. The Tithe remembers being paid. +1 per toll, through the one
+	# mutator, bounded by DELTA_SPAN like everything else — and it cannot reach
+	# FRIENDLY patrols or discounts because nothing reads tithe standing yet;
+	# §9's raid-odds question stays deliberately open. What this buys today is
+	# the LOG LINE and the arc: a player who always pays is someone the banner
+	# knows, and when a later stage does read the number, the history is real.
+	GameState.shift_faction(FactionDB.SURVEYOR, "tithe", 1)
 	_parley_until = 0.0
 	for node in get_tree().get_nodes_in_group("raider"):
 		if node.has_method("depart"):
@@ -1965,6 +2051,7 @@ func _tick_market(delta: float) -> void:
 			spawn_rift()
 
 	_tick_muster(delta)
+	_tick_procession()
 
 	_event_roll_timer -= delta
 	if _event_roll_timer <= 0.0:
@@ -13214,6 +13301,124 @@ func _run_faction_test() -> void:
 		"PASS" if GameState.salvage == salv_before and still_live == 0 else "FAIL"])
 	_muster_cooldown = 0.0
 	_muster_timer = 1.0e9
+
+	# --- 20. STAGE 5: the desks, the gate, and the convoy ----------------------
+	_clear_faction_matrix()
+
+	# EVERY DESK HAS AN OWNER, AND THE WATCH HAS NONE. Swept over the authored
+	# tables, both of them, because ownership is what the dock line and the
+	# fence gate read — an unowned port is silently ungated, which is correct
+	# for exactly one address in the game. The exemption is asserted BY NAME:
+	# "some port may be unowned" is a rule that cannot fail.
+	var unowned_ports: Array = []
+	for sid_v in SystemDB.ids():
+		for pd_v in SystemDB.ports_of(String(sid_v)):
+			var pd: Dictionary = pd_v
+			var o := Market.owner_of(pd)
+			if o == "" or not FactionDB.is_faction(o):
+				unowned_ports.append(String(pd.get("id", "?")))
+	for arch_v in DeepPortDB.ARCHETYPES:
+		var arch: Dictionary = arch_v
+		var od := Market.owner_of(arch)
+		if od == "" or not FactionDB.is_faction(od):
+			unowned_ports.append(String(arch.get("id", "?")))
+	print("[faction] EVERY DESK HAS AN OWNER unowned=%s (must be exactly deep_watch) -> %s" % [
+		str(unowned_ports),
+		"PASS" if unowned_ports == ["deep_watch"] else "FAIL"])
+
+	# THE FENCE REMEMBERS, driven through the REAL gate at the real band. And
+	# BASELINE FENCES ARE OPEN: PACINGTEST's best-route search sells fenced
+	# goods, so a baseline that closed any fence would un-fly the measured
+	# route and move the binding MIDTIER for a reason nobody asked for.
+	var void_def := SystemDB.port_def_by_id("void")
+	var open_baseline := Market.fence_open(void_def)
+	for i in range(200):
+		GameState.shift_faction(FactionDB.SURVEYOR, "grin", -5)
+	var shut_hostile := not Market.fence_open(void_def)
+	_clear_faction_matrix()
+	var all_open := true
+	for sid_v2 in SystemDB.ids():
+		for pd_v2 in SystemDB.ports_of(String(sid_v2)):
+			if not Market.fence_open(pd_v2):
+				all_open = false
+	print("[faction] THE FENCE REMEMBERS open at baseline=%s, shut at HOSTILE=%s, every fence open at pinned state=%s -> %s" % [
+		str(open_baseline), str(shut_hostile), str(all_open),
+		"PASS" if open_baseline and shut_hostile and all_open else "FAIL"])
+
+	# NO PRICE MOVES WITH STANDING — the assertion that turns "gates, never
+	# prices" from a promise into a property. Every good at one chart port and
+	# one deep archetype, priced at baseline and at both extremes, must match
+	# to the credit. This is what keeps STATIONTEST's sellback/outfit guard
+	# rail safe by construction instead of by re-proof at every band.
+	var price_moved := ""
+	var cantina_def := SystemDB.port_def_by_id("cantina")
+	var probe_defs := [void_def, cantina_def, DeepPortDB.by_id("deep_haven")]
+	var base_prices := {}
+	for d_v in probe_defs:
+		var d: Dictionary = d_v
+		for g_v in CommodityDB.ids():
+			var g := String(g_v)
+			base_prices["%s|%s" % [d.get("id"), g]] = [
+				Market.buy_price(d, String(d.get("id")), g, 1),
+				Market.sell_price(d, String(d.get("id")), g, 1)]
+	for extreme in [12, -24]:
+		GameState.shift_faction(FactionDB.SURVEYOR, "grin", extreme)
+		GameState.shift_faction(FactionDB.SURVEYOR, "embers", extreme)
+		for d_v2 in probe_defs:
+			var d2: Dictionary = d_v2
+			for g_v2 in CommodityDB.ids():
+				var g2 := String(g_v2)
+				var key := "%s|%s" % [d2.get("id"), g2]
+				var now := [Market.buy_price(d2, String(d2.get("id")), g2, 1),
+					Market.sell_price(d2, String(d2.get("id")), g2, 1)]
+				if now != base_prices[key] and price_moved == "":
+					price_moved = "%s at shift %d: %s -> %s" % [key, extreme,
+						str(base_prices[key]), str(now)]
+	_clear_faction_matrix()
+	print("[faction] NO PRICE MOVES WITH STANDING %d goods x 3 desks x 2 extremes, first divergence: %s -> %s" % [
+		CommodityDB.ids().size(), "none" if price_moved == "" else price_moved,
+		"PASS" if price_moved == "" else "FAIL"])
+
+	# THE CONVOY KEEPS ITS SCHEDULE, AND THE REGISTRY NEVER LEARNS ITS NAME.
+	# Purity: the same window answers the same system, always. Coverage: over
+	# many windows it visits more than one system, or "moving port" is a lie.
+	# And it must never enter SystemDB.port_ids(), which feeds the market-event
+	# roll and the rumour loop — the same isolation the deep ports rely on.
+	var w_same: bool = procession_system(7) == procession_system(7)
+	# `route_seen`, not `visited` — section 12 already owns that name, and
+	# GDScript scopes variables to the whole function. The same collision
+	# already cost one boot-refusing parse error this horizon (`charted`).
+	var route_seen := {}
+	for w in range(40):
+		route_seen[procession_system(w)] = true
+	var registered: bool = SystemDB.port_ids().has("procession")
+	print("[faction] THE CONVOY KEEPS ITS SCHEDULE window-stable=%s, %d systems over 40 windows, in the port registry=%s -> %s" % [
+		str(w_same), route_seen.keys().size(), str(registered),
+		"PASS" if w_same and route_seen.keys().size() >= 2 and not registered else "FAIL"])
+
+	# STANDING IS VISIBLE — against the RENDERED sheet, because preview_stats
+	# taught this project that correct numbers can fail to reach a screen. The
+	# dock line must show the same band the gate reads, and must CHANGE when
+	# the matrix does.
+	var cantina_port: Port = null
+	for node in get_tree().get_nodes_in_group("dockable"):
+		if node is Port and (node as Port).port_id == "cantina":
+			cantina_port = node as Port
+			break
+	var visible_ok := false
+	var visible_moves := false
+	if cantina_port != null and port_panel != null:
+		port_panel.open_for(cantina_port)
+		visible_ok = _panel_text_contains(port_panel, "STANDING: NEUTRAL")
+		for i in range(200):
+			GameState.shift_faction(FactionDB.SURVEYOR, "embers", -5)
+		port_panel._refresh()
+		visible_moves = _panel_text_contains(port_panel, "STANDING: HOSTILE")
+		port_panel.close_panel()
+	_clear_faction_matrix()
+	print("[faction] STANDING IS VISIBLE dock line at NEUTRAL=%s, follows the matrix to HOSTILE=%s -> %s" % [
+		str(visible_ok), str(visible_moves),
+		"PASS" if visible_ok and visible_moves else "FAIL"])
 
 	_clear_faction_matrix()
 	await get_tree().create_timer(0.2).timeout

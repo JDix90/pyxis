@@ -58,6 +58,9 @@ var _cargo_label: Label
 
 var _port: Port = null
 var _port_def := {}
+# One standing tick per docking session, however much is fenced — a bound, so
+# selling forty crates one at a time is not forty acts of friendship.
+var _fence_marked := false
 var _tab := "market"
 var _tabs := {}
 
@@ -237,6 +240,7 @@ func open_for(port: Port) -> void:
 	_tab = String(services()[0]) if not services().is_empty() else "market"
 	# A new station is a new set of rumours — those are things you were told here.
 	_rumors_known = []
+	_fence_marked = false
 	_gamble_last = ""
 	# The streak deliberately does NOT reset. It used to, and since open_for runs
 	# on every dock, the lockout was bypassable by tapping DEPART and docking
@@ -364,6 +368,12 @@ func _sell(good: String, units: int) -> void:
 	if n <= 0:
 		_reject()
 		return
+	# The fence gate, AT THE ACTION as well as at the build — survey_mast's
+	# lesson, and REFUSAL IS FREE: nothing has been unloaded or paid yet, so a
+	# closed back room costs the player exactly nothing to be refused by.
+	if Market.fences(_port_def, good) and not Market.fence_open(_port_def):
+		_reject()
+		return
 	var price := Market.sell_price(_port_def, _port.port_id, good, n)
 	GameState.unload_cargo(good, n)
 	GameState.add_salvage(price * n)
@@ -372,6 +382,13 @@ func _sell(good: String, units: int) -> void:
 	# SMUGGLING's one feed. At a FENCE specifically — the whole skill is about who
 	# will deal with you off the books, and selling stolen goods over a legitimate
 	# counter is not that.
+	# v18 stage 5. A fence deal is an act the owner notices — once per dock,
+	# +1, through the one mutator. The smuggling feed below is unchanged.
+	if Market.fences(_port_def, good) and not _fence_marked:
+		var fence_owner := Market.owner_of(_port_def)
+		if fence_owner != "" and FactionDB.is_faction(fence_owner):
+			_fence_marked = true
+			GameState.shift_faction(FactionDB.SURVEYOR, fence_owner, 1)
 	if GameState.SMUGGLING_GOODS.has(good) and Market.fences(_port_def, good):
 		if GameState.mark_smuggling(n):
 			var m0 := get_tree().get_first_node_in_group("main")
@@ -463,6 +480,25 @@ func _refresh() -> void:
 
 	for c in _body.get_children():
 		c.queue_free()
+
+	# v18 stage 5. THE DOCK LINE — the whole standing UI, and deliberately no
+	# more than this. Standing already moves (the muster shifts it, unprovoked
+	# kills cost it) and until this line it moved invisibly; gating anything on
+	# a number the player cannot see is the hidden bad bet §12 calls a con. A
+	# statement of record at dock, the Commission's posture — never a HUD row.
+	# On EVERY tab rather than one, because which tab is the landing tab varies
+	# by port and a record you have to hunt for is not a record.
+	var owner := Market.owner_of(_port_def)
+	if owner != "" and FactionDB.is_faction(owner):
+		var band := GameState.faction_band(FactionDB.SURVEYOR, owner)
+		var standing := Label.new()
+		standing.text = "%s — STANDING: %s" % [FactionDB.display_name(owner),
+			FactionDB.BAND_NAMES[band]]
+		standing.add_theme_font_size_override("font_size", 10)
+		standing.add_theme_color_override("font_color",
+			Palette.THREAT if band == FactionDB.Band.HOSTILE else Color(0.6, 0.62, 0.7))
+		_body.add_child(standing)
+
 	match _tab:
 		"market":
 			# Restricted goods only appear where they can actually be traded, so
@@ -1139,6 +1175,18 @@ func _apply_paint(index: int, is_hull: bool, price: int) -> void:
 # --- fence (smuggler's den) --------------------------------------------------
 
 func _build_fence() -> void:
+	# The gate renders as a REFUSAL, not an absence. A tab that silently showed
+	# nothing would read as a bug; a fence that names why it will not deal with
+	# you is the standing system doing its job out loud.
+	if not Market.fence_open(_port_def):
+		var shut := Label.new()
+		shut.text = "THE BACK ROOM IS CLOSED TO YOU. Word travels. Come back when %s has fewer reasons to remember your name." \
+			% FactionDB.display_name(Market.owner_of(_port_def))
+		shut.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		shut.add_theme_font_size_override("font_size", 11)
+		shut.add_theme_color_override("font_color", Palette.THREAT)
+		_body.add_child(shut)
+		return
 	var goods: Array = _port_def.get("fence_goods", [])
 	var mult := float(_port_def.get("fence_mult", 1.0))
 	var head := Label.new()
