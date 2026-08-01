@@ -10534,11 +10534,12 @@ func _run_save_test() -> void:
 		# The claim is EMPTINESS, not "some particular pair reads N": the sparse
 		# invariant makes an empty store and "every pair at its baseline" the
 		# same statement, so this one check covers all 240 ordered pairs.
+		var att_v18 := GameState.faction_attitude(FactionDB.SURVEYOR, FactionDB.FERAL)
+		var base_v18 := FactionDB.baseline_attitude(FactionDB.SURVEYOR, FactionDB.FERAL)
+		var band_v18 := GameState.faction_band(FactionDB.FERAL, FactionDB.SURVEYOR)
 		var at_baseline: bool = GameState.faction_deltas.is_empty() \
-			and GameState.faction_attitude(FactionDB.SURVEYOR, FactionDB.FERAL)
-				== FactionDB.baseline_attitude(FactionDB.SURVEYOR, FactionDB.FERAL) \
-			and GameState.faction_band(FactionDB.FERAL, FactionDB.SURVEYOR)
-				== FactionDB.Band.HOSTILE
+			and att_v18 == base_v18 \
+			and band_v18 == FactionDB.Band.HOSTILE
 		var kept17: bool = GameState.salvage == 8400 and GameState.run_seed == 909090 \
 			and GameState.has_apex_down("pyx01")
 		print("[savetest] v17->v18 A V17 SAVE ARRIVES AT THE BASELINE deltas=%s feral-vs-surveyor=%s, other state kept=%s -> %s" % [
@@ -13062,12 +13063,12 @@ func _run_hunt_test() -> void:
 			spins += 1
 			await get_tree().physics_frame
 		var filed := GameState.apex_hint_count(system_id)
-		var charted := GameState.breached.has(system_id)
+		var hull_charted := GameState.breached.has(system_id)
 		breach_rows += "%s: %d hint / charted=%s  " % [
-			"charted hull" if survey else "deep hulk", filed, str(charted)]
-		if survey and not (filed == 1 and charted):
+			"charted hull" if survey else "deep hulk", filed, str(hull_charted)]
+		if survey and not (filed == 1 and hull_charted):
 			breach_ok = false
-		if not survey and not (filed == 0 and not charted):
+		if not survey and not (filed == 0 and not hull_charted):
 			breach_ok = false
 		if is_instance_valid(hull):
 			hull.queue_free()
