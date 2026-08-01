@@ -12987,6 +12987,7 @@ func _run_hunt_test() -> void:
 		["guard", 15.0, Vector3(-420, 0, 380)],
 		["watch", 5.0, Vector3(120, 0, 240)],
 		["rift", 4.0, Vector3(-260, 0, -300)],
+		["hull", Derelict.INTEL_ERROR_DEG, Vector3(-9, 0, -18)],
 		["rumor", 0.0, Vector3.ZERO],
 	]:
 		var n_before := GameState.apex_hint_count(system_id)
@@ -12997,7 +12998,83 @@ func _run_hunt_test() -> void:
 		channel_rows += "%s%s " % [String(spec[0]), "+1" if n_after == n_before + 1 else "!!"]
 	print("[hunt] EVERY CHANNEL FILES THROUGH ONE DOOR %s-> %d hints -> %s" % [
 		channel_rows, GameState.apex_hint_count(system_id),
-		"PASS" if channels_ok and GameState.apex_hint_count(system_id) == 6 else "FAIL"])
+		"PASS" if channels_ok and GameState.apex_hint_count(system_id) == 7 else "FAIL"])
+
+	# 9b. THE OPENING BEARING IS THE WIDEST. The hull's reading is the one cone
+	#     in the game nobody pays for, so it has to be strictly worse than every
+	#     cone somebody does. Read from the REAL constants rather than restated
+	#     here — a list of numbers copied into an assertion agrees with itself
+	#     forever, and the failure this guards is somebody tightening the free
+	#     hint to make the opening hunt friendlier and silently undercutting the
+	#     Last Watch's 900-salvage reading two systems away.
+	#
+	#     Three of the five are read from the constant the game actually uses;
+	#     `guard` and `relic` are inline literals at their call sites with no
+	#     named constant to read, so those two ARE restated here and this check
+	#     is only as good as they are. Naming them would close that gap and is
+	#     worth doing the next time either file is open.
+	var paid_cones := {
+		"guard(deep post)": 15.0,
+		"relic": 12.0,
+		"mast": SurveyMast.MAST_ERROR_DEG,
+		"watch(Last Watch)": float(DeepPortDB.by_id("deep_watch").get("hunt_error", 0.0)),
+		"rift": Rift.INTEL_ERROR_DEG,
+	}
+	var undercut := ""
+	for k in paid_cones:
+		if Derelict.INTEL_ERROR_DEG <= float(paid_cones[k]):
+			undercut += "%s(%.0f) " % [k, float(paid_cones[k])]
+	print("[hunt] THE OPENING BEARING IS THE WIDEST hull %.0f vs %s -> %s" % [
+		Derelict.INTEL_ERROR_DEG, str(paid_cones),
+		"PASS" if undercut == "" else "FAIL undercuts " + undercut])
+
+	# 9c. AND THE HULL ONLY SPEAKS FOR A SURVEY. Both directions, driven through
+	#     two REAL derelicts rather than through file_apex_intel — the claim is
+	#     about the breach path's guard, and calling the door directly would
+	#     prove nothing about who is allowed to knock. A charted hull charts and
+	#     files; a deep hulk does neither, for the same reason it never charted:
+	#     letting something 400u off the map hand over the opening lead would let
+	#     the expanse skip the hunt as well as the spine.
+	# Snapshotted, not cleared and abandoned: sections 10-14 run after this one
+	# and a harness that quietly empties `breached` on its way past is how the
+	# next assertion below inherits a world it did not ask for.
+	var breached_snapshot := GameState.breached.duplicate()
+	var breach_rows := ""
+	var breach_ok := true
+	for survey in [true, false]:
+		GameState.clear_apex_intel(system_id)
+		GameState.breached = []
+		var hull := Derelict.new()
+		hull.counts_as_survey = survey
+		system_root.add_child(hull)
+		hull.position = Vector3(0, 0, -26)
+		await get_tree().process_frame
+		var spins := 0
+		while not hull.is_cracked() and spins < 900:
+			# Re-pinned EVERY frame, the way _pacing_derelict_yield does it:
+			# hold_tick releases the hold and issues a move order the moment the
+			# ship drifts out of CRACK_RANGE, so a single teleport before the
+			# loop is a hold that quietly stops progressing partway through.
+			player.teleport_to(hull.breach_point + Vector3(0, 0, 3.0))
+			player.velocity = Vector3.ZERO
+			hull.hold_begin()
+			hull.hold_tick(get_physics_process_delta_time())
+			spins += 1
+			await get_tree().physics_frame
+		var filed := GameState.apex_hint_count(system_id)
+		var charted := GameState.breached.has(system_id)
+		breach_rows += "%s: %d hint / charted=%s  " % [
+			"charted hull" if survey else "deep hulk", filed, str(charted)]
+		if survey and not (filed == 1 and charted):
+			breach_ok = false
+		if not survey and not (filed == 0 and not charted):
+			breach_ok = false
+		if is_instance_valid(hull):
+			hull.queue_free()
+	print("[hunt] THE HULL GIVES A BEARING, AND ONLY FOR A SURVEY %s-> %s" % [
+		breach_rows, "PASS" if breach_ok else "FAIL"])
+	GameState.clear_apex_intel(system_id)
+	GameState.breached = breached_snapshot
 
 	# 10. INTEL BUYS INFORMATION, NOT ADVANTAGE. Filing hints must move no
 	#     number the economy or the fight cares about. The hunt is allowed to

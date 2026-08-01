@@ -95,24 +95,26 @@ runs, save format **v17**. 448 assertion lines, of which one is the standing
 HOLDTEST failure below and one is a flaky RAIDTEST line that may take a second
 run.
 
-> **UNMEASURED SINCE: factions stage 1 (STRATEGY §47), save format now v18.**
-> That work was written in an environment with no Godot binary, so **the sweep
-> has not been run against it** and the numbers above are the *previous*
-> baseline, not this tree's. It adds 14 assertion lines — 10 in the new
-> `PYXIS_FACTIONTEST`, 3 in `SAVETEST=migrate17`, 1 in SAVETEST's bare read —
-> which *should* put the sweep at 461 PASS / 1 FAIL across 55 runs. **Treat
-> that as an arithmetic prediction, not a measurement**, and run
-> `tools/run_harness.sh` before trusting it. Run the import pass first: stage 1
-> adds a new `class_name` (`FactionDB`), and until `--import` rebuilds the
-> class registry the project will not load at all — see the parse-error cascade
-> described above.
+> **UNMEASURED SINCE: factions stage 1 (§47) and the opening bearing (§48).
+> Save format now v18.** Both were written in an environment with no Godot
+> binary, so **the sweep has not been run against them** and the numbers above
+> are the *previous* baseline, not this tree's. Together they add 16 assertion
+> lines — 10 in the new `PYXIS_FACTIONTEST`, 3 in `SAVETEST=migrate17`, 1 in
+> SAVETEST's bare read, 2 in `HUNTTEST` — which *should* put the sweep at
+> **463 PASS / 1 FAIL across 55 runs**. **Treat that as an arithmetic
+> prediction, not a measurement**, and run `tools/run_harness.sh` before
+> trusting it. Run the import pass first: stage 1 adds a new `class_name`
+> (`FactionDB`), and until `--import` rebuilds the class registry the project
+> will not load at all — see the parse-error cascade described above.
 >
-> Three things to check first if the sweep is red, because they are where the
-> change actually bites: `PACINGTEST`'s yield loop (it kills through
+> Four things to check first if the sweep is red, because they are where the
+> changes actually bite: `PACINGTEST`'s yield loop (it kills through
 > `player.command_attack`, so attribution should hold and the numbers should
 > not move — if they moved, attribution is broken); `DEEPTEST`'s guard-post
 > pair (its two direct `take_damage` calls were re-pointed at the player);
-> and `CONTRACTTEST`, since kill credit is now gated on who fired.
+> `CONTRACTTEST`, since kill credit is now gated on who fired; and `HUNTTEST`'s
+> `EVERY CHANNEL FILES THROUGH ONE DOOR`, whose expected hint count moved from
+> 6 to 7 with the hull channel.
 
 The 1 FAIL is `HOLDTEST`'s `THE READOUT FOLLOWS THE HOLD`, and it **predates
 this change** — it reproduces identically on `fb03037` with nothing applied,

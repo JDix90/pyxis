@@ -4015,3 +4015,95 @@ A third was caught in the moved code rather than the new code: `SwarmHostile`'s
 whose target docked would have stuttered from burn-out into idle drift at
 exactly the moment a raid ends. It is back above the lookup, with a comment
 saying why it lives there.
+
+## 48. The hull gives a bearing
+
+The tutorial's finale ends on the PYX-01 breach, and until now that breach
+handed over a *statement*: PYX-02 is charted, the lane is jammed, silence THE
+GNOMON. It never handed over a **direction**.
+
+### The gap was that the free hint was spoken but never filed
+
+The lane-obstructed broadcast (`main.gd`, on `system_unlocked`) already tells
+the player the band and the quadrant — "transmitting from THE DRIFT, bearing
+WEST". It calls `hud.show_broadcast` and stops there. It does **not** call
+`file_apex_intel`, so nothing enters `apex_intel`, and the chart panel goes on
+saying *"no intel. It is transmitting from somewhere in the shaded band."*
+
+So the opening of the hunt was a sentence the player had to hold in their head
+against a plot that disagreed with it. That is the gap this closes.
+
+### One rule, three systems, and the geometry does the difficulty
+
+**Cracking a system's own derelict reads a bearing on that system's engine off
+the hull's log.** It is filed through `file_apex_intel` like every other
+channel — the sixth thing that could teach you where the engine hides is now
+the seventh — so it narrows the ghost, shrinks the search circle, and prints
+the same `INTEL — THE GNOMON · BEARING 137 ±20° · SEARCH ±NNNu` line the paid
+readings print.
+
+It sits **inside the `counts_as_survey` guard**, beside `mark_breached` and
+`arm_apex_wake`, for exactly the reason charting does: a deep hulk is a payday
+found by going looking, and letting one 400u off the map hand over the opening
+lead would let the expanse skip the hunt as well as the spine.
+
+It is filed **after** `mark_breached`, and the order is the beat. Charting
+fires `system_unlocked`, whose handler broadcasts "…silence it and the way is
+yours" — the player is told there is a hunt, and *then* told which way to
+point. Filing first would answer a question nobody had asked yet.
+
+### 20°, and why it must stay the widest cone in the game
+
+Every other bearing channel is earned or bought:
+
+| channel | cone | how |
+|---|---|---|
+| **hull (this)** | **±20°** | **given, once per system** |
+| cleared guard post | ±15° | earned, out in the deep |
+| read relic | ±12° | earned |
+| survey mast | ±8° | earned |
+| the Last Watch | ±5° | 900 salvage, band 4 |
+| rift | ±4° | rare |
+
+The free one has to be strictly worse than all of them or the intel economy is
+undercut by the thing the player gets for nothing in the first twenty minutes.
+`THE OPENING BEARING IS THE WIDEST` asserts it against the real constants —
+except `guard` and `relic`, which are inline literals with no constant to read
+and are therefore restated in the harness. That gap is named in the comment
+rather than papered over; naming those two is worth doing next time either
+file is open.
+
+One number serves all three systems because the lair radii do the scaling. A
+±20° cone spans `2·r·tan(20°)`:
+
+    PYX-01   lair at radius  300- 380   cone  218- 277u across
+    PYX-02   lair at radius  668- 828   cone  486- 603u
+    PYX-03   lair at radius 1194-1494   cone  869-1088u
+
+A real lead on the first hunt and nearly worthless on the last, which is the
+correct shape: the deep hunts are supposed to be bought, not given.
+
+### What did NOT need building
+
+"PYX-02 should only be reachable after the PYX-01 engine dies" was already
+true, and checking before building is the only reason it did not get
+reimplemented. `on_apex_defeated` calls `open_lane`; `travel_to` refuses a lane
+that is not open; breaching only ever *charted*. That is §38's two-tier gate,
+shipped in v15, working as designed.
+
+### The assertion that drives two real hulls
+
+`THE HULL GIVES A BEARING, AND ONLY FOR A SURVEY` builds a charted derelict and
+a deep hulk, breaches each through `hold_begin`/`hold_tick` against a real
+player ship, and requires **1 hint + charted** from the first and **0 hints +
+not charted** from the second. Both directions in one measurement, because
+either half alone passes on broken code: "a deep hulk files nothing" is
+satisfied by a game where nothing files anything.
+
+Two details in it are lessons already paid for elsewhere. The player is
+re-pinned inside the loop every frame, because `hold_tick` releases the hold
+and issues a move order the moment the ship drifts out of `CRACK_RANGE` — a
+single teleport before the loop is a hold that silently stops progressing.
+And `breached` is snapshotted and restored rather than cleared, because five
+more assertions run after this one and a harness that empties world state on
+its way past is how the next check inherits a failure it did not cause.

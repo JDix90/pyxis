@@ -312,24 +312,40 @@ Written at the end of the stage-1 session, while the code was in hand. §5 and
   ambiguous — whichever is first in the tree wins. The tutorial must find the
   **training** hull explicitly.
 
-### The one thing stage 2 cannot start without
+### The blocker, RESOLVED — and it dissolved rather than being chosen
 
-**§6's OPEN is a blocker, not a detail.** With a training hull in PYX-01,
-something has to decide what the tutorial's finale *charts*, and the two
-answers give different games:
+§6's OPEN asked what the tutorial's finale *charts*, and offered two answers.
+The user gave a third that makes the question much smaller: **the finale's
+payload is a bearing to the engine, not a chart entry.** Shipped as STRATEGY
+§48 — cracking a system's own derelict files a ±20° bearing on that system's
+engine, the widest cone in the game and the only free one.
 
-- **(a)** the training hull charts PYX-02, keeping §38's "the tutorial ends by
-  opening the world" — but then `GameState.breached` is set by a hull that
-  teaches rather than by the hull outside the cordon, and two hulls in one
-  system both claim the gate.
-- **(b)** the tutorial ends by teaching the verb and *pointing* at the cordon;
-  the relocated hull charts PYX-02, so the world opens on the player's first
-  real expedition. Stronger fiction, and it makes the relocation teach itself
-  — at the cost of a seventh tutorial step (`step_count()` returns 6) and a
-  longer onboarding.
+That reframes the two options rather than picking between them. Charting is
+just "PYX-02 appears on the map, jammed"; the *hunt* is the payload, and the
+hunt now starts at the breach whichever hull carries it. So stage 2 can put
+`counts_as_survey` on either hull without changing what the tutorial means:
 
-Ask before building. This is the same shape as the Commission doc's single
-OPEN, and it should be answered the same way.
+- **training hull carries it** — tutorial keeps §38's "ends by opening the
+  world", relocated hull becomes loot plus Cordon narrative.
+- **relocated hull carries it** — tutorial ends by handing over a bearing and
+  pointing past the cordon; the world opens on the first real expedition.
+
+Both are now cheap, because the bearing is filed by whichever hull is the
+system's survey hull, and `counts_as_survey` is a one-line flag that already
+exists. **Still worth confirming with the user before building** — but it is a
+preference now, not a blocker.
+
+**One thing §48 settled that stage 2 must not undo:** "PYX-02 only after the
+PYX-01 engine dies" was checked and found to be **already true** —
+`on_apex_defeated` → `open_lane`, and `travel_to` refuses a closed lane. §38's
+two-tier gate, working as designed since v15. Do not reimplement it.
+
+**And one new collision for stage 2's tutorial work:** with two hulls in
+PYX-01, `tutorial.gd` step 5's `get_first_node_in_group("crackable")` is
+ambiguous (whichever is first in the tree wins) — and so is `_find_crackable`
+in main.gd, and PACINGTEST's `_pacing_derelict_yield`. All three need to name
+which hull they mean. This is finding A8 widened: it is no longer just the
+pacing loop.
 
 ## 5. Stage 2 — the Authority, the Cordon, and what "assist" means
 
