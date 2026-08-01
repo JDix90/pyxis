@@ -2254,8 +2254,16 @@ func _run_demo() -> void:
 	chart_panel.close_panel()
 	await get_tree().create_timer(0.4).timeout
 
-	# Breach the PYX-01 derelict — this is what charts PYX-02.
-	var derelict: Derelict = get_tree().get_first_node_in_group("crackable")
+	# Breach the PYX-01 SURVEY hull — this is what charts PYX-02. v18 put a
+	# training hull on the old berth, so the group lookup would otherwise pick
+	# whichever is first in the tree; and the survey hull is now 140u out, so
+	# the demo is placed at it rather than walked to it.
+	var derelict: Derelict = _find_survey_hull()
+	if derelict != null:
+		var demo_pilot: PlayerShip = get_tree().get_first_node_in_group("player")
+		if demo_pilot != null:
+			demo_pilot.teleport_to(derelict.breach_point + Vector3(0, 0, 3.0))
+			await get_tree().physics_frame
 	derelict.on_tapped()
 	await get_tree().create_timer(3.0).timeout
 	var frames := 0
@@ -4314,9 +4322,24 @@ func _spill_cubes() -> Array:
 
 
 func _find_crackable() -> Node3D:
+	# ANY hull. SPILLTEST's hold-cancel check only needs something to hold on
+	# to, so it takes whichever is nearest to hand.
 	for n in get_tree().get_nodes_in_group("crackable"):
 		if n is Derelict:
 			return n
+	return null
+
+
+func _find_survey_hull() -> Derelict:
+	# THE hull -- the one that charts the next system and files the opening
+	# bearing. v18 put a second crackable in PYX-01 (the tutorial's training
+	# hull), so "the derelict" stopped being answerable by
+	# get_first_node_in_group and became a question about which one carries
+	# `counts_as_survey`. Every caller that means PROGRESSION goes through here;
+	# callers that just need a hull to grab keep using _find_crackable.
+	for n in get_tree().get_nodes_in_group("crackable"):
+		if n is Derelict and (n as Derelict).counts_as_survey:
+			return n as Derelict
 	return null
 
 
@@ -8666,7 +8689,11 @@ func _pacing_kill_yield(kind: String, count: int) -> float:
 
 func _pacing_derelict_yield() -> float:
 	var player: PlayerShip = get_tree().get_first_node_in_group("player")
-	var derelict: Derelict = get_tree().get_first_node_in_group("crackable") as Derelict
+	# THE SURVEY HULL, explicitly. PACING_LOOP's `derelict: 1` term is the
+	# once-per-system windfall; measuring the tutorial's 16-crate training stub
+	# instead would silently drop the loop's biggest single earner and re-tune
+	# the whole economy against a number that means nothing.
+	var derelict: Derelict = _find_survey_hull()
 	if derelict == null:
 		print("[pacing]   derelict: none in this system -> 0")
 		return 0.0
@@ -9109,8 +9136,10 @@ func _run_tutorial_test() -> void:
 	await get_tree().create_timer(0.9).timeout
 	print("[tut] after refit: step=%d (expect 5)" % GameState.tutorial_step)
 
-	# Step 6: breach the derelict — the finale that charts PYX-02.
-	var derelict: Derelict = get_tree().get_first_node_in_group("crackable")
+	# Step 6: breach the TRAINING hull. v18: the finale teaches the verb and
+	# charts nothing — the survey hull outside the cordon opens the world, and
+	# the tutorial ends by handing over its bearing.
+	var derelict: Derelict = get_tree().get_first_node_in_group("training_hull")
 	derelict.on_tapped()
 	await get_tree().create_timer(3.0).timeout
 	var frames := 0
@@ -13255,6 +13284,67 @@ func _run_hunt_test() -> void:
 			hull.queue_free()
 	print("[hunt] THE HULL GIVES A BEARING, AND ONLY FOR A SURVEY %s-> %s" % [
 		breach_rows, "PASS" if breach_ok else "FAIL"])
+
+	# 9d. THE HULLS ARE OUTSIDE AND CLEAR. Three properties of the v18
+	#     relocation, checked over the AUTHORED table for every system rather
+	#     than over the one that happens to be built:
+	#
+	#       past the marker   depth > 0, or "outside the cordon" is a fiction
+	#       in the Shoals     band 1, where PACK_CHANCE is 0.0 and nothing
+	#                         procedural spawns on the approach — which is what
+	#                         makes a tutorial-fresh pilot's first expedition
+	#                         survivable
+	#       clear of the lair by more than LAIR_KEEPOUT at the CLOSEST the
+	#                         authored bands allow, for ANY bearing. Checked
+	#                         against the band minimum rather than against this
+	#                         run's rolled lair: the bearings are independent, so
+	#                         a seed that happens to separate them proves nothing
+	#                         about the seed that does not.
+	var hull_rows := ""
+	var hulls_ok := true
+	for sid_v in SystemDB.ids():
+		var sid := String(sid_v)
+		var sdef := SystemDB.get_system(sid)
+		if (sdef.get("derelict", {}) as Dictionary).is_empty():
+			continue
+		var hdep := SystemDB.derelict_depth(sid)
+		var hband := DeepSpace.band_of(hdep)
+		var hr := SystemDB.derelict_pos(sid).length()
+		# The nearest the lair can ever be, over every legal bearing: the two
+		# are on independent bearings, so the worst case is co-linear and the
+		# separation is purely radial.
+		var lair_band: Array = ((sdef.get("apex", {}) as Dictionary)
+			.get("lair", {}) as Dictionary).get("depth", [0.0, 0.0])
+		var lair_min_r := float(sdef.get("bounds", 40.0)) + float(lair_band[0])
+		var worst_gap := lair_min_r - hr
+		var row_ok: bool = hdep >= DeepSpace.CONTENT_MIN_DEPTH and hband == 1 \
+			and worst_gap > DeepSpace.LAIR_KEEPOUT
+		if not row_ok:
+			hulls_ok = false
+		hull_rows += "%s depth %.0f band %d gap>=%.0f%s  " % [
+			sid, hdep, hband, worst_gap, "" if row_ok else " !!"]
+	print("[hunt] THE HULLS ARE OUTSIDE AND CLEAR %s(min depth %.0f, band must be 1, gap must beat LAIR_KEEPOUT %.0f) -> %s" % [
+		hull_rows, DeepSpace.CONTENT_MIN_DEPTH, DeepSpace.LAIR_KEEPOUT,
+		"PASS" if hulls_ok else "FAIL"])
+
+	# 9e. ONE HULL CARRIES THE PROGRESSION. With two crackables in PYX-01 the
+	#     question "which one charts" stopped being answerable by tree order,
+	#     and this is the assertion that keeps exactly one answer. Both clauses
+	#     matter: TWO survey hulls would make charting a race, and ZERO would
+	#     make the next system unreachable.
+	var survey_hulls := 0
+	var training_hulls := 0
+	for n in get_tree().get_nodes_in_group("crackable"):
+		if not (n is Derelict):
+			continue
+		if (n as Derelict).counts_as_survey:
+			survey_hulls += 1
+		else:
+			training_hulls += 1
+	var trainers_flagged := get_tree().get_nodes_in_group("training_hull").size()
+	print("[hunt] ONE HULL CARRIES THE PROGRESSION %s: %d survey hull, %d non-survey (%d in the training group) -> %s" % [
+		system_id, survey_hulls, training_hulls, trainers_flagged,
+		"PASS" if survey_hulls == 1 and training_hulls == trainers_flagged else "FAIL"])
 	GameState.clear_apex_intel(system_id)
 	GameState.breached = breached_snapshot
 

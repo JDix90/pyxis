@@ -108,6 +108,29 @@ func _finish() -> void:
 		hud.show_toast("SURVEY AUTHORITY GRANTED", Palette.GOLD)
 	var main := get_tree().get_first_node_in_group("main")
 	if main:
+		# v18. THE FINALE POINTS PAST THE CORDON.
+		#
+		# This used to end by OPENING the world: the breach charted PYX-02 and
+		# the guided run finished by handing over a frontier. The survey hull is
+		# a hundred units outside charted space now, so the tutorial ends one
+		# step earlier than that — it teaches the verb on a training hull and
+		# then tells you where to go and use it.
+		#
+		# Deliberately a BEARING and a distance rather than a waypoint: the
+		# whole game is about flying out past the marker on a heading, and the
+		# first time the player does it should read like that rather than like
+		# following an arrow. The numbers come from SystemDB.derelict_pos so
+		# this line cannot disagree with where the hull actually is.
+		var hull_at: Vector3 = SystemDB.derelict_pos(main.system_id)
+		if hull_at != Vector3.ZERO and main.hud:
+			var deg := int(round(fposmod(rad_to_deg(atan2(hull_at.z, hull_at.x)), 360.0)))
+			main.hud.show_broadcast("GSA RELAY — SURVEY ASSIGNMENT",
+				"Authority granted. The hull we need surveyed is not in charted "
+				+ "space — it is %du out on bearing %03d, past the cordon. "
+					% [int(round(SystemDB.derelict_depth(main.system_id))), deg]
+				+ "Patrols do not operate beyond the marker. Breach it and the "
+				+ "next system is yours to chart.", Palette.GOLD)
+			GameState.note_log("SURVEY ASSIGNMENT — BEARING %03d" % deg)
 		# Populate in place rather than reloading the system: a rebuild here
 		# would delete the breach's loot vortex at the exact moment the player
 		# earned it. The garrison also arrives on a delay so the finale gets to
@@ -171,7 +194,11 @@ func _setup(step: int) -> void:
 			if hud:
 				hud.show_toast("RECOVERED — TRACTOR RIG", Palette.TEAL)
 		5:
-			var derelict: Node3D = get_tree().get_first_node_in_group("crackable")
+			# THE TRAINING HULL specifically. v18 moved the survey hull a hundred
+			# units past the marker and put a small one on its old berth; with
+			# two crackables in PYX-01, "crackable" answers "whichever is first
+			# in the tree", which is not a rule a tutorial step should turn on.
+			var derelict: Node3D = get_tree().get_first_node_in_group("training_hull")
 			if derelict:
 				FX.ring_pulse(get_parent(), derelict.global_position, Palette.AMBER, 3.0, 0.9)
 
@@ -233,7 +260,11 @@ func _process(_delta: float) -> void:
 			if String(GameState.fit.get(ModuleDB.Slot.UTILITY, "")) == "util_tractor":
 				_complete_step()
 		5:
-			var derelict: Node3D = get_tree().get_first_node_in_group("crackable")
+			# THE TRAINING HULL specifically. v18 moved the survey hull a hundred
+			# units past the marker and put a small one on its old berth; with
+			# two crackables in PYX-01, "crackable" answers "whichever is first
+			# in the tree", which is not a rule a tutorial step should turn on.
+			var derelict: Node3D = get_tree().get_first_node_in_group("training_hull")
 			# The derelict leaves the group the instant it is breached.
 			if derelict == null:
 				_complete_step()

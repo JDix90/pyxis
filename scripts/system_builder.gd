@@ -18,7 +18,8 @@ static func build(def: Dictionary, container: Node3D, opts := {}) -> void:
 	_build_haze(def, container)
 	_build_bodies(def, container)
 	_build_asteroids(def, container, String(opts.get("system_id", "")))
-	_build_derelict(def, container)
+	_build_derelict(def, container, String(opts.get("system_id", "")))
+	_build_training_hull(def, container)
 	_build_apex(def, container, String(opts.get("system_id", "")))
 	_build_port(def, container)
 	_build_deep_space(def, container, String(opts.get("system_id", "")))
@@ -321,7 +322,11 @@ static func _build_charted_seam(container: Node3D, cfg: Dictionary, radius: floa
 		* (radius + DeepSpace.SEAM_STANDOFF)
 
 
-static func _build_derelict(def: Dictionary, container: Node3D) -> void:
+static func _build_derelict(def: Dictionary, container: Node3D, system_id := "") -> void:
+	# THE SURVEY HULL, now outside the cordon. Position comes from
+	# SystemDB.derelict_pos and nowhere else -- the builder does not compute a
+	# bearing of its own, because the tutorial's broadcast and the expanse's
+	# keep-out both have to agree with wherever this thing ends up.
 	var cfg: Dictionary = def.get("derelict", {})
 	if cfg.is_empty():
 		return
@@ -329,7 +334,8 @@ static func _build_derelict(def: Dictionary, container: Node3D) -> void:
 	d.loot_total = int(cfg.get("loot", 70))
 	d.crack_time = float(cfg.get("crack_time", 1.8))
 	container.add_child(d)
-	d.position = cfg.get("pos", Vector3(-9, 0, -15))
+	d.position = SystemDB.derelict_pos(system_id) if system_id != "" \
+		else cfg.get("pos", Vector3(-9, 0, -15))
 	d.rotation_degrees.y = float(cfg.get("rot_y", 25.0))
 	# Two modest spheres along the hull spine rather than one big one. Sized and
 	# tucked in deliberately: a collision volume must never encroach on the
@@ -338,6 +344,37 @@ static func _build_derelict(def: Dictionary, container: Node3D) -> void:
 	var fwd := d.global_transform.basis.z
 	Obstacles.add(d.position - fwd * 2.6, 1.9)
 	Obstacles.add(d.position + fwd * 2.6, 1.9)
+
+
+static func _build_training_hull(def: Dictionary, container: Node3D) -> void:
+	# THE TUTORIAL'S HULL, on the berth the survey hull used to hold. PYX-01
+	# only, and it exists because the guided first run ends on a breach and the
+	# survey hull is now a hundred units past the marker — an expedition is the
+	# wrong sixth step for a pilot who has just been taught which key moves the
+	# ship.
+	#
+	# `counts_as_survey = false` is the WHOLE mechanism: it is the flag deep
+	# hulks have carried since the expanse shipped, and it already means
+	# "charts nothing, wakes nothing, files no bearing". No new gate, no new
+	# class, and no second thing that can claim the progression.
+	var cfg: Dictionary = def.get("training_hull", {})
+	if cfg.is_empty():
+		return
+	var d := Derelict.new()
+	d.loot_total = int(cfg.get("loot", 16))
+	d.crack_time = float(cfg.get("crack_time", 1.4))
+	d.counts_as_survey = false
+	container.add_child(d)
+	# Its own group, so the tutorial can name the hull it means. With two
+	# crackables in PYX-01, get_first_node_in_group("crackable") answers
+	# "whichever is first in the tree", which is not a rule anything should
+	# depend on.
+	d.add_to_group("training_hull")
+	d.position = cfg.get("pos", Vector3(-9, 0, -18))
+	d.rotation_degrees.y = float(cfg.get("rot_y", 25.0))
+	var tfwd := d.global_transform.basis.z
+	Obstacles.add(d.position - tfwd * 2.6, 1.9)
+	Obstacles.add(d.position + tfwd * 2.6, 1.9)
 
 
 static func _build_apex(def: Dictionary, container: Node3D, system_id := "") -> void:
