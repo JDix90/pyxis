@@ -4763,6 +4763,40 @@ shot it.** `THE MUSTER IS A FIGHT` requires both
 sides to lose hull before the event ends, and deliberately does not require the
 line to win: who wins is emergent and is supposed to be.
 
+### And the tutorial could not be finished by playing it
+
+The `WORLD REOPENED` line above — the observation promoted to a PASS/FAIL —
+failed on its very first sweep, with everything at zero: no sentries, no
+pickets, no waves. Not the garrison bug. Something worse.
+
+Step 5 completed when the hull left its group:
+
+    var derelict := get_tree().get_first_node_in_group("training_hull")
+    # The derelict leaves the group the instant it is breached.
+    if derelict == null:
+        _complete_step()
+
+The comment is false. `Derelict._breach()` removes itself from `crackable` and
+from nothing else, and the node is **never freed** — it stays in the scene as
+an opened wreck and stays in `training_hull` forever. The condition could never
+become true.
+
+So a player who did what the tutorial asked and breached the hull sat at step 5
+with the world still held back — no sentries, no pickets, no waves, no events,
+permanently. **The only working exit was the SKIP button**, which calls
+`_finish()` directly, and which lands straight on the half-restored garrison.
+That is why the playtest reported a live world with no Cordon in it: the two
+bugs are the same path.
+
+Shipped in stage 2b, when the step was re-pointed from `crackable` to the new
+`training_hull` group without the matching removal. `TUTORIALTEST` drove the
+whole sequence every single sweep and printed `sentries=0` next to the words
+`(expect >0)`. Fifty-five runs a time, for four stages, printing the answer.
+
+**An observation is not an assertion.** A harness that prints numbers for a
+human to read is a harness whose numbers nobody reads. If it is worth printing
+`(expect >0)`, it is worth failing on.
+
 ### And an event with no bound
 
 Both of the muster's exits are emergent — the column is wiped, or one gets
