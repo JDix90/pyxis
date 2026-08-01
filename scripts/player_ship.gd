@@ -551,7 +551,10 @@ func cycle_target() -> Node3D:
 	var hostiles: Array[Node3D] = []
 	for n in get_tree().get_nodes_in_group("hostiles"):
 		var h := n as Node3D
-		if is_instance_valid(h) and global_position.distance_to(h.global_position) <= CYCLE_RANGE:
+		# Cycling is for picking the next THREAT, not the next object. A
+		# neutral convoy in the ring used to be a stop on the tour.
+		if is_instance_valid(h) and GameState.hostile_to_player(h) \
+				and global_position.distance_to(h.global_position) <= CYCLE_RANGE:
 			hostiles.append(h)
 	if hostiles.is_empty():
 		attack_target = null
@@ -699,7 +702,13 @@ func _nearest_hostile_in_range() -> Node3D:
 	var best_d := _max_weapon_range()
 	for n in get_tree().get_nodes_in_group("hostiles"):
 		var h := n as Node3D
-		if not _auto_targetable(h):
+		# AND IT MUST ACTUALLY BE AN ENEMY. Return fire used to swing onto the
+		# nearest thing in the group whatever its flag, so a player fighting a
+		# Tally pack beside a neutral convoy would start shooting the convoy --
+		# and then be blamed for it by the standing rule. Anything that has
+		# fired on the player answers true here, so a fight in progress is
+		# unaffected.
+		if not _auto_targetable(h) or not GameState.hostile_to_player(h):
 			continue
 		var d := global_position.distance_to(h.global_position)
 		if d <= best_d:

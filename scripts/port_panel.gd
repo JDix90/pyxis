@@ -1303,6 +1303,24 @@ func _build_hunt_desk() -> void:
 		return
 
 	var err := float(_port_def.get("hunt_error", 0.0))
+	# THE WORD IS SOLD ONCE. A ring desk sells a band and a quarter, which is
+	# exactly what the GSA relay now broadcasts free the moment the lane closes
+	# -- and the dossier refuses a duplicate ring. Without this the bar would
+	# render a live BUY button that can only ever reject, and a button that does
+	# nothing is worse than no button. No credits were ever at risk (the desk
+	# files before it spends), but a dead control is its own kind of lie.
+	if err <= 0.0 and GameState.has_ring_hint(sys_id):
+		var told_rule := HSeparator.new()
+		_body.add_child(told_rule)
+		var told := Label.new()
+		told.text = "THE HUNT — %s\nYou already have the word. The relay does not charge for it, and neither will we." \
+			% String(apex.get("name", "THE ENGINE"))
+		told.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		told.add_theme_font_size_override("font_size", 11)
+		told.add_theme_color_override("font_color", Palette.AMBER_DIM)
+		_body.add_child(told)
+		return
+
 	var rule := HSeparator.new()
 	_body.add_child(rule)
 

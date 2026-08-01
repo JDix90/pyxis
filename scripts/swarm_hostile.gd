@@ -570,6 +570,11 @@ func _die(attacker: Node3D) -> void:
 	var main := get_tree().get_first_node_in_group("main")
 	if player_kill and main and main.has_method("report_kill"):
 		main.report_kill("muster" if muster else "swarm")
+	# AND WHOEVER THIS WAS SHOOTING AT MAY OWE THE PLAYER FOR IT. Read here
+	# because _aggro and _target are still valid -- the group removals above
+	# touch neither -- and gone a frame later.
+	if player_kill and main and main.has_method("credit_convoy_defence"):
+		main.credit_convoy_defence(_aggro if is_instance_valid(_aggro) else _target)
 	if not pays:
 		queue_free()
 		return

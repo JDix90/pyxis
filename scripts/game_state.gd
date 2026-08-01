@@ -19,6 +19,18 @@ signal system_unlocked(id: String)
 # a second signal rather than a flag on the first: charting and opening happen at
 # different places, for different reasons, and a listener usually wants one.
 signal lane_opened(id: String)
+# A standing shift the PLAYER is party to. Emitted from the ONE mutator, so
+# every mover that exists now and every mover added later is covered by
+# construction rather than by somebody remembering to announce it.
+#
+# DELIBERATELY NOT GATED ON `quiet`. That flag governs the LOGBOOK -- ten slots,
+# and a redundant line there took LOGTEST's FIVE SITES WIRED red once already
+# (see shift_faction's note). A toast is not a slot. The three POSITIVE movers
+# all pass quiet=true and all three had nothing on screen at all, which is the
+# half of finding A10 the dock-sheet row never covered: a consequence you can
+# only discover by docking somewhere and reading a line is not feedback for an
+# act you committed four hundred units away.
+signal standing_shifted(other: String, delta: int, band: int)
 
 const SAVE_PATH := "user://save.json"
 const SAVE_VERSION := 18
@@ -498,6 +510,16 @@ func enemies_of(faction: String) -> Array:
 	return out
 
 
+func has_ring_hint(system_id: String) -> bool:
+	# Whether the dossier already holds a band-and-quarter reading for this
+	# system. The free relay files one the moment the lane closes, so a desk
+	# selling the same thing needs to know not to offer it twice.
+	for h_v in apex_hints(system_id):
+		if String((h_v as Dictionary).get("kind", "")) == "ring":
+			return true
+	return false
+
+
 func hostile_to_player(node) -> bool:
 	# The one dispatcher every consumer asks, so "is this thing my enemy" has a
 	# single answer instead of four that agree by luck.
@@ -549,6 +571,13 @@ func shift_faction(a: String, b: String, amount: int, quiet := false) -> void:
 		var other := b if a == FactionDB.SURVEYOR else a
 		note_log("%s — STANDING %s" % [FactionDB.display_name(other),
 			"RISES" if amount > 0 else "FALLS"])
+	# The on-screen channel, for every mover regardless of `quiet`. The early
+	# returns above mean a no-op never reaches here, and the SURVEYOR test means
+	# a third-party shift never does either -- both are asserted.
+	if a == FactionDB.SURVEYOR or b == FactionDB.SURVEYOR:
+		var moved := b if a == FactionDB.SURVEYOR else a
+		standing_shifted.emit(moved, amount,
+			FactionDB.band_of(faction_attitude(FactionDB.SURVEYOR, moved)))
 	_queue_save()
 
 

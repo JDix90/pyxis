@@ -437,6 +437,7 @@ var _crack_shown := 0.0
 var _crack_releasing := false
 var _crack_label: Label
 var _toast_tween: Tween = null
+var _toast_count := 0
 var _parley_button: Button
 var _bluff_button: Button
 var _broadcast_box: PanelContainer
@@ -455,6 +456,7 @@ var _system_base := ""
 var _system_short := ""
 var _deep_band := ""
 var _deep_out := 0.0
+var _deep_wash := false
 var _gain_timer: SceneTreeTimer = null
 
 
@@ -989,13 +991,15 @@ func set_system_tag(text: String) -> void:
 	_apply_system_tag()
 
 
-func set_deep_tag(band_name: String, out_distance: float) -> void:
+func set_deep_tag(band_name: String, out_distance: float, wash := false) -> void:
 	# band_name "" means inside the charted system, where this whole readout
 	# collapses back to exactly the string it has always shown.
-	if band_name == _deep_band and absf(out_distance - _deep_out) < 1.0:
+	if band_name == _deep_band and absf(out_distance - _deep_out) < 1.0 \
+			and wash == _deep_wash:
 		return
 	_deep_band = band_name
 	_deep_out = out_distance
+	_deep_wash = wash
 	_apply_system_tag()
 
 
@@ -1023,6 +1027,18 @@ func _apply_system_tag() -> void:
 	var band := DeepSpace.band_of(_deep_out)
 	_system_label.text = "SYS // %s · %s %s · %du OUT" % [
 		_system_short, Palette.band_glyph(band), _deep_band, int(round(_deep_out))]
+	if _deep_wash:
+		# THE ENGINE'S OWN JAMMING, read on your instruments before it is read
+		# on your radar. The lair keep-out strips stations, nests, hulks and
+		# convoys, so the arena is QUIETER than the sky around it -- an
+		# anti-signal, and precisely why a playtester flew through the right
+		# region and kept going. This turns that silence into a statement.
+		#
+		# It says HERE and never THAT WAY: the string is byte-identical at 119
+		# units and at 5, so no bearing can be extracted from it, and its
+		# boundary sits outside the radar cutoff it precedes -- it can never be
+		# more precise than the instrument it is announcing.
+		_system_label.text += " · CARRIER WASH"
 	var c: Color = Palette.band_color(band)
 	_system_label.add_theme_color_override("font_color", Color(c.r, c.g, c.b, 0.75))
 
@@ -1058,6 +1074,34 @@ func broadcast_text() -> String:
 	return _broadcast_body.text if _broadcast_box.visible else ""
 
 
+func toast_busy() -> bool:
+	# Whether a toast is mid-flight. This label has no queue by design (see
+	# show_toast), so a caller with something to say that can WAIT asks first
+	# rather than clipping the sentence already on screen.
+	return _toast_tween != null and _toast_tween.is_valid()
+
+
+func toast_text() -> String:
+	# Gated on visibility, exactly like broadcast_text(): a label still holding
+	# its last string at alpha 0 is not a thing the player was told.
+	return _toast_label.text if _toast_label != null \
+		and _toast_label.modulate.a > 0.01 else ""
+
+
+func toast_count() -> int:
+	# How many toasts have been RAISED this session. The harness counts volleys
+	# with it -- six kills producing six toasts and six kills producing one are
+	# indistinguishable from the rendered text alone.
+	return _toast_count
+
+
+func clear_toast() -> void:
+	if _toast_tween != null and _toast_tween.is_valid():
+		_toast_tween.kill()
+	_toast_label.text = ""
+	_toast_label.modulate.a = 0.0
+
+
 func system_tag_text() -> String:
 	return _system_label.text
 
@@ -1086,6 +1130,7 @@ func show_arrival(text: String) -> void:
 
 
 func show_toast(text: String, color: Color) -> void:
+	_toast_count += 1
 	_toast_label.text = text
 	_toast_label.add_theme_color_override("font_color", color)
 	_toast_label.modulate.a = 0.0

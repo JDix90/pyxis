@@ -31,6 +31,12 @@ const PAN_LEASH_MAX := 76.0
 const TAP_MAX_PX := 14.0
 const TAP_MAX_TIME := 0.35
 const PICK_PX := 60.0
+# How long an armed engage stays armed. Long enough to read the line and
+# decide, short enough that a tap three minutes later is not a war you started
+# without meaning to.
+const ENGAGE_CONFIRM := 3.0
+var _engage_armed := 0        # instance id of the armed ship, 0 = nothing
+var _engage_at := 0.0
 
 const FOLLOW_SPEED := 2.6
 const FOLLOW_DEADZONE := 1.6
@@ -388,11 +394,44 @@ func _select(screen_pos: Vector2) -> bool:
 
 	var hostile := _pick(screen_pos, "hostiles")
 	if hostile:
-		FX.ring_pulse(get_parent(), hostile.global_position, Palette.THREAT, 1.3)
-		Sfx.play("tap", -4.0, 1.12)
-		if player:
-			player.command_attack(hostile)
-		return true
+		if GameState.hostile_to_player(hostile):
+			FX.ring_pulse(get_parent(), hostile.global_position, Palette.THREAT, 1.3)
+			Sfx.play("tap", -4.0, 1.12)
+			if player:
+				player.command_attack(hostile)
+			return true
+		# A FLAG THAT IS NOT SHOOTING AT YOU IS NOT A TARGET YOU CAN ORDER BY
+		# ACCIDENT -- and it is still a target you can order. Both halves matter:
+		# the standing ramp is that four unprovoked kills close a faction's
+		# fence, so removing the choice would remove a mechanic, while leaving
+		# the accident in means a brawl beside a convoy starts a second war by
+		# a stray finger.
+		#
+		# So the first tap says exactly what the second one will do. This is
+		# the same shape as the hold gesture -- an action you have to mean --
+		# rather than a confirm dialog, and it costs no new surface: the toast
+		# is the one already on screen for everything else.
+		var now := Time.get_ticks_msec() / 1000.0
+		if _engage_armed == hostile.get_instance_id() and now - _engage_at <= ENGAGE_CONFIRM:
+			_engage_armed = 0
+			FX.ring_pulse(get_parent(), hostile.global_position, Palette.THREAT, 1.3)
+			Sfx.play("tap", -4.0, 1.12)
+			if player:
+				player.command_attack(hostile)
+			return true
+		_engage_armed = hostile.get_instance_id()
+		_engage_at = now
+		var hud := get_tree().get_first_node_in_group("hud")
+		if hud and hud.has_method("show_toast"):
+			var flag := String(hostile.faction)
+			hud.show_toast("%s — %s. TAP AGAIN TO ENGAGE" % [
+				FactionDB.display_name(flag),
+				FactionDB.BAND_NAMES[GameState.faction_band(flag, FactionDB.SURVEYOR)]],
+				FactionDB.tint_of(flag))
+		# FALLS THROUGH on purpose. Tapping a convoy still means "go there",
+		# which is what the gesture means everywhere else; _click returns
+		# without moving by its own design, so the desktop path is unaffected.
+		return false
 
 	var crackable := _pick(screen_pos, "crackable")
 	if crackable and crackable.has_method("on_tapped"):
