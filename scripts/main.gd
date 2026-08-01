@@ -1522,18 +1522,29 @@ func _open_muster() -> void:
 	_muster_active = true
 	_muster_released = 0
 	_muster_wave_t = 0.0
-	var side := Vector3(-_muster_bearing().z, 0.0, _muster_bearing().x)
+	# ON THE ARC, NOT ON A CHORD. The marker is a CIRCLE — `chart_edge()` is a
+	# radius — so a line strung straight across the bearing bulges outside it at
+	# the ends. Measured: the outermost picket sat 0.4u past the marker once
+	# drift was added, which is small, silent, and a direct breach of the one
+	# promise the band-1 beacon has been making since v13. THE LINE IS THE EDGE
+	# caught it.
+	#
+	# Every ship therefore sits at a fixed RADIUS and a spread of BEARINGS, and
+	# the radius carries a 3u inset so Hostile's 0.4 station-keeping wander can
+	# never take one over either.
+	var base_ang := atan2(_muster_bearing().z, _muster_bearing().x)
+	var line_r := maxf(chart_edge() - 3.0, 1.0)
+	var span := 3.4 / line_r          # radians between neighbours, ~3.4u apart
 	for i in range(MUSTER_LINE):
 		var g := Hostile.new()
 		g.faction = "gsa"
 		g.muster = true
 		g.difficulty = float(system_def.get("difficulty", 1.0))
 		system_root.add_child(g)
-		# Strung out ACROSS the bearing rather than clustered on it: a line is a
-		# line, and eight machines in a heap would read as a nest.
-		g.global_position = _muster_point \
-			+ side * ((float(i) - float(MUSTER_LINE - 1) * 0.5) * 3.4) \
-			- _muster_bearing() * 2.0
+		# Strung out ALONG the marker rather than clustered on the bearing: a
+		# line is a line, and eight machines in a heap would read as a nest.
+		var a := base_ang + (float(i) - float(MUSTER_LINE - 1) * 0.5) * span
+		g.global_position = Vector3(cos(a) * line_r, 0.0, sin(a) * line_r)
 		g.add_to_group("muster_line")
 	if hud:
 		hud.show_toast("THE CORDON IS STANDING TO", Palette.TEAL)
