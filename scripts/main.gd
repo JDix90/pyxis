@@ -12998,7 +12998,12 @@ func _run_manual_test() -> void:
 	# The HUD half: coverage, not copy. TIER_NAMES is the radar's own list, so
 	# a tier added without a legend row fails here naming the tier.
 	manual.open()
-	manual._show_page("hud")
+	# _page + _refresh(), the navigation every other assertion in this harness
+	# uses. There is no _show_page() -- calling one stalled the whole suite
+	# rather than failing loudly, which is its own small lesson about reaching
+	# into a console by a name nobody checked.
+	manual._page = "hud"
+	manual._refresh()
 	await get_tree().process_frame
 	var undocumented := ""
 	for want_v in ["SALVAGE", "HOLD", "HULL", "HDG"] + HUD.RadarLayer.TIER_NAMES:

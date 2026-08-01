@@ -4892,3 +4892,96 @@ Convoy members force-join `"hostiles"` (both classes do, structurally), so
 neutral traffic reads as red on an unclustered radar and trips the threat
 music at close range. Accepted for now; the radar cluster (one marker per
 convoy, faction-tinted, TIER_SITE) is the visible half of the fix.
+
+## 56. The cockpit could not read its own game (v18, playtest round 2)
+
+A playtester reported four things. Three had one root: **the game speaks in
+bearings and standings that nothing on the ship reads back.**
+
+### The hint was right and the instrument was missing
+
+"The engine is towards the north" was correct — computed from the boss's
+real position, no sign error, no spawn gate. The player still could not
+find it, for four compounding reasons:
+
+1. **Nothing said which way north was.** Six channels hand out a `%03d`
+   bearing or a compass word and the HUD had no heading instrument at all.
+   Worse, the one compass-shaped object in the world — the cartography
+   lattice, eight radial spokes on a ring — turned a full revolution every
+   240 seconds. Anyone navigating by it drifted 1.5°/s and was never told.
+2. **The word was spoken once and destroyed.** The relay broadcast lived
+   7.6 seconds on a plate and was never logged and never filed, while the
+   chart panel two taps away said *"no intel"* and shaded all 360°,
+   contradicting the sentence the player was trying to act on. §48 named
+   this gap and closed only the hull-cone half of it.
+3. **The search area was enormous and the detection footprint tiny.** One
+   straight run due north finds the engine about a third of the time.
+4. **The keep-out makes the lair QUIETER than its surroundings** — it
+   strips stations, nests, hulks and convoys — so "nothing here, keep
+   moving" is exactly the wrong instinct.
+
+The fixes: a `HDG 271 · NORTH` readout that ASKS `quadrant_of` rather than
+re-deriving the sector maths; the lattice stops turning; cardinal letters
+on the chart plot; the relay's word is filed as a ring hint; the copy says
+QUARTER instead of bearing and quotes the authored 80u annulus instead of
+the band's 280u name; and a CARRIER WASH line inside the keep-out that says
+*here* and never *that way*.
+
+The wash is deliberately not a marker, has no direction, and its 120u
+boundary sits outside the 90u radar cutoff it precedes — **it can never be
+more precise than the instrument it announces.** Its assertion measures
+*no marker at either sample*, so reimplementing it as a marker reddens two
+assertions instead of one.
+
+### Good standing already worked; you just could not see it
+
+`enemies_of` has only ever listed HOSTILE factions, so a neutral convoy
+never picked the player unprovoked. The complaint was entirely feedback
+and affordance:
+
+- Standing moved **silently** — one line into a ten-slot logbook you open
+  a menu to read, and only for kills. All three positive movers passed
+  `quiet=true` and put nothing anywhere. A `standing_shifted` signal now
+  fires from the one mutator, coalesced per volley because the toast label
+  has no queue and six kills would clobber each other.
+- **Tapping a neutral convoy ordered an attack.** Return fire could swing
+  onto one mid-brawl, cycling toured them, and flying alongside raised
+  combat music. Four consumers read `"hostiles"` as "things to shoot"; they
+  now ask one dispatcher.
+- Attacking a neutral deliberately still works and **has to** — four
+  unprovoked kills closing a faction's fence is the whole ramp. First tap
+  names them and arms, second engages; anything already shooting at you is
+  an ordinary target on one tap. That last clause is the load-bearing one.
+
+### One toll bought permanent peace
+
+Found by reading, not by playing. The Tithe baseline sat at −4, *exactly*
+on the HOSTILE/WARY boundary, so a single toll crossed a band. Raiders then
+had no target and no leash in charted space, drifted forever,
+`_count_raiders()` never reached zero, `_raid_active` latched — and because
+`muster_eligible` reads the same flag, **every future raid and every future
+muster stopped for the session.** Only a warp cleared it, and nothing said
+so. Baseline → −6 (three tolls is an arc, one was a switch), plus a
+lapsed-pack exit and an eligibility gate.
+
+### What the assertions cost, and what they caught
+
+Four of the fifteen failed first on the assertion rather than the code:
+
+- One banned the word "bearing" in copy that deliberately says *"not a
+  bearing"* — the sentence doing the teaching.
+- One trusted `chart_panel.open()`'s default selection; `open()` returns
+  early when the sheet is already up, so it could read a stale screen.
+- One read a port's first service tab when the desk renders on another,
+  and separately depended on preconditions (system loaded, engine alive)
+  that earlier sections of the same harness destroy. **A desk that never
+  rendered and a row correctly suppressed produce the same silence.**
+- One called `manual._show_page()`, which does not exist. It stalled the
+  whole suite instead of failing loudly.
+
+And one caught a real hole in the tooling: **`_panel_text_contains` has
+only ever walked `Label` nodes.** Half of what a port sheet says is written
+on its buttons, so the helper eight assertions rely on to read "the
+rendered tree" was blind to all of it. The tell was that the assertion
+failed in BOTH directions — a measurement that cannot distinguish its two
+outcomes is not measuring.
