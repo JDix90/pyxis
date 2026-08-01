@@ -94,6 +94,12 @@ const SYSTEMS := {
 			# were standing and fires down it a beat later — the starting boss
 			# teaches the series' one rule: standing still is what kills you.
 			"name": "THE GNOMON", "attack": "shadow_lance"},
+		# v18 stage 3. WHO OWNS THIS SYSTEM. The engine was never masterless: the
+		# sentries standing over the lanes and the swarms that keep arriving are
+		# its forces, and silencing it is taking a system off a government rather
+		# than switching off a machine. One key, read once by the builder and
+		# handed to every spawner, so "whose side is this" has a single answer.
+		"faction": "gnomon",
 		# Freeport: neutral prices and a narrow spread. The market you learn on.
 		"port": {
 			"id": "anchor",
@@ -242,6 +248,7 @@ const SYSTEMS := {
 			# your position under a ground-ring telegraph — area denial where the
 			# Gnomon was a line, so the dodge you learned needs re-learning.
 			"name": "THE ARMILLARY", "attack": "flare_mortar"},
+		"faction": "armillary",
 		# Mining colony: digs alloys and volatiles, starves for isotopes and cores.
 		"port": {
 			"id": "cinderworks",
@@ -340,6 +347,7 @@ const SYSTEMS := {
 			# it drags you toward the hub and the sweep arm, so the final boss
 			# weaponizes the positioning the other two only pressured.
 			"name": "THE MERIDIAN", "attack": "grav_tether"},
+		"faction": "meridian",
 		# Military yards: refines its own isotopes, pays well for alloys and relics.
 		# Alloys Cinderworks->Bastion and isotopes Bastion->Cinderworks are the two
 		# routes that fall out of these numbers without anyone scripting them.
@@ -468,6 +476,14 @@ static func port_def_by_id(port_id: String) -> Dictionary:
 			if String((p as Dictionary)["id"]) == port_id:
 				return p
 	return {}
+
+
+static func faction_of(id: String) -> String:
+	# The host power of a system. Defaults to FERAL's id rather than to "" so a
+	# system def that forgets the key produces the SHIPPED world (unflagged
+	# automata hostile to the player) instead of a node with no allegiance at
+	# all -- the same fail-safe direction Hostile.faction's own default takes.
+	return String(get_system(id).get("faction", "feral"))
 
 
 static func derelict_pos(id: String) -> Vector3:

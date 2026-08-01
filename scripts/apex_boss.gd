@@ -448,6 +448,11 @@ func _vent_probes(count: int) -> void:
 		var probe := SwarmHostile.new()
 		probe.difficulty = PROBE_DIFFICULTY * difficulty
 		probe.hp_scale = PROBE_HP_SCALE
+		# v18 stage 3. The engine's own drones fly the engine's flag. Safe
+		# against the Cordon by geometry rather than by rule: pickets never
+		# cross the chart edge and the lair is hundreds of units past it, so
+		# these two never meet.
+		probe.faction = SystemDB.faction_of(GameState.current_system)
 		parent.add_child(probe)
 		var ang := TAU * float(i) / float(maxi(count, 1)) + randf() * 0.3
 		probe.global_position = global_position + Vector3(cos(ang), 0, sin(ang)) * (HUB_RADIUS + 0.8)

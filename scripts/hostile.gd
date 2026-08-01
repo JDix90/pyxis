@@ -81,6 +81,12 @@ const PATROL_RELEASE := 25.0
 
 var _patrol_i := 0
 
+# --- the skirmish clock (v18, stage 3, finding A6) ---------------------------
+# The numbers and the reasoning live in FactionDB.SKIRMISH_TIME so both hostile
+# classes share one clock rather than two that have to be kept equal.
+var _skirmish := 0.0
+var _skirmish_rest := 0.0
+
 # Enemy list cached against GameState.faction_version — the matrix moves only
 # on player actions, so recomputing it per frame would be paying every tick
 # for something that changes a few times an hour.
@@ -325,11 +331,37 @@ func _targetable(n) -> bool:
 
 
 func _combat_target(delta: float) -> Node3D:
-	# Who this machine is currently fighting. Aggro first (whoever shot it),
-	# then the nearest thing its flag is HOSTILE toward. In the shipped world
-	# every faction is FERAL, whose only enemy is the surveyor — so this walks
-	# no group and returns exactly what get_first_node_in_group("player") did,
-	# which is the stage-1 contract: same world, restated as a rule.
+	# THE SKIRMISH CLOCK LIVES HERE AND NOWHERE ELSE, wrapping the picker below
+	# so every path that can return an NPC — aggro, cache, fresh scan — is
+	# governed by one timer rather than three copies of one.
+	#
+	# The player is exempt: fighting the player has no break-off, which is what
+	# keeps every balance number ever measured against this class still valid.
+	if _skirmish_rest > 0.0:
+		_skirmish_rest -= delta
+	var picked := _pick_target(delta)
+	if picked == null or picked.is_in_group("player"):
+		# Not skirmishing. The clock unwinds rather than resetting, so a machine
+		# that traded fire, lost sight for a moment and re-acquired does not get
+		# a fresh six seconds every time.
+		_skirmish = maxf(_skirmish - delta, 0.0)
+		return picked
+	_skirmish += delta
+	if _skirmish >= FactionDB.SKIRMISH_TIME:
+		# Break off. Groups, position and post are untouched — the machine simply
+		# stops having a target, which _walk_beat reads as "resume the beat" and
+		# a stationary sentry reads as "hold station".
+		_skirmish = 0.0
+		_skirmish_rest = FactionDB.SKIRMISH_REST
+		_aggro = null
+		_target = null
+		return null
+	return picked
+
+
+func _pick_target(delta: float) -> Node3D:
+	# Who this machine would fight, ignoring the clock. Aggro first (whoever
+	# shot it), then the nearest thing its flag is HOSTILE toward.
 	_refresh_enemies()
 	if _targetable(_aggro):
 		return _aggro
@@ -348,8 +380,12 @@ func _combat_target(delta: float) -> Node3D:
 		if _targetable(p):
 			best = p
 			best_d = global_position.distance_to(p.global_position)
-	# The NPC scan only runs when the matrix actually names an NPC enemy —
-	# which no shipped faction pair does, so today this branch costs nothing.
+	# The NPC scan is skipped outright while standing down. Note it runs even
+	# when a player target was found: a machine mid-rest still shoots the
+	# player, it just will not pick another machine.
+	if _skirmish_rest > 0.0:
+		_target = best
+		return best
 	if _enemies.size() > (1 if hates_player else 0):
 		for n_v in get_tree().get_nodes_in_group("combatants"):
 			var n := n_v as Node3D
@@ -420,6 +456,18 @@ func take_damage(amount: float, attacker: Node3D) -> void:
 			and (not ("faction" in attacker) or String(attacker.faction) != faction):
 		_aggro = attacker
 	hp -= amount
+	# THE AMBIENT FLOOR. Fire from another machine wears this one down but can
+	# never finish it — see FactionDB.SKIRMISH_HP_FLOOR. Applied to the RESULT
+	# rather than to the damage, so a machine already below the floor when the
+	# player leaves it there is not quietly healed by being shot at.
+	# Gated on COMBATANTS, not on "is not the player". The distinction matters:
+	# ApexBoss scraps its own pending probes with take_damage(99999, self) on a
+	# phase change, and the boss is in "hostiles" but not "combatants" — so a
+	# "not the player" test would floor those probes at half hull and leave them
+	# alive through the phase they were supposed to be cleared by.
+	if attacker != null and is_instance_valid(attacker) \
+			and attacker.is_in_group("combatants"):
+		hp = maxf(hp, max_hp * FactionDB.SKIRMISH_HP_FLOOR)
 	var frac := clampf(hp / max_hp, 0.0, 1.0)
 	_hp_fill.scale.x = maxf(frac, 0.001)
 	_hp_fill.position.x = -1.3 * (1.0 - frac) * 0.5

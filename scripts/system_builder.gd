@@ -29,7 +29,7 @@ static func build(def: Dictionary, container: Node3D, opts := {}) -> void:
 	# noise. The tutorial suppresses both for the reason it already suppresses
 	# sentries.
 	if not bool(opts.get("skip_sentries", false)):
-		_build_sentries(def, container)
+		_build_sentries(def, container, String(opts.get("system_id", "")))
 		_build_patrols(def, container)
 
 
@@ -462,17 +462,22 @@ static func _build_port(def: Dictionary, container: Node3D) -> void:
 		Obstacles.add(port.position, Port.HULL_OBSTACLE_RADIUS)
 
 
-static func build_sentries(def: Dictionary, container: Node3D) -> void:
+static func build_sentries(def: Dictionary, container: Node3D, system_id := "") -> void:
 	# Public so the tutorial can arm a system in place, without a rebuild that
 	# would wipe whatever the player just earned.
-	_build_sentries(def, container)
+	_build_sentries(def, container, system_id)
 
 
-static func _build_sentries(def: Dictionary, container: Node3D) -> void:
+static func _build_sentries(def: Dictionary, container: Node3D, system_id := "") -> void:
+	# v18 stage 3. The garrison flies the host engine's flag. Defaulting to
+	# FERAL when no system id is supplied keeps every harness that builds a
+	# system by hand producing the world it was written against.
+	var flag := SystemDB.faction_of(system_id) if system_id != "" else FactionDB.FERAL
 	var mult := float(def.get("difficulty", 1.0))
 	for pos in def.get("sentries", []):
 		var h := Hostile.new()
 		h.difficulty = mult
+		h.faction = flag
 		container.add_child(h)
 		h.position = pos
 

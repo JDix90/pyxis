@@ -782,7 +782,7 @@ func _enter_playing() -> void:
 
 func spawn_sentries() -> void:
 	# Adds the system's garrison to the running scene without a rebuild.
-	SystemBuilder.build_sentries(system_def, system_root)
+	SystemBuilder.build_sentries(system_def, system_root, system_id)
 
 
 func start_new_game() -> void:
@@ -1245,9 +1245,13 @@ func _spawn_swarm_pack(swarm: Dictionary) -> void:
 
 	var count := randi_range(int(swarm.get("pack_min", 4)), int(swarm.get("pack_max", 6)))
 	var mult := float(system_def.get("difficulty", 1.0))
+	# v18 stage 3. The waves are the host engine's too. They were never a
+	# weather system -- something keeps sending them, and now the data says who.
+	var flag := SystemDB.faction_of(system_id)
 	for i in range(count):
 		var s := SwarmHostile.new()
 		s.difficulty = mult
+		s.faction = flag
 		system_root.add_child(s)
 		s.global_position = center + Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.5, 1.5))
 	FX.ring_pulse(self, center, Palette.THREAT, 2.5, 0.8)
@@ -1585,6 +1589,19 @@ func spawn_interdiction() -> void:
 	for i in range(count):
 		var r := SwarmHostile.new()
 		r.difficulty = difficulty
+		# v18 stage 3. THE BANNER GETS ITS NAME. Interdiction raiders are THE
+		# TITHE -- crimson paint, a demand, a toll, a parley -- all of which
+		# shipped long before the faction layer and none of which had an owner.
+		# Pulled forward from stage 5 because it is one line and because stage
+		# 2a's picket parley exemption currently guards a case that cannot
+		# occur: raiders were FERAL, and the Cordon is neutral to FERAL. This
+		# makes THE PARLEY IS IMMUNE a live assertion instead of a defensive one.
+		#
+		# The tint stays set by hand and therefore WINS over faction paint --
+		# FactionDB.tint_of is only applied when the spawner left tint clear --
+		# which is correct: RAID_TINT is the Tithe's colour, and the crimson a
+		# player has been taught to read must not shift under them.
+		r.faction = "tithe"
 		r.tint = RAID_TINT
 		r.despawn_radius = leash
 		# What they are carrying is what they took off the last hauler.
@@ -1600,6 +1617,7 @@ func spawn_interdiction() -> void:
 		var corsair := Hostile.new()
 		corsair.standoff = window
 		corsair.difficulty = difficulty
+		corsair.faction = "tithe"
 		corsair.despawn_radius = leash
 		corsair.add_to_group("raider")
 		system_root.add_child(corsair)
@@ -12352,11 +12370,18 @@ func _run_faction_test() -> void:
 			hostile_flags.append("%s(unknown)" % f)
 		elif GameState.faction_band(f, FactionDB.SURVEYOR) == FactionDB.Band.HOSTILE:
 			hostile_flags.append(f)
-	var only_feral_hunts: bool = hostile_flags.size() == 1 \
-		and String(hostile_flags[0]) == FactionDB.FERAL
-	print("[faction] FERAL IS THE ONLY THING HUNTING YOU feral hates %s, live flags %s, of which hostile-to-player %s -> %s" % [
-		str(feral_enemies), str(live_flags.keys()), str(hostile_flags),
-		"PASS" if feral_ok and only_feral_hunts else "FAIL"])
+	# WIDENED AGAIN IN STAGE 3, and again the widening is the point. The claim
+	# was "feral is the only flag that hunts you"; stage 3 handed every ambient
+	# machine to its host engine, so feral is no longer in the sky at all. What
+	# survives is the property that actually matters, now stated more strongly:
+	# EXACTLY ONE FLAG IN CHARTED SPACE WANTS THE PLAYER DEAD, AND IT IS THE
+	# SYSTEM'S OWNER. A second would be a design decision, not a side effect.
+	var host := SystemDB.faction_of(system_id)
+	var one_hunter: bool = hostile_flags.size() == 1 \
+		and String(hostile_flags[0]) == host
+	print("[faction] ONE FLAG HUNTS YOU, AND IT OWNS THE SYSTEM %s host=%s, live flags %s, hostile-to-player %s -> %s" % [
+		system_id, host, str(live_flags.keys()), str(hostile_flags),
+		"PASS" if feral_ok and one_hunter else "FAIL"])
 
 	# --- 3. targeting honours the table --------------------------------------
 	# Driven through the real target selector on a real node at every band,
@@ -12512,13 +12537,18 @@ func _run_faction_test() -> void:
 	cordon.global_position = player.global_position + Vector3(2.0, 0, 0)
 	await get_tree().process_frame
 	cordon._enemies_version = -1
+	# NOT THE PLAYER — not "no target at all". Since stage 3 the system is full
+	# of gnomon sentries a picket may legitimately be shooting at, and asserting
+	# emptiness would fail on correct code while saying nothing about the floor.
 	var cordon_target: Node3D = cordon._combat_target(0.0)
-	var floor_holds: bool = cordon_target == null \
+	var aims_at_player: bool = cordon_target != null \
+		and cordon_target.is_in_group("player")
+	var floor_holds: bool = not aims_at_player \
 		and GameState.faction_band("gsa", FactionDB.SURVEYOR) != FactionDB.Band.HOSTILE \
 		and GameState.faction_band(FactionDB.SURVEYOR, "gsa") != FactionDB.Band.HOSTILE
 	print("[faction] THE CORDON NEVER FIRES ON THE SURVEYOR after 200 hostile acts band=%s, picket target=%s -> %s" % [
 		FactionDB.BAND_NAMES[GameState.faction_band("gsa", FactionDB.SURVEYOR)],
-		"none" if cordon_target == null else String(cordon_target.name),
+		"none" if cordon_target == null else ("THE PLAYER" if aims_at_player else "a machine"),
 		"PASS" if floor_holds else "FAIL"])
 	cordon.queue_free()
 
@@ -12593,9 +12623,14 @@ func _run_faction_test() -> void:
 	# in fact a garrison of statues.
 	var beat := Hostile.new()
 	beat.faction = "gsa"
-	beat.patrol = [Vector3(6, 0, 6), Vector3(6, 0, -6), Vector3(-6, 0, -6)] as Array[Vector3]
+	# A route with NOTHING ON IT. Since stage 3 the southern half of PYX-01 is
+	# full of gnomon sentries a gsa picket will quite correctly peel off to
+	# fight, and a walking test that measures a firefight measures the wrong
+	# thing. The nearest authored post to this loop is ~36u away, comfortably
+	# outside PATROL_ENGAGE.
+	beat.patrol = [Vector3(10, 0, 20), Vector3(20, 0, 20), Vector3(20, 0, 10)] as Array[Vector3]
 	system_root.add_child(beat)
-	beat.position = Vector3(6, 0, 6)
+	beat.position = Vector3(10, 0, 20)
 	await get_tree().process_frame
 	var start_at := beat.global_position
 	var visited := 0
@@ -12704,6 +12739,111 @@ func _run_faction_test() -> void:
 		guard.queue_free()
 	if is_instance_valid(demanding):
 		demanding.queue_free()
+
+	# --- 15. EVERY AMBIENT HOSTILE HAS AN OWNER ------------------------------
+	#     Stage 3's headline: the dead frontier's machines were never masterless.
+	#     Swept over what the system actually BUILT, so it fails on a spawner
+	#     that was missed rather than on a data table that agrees with itself.
+	var unowned: Array = []
+	var owned_flags := {}
+	for n_v in get_tree().get_nodes_in_group("combatants"):
+		var n := n_v as Node3D
+		var f := String(n.faction)
+		owned_flags[f] = int(owned_flags.get(f, 0)) + 1
+		if f == FactionDB.FERAL:
+			unowned.append(String(n.name))
+	print("[faction] EVERY AMBIENT HOSTILE HAS AN OWNER %s in charted %s, %d still unflagged -> %s" % [
+		str(owned_flags), system_id, unowned.size(),
+		"PASS" if unowned.is_empty() and not owned_flags.is_empty() else "FAIL"])
+
+	# --- 16. THE DEEP IS STILL UNCLAIMED -------------------------------------
+	#     Bands 3-4 belong to the three powers nobody has a word for yet. The
+	#     shipped data already says so — GUARD_DESIGNATION[3] is "UNFLAGGED — NO
+	#     PATTERN ON FILE" — so a stage-3 spawner reaching out there would make
+	#     the designation a lie and spend stage 6's reveal early. Asserted
+	#     through the real rule rather than by inspecting a node, because the
+	#     rule is what a future band edit would break.
+	var claim_rows := ""
+	var deep_ok := true
+	for band in range(5):
+		var f := deep_space.flag_for_band(band) if deep_space != null else FactionDB.FERAL
+		claim_rows += "b%d:%s " % [band, f]
+		var want_host: bool = band <= 2
+		if want_host and f != SystemDB.faction_of(system_id):
+			deep_ok = false
+		if not want_host and f != FactionDB.FERAL:
+			deep_ok = false
+	print("[faction] THE DEEP IS STILL UNCLAIMED %s(bands 3-4 must stay %s) -> %s" % [
+		claim_rows, FactionDB.FERAL, "PASS" if deep_ok else "FAIL"])
+
+	# --- 17. AMBIENT COMBAT DEPLETES NOTHING ---------------------------------
+	#     THE ASSERTION THIS STAGE EXISTS FOR, and the one that would have caught
+	#     the defect the prep pass found by hand: a picket and a sentry are the
+	#     same machine, so 120hp against 12.17dps is a mutual kill in 9.9s, and
+	#     ambient skirmishing would have emptied charted space of both sides
+	#     within half a minute of the player arriving.
+	#
+	#     ONLY THE PLAYER DEPLETES THE WORLD. Run the system with the player
+	#     parked far away and untouchable, long enough for three full
+	#     engage/rest cycles, and require the census to be IDENTICAL — not
+	#     merely non-zero, which any half-emptied system would satisfy.
+	var census_before := get_tree().get_nodes_in_group("combatants").size()
+	var pilot: PlayerShip = get_tree().get_first_node_in_group("player")
+	if pilot != null:
+		pilot.invulnerable = true
+		pilot.teleport_to(Vector3(0, 0, 400))
+	_wave_timer = 1.0e9        # no reinforcements: a census that grows hides a loss
+	var watched := 0.0
+	var budget := (FactionDB.SKIRMISH_TIME + FactionDB.SKIRMISH_REST) * 3.0
+	while watched < budget:
+		await get_tree().create_timer(0.25).timeout
+		watched += 0.25
+	var census_after := get_tree().get_nodes_in_group("combatants").size()
+	print("[faction] AMBIENT COMBAT DEPLETES NOTHING %.0fs unattended (3 x %.0fs cycles), census %d -> %d -> %s" % [
+		watched, FactionDB.SKIRMISH_TIME + FactionDB.SKIRMISH_REST,
+		census_before, census_after,
+		"PASS" if census_after == census_before and census_before > 0 else "FAIL"])
+
+	# --- 18. THE FIGHT ENDS (finding A6) -------------------------------------
+	#     The mechanism behind 17, measured directly: a machine engaged on
+	#     another machine breaks off before it can finish the job. Asserted as
+	#     "it stopped having a target", which is what the break-off actually
+	#     does — position, groups and post are untouched by design.
+	var red := Hostile.new()
+	red.faction = "gnomon"
+	system_root.add_child(red)
+	red.global_position = Vector3(0, 0, -300)
+	var blue := Hostile.new()
+	blue.faction = "gsa"
+	system_root.add_child(blue)
+	blue.global_position = Vector3(3, 0, -300)
+	await get_tree().process_frame
+	red._enemies_version = -1
+	blue._enemies_version = -1
+	var engaged_at := 0.0
+	var broke_at := -1.0
+	var t_fight := 0.0
+	while t_fight < FactionDB.SKIRMISH_TIME + 3.0:
+		await get_tree().create_timer(0.25).timeout
+		t_fight += 0.25
+		# "Engaged" means holding an NPC target, not merely holding one: a
+		# machine standing down still re-acquires the PLAYER, so `_target ==
+		# null` is a state the break-off never actually produces and testing
+		# for it measured nothing.
+		var on_npc: bool = red._target != null and is_instance_valid(red._target) \
+			and not red._target.is_in_group("player")
+		if on_npc and engaged_at <= 0.0:
+			engaged_at = t_fight
+		if engaged_at > 0.0 and not on_npc and broke_at < 0.0:
+			broke_at = t_fight
+	var both_alive: bool = is_instance_valid(red) and is_instance_valid(blue) \
+		and not red.is_dying() and not blue.is_dying()
+	print("[faction] THE FIGHT ENDS engaged at %.2fs, broke off at %.2fs (limit %.0fs), both alive=%s -> %s" % [
+		engaged_at, broke_at, FactionDB.SKIRMISH_TIME, str(both_alive),
+		"PASS" if engaged_at > 0.0 and broke_at > 0.0 and both_alive else "FAIL"])
+	for n in [red, blue]:
+		if is_instance_valid(n):
+			n.queue_free()
 
 	_clear_faction_matrix()
 	await get_tree().create_timer(0.2).timeout

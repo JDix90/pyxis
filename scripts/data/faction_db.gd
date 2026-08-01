@@ -35,6 +35,44 @@ const ATTITUDE_MAX := 6
 # never carry an int that grew without limit.
 const DELTA_SPAN := 12
 
+# --- the skirmish clock (stage 3, finding A6) --------------------------------
+# ONLY THE PLAYER DEPLETES THE WORLD. Once machines shoot each other, ambient
+# combat has to be unable to resolve, or the world empties itself while nobody
+# is watching.
+#
+# The numbers come from a measurement, not from taste. A picket and a sentry
+# are the SAME MACHINE — both Hostile, both taking the system's difficulty,
+# neither setting hp_scale — so 120hp against 14 damage every 1.15s is 9.9
+# seconds to a kill, and because difficulty scales hp and damage together it is
+# 9.9 seconds in EVERY system. Six seconds of fire cannot finish that, and
+# twelve of standing down makes the border flare and settle rather than grind.
+#
+# HERE rather than on Hostile, so the two hostile classes share one number
+# instead of two that agree by assertion — FactionDB is a pure leaf both of
+# them already name, so this costs no new dependency and cannot cycle.
+#
+# The player is exempt from the clock entirely: fighting the player has no
+# break-off, which is what keeps every balance figure ever measured still valid.
+const SKIRMISH_TIME := 6.0
+const SKIRMISH_REST := 12.0
+
+# AND THE CLOCK ALONE IS NOT ENOUGH — measured, not assumed. Breaking off does
+# not undo damage: at 12.17 dps a six-second burst lands 73, and three cycles
+# inside a minute still pass 120hp. The first version of this shipped a census
+# going 9 -> 5 in 54 unattended seconds, and AMBIENT COMBAT DEPLETES NOTHING is
+# what caught it.
+#
+# So NPC-inflicted damage cannot take a machine below this fraction of its
+# hull. Ambient skirmishing WEARS — a sentry sitting at half strength is
+# visible evidence that the border is contested, which is the whole point of
+# staging the fight where the player can find it — but the last half of any
+# hull belongs to the player. Only the player depletes the world.
+#
+# HALF rather than a sliver: a machine that ambient fire could take to 5% would
+# be a free kill left lying around, which is a stealth difficulty change nobody
+# asked for. At 0.5 the player still does the majority of the work.
+const SKIRMISH_HP_FLOOR := 0.5
+
 # The one clamp settled at design time (HORIZON-4 §2): the Authority never
 # treats the surveyor as HOSTILE. -3 is the WARY floor — one step short of the
 # band where the Cordon would open fire. Outlaw-vs-the-Authority play is a

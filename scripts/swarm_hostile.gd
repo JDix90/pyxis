@@ -58,6 +58,13 @@ var _aggro: Node3D = null
 var _target: Node3D = null
 var _retarget_t := 0.0
 const RETARGET_INTERVAL := 0.4
+# The skirmish clock, same contract and same constants as Hostile's — see
+# FactionDB.SKIRMISH_TIME. A dart needs it as much as a sentry does: a picket
+# kills one in 2.8s, but a six-dart wave kills a PICKET in about six, so
+# without a break-off the Cordon would simply be ground down by the waves it
+# was posted to stop.
+var _skirmish := 0.0
+var _skirmish_rest := 0.0
 
 var _velocity := Vector3.ZERO
 var _fire_cooldown := 0.0
@@ -265,9 +272,28 @@ func _targetable(n) -> bool:
 
 
 func _combat_target(delta: float) -> Node3D:
-	# See Hostile._combat_target: aggro, then nearest hated flag, cached
-	# between scans. For a FERAL dart the enemy list is [surveyor] and this
-	# returns the player and walks nothing — the shipped behaviour, restated.
+	# The skirmish clock, wrapping the picker — Hostile._combat_target carries
+	# the full reasoning. One timer over every path that can return an NPC.
+	if _skirmish_rest > 0.0:
+		_skirmish_rest -= delta
+	var picked := _pick_target(delta)
+	if picked == null or picked.is_in_group("player"):
+		_skirmish = maxf(_skirmish - delta, 0.0)
+		return picked
+	_skirmish += delta
+	if _skirmish >= FactionDB.SKIRMISH_TIME:
+		_skirmish = 0.0
+		_skirmish_rest = FactionDB.SKIRMISH_REST
+		_aggro = null
+		_target = null
+		return null
+	return picked
+
+
+func _pick_target(delta: float) -> Node3D:
+	# See Hostile._pick_target: aggro, then nearest hated flag, cached between
+	# scans. For a FERAL dart the enemy list is [surveyor] and this returns the
+	# player and walks nothing — the shipped behaviour, restated.
 	_refresh_enemies()
 	if _targetable(_aggro):
 		return _aggro
@@ -286,6 +312,9 @@ func _combat_target(delta: float) -> Node3D:
 		if _targetable(p):
 			best = p
 			best_d = global_position.distance_to(p.global_position)
+	if _skirmish_rest > 0.0:
+		_target = best
+		return best
 	if _enemies.size() > (1 if hates_player else 0):
 		for n_v in get_tree().get_nodes_in_group("combatants"):
 			var n := n_v as Node3D
@@ -316,6 +345,18 @@ func take_damage(amount: float, attacker: Node3D) -> void:
 			and (not ("faction" in attacker) or String(attacker.faction) != faction):
 		_aggro = attacker
 	hp -= amount
+	# THE AMBIENT FLOOR. Fire from another machine wears this one down but can
+	# never finish it — see FactionDB.SKIRMISH_HP_FLOOR. Applied to the RESULT
+	# rather than to the damage, so a machine already below the floor when the
+	# player leaves it there is not quietly healed by being shot at.
+	# Gated on COMBATANTS, not on "is not the player". The distinction matters:
+	# ApexBoss scraps its own pending probes with take_damage(99999, self) on a
+	# phase change, and the boss is in "hostiles" but not "combatants" — so a
+	# "not the player" test would floor those probes at half hull and leave them
+	# alive through the phase they were supposed to be cleared by.
+	if attacker != null and is_instance_valid(attacker) \
+			and attacker.is_in_group("combatants"):
+		hp = maxf(hp, MAX_HP * difficulty * hp_scale * FactionDB.SKIRMISH_HP_FLOOR)
 	FX.flash(get_parent(), global_position, Palette.WHITE_HOT, 0.4, 0.08)
 	Sfx.play("hit", -15.0, 1.4)
 	if hp <= 0.0:

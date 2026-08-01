@@ -707,6 +707,21 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 	return out
 
 
+func flag_for_band(band: int) -> String:
+	# v18 stage 3. WHOSE REACH EXTENDS HOW FAR.
+	#
+	# The Shoals and the Drift are the host engine's back yard — its packs, its
+	# guards, its writ. The REACHES AND THE QUIET ARE NOT, and they stay
+	# unflagged: those bands belong to the three powers nobody has a word for
+	# yet, and the shipped data already says so out loud —
+	# GUARD_DESIGNATION[3] is "UNFLAGGED — NO PATTERN ON FILE" and [4] is
+	# "UNREADABLE — IT DOES NOT ANSWER". Claiming them for a known faction now
+	# would spend stage 6's reveal early, and would make the designation a lie.
+	if band >= 3:
+		return FactionDB.FERAL
+	return SystemDB.faction_of(_id)
+
+
 func built_plan(cx: int, cz: int) -> Dictionary:
 	# WHAT THE WORLD ACTUALLY BUILDS, as opposed to what the generator said. The
 	# only difference is the lair keep-out, and the split is the whole reason the
@@ -1201,10 +1216,14 @@ func _spring(key: Vector2i, pack: Dictionary) -> void:
 	var count := int(pack["count"])
 	var drop := String(pack["drop"])
 
+	# The band is already in the plan; re-deriving it from the position would be
+	# a second source for a number the generator has already decided.
+	var flag := flag_for_band(int(pack.get("band", 0)))
 	for i in range(count):
 		var s := SwarmHostile.new()
 		s.difficulty = float(pack["difficulty"])
 		s.hp_scale = float(pack["hp_scale"])
+		s.faction = flag
 		s.tint = pack["tint"]
 		# One crate of the good thing, the same way a raider carries what it took.
 		s.drop_good = drop if i == 0 else ""
@@ -1216,6 +1235,7 @@ func _spring(key: Vector2i, pack: Dictionary) -> void:
 	if bool(pack["escort"]):
 		var h := Hostile.new()
 		h.difficulty = float(pack["difficulty"])
+		h.faction = flag
 		h.despawn_radius = HOSTILE_LEASH
 		root.add_child(h)
 		h.global_position = origin
@@ -1239,10 +1259,12 @@ func _build_post(key: Vector2i, cfg: Dictionary) -> void:
 	if root == null:
 		return
 	var live: Array = []
+	var post_flag := flag_for_band(int(cfg.get("band", 0)))
 	for post_v in cfg.get("posts", []):
 		var h := Hostile.new()
 		h.difficulty = float(cfg["difficulty"])
 		h.hp_scale = float(cfg["hp_scale"])
+		h.faction = post_flag
 		h.tint = cfg["tint"]
 		h.designation = String(cfg["designation"])
 		# NO LEASH, and that is deliberate rather than forgotten. despawn_radius
