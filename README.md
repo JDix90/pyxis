@@ -90,31 +90,31 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Last **measured** baseline: **447 PASS / 1 FAIL / 0 script errors** across 53
-runs, save format **v17**. 448 assertion lines, of which one is the standing
-HOLDTEST failure below and one is a flaky RAIDTEST line that may take a second
-run.
+Current baseline: **463 PASS / 1 FAIL / 0 script errors** across 55 runs, save
+format **v18** — measured on Godot 4.6.stable, headless, in one clean sweep.
+464 assertion lines, of which one is the standing HOLDTEST failure below.
 
-> **UNMEASURED SINCE: factions stage 1 (§47) and the opening bearing (§48).
-> Save format now v18.** Both were written in an environment with no Godot
-> binary, so **the sweep has not been run against them** and the numbers above
-> are the *previous* baseline, not this tree's. Together they add 16 assertion
-> lines — 10 in the new `PYXIS_FACTIONTEST`, 3 in `SAVETEST=migrate17`, 1 in
-> SAVETEST's bare read, 2 in `HUNTTEST` — which *should* put the sweep at
-> **463 PASS / 1 FAIL across 55 runs**. **Treat that as an arithmetic
-> prediction, not a measurement**, and run `tools/run_harness.sh` before
-> trusting it. Run the import pass first: stage 1 adds a new `class_name`
-> (`FactionDB`), and until `--import` rebuilds the class registry the project
-> will not load at all — see the parse-error cascade described above.
->
-> Four things to check first if the sweep is red, because they are where the
-> changes actually bite: `PACINGTEST`'s yield loop (it kills through
-> `player.command_attack`, so attribution should hold and the numbers should
-> not move — if they moved, attribution is broken); `DEEPTEST`'s guard-post
-> pair (its two direct `take_damage` calls were re-pointed at the player);
-> `CONTRACTTEST`, since kill credit is now gated on who fired; and `HUNTTEST`'s
-> `EVERY CHANNEL FILES THROUGH ONE DOOR`, whose expected hint count moved from
-> 6 to 7 with the hull channel.
+That measurement covers factions stage 1 (STRATEGY §47) and the opening bearing
+(§48). Both were *written* without a Godot binary to hand, and running one
+afterwards is what caught the three defects worth knowing about:
+
+- **Two fatal parse errors** — a multi-line boolean missing its `\`
+  continuations, and a `var` colliding with one declared earlier in the same
+  function (GDScript scopes to the whole function; there is no block
+  shadowing). Either one stops the project loading at all. No amount of
+  bracket-counting finds these; only the engine does.
+- **A harness-ordering regression in `SAVETEST=write`.** `shift_faction` notes
+  a captain's-log line when the player is party to the shift, so filing the
+  v18 fixture *after* the log fill pushed `THE GRIN — STANDING RISES` into the
+  ring, evicted `LOGBOOK ENTRY 02`, and failed `v12 CAPTAIN'S LOG` — an
+  eviction-order assertion that was working perfectly. The fixture moved above
+  the log block. **Worth remembering generally: `shift_faction` has a side
+  effect on the logbook**, so any harness that pins log contents must file
+  standing changes before it fills the ring.
+
+Both flaky lines the previous baseline warned about — `RAIDTEST`'s `THE HOLD IS
+NOT A SHIELD` and `DEEPTEST`'s `STARFIELD` — came in green first try on an
+otherwise idle machine. They are still flaky; one clean run is not a fix.
 
 The 1 FAIL is `HOLDTEST`'s `THE READOUT FOLLOWS THE HOLD`, and it **predates
 this change** — it reproduces identically on `fb03037` with nothing applied,

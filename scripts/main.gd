@@ -9954,6 +9954,21 @@ func _run_save_test() -> void:
 			_first_bay_cell(): {"salvage_quiet": 4},
 			"pyx01:99:99": {"salvage_quiet": 9},   # no station there: must be dropped
 		}
+		# v18 faction matrix. Two DISTINCT values on two DISTINCT pair shapes —
+		# one the player is party to, one between two third parties — for the
+		# same reason the ledger carries six distinct sentinels: equal values
+		# would let a swapped key mapping round-trip cleanly and pass. Written
+		# through shift_faction so the canonical key ordering is produced by
+		# the code under test rather than by the fixture.
+		#
+		# BEFORE the captain's log below, and that ordering is load-bearing.
+		# shift_faction NOTES A LOG LINE when the player is party to the shift
+		# (finding A10: standing the player changed and cannot see is not
+		# politics, it is a haunting) — so filing it after the log fill pushes
+		# "THE GRIN — STANDING RISES" into the ring, evicts LOGBOOK ENTRY 02,
+		# and fails an eviction-order assertion that is working perfectly.
+		GameState.shift_faction(FactionDB.SURVEYOR, "grin", 4)
+		GameState.shift_faction("gsa", "bastion", -3)
 		# v12 captain's log. Written through the real mutator rather than assigned:
 		# that keeps truncation and eviction in the path under test, and an
 		# untyped array literal cannot be assigned to an Array[String] member on
@@ -9963,14 +9978,6 @@ func _run_save_test() -> void:
 		GameState.captains_log.clear()
 		for i in range(GameState.LOG_MAX + 2):
 			GameState.note_log("LOGBOOK ENTRY %02d" % i)
-		# v18 faction matrix. Two DISTINCT values on two DISTINCT pair shapes —
-		# one the player is party to, one between two third parties — for the
-		# same reason the ledger carries six distinct sentinels: equal values
-		# would let a swapped key mapping round-trip cleanly and pass. Written
-		# through shift_faction so the canonical key ordering is produced by
-		# the code under test rather than by the fixture.
-		GameState.shift_faction(FactionDB.SURVEYOR, "grin", 4)
-		GameState.shift_faction("gsa", "bastion", -3)
 		GameState.save_game()
 		print("[savetest] wrote warehouse=", GameState.warehouse)
 		print("[savetest] wrote salvage=", GameState.salvage,

@@ -4107,3 +4107,48 @@ single teleport before the loop is a hold that silently stops progressing.
 And `breached` is snapshotted and restored rather than cleared, because five
 more assertions run after this one and a harness that empties world state on
 its way past is how the next check inherits a failure it did not cause.
+
+### §47/§48 postscript — what running the engine actually caught
+
+Both sections above were written without a Godot binary to hand. Fetching a
+headless 4.6 and running the sweep turned up three defects, and the split
+between them is the lesson.
+
+**Two were parse errors no static review could reach.** A multi-line boolean
+missing its `\` continuations (GDScript only continues implicitly inside
+brackets), and a `var charted` colliding with one declared earlier in the same
+function — GDScript scopes to the whole function, so a second declaration is an
+error rather than a shadow. Both stop the project loading *entirely*. A
+bracket-and-duplicate linter reported both files clean; the engine did not.
+
+**One was a real regression, and it is the interesting one.**
+`SAVETEST=write`'s new v18 fixture was filed *after* the captain's-log fill —
+and `shift_faction` notes a log line whenever the player is party to a shift
+(finding A10: standing the player changed and cannot see is a haunting, not
+politics). So the fixture pushed `THE GRIN — STANDING RISES` into a
+ten-entry ring, evicted `LOGBOOK ENTRY 02`, and failed `v12 CAPTAIN'S LOG`.
+
+The assertion was working perfectly. What it caught was **a side effect of the
+new code reaching a suite that had nothing to do with factions** — which is
+exactly the failure mode a save harness with distinct sentinels exists to
+surface, and it surfaced it on the first run. The fixture moved above the log
+block; nothing about `shift_faction` changed, because its logging is the
+feature.
+
+Write it down for whoever adds the next standing-aware harness: **`shift_faction`
+mutates the logbook.** Any suite that pins log contents must file its standing
+changes before it fills the ring.
+
+**And the economy did not move**, which was the whole risk of the attribution
+rewrite. Measured against the numbers §46 recorded:
+
+| assertion | §46 recorded | measured at v18 |
+|---|---|---|
+| `MIDTIER` (binding) | 2.91 | **2.92** |
+| `CEILING` | 0.041 | **0.041** |
+| `ROUTE PARITY` | 1.0% | **1.1%** |
+
+with `swarm 98/kill` and `sentry 671/kill` — non-zero, which is the direct
+evidence that player-attributed kills still pay. Had attribution been wired
+backwards, those two would have read zero and `MIDTIER` would have collapsed
+through its floor. The 0.01 is loot-roll noise.
