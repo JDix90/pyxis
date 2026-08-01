@@ -46,6 +46,64 @@ var designation := ""
 # Parley standoff, mirroring SwarmHostile: positive means hold fire.
 var standoff := 0.0
 
+# Which flag this machine flies (v18, Horizon 4 stage 1). Set by the spawner
+# BEFORE add_child, same contract as tint/difficulty. The default is FERAL —
+# the dead frontier's unflagged automata, HOSTILE to the surveyor and
+# indifferent to everything else — which is the shipped world stated as data,
+# so every existing spawner is untouched by construction.
+var faction := FactionDB.FERAL
+
+# --- the beat (v18, Horizon 4 stage 2a) --------------------------------------
+# Absolute world waypoints. Set by the spawner before add_child, like tint and
+# faction. EMPTY on every machine that shipped before the Cordon, and empty
+# means "hold station and drift" — the behaviour every authored sentry has
+# always had — so this whole block is inert for sentries by construction.
+#
+# The route is a LOOP: after the last waypoint comes the first. A ping-pong
+# route needs a direction flag and an end-detection branch to say the same
+# thing on screen.
+var patrol: Array[Vector3] = []
+# How fast a picket walks its beat. Deliberately under the player's 5.75 and
+# well under a swarm's 7.5: a patrol is a presence, not a pursuer, and one that
+# could run the player down would be a second raider wearing a badge.
+const PATROL_SPEED := 3.2
+# How near counts as arrived. Larger than it looks because the drift is applied
+# on top, so a tighter radius makes a picket jitter at a corner instead of
+# turning it.
+const PATROL_ARRIVE := 1.6
+# How far off its route a picket will step to engage, and how far a target may
+# get before it gives up and resumes. The GAP between them is hysteresis — the
+# same reason the apex has WAKE 60 against LEASH 120. Without it a contact
+# sitting near the boundary flickers a picket between engaging and walking off
+# every frame.
+const PATROL_ENGAGE := 12.0
+const PATROL_RELEASE := 25.0
+
+var _patrol_i := 0
+
+# --- the skirmish clock (v18, stage 3, finding A6) ---------------------------
+# The numbers and the reasoning live in FactionDB.SKIRMISH_TIME so both hostile
+# classes share one clock rather than two that have to be kept equal.
+var _skirmish := 0.0
+var _skirmish_rest := 0.0
+
+# Enemy list cached against GameState.faction_version — the matrix moves only
+# on player actions, so recomputing it per frame would be paying every tick
+# for something that changes a few times an hour.
+var _enemies: Array = []
+var _enemies_version := -1
+# Defend-if-attacked: whoever shot this machine last, held until dead or gone.
+# Band-independent by design (HORIZON-4 §4) — being fired on is its own
+# diplomacy. The Cordon's never-retaliate-at-the-surveyor exception is stage 2
+# behaviour and lands with the Cordon, not here.
+var _aggro: Node3D = null
+var _target: Node3D = null
+var _retarget_t := 0.0
+# How often the sentry re-asks "who is nearest that I hate". Between scans it
+# keeps its answer, which bounds the group walk the same way the drift bounds
+# its wander.
+const RETARGET_INTERVAL := 0.4
+
 var _fire_cooldown := 0.0
 var _charging := false
 var _home := Vector3.ZERO
@@ -59,6 +117,19 @@ var _body_parts: Array[MeshInstance3D] = []
 
 func _ready() -> void:
 	add_to_group("hostiles")
+	# The allegiance-aware pool: everything a faction rule can point a gun at.
+	# Deliberately a SECOND group rather than a reuse of "hostiles" — that name
+	# is load-bearing in a dozen places that mean "things opposed to the
+	# player", and an allied ship in it would be counted, swept and cleaned up
+	# as an enemy by every one of them.
+	add_to_group("combatants")
+	# Faction paint, and it outranks band and raid tint — FactionDB.TINTS'
+	# precedence note (faction > raid > band), because allegiance is the thing
+	# combat decisions hang on. Applied only when the spawner has NOT already
+	# set a tint by hand, so a deep guard's band colour and a corsair's crimson
+	# are untouched; and BEFORE _build_mesh, which reads `tint`.
+	if tint.a <= 0.0:
+		tint = FactionDB.tint_of(faction)
 	max_hp = BASE_HP * difficulty * hp_scale
 	hp = max_hp
 	# _home is captured on the FIRST FRAME, not here. _ready fires from
@@ -157,7 +228,19 @@ func _process(delta: float) -> void:
 			return
 	rotation.y += delta * 0.8
 	var t := Time.get_ticks_msec() / 1000.0
-	global_position = _home + Vector3(sin(t * 0.5 + _drift_phase), 0, cos(t * 0.4 + _drift_phase)) * 0.4
+	var wander := Vector3(sin(t * 0.5 + _drift_phase), 0, cos(t * 0.4 + _drift_phase)) * 0.4
+	if patrol.is_empty():
+		# Station-keeping: the shipped behaviour, unchanged.
+		global_position = _home + wander
+	else:
+		# THE TWO BRANCHES CANNOT BE UNIFIED, and the difference is the bug that
+		# would otherwise ship. Station-keeping ASSIGNS `_home + wander`; a
+		# patrol ADDS the wander as a nudge. A moving picket whose position were
+		# assigned from a wander term would have its travel overwritten every
+		# frame and never leave the spot — which is this file's own
+		# _home-on-frame-one defect, reintroduced from the other direction.
+		_walk_beat(delta)
+		global_position += wander * delta
 
 	var cam := get_viewport().get_camera_3d()
 	var bar := get_node_or_null("HPBar")
@@ -167,15 +250,164 @@ func _process(delta: float) -> void:
 	_weapon(delta)
 
 
+func _refresh_enemies() -> void:
+	if _enemies_version == GameState.faction_version:
+		return
+	_enemies_version = GameState.faction_version
+	_enemies = GameState.enemies_of(faction)
+
+
+func _walk_beat(delta: float) -> void:
+	# A picket is only ever in one of two positions: standing off something it
+	# is fighting, or walking to its next waypoint. There is deliberately NO
+	# "returning" state — a picket with nothing to shoot walking to its next
+	# waypoint IS returning, and a third state would be a second thing to keep
+	# true for no visible difference.
+	var goal: Vector3
+	var target := _combat_target(delta)
+	if target != null and _worth_leaving_the_beat(target):
+		# Stand off rather than close. A picket is a gun emplacement that
+		# happens to move; one that charged would be indistinguishable on
+		# screen from the raiders it exists to stop.
+		var away := global_position - target.global_position
+		away.y = 0.0
+		if away.length() < 0.01:
+			away = Vector3(1, 0, 0)
+		goal = target.global_position + away.normalized() * (ENGAGE_RANGE * 0.8)
+	else:
+		goal = patrol[_patrol_i]
+		if global_position.distance_to(goal) <= PATROL_ARRIVE:
+			_patrol_i = (_patrol_i + 1) % patrol.size()
+			goal = patrol[_patrol_i]
+
+	var step := goal - global_position
+	step.y = 0.0
+	if step.length() > 0.01:
+		# Expressed as a target position rather than an impulse, per §13's
+		# lesson: an impulse makes speed a function of how often the caller
+		# ticks. Clamped to the remaining distance so a long frame cannot
+		# overshoot a waypoint and start the picket oscillating around it.
+		var move := step.normalized() * PATROL_SPEED * delta
+		global_position += move if move.length() < step.length() else step
+	global_position.y = 0.0
+	global_position = Obstacles.resolve(global_position, 0.5)
+
+
+func _worth_leaving_the_beat(target: Node3D) -> bool:
+	# THE PARLEY IS THE PLAYER'S CONVERSATION (finding A3). break_parley fires
+	# when a raider takes damage from ANYONE, so a picket that peeled onto a pack
+	# mid-standoff would answer the demand on the player's behalf and delete the
+	# choice the whole interdiction is built around — permanently, everywhere in
+	# charted space.
+	if target.is_in_group("raider") and "standoff" in target \
+			and float(target.standoff) > 0.0:
+		return false
+	# MEASURED FROM THE ROUTE, NOT FROM THE PICKET, and that is the whole
+	# function. A picket measuring from itself would drift outward along its own
+	# engagements — every individual step looking correct while charted space
+	# quietly went unguarded. The waypoint it is walking to is the anchor, so a
+	# contact the ROUTE never comes near is a contact the Cordon never chases,
+	# however close the picket happens to drift mid-leg.
+	var post: Vector3 = patrol[_patrol_i]
+	var reach := PATROL_RELEASE if _target == target else PATROL_ENGAGE
+	return post.distance_to(target.global_position) <= reach
+
+
+func _targetable(n) -> bool:
+	# UNTYPED PARAMETER, DELIBERATELY. `n: Node3D` looks tidier and is a crash:
+	# `_aggro` and `_target` can hold a node that was freed since it was cached,
+	# and GDScript validates an Object argument against the declared class AT
+	# THE CALL BOUNDARY — so a freed node fails there, before is_instance_valid
+	# below ever runs, with "the Object-derived class of argument 1 (previously
+	# freed) is not a subclass". The validity check has to be reachable, and it
+	# is only reachable if the parameter does not demand a live typed object.
+	#
+	# is_instance_valid(null) is false, so it covers the null case too.
+	if not is_instance_valid(n) or not (n as Node3D).is_inside_tree():
+		return false
+	if (n as Node3D).is_in_group("player"):
+		return not n.docked
+	return (n as Node3D).is_in_group("combatants")
+
+
+func _combat_target(delta: float) -> Node3D:
+	# THE SKIRMISH CLOCK LIVES HERE AND NOWHERE ELSE, wrapping the picker below
+	# so every path that can return an NPC — aggro, cache, fresh scan — is
+	# governed by one timer rather than three copies of one.
+	#
+	# The player is exempt: fighting the player has no break-off, which is what
+	# keeps every balance number ever measured against this class still valid.
+	if _skirmish_rest > 0.0:
+		_skirmish_rest -= delta
+	var picked := _pick_target(delta)
+	if picked == null or picked.is_in_group("player"):
+		# Not skirmishing. The clock unwinds rather than resetting, so a machine
+		# that traded fire, lost sight for a moment and re-acquired does not get
+		# a fresh six seconds every time.
+		_skirmish = maxf(_skirmish - delta, 0.0)
+		return picked
+	_skirmish += delta
+	if _skirmish >= FactionDB.SKIRMISH_TIME:
+		# Break off. Groups, position and post are untouched — the machine simply
+		# stops having a target, which _walk_beat reads as "resume the beat" and
+		# a stationary sentry reads as "hold station".
+		_skirmish = 0.0
+		_skirmish_rest = FactionDB.SKIRMISH_REST
+		_aggro = null
+		_target = null
+		return null
+	return picked
+
+
+func _pick_target(delta: float) -> Node3D:
+	# Who this machine would fight, ignoring the clock. Aggro first (whoever
+	# shot it), then the nearest thing its flag is HOSTILE toward.
+	_refresh_enemies()
+	if _targetable(_aggro):
+		return _aggro
+	_aggro = null
+
+	_retarget_t -= delta
+	if _targetable(_target) and _retarget_t > 0.0:
+		return _target
+	_retarget_t = RETARGET_INTERVAL
+
+	var best: Node3D = null
+	var best_d := INF
+	var hates_player := _enemies.has(FactionDB.SURVEYOR)
+	if hates_player:
+		var p: Node3D = get_tree().get_first_node_in_group("player")
+		if _targetable(p):
+			best = p
+			best_d = global_position.distance_to(p.global_position)
+	# The NPC scan is skipped outright while standing down. Note it runs even
+	# when a player target was found: a machine mid-rest still shoots the
+	# player, it just will not pick another machine.
+	if _skirmish_rest > 0.0:
+		_target = best
+		return best
+	if _enemies.size() > (1 if hates_player else 0):
+		for n_v in get_tree().get_nodes_in_group("combatants"):
+			var n := n_v as Node3D
+			if n == self or not _targetable(n):
+				continue
+			if not _enemies.has(n.faction):
+				continue
+			var d := global_position.distance_to(n.global_position)
+			if d < best_d:
+				best_d = d
+				best = n
+	_target = best
+	return best
+
+
 func _weapon(delta: float) -> void:
 	if standoff > 0.0:
 		standoff -= delta
 		return
-	var player: Node3D = get_tree().get_first_node_in_group("player")
-	# A docked ship is not a target: safety at port has to be total, or it is
-	# not safety.
-	if not player or player.docked \
-			or global_position.distance_to(player.global_position) > ENGAGE_RANGE:
+	var target := _combat_target(delta)
+	if target == null \
+			or global_position.distance_to(target.global_position) > ENGAGE_RANGE:
 		_charging = false
 		_core_mat.emission_energy_multiplier = 2.5
 		return
@@ -189,25 +421,53 @@ func _weapon(delta: float) -> void:
 		_fire_cooldown = FIRE_INTERVAL
 		_core_mat.emission_energy_multiplier = 2.5
 		var muzzle := global_position + Vector3(0, 0.1, 0)
-		var cover = Obstacles.blocked(muzzle, player.global_position)
+		var cover = Obstacles.blocked(muzzle, target.global_position)
 		if cover != null:
-			# Cover protects the player from sentries too, not just the reverse.
+			# Cover protects the target from sentries too, not just the reverse.
 			FX.beam(get_parent(), muzzle, cover, Palette.THREAT, 0.05, 0.12)
 			return
-		FX.beam(get_parent(), muzzle, player.global_position, Palette.THREAT, 0.05, 0.14)
+		FX.beam(get_parent(), muzzle, target.global_position, Palette.THREAT, 0.05, 0.14)
 		Sfx.play("fire", -14.0, 0.72)
-		if player.has_method("take_hit"):
-			player.take_hit(DAMAGE * difficulty, self)
+		# The player has a shield model and take_hit; a machine has take_damage.
+		# Same shot, two bookkeepings.
+		if target.has_method("take_hit"):
+			target.take_hit(DAMAGE * difficulty, self)
+		elif target.has_method("take_damage"):
+			target.take_damage(DAMAGE * difficulty, self)
 
 
-func take_damage(amount: float) -> void:
+func take_damage(amount: float, attacker: Node3D) -> void:
+	# `attacker` is REQUIRED, with no default, and that is finding A1 of
+	# HORIZON-4: either default silently mis-books a kill — null-means-nobody
+	# strips loot from every legacy caller, null-means-player mints credit for
+	# NPC fire. Every caller says who is shooting; PYXIS_FACTIONTEST reads the
+	# sources and fails any call that does not.
 	if _dying:
 		return
 	if standoff > 0.0 and is_in_group("raider"):
 		var m2 := get_tree().get_first_node_in_group("main")
 		if m2 and m2.has_method("break_parley"):
 			m2.break_parley()
+	# Being shot is its own diplomacy: return fire at the shooter, whatever the
+	# matrix says about their flag. Same-faction fire is not aggro (the apex
+	# venting probes must not turn a probe against its own engine), and a
+	# docked player is refused by _targetable, not remembered here.
+	if attacker != null and attacker != self \
+			and (not ("faction" in attacker) or String(attacker.faction) != faction):
+		_aggro = attacker
 	hp -= amount
+	# THE AMBIENT FLOOR. Fire from another machine wears this one down but can
+	# never finish it — see FactionDB.SKIRMISH_HP_FLOOR. Applied to the RESULT
+	# rather than to the damage, so a machine already below the floor when the
+	# player leaves it there is not quietly healed by being shot at.
+	# Gated on COMBATANTS, not on "is not the player". The distinction matters:
+	# ApexBoss scraps its own pending probes with take_damage(99999, self) on a
+	# phase change, and the boss is in "hostiles" but not "combatants" — so a
+	# "not the player" test would floor those probes at half hull and leave them
+	# alive through the phase they were supposed to be cleared by.
+	if attacker != null and is_instance_valid(attacker) \
+			and attacker.is_in_group("combatants"):
+		hp = maxf(hp, max_hp * FactionDB.SKIRMISH_HP_FLOOR)
 	var frac := clampf(hp / max_hp, 0.0, 1.0)
 	_hp_fill.scale.x = maxf(frac, 0.001)
 	_hp_fill.position.x = -1.3 * (1.0 - frac) * 0.5
@@ -217,13 +477,14 @@ func take_damage(amount: float) -> void:
 	if rig:
 		rig.shake(0.012)
 	if hp <= 0.0:
-		_die()
+		_die(attacker)
 
 
 func _give_up() -> void:
 	# Not a kill: no loot, no credit, no staged death. It is simply not there.
 	_dying = true
 	remove_from_group("hostiles")
+	remove_from_group("combatants")
 	remove_from_group("raider")
 	queue_free()
 
@@ -235,22 +496,34 @@ func depart() -> void:
 		return
 	_dying = true
 	remove_from_group("hostiles")
+	remove_from_group("combatants")
 	remove_from_group("raider")
 	var tw := create_tween()
 	tw.tween_property(self, "scale", Vector3.ONE * 0.1, 1.8).set_ease(Tween.EASE_IN)
 	tw.tween_callback(queue_free)
 
 
-func _die() -> void:
+func _die(attacker: Node3D) -> void:
 	_dying = true
 	var parent := get_parent()
 	var pos := global_position
 	var tree := get_tree()
 	remove_from_group("hostiles")
+	remove_from_group("combatants")
+
+	# ATTRIBUTION GATES THE PAYOUT, never the theater (v18). Kill credit,
+	# contract ticks and the loot spill flow only from a player-attributed
+	# death; a machine shot down by another machine explodes exactly as loudly
+	# and pays exactly nothing — _give_up's "breaking off contact has to be
+	# worth nothing" argument, applied to a fight the player did not win.
+	# The death FX, the post bookkeeping and queue_free are unconditional:
+	# world state is not a payment.
+	var player_kill := attacker != null and is_instance_valid(attacker) \
+		and attacker.is_in_group("player")
 
 	var rig := tree.get_first_node_in_group("camera_rig")
 	var main := tree.get_first_node_in_group("main")
-	if main and main.has_method("report_kill"):
+	if player_kill and main and main.has_method("report_kill"):
 		main.report_kill("sentry")
 
 	# If this was a deep guard, its post may have just fallen. `_dying` is already
@@ -282,14 +555,16 @@ func _die() -> void:
 		FX.burst(parent, pos, Palette.THREAT, 25, 6.5, 0.2, 0.55)
 	)
 
-	# Stage 3: secondary burst + loot spill, then free.
+	# Stage 3: secondary burst + loot spill, then free. The spill is the gated
+	# half — an NPC kill gets the burst and nothing adrift.
 	tree.create_timer(DEATH_STAGE_3).timeout.connect(func() -> void:
 		FX.burst(parent, pos, Color(1.0, 0.8, 0.4), 35, 5.0, 0.2, 0.7)
-		var m := tree.get_first_node_in_group("main")
-		var crate := CommodityDB.roll_drop("sentry")
-		for i in range(LOOT_COUNT):
-			var spot := pos + Vector3(randf_range(-0.4, 0.4), 0.1, randf_range(-0.4, 0.4))
-			if m:
-				m.spawn_loot(parent, spot, crate if i == 0 else "")
+		if player_kill:
+			var m := tree.get_first_node_in_group("main")
+			var crate := CommodityDB.roll_drop("sentry")
+			for i in range(LOOT_COUNT):
+				var spot := pos + Vector3(randf_range(-0.4, 0.4), 0.1, randf_range(-0.4, 0.4))
+				if m:
+					m.spawn_loot(parent, spot, crate if i == 0 else "")
 		queue_free()
 	)

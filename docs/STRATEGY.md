@@ -3901,3 +3901,447 @@ price table that genuinely endangers `MIDTIER` is `lance_1`'s own 5,800, because
 three assertions are denominated in it. Cutting it to 5,000 would read 3.34
 against a 3.00 ceiling and fail immediately. Every other price — including every
 reactor — is invisible to it.
+
+## 47. Factions — stage 1, the allegiance layer
+
+The design is in `docs/HORIZON-4-FACTIONS.md`: fourteen factions in four tiers,
+staged across six pieces of work. This section records the first of them.
+
+**Stage 1 ships no content, and that is the whole point.** The world after it
+is bit-identical to the world before it. What changed is that "who does this
+machine shoot" stopped being a hardcoded answer and became a rule — and that
+combat now knows *who killed what*, which nothing in this codebase has ever
+tracked.
+
+### `hostiles` had to keep meaning "hostile to you"
+
+The obvious implementation is to make faction membership a group and let
+`hostiles` be derived. It does not survive contact with the code. That group is
+read by the radar, by `_count_raiders`, by the torpedo's splash sweep, by
+Overcharge's blast, by every harness that sweeps the system, and by
+PACINGTEST's yield loop — all of which mean *things opposed to the player*. An
+allied picket in it would be painted red, blasted by the player's own
+area weapons, and counted as a live raid.
+
+So allegiance got its own group, `combatants`, and `hostiles` was left alone.
+Two group memberships instead of one derived membership, and the cost is one
+extra `remove_from_group` in four teardown paths.
+
+### `take_damage`'s missing argument was the dangerous part
+
+Adding an attacker means touching every call site. The tempting move —
+`take_damage(amount, attacker = null)` — compiles all of them silently, and
+**neither default is safe**:
+
+- `null` means "nobody" → every legacy call stops dropping loot, and the
+  economy dies quietly. PACINGTEST would report a yield of zero and the pacing
+  band would collapse.
+- `null` means "the player" → every future NPC caller that forgets the argument
+  mints player credit for a kill nobody made.
+
+The argument is therefore **required, with no default**, on both hostile
+classes. A forgotten attacker is a parse error rather than a mis-booking.
+`ATTRIBUTION IS EXPLICIT` reads both files and fails if a default ever appears,
+because the dynamic check cannot see a call site that is never exercised.
+
+`ApexBoss.take_damage` is the one exception and takes `_attacker` with a
+default. Its death is attributed by a different mechanism entirely
+(`on_apex_defeated` → `mark_apex_down`, with the bonus riding on cracking the
+wreck), and nothing but the player has ever been able to damage one.
+
+### The change nobody asked for, found by making attribution honest
+
+The apex scraps its own pending probes on a phase change and on death.
+`probe.take_damage(99999.0)` went through the ordinary swarm death path, so
+**every one of those probes paid the player two loot crates and ticked a
+`kill_swarm` contract.** They are specifically the probes the player *failed*
+to kill during the seal — the ones that were about to weld a plate shut.
+
+They now pay nothing. This is a deliberate behaviour change, not a refactor
+artifact, and it is recorded here because it is invisible in a diff that looks
+like a signature change. It does not move `PACING_LOOP`, which has no apex term
+at all (the first-kill bonus is excluded by omission from a hand-written sum),
+and it does not move BALANCE, which measures seals and phases rather than loot.
+
+### A matrix that can be asserted
+
+The user chose a **full dynamic matrix** over a scalar-plus-static-table, and
+**player actions only** over seeded drift. That combination is what makes it
+defensible: `shift_faction` is the only mutator, nothing calls it from a timer,
+and `NO INPUT, NO DRIFT` runs the world for real, advances the clock an hour,
+and requires the delta store to still be **empty**.
+
+Empty is the load-bearing word. Deltas are **sparse by invariant** — a value
+driven back to zero is erased rather than stored — so "the player has changed
+nothing" and "the dict is empty" are the same statement, and one check covers
+all 240 ordered pairs instead of touring them. `ZERO IS ABSENCE` in
+`SAVETEST=migrate17` is what stops that invariant quietly lapsing.
+
+The baseline lives in `FactionDB` and the arithmetic lives in `GameState`, and
+the split is §39's cycle lesson: `FactionDB` names no scene class and no
+autoload, because `hostile.gd`, `swarm_hostile.gd` and `main.gd` all name *it*.
+An autoload is outside the `class_name` registry, so it is the one place that
+can read both the table and the save without closing a loop that would declare
+every class in the project undeclared.
+
+### v18 is the first migration with nothing to grandfather
+
+v15 could revoke a lane; v17 had to guess which engines were down. v18 needs
+neither, and the reason is worth stating: **the authored baseline IS the world a
+v17 save was written in.** Every hostile is `feral`, `feral` is HOSTILE to the
+surveyor, nobody is allied with anybody. An absent key arriving at the baseline
+reproduces that save's reality exactly, so there is nothing to infer and nothing
+that could be taken away.
+
+### Two defects the review caught before the harness could
+
+Both are recorded because neither would have failed loudly.
+
+**A lambda captures a local by value.** The kill counter was
+`var kills := 0` with `kills += 1` inside a signal handler — which increments a
+copy and leaves the outer variable at 0 forever. The assertion would have read
+"no kills were credited", which is exactly what half of
+`ATTRIBUTION GATES THE PAYOUT` wants to hear. It is a one-element Array now, and
+the reason is written above it.
+
+**A self-pair is canonically ordered.** `pair_key("gsa", "gsa")` is legitimately
+`"gsa|gsa"`, so the load path's canonical-ordering check waved a self-delta
+straight through — the one entry `faction_attitude` can never read back, since
+it short-circuits on `a == b`. Rejected explicitly now, and
+`THE MATRIX REJECTS RUBBISH` fires four separate attacks at that function.
+
+A third was caught in the moved code rather than the new code: `SwarmHostile`'s
+`_departing` branch had drifted *below* the target lookup, so a paid-off raider
+whose target docked would have stuttered from burn-out into idle drift at
+exactly the moment a raid ends. It is back above the lookup, with a comment
+saying why it lives there.
+
+## 48. The hull gives a bearing
+
+The tutorial's finale ends on the PYX-01 breach, and until now that breach
+handed over a *statement*: PYX-02 is charted, the lane is jammed, silence THE
+GNOMON. It never handed over a **direction**.
+
+### The gap was that the free hint was spoken but never filed
+
+The lane-obstructed broadcast (`main.gd`, on `system_unlocked`) already tells
+the player the band and the quadrant — "transmitting from THE DRIFT, bearing
+WEST". It calls `hud.show_broadcast` and stops there. It does **not** call
+`file_apex_intel`, so nothing enters `apex_intel`, and the chart panel goes on
+saying *"no intel. It is transmitting from somewhere in the shaded band."*
+
+So the opening of the hunt was a sentence the player had to hold in their head
+against a plot that disagreed with it. That is the gap this closes.
+
+### One rule, three systems, and the geometry does the difficulty
+
+**Cracking a system's own derelict reads a bearing on that system's engine off
+the hull's log.** It is filed through `file_apex_intel` like every other
+channel — the sixth thing that could teach you where the engine hides is now
+the seventh — so it narrows the ghost, shrinks the search circle, and prints
+the same `INTEL — THE GNOMON · BEARING 137 ±20° · SEARCH ±NNNu` line the paid
+readings print.
+
+It sits **inside the `counts_as_survey` guard**, beside `mark_breached` and
+`arm_apex_wake`, for exactly the reason charting does: a deep hulk is a payday
+found by going looking, and letting one 400u off the map hand over the opening
+lead would let the expanse skip the hunt as well as the spine.
+
+It is filed **after** `mark_breached`, and the order is the beat. Charting
+fires `system_unlocked`, whose handler broadcasts "…silence it and the way is
+yours" — the player is told there is a hunt, and *then* told which way to
+point. Filing first would answer a question nobody had asked yet.
+
+### 20°, and why it must stay the widest cone in the game
+
+Every other bearing channel is earned or bought:
+
+| channel | cone | how |
+|---|---|---|
+| **hull (this)** | **±20°** | **given, once per system** |
+| cleared guard post | ±15° | earned, out in the deep |
+| read relic | ±12° | earned |
+| survey mast | ±8° | earned |
+| the Last Watch | ±5° | 900 salvage, band 4 |
+| rift | ±4° | rare |
+
+The free one has to be strictly worse than all of them or the intel economy is
+undercut by the thing the player gets for nothing in the first twenty minutes.
+`THE OPENING BEARING IS THE WIDEST` asserts it against the real constants —
+except `guard` and `relic`, which are inline literals with no constant to read
+and are therefore restated in the harness. That gap is named in the comment
+rather than papered over; naming those two is worth doing next time either
+file is open.
+
+One number serves all three systems because the lair radii do the scaling. A
+±20° cone spans `2·r·tan(20°)`:
+
+    PYX-01   lair at radius  300- 380   cone  218- 277u across
+    PYX-02   lair at radius  668- 828   cone  486- 603u
+    PYX-03   lair at radius 1194-1494   cone  869-1088u
+
+A real lead on the first hunt and nearly worthless on the last, which is the
+correct shape: the deep hunts are supposed to be bought, not given.
+
+### What did NOT need building
+
+"PYX-02 should only be reachable after the PYX-01 engine dies" was already
+true, and checking before building is the only reason it did not get
+reimplemented. `on_apex_defeated` calls `open_lane`; `travel_to` refuses a lane
+that is not open; breaching only ever *charted*. That is §38's two-tier gate,
+shipped in v15, working as designed.
+
+### The assertion that drives two real hulls
+
+`THE HULL GIVES A BEARING, AND ONLY FOR A SURVEY` builds a charted derelict and
+a deep hulk, breaches each through `hold_begin`/`hold_tick` against a real
+player ship, and requires **1 hint + charted** from the first and **0 hints +
+not charted** from the second. Both directions in one measurement, because
+either half alone passes on broken code: "a deep hulk files nothing" is
+satisfied by a game where nothing files anything.
+
+Two details in it are lessons already paid for elsewhere. The player is
+re-pinned inside the loop every frame, because `hold_tick` releases the hold
+and issues a move order the moment the ship drifts out of `CRACK_RANGE` — a
+single teleport before the loop is a hold that silently stops progressing.
+And `breached` is snapshotted and restored rather than cleared, because five
+more assertions run after this one and a harness that empties world state on
+its way past is how the next check inherits a failure it did not cause.
+
+### §47/§48 postscript — what running the engine actually caught
+
+Both sections above were written without a Godot binary to hand. Fetching a
+headless 4.6 and running the sweep turned up three defects, and the split
+between them is the lesson.
+
+**Two were parse errors no static review could reach.** A multi-line boolean
+missing its `\` continuations (GDScript only continues implicitly inside
+brackets), and a `var charted` colliding with one declared earlier in the same
+function — GDScript scopes to the whole function, so a second declaration is an
+error rather than a shadow. Both stop the project loading *entirely*. A
+bracket-and-duplicate linter reported both files clean; the engine did not.
+
+**One was a real regression, and it is the interesting one.**
+`SAVETEST=write`'s new v18 fixture was filed *after* the captain's-log fill —
+and `shift_faction` notes a log line whenever the player is party to a shift
+(finding A10: standing the player changed and cannot see is a haunting, not
+politics). So the fixture pushed `THE GRIN — STANDING RISES` into a
+ten-entry ring, evicted `LOGBOOK ENTRY 02`, and failed `v12 CAPTAIN'S LOG`.
+
+The assertion was working perfectly. What it caught was **a side effect of the
+new code reaching a suite that had nothing to do with factions** — which is
+exactly the failure mode a save harness with distinct sentinels exists to
+surface, and it surfaced it on the first run. The fixture moved above the log
+block; nothing about `shift_faction` changed, because its logging is the
+feature.
+
+Write it down for whoever adds the next standing-aware harness: **`shift_faction`
+mutates the logbook.** Any suite that pins log contents must file its standing
+changes before it fills the ring.
+
+**And the economy did not move**, which was the whole risk of the attribution
+rewrite. Measured against the numbers §46 recorded:
+
+| assertion | §46 recorded | measured at v18 |
+|---|---|---|
+| `MIDTIER` (binding) | 2.91 | **2.92** |
+| `CEILING` | 0.041 | **0.041** |
+| `ROUTE PARITY` | 1.0% | **1.1%** |
+
+with `swarm 98/kill` and `sentry 671/kill` — non-zero, which is the direct
+evidence that player-attributed kills still pay. Had attribution been wired
+backwards, those two would have read zero and `MIDTIER` would have collapsed
+through its floor. The 0.01 is loot-roll noise.
+
+## 49. Factions — stage 2a, the Cordon
+
+The Authority gets ships. Nine patrol routes across three systems — two in
+PYX-01, three in PYX-02, four in PYX-03, scaling with how much the Authority
+has to lose — walked as loops by `Hostile` nodes flying the `gsa` flag.
+
+**A picket is not a new class.** It is the same machine the expanse already
+dresses out as *"GSA PICKET — DECOMMISSIONED"* (`GUARD_DESIGNATION[1]`), alive
+and painted, and the tell is paint rather than a new silhouette — the raider
+precedent, applied again. Stage 1 had already built the hard half: a `gsa`
+picket refuses to fire on the player at any standing, and pays nothing when it
+kills, both asserted before a single route existed. **Stage 2a writes movement,
+not targeting.**
+
+### The routes are the entity budget
+
+Each route is drawn to pass within engage range of exactly **one** sentry post.
+A system therefore has as many standing skirmishes as it has routes and no
+more, which is what keeps NPC-vs-NPC combat legible on a 720-wide phone and the
+frame cost knowable. This is the §7 promise — "the entity count of ambient
+NPC-vs-NPC combat is a route-authoring decision, not an emergent one" — made
+literal in the data.
+
+### Three decisions that removed code rather than adding it
+
+**There is no "returning" state.** A picket with nothing to shoot walking to
+its next waypoint *is* returning. A third state would be a second thing to keep
+true for no visible difference.
+
+**The route is a loop.** Ping-pong needs a direction flag and an end-detection
+branch to say the same thing on screen.
+
+**The chart-edge rule is policed by the harness, over the authored table.**
+Three options, two rejected: a runtime clamp would drag a picket home and
+satisfy the assertion while hiding the authoring mistake; an `assert()` is
+stripped from release builds *and* would be the first in this codebase
+(`assert(` appears zero times). A data-level check fires on the authoring
+mistake before a picket is ever built, which is strictly earlier than either —
+the shape `DeepPortDB.violations()` and STATIONTEST's guard-rail sweep already
+use.
+
+### The anchor, and why measuring from the picket is fatal
+
+`_worth_leaving_the_beat` measures engage range from **the waypoint the picket
+is walking to**, never from the picket. A picket measuring from itself drifts
+outward along its own engagements — every individual step looking correct while
+charted space quietly goes unguarded. The beat is the anchor, and the hysteresis
+pair (12 to pick a fight, 25 to keep one) is the same shape as the apex's
+WAKE 60 against LEASH 120.
+
+### Two branches that cannot be unified
+
+Station-keeping **assigns** `_home + wander`; a patrol **adds** `wander * delta`.
+A moving picket whose position were assigned from a wander term would have its
+travel overwritten every frame and never leave the spot — this file's own
+`_home`-on-frame-one defect, reintroduced from the other direction. `PICKETS
+WALK THEIR BEAT` red-verifies to `moved 0.4u, 0 waypoints`.
+
+### The parley is the player's conversation
+
+`break_parley` fires when a raider takes damage from *anyone*, so a picket that
+peeled onto a pack mid-standoff would answer the demand on the player's behalf
+and delete the choice the interdiction is built around — permanently, everywhere
+in charted space. Finding A3, closed: a picket refuses to engage a raider whose
+`standoff` is live, and the assertion checks the **refusal to engage** rather
+than "the standoff survived", because the picket must not pick the fight in the
+first place.
+
+### What the engine caught that review did not
+
+**A crash in stage 1's shipped code.** `_targetable(n: Node3D)` dies on a
+cached `_aggro`/`_target` that has since been freed: GDScript validates an
+Object argument against its declared class **at the call boundary**, so the
+freed node fails there, before `is_instance_valid` inside can run. Six script
+errors per run. Stage 1's own suite never froze a node mid-test, so it never
+saw one; the Cordon's longer runs do. Both hostile classes take an untyped
+parameter now, with the reasoning written above it.
+
+**And an assertion of mine that passed on broken code — the third time this
+project has shipped one.** `THE BEAT IS THE ANCHOR` originally marched a chain
+of contacts away from the route to prove a picket would not ratchet outward.
+It cannot: `_combat_target` returns the *nearest* enemy, so the picket locks
+onto the first contact and stays put under the bug exactly as under the fix.
+The setup was elaborate and measured a world in which the defect cannot express
+itself.
+
+The rewrite is a **contact near the middle of a leg and far from both
+endpoints** — 10u from a picket standing mid-leg, 22.4u from the waypoint it is
+walking to. Route-measuring ignores it; self-measuring chases it. Asserted as a
+pure-function call at a placed position rather than over frames: no timing, no
+flake, and both clauses flip when the bug returns. A positive control (a contact
+genuinely near the waypoint, which *must* be engaged) sits beside it, because
+"returns false" is otherwise satisfied by a function that always refuses.
+
+Two lessons, and the second is the general one. Frame counts are not time —
+headless Godot runs frames as fast as it can, so `for i in range(360): await
+process_frame` was an unknown and machine-dependent amount of simulated time,
+and it measured 8u of a 12u leg on the first run. Both timed checks are
+specified in seconds now, because the thing they measure is specified in units
+per second. And: **be most suspicious of an assertion whose setup is elaborate.**
+The elaborate ones are where a world that cannot express the bug hides.
+
+### One assertion got stronger rather than excluded
+
+The sweep came back with `SENTRY POSTS` failing — it sweeps every `Hostile` and
+requires each within 0.6u of an authored post, and a picket is a `Hostile` 36u
+away by design. The cheap fix is to skip pickets. That makes the line *weaker*:
+a Cordon that silently failed to deploy would make every remaining clause
+happier and nothing would say so.
+
+So pickets are excluded, **counted, and the count asserted against the routes
+the system authored** — following this line's own precedent, where the
+deep-guard count was already printed rather than swallowed for exactly that
+reason. It now catches two distinct failures where it caught one.
+
+## 50. Factions — stage 2b, the hulls move outside the cordon
+
+The survey hull no longer sits twenty units from the Anchor. It is 100u past
+PYX-01's chart edge, 130u past PYX-02's, 150u past PYX-03's — and each one sits
+on **the bearing its old authored point already lay on** (243, 304, 257
+degrees), so the fiction is that the field drifted rather than that a designer
+moved it.
+
+`SystemDB.derelict_pos` is the only function that answers "where", for the same
+reason `lair_pos` is: two places deriving it independently will disagree, and
+the tutorial's broadcast, the expanse's keep-out and four harnesses all need
+the same answer. It draws from **no RNG at all** — an authored bearing takes
+no number out of the sequence the expanse rolls from — so `WORLD FINGERPRINT`
+cannot move.
+
+### Clearances that are provable rather than lucky
+
+    depth 100 / 130 / 150   all band 1, where PACK_CHANCE is 0.0
+    hull-to-lair gap        >= 160u against LAIR_KEEPOUT 120, for ANY bearing
+
+The band matters because the Shoals generate **no procedural packs at all**, so
+a tutorial-fresh pilot's first trip past the marker meets exactly the authored
+sentries and nothing else. The gap is checked against the authored band
+*minimum* rather than against this run's rolled lair: the two bearings are
+independent, so a seed that happens to separate them proves nothing about the
+seed that does not.
+
+`HULL_KEEPOUT` is **40**, not the lair's 120, and the difference is what each
+protects. A lair is an ARENA — the leash says everything inside it is the
+fight, so nothing that is not the fight may be there. A hull is a DESTINATION
+with a 6.5u interaction range: it needs elbow room, not solitude. It suppresses
+stations and hulks — two crackables a few units apart, one of which charts the
+next system, is the most confusing object this game could produce — and
+deliberately leaves nests alone, because something drifting in to guard a wreck
+out past the cordon is the fiction working rather than the generator misfiring.
+
+### The tutorial ends one step earlier than it used to
+
+It used to finish by OPENING the world: the breach charted PYX-02 and handed
+over a frontier. The survey hull is outside charted space now, so the guided
+run teaches the verb on a small **training hull** on the old berth and then
+tells you where to go and use it — a bearing and a distance, read from
+`derelict_pos` so the copy cannot disagree with the world.
+
+`counts_as_survey` carries the progression, and the flag already existed: deep
+hulks have used it since the expanse shipped, and it already means "charts
+nothing, wakes nothing, files no bearing". **No new gate was designed and no
+new class was added.** With two crackables in PYX-01, three call sites that
+said `get_first_node_in_group("crackable")` stopped having a defensible answer
+and now go through `_find_survey_hull()`; the tutorial's own two go through a
+`training_hull` group.
+
+### The relocation was a stealth pay rise, and PACINGTEST caught it
+
+`spawn_loot` re-grades a fraction of every drop by **the band it is spilled
+in**. Move the hull from depth 0 to depth 100 and the identical hull, cracked
+identically, starts paying band-1 salvage:
+
+| | before | after the move | after compensation |
+|---|---|---|---|
+| derelict yield | 5022/hull | **5423/hull** | 5067/hull |
+| `MIDTIER` (binding) | 2.92 | **2.98** | **2.92** |
+| `CEILING` | 0.041 | 0.042 | 0.041 |
+
+2.98 against a hard ceiling of 3.00 **passes**, and is still wrong. Nobody
+asked for that raise; it fell out of a geometry change. And 0.02 of headroom is
+not headroom — the next change to touch loot anywhere would have broken the
+binding assertion for a reason that had nothing to do with it.
+
+Loot came down 70 → 64, 95 → 87, 130 → 119 to hand it back, and the reasoning
+is written into `system_db.gd` rather than only into a commit. The player gets
+**the same hull for the same work, further away.**
+
+This is finding A8 of HORIZON-4 resolved the way the doc demanded — "the number
+will move, and it must be recorded rather than reasoned about" — and it is the
+second time this horizon that the honest answer was to measure, decide, and
+measure again rather than to argue about whether a change was neutral.

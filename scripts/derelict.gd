@@ -18,6 +18,32 @@ const LOOT_WAVE_INTERVAL := 0.09
 # The colour of a wreck that still has power in it.
 const TRAP_TELL := Color(0.55, 0.85, 1.0)
 
+# THE OPENING BEARING. Cracking a system's own derelict reads a bearing on that
+# system's engine off the hull's log — the first entry in the dossier, and for
+# most players the one that turns "silence THE GNOMON" from an instruction into
+# a direction. It is the tutorial's real payload: the guided run ends on this
+# breach, so it ends by starting the hunt rather than by announcing it.
+#
+# 20 DEGREES, AND IT MUST STAY THE WIDEST CONE IN THE GAME. Every other bearing
+# channel is earned or bought — a cleared guard post is 15, a read relic 12, a
+# mast 8, the Last Watch 5, a rift 4 — and this one is given away. Tighten it
+# below any of those and the whole intel economy is undercut by the thing the
+# player gets for free in the first twenty minutes. `THE OPENING BEARING IS THE
+# WIDEST` asserts it against the real constants rather than trusting this note.
+#
+# The geometry does the difficulty scaling for free, which is why one number
+# serves all three systems. A +-20 cone spans 2*r*tan(20) across, and the lair
+# radii are authored per system, so the same reading is worth wildly different
+# amounts depending on where it is read:
+#
+#     PYX-01   lair at radius  300- 380   cone  218- 277u across
+#     PYX-02   lair at radius  668- 828   cone  486- 603u
+#     PYX-03   lair at radius 1194-1494   cone  869-1088u
+#
+# A real lead on the first hunt, and nearly worthless on the last. That is the
+# correct shape — the deep hunts are supposed to be bought, not given.
+const INTEL_ERROR_DEG := 20.0
+
 # Set by SystemBuilder from the system definition.
 var crack_time := 1.8
 var loot_total := 70
@@ -342,6 +368,18 @@ func _breach() -> void:
 		# The breach is the aftershock that wakes this system's survey engine.
 		if main.has_method("arm_apex_wake"):
 			main.arm_apex_wake()
+		# ...and the hull's log gives up a bearing on it. INSIDE the survey
+		# guard, for exactly the reason charting is: a deep hulk is a payday
+		# found by going looking, and letting one 400u off the map hand over the
+		# opening lead would let the expanse skip the hunt as well as the spine.
+		#
+		# AFTER mark_breached, and the order is the beat. Charting fires
+		# `system_unlocked`, whose handler broadcasts the free band-and-quadrant
+		# ("%s is transmitting across the lane... silence it") — so the player is
+		# told there is a hunt, and then told which way to point. Filing first
+		# would answer a question nobody had asked yet.
+		if main.has_method("file_apex_intel"):
+			main.file_apex_intel("hull", global_position, INTEL_ERROR_DEG)
 	# Cracking a hull teaches you about hulls, and that is true of a deep hulk as
 	# much as a charted derelict — so this sits OUTSIDE the survey guard above.
 	# Charting the next system and waking the apex are the things the expanse must

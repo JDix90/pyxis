@@ -126,6 +126,24 @@ const ROCK_INSET := 4.0
 # would be a rule that only half held.
 const LAIR_KEEPOUT := 120.0
 
+# v18. AND A SECOND, MUCH SMALLER KEEP-OUT, around the survey hull.
+#
+# The hull moved out past the marker in stage 2b, which puts it in generated
+# space for the first time — and the one thing that must not roll on top of it
+# is ANOTHER CRACKABLE HULL. Two derelicts a few units apart, one of which
+# charts the next system and one of which does not, is the most confusing
+# object this game could produce. A station's docking ring landing on the
+# breach point is the other case.
+#
+# 40 rather than the lair's 120, and the difference is what each is protecting.
+# The lair is an ARENA: the leash says everything inside it is the fight, so
+# nothing that is not the fight may be there. The hull is a DESTINATION with a
+# 6.5u interaction range — it needs elbow room, not solitude. Nests are
+# deliberately NOT suppressed: the hull has always had sentries standing over
+# it, and something drifting in to guard a wreck out past the cordon is the
+# fiction working rather than the generator misfiring.
+const HULL_KEEPOUT := 40.0
+
 # --- what the beacons say ----------------------------------------------------
 # Crossing a band plays an automated broadcast. This replaces the soft outer
 # limit the plan originally called for, and it is a better answer: a wall says
@@ -309,6 +327,8 @@ var _k_last := -1.0
 # implies.
 var _lair := Vector3.ZERO
 var _has_lair := false
+var _hull := Vector3.ZERO
+var _has_hull := false
 
 # Live cells, keyed by Vector2i. The value is the cell's content node, or null
 # for a cell that generated nothing — the key still has to be present, or an
@@ -410,6 +430,11 @@ func configure(def: Dictionary, system_id: String) -> void:
 	# Vector3.ZERO from lair_pos and only one of them means there is no keep-out.
 	_has_lair = not ((def.get("apex", {}) as Dictionary).get("lair", {}) as Dictionary).is_empty()
 	_lair = SystemDB.lair_pos(system_id, GameState.run_seed) if _has_lair else Vector3.ZERO
+	# Same question, asked the same way: an empty `derelict` def and a hull at
+	# the origin both read as Vector3.ZERO, and only one of them means there is
+	# nothing to keep clear.
+	_has_hull = not (def.get("derelict", {}) as Dictionary).is_empty()
+	_hull = SystemDB.derelict_pos(system_id) if _has_hull else Vector3.ZERO
 	var sf: Dictionary = def.get("starfield", {})
 	var seed_value := hash(system_id)
 
@@ -682,6 +707,21 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 	return out
 
 
+func flag_for_band(band: int) -> String:
+	# v18 stage 3. WHOSE REACH EXTENDS HOW FAR.
+	#
+	# The Shoals and the Drift are the host engine's back yard — its packs, its
+	# guards, its writ. The REACHES AND THE QUIET ARE NOT, and they stay
+	# unflagged: those bands belong to the three powers nobody has a word for
+	# yet, and the shipped data already says so out loud —
+	# GUARD_DESIGNATION[3] is "UNFLAGGED — NO PATTERN ON FILE" and [4] is
+	# "UNREADABLE — IT DOES NOT ANSWER". Claiming them for a known faction now
+	# would spend stage 6's reveal early, and would make the designation a lie.
+	if band >= 3:
+		return FactionDB.FERAL
+	return SystemDB.faction_of(_id)
+
+
 func built_plan(cx: int, cz: int) -> Dictionary:
 	# WHAT THE WORLD ACTUALLY BUILDS, as opposed to what the generator said. The
 	# only difference is the lair keep-out, and the split is the whole reason the
@@ -701,15 +741,27 @@ func built_plan(cx: int, cz: int) -> Dictionary:
 	# consumer that turns a cell into nodes, obstacles, armed nests or a save-file
 	# validation goes through this one.
 	var plan := plan_cell(cx, cz)
-	if not _has_lair:
-		return plan
 	# Mutated in place, which is only safe because plan_cell builds a fresh
 	# dictionary on every call and shares nothing between them.
-	for key_v in ["station", "pack", "hulk"]:
-		var key := String(key_v)
-		var thing: Dictionary = plan[key]
-		if not thing.is_empty() and (thing["pos"] as Vector3).distance_to(_lair) < LAIR_KEEPOUT:
-			plan[key] = {}
+	if _has_lair:
+		for key_v in ["station", "pack", "hulk"]:
+			var key := String(key_v)
+			var thing: Dictionary = plan[key]
+			if not thing.is_empty() \
+					and (thing["pos"] as Vector3).distance_to(_lair) < LAIR_KEEPOUT:
+				plan[key] = {}
+	# v18. The survey hull's elbow room. NOT "pack": a nest drifting in to stand
+	# over a wreck out past the cordon is the fiction working, and the hull has
+	# had sentries on it since the game shipped. What must not land here is a
+	# SECOND CRACKABLE (two hulls a few units apart, one of which charts the
+	# next system) or a docking ring on the breach point.
+	if _has_hull:
+		for key_v in ["station", "hulk"]:
+			var key := String(key_v)
+			var thing: Dictionary = plan[key]
+			if not thing.is_empty() \
+					and (thing["pos"] as Vector3).distance_to(_hull) < HULL_KEEPOUT:
+				plan[key] = {}
 	return plan
 
 
@@ -1164,10 +1216,14 @@ func _spring(key: Vector2i, pack: Dictionary) -> void:
 	var count := int(pack["count"])
 	var drop := String(pack["drop"])
 
+	# The band is already in the plan; re-deriving it from the position would be
+	# a second source for a number the generator has already decided.
+	var flag := flag_for_band(int(pack.get("band", 0)))
 	for i in range(count):
 		var s := SwarmHostile.new()
 		s.difficulty = float(pack["difficulty"])
 		s.hp_scale = float(pack["hp_scale"])
+		s.faction = flag
 		s.tint = pack["tint"]
 		# One crate of the good thing, the same way a raider carries what it took.
 		s.drop_good = drop if i == 0 else ""
@@ -1179,6 +1235,7 @@ func _spring(key: Vector2i, pack: Dictionary) -> void:
 	if bool(pack["escort"]):
 		var h := Hostile.new()
 		h.difficulty = float(pack["difficulty"])
+		h.faction = flag
 		h.despawn_radius = HOSTILE_LEASH
 		root.add_child(h)
 		h.global_position = origin
@@ -1202,10 +1259,12 @@ func _build_post(key: Vector2i, cfg: Dictionary) -> void:
 	if root == null:
 		return
 	var live: Array = []
+	var post_flag := flag_for_band(int(cfg.get("band", 0)))
 	for post_v in cfg.get("posts", []):
 		var h := Hostile.new()
 		h.difficulty = float(cfg["difficulty"])
 		h.hp_scale = float(cfg["hp_scale"])
+		h.faction = post_flag
 		h.tint = cfg["tint"]
 		h.designation = String(cfg["designation"])
 		# NO LEASH, and that is deliberate rather than forgotten. despawn_radius

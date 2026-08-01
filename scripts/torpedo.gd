@@ -23,6 +23,12 @@ var damage := 90.0
 var splash_radius := 2.2
 var origin := Vector3.ZERO
 var destination := Vector3.ZERO
+# WHO FIRED IT (v18). A torpedo outlives its launch by 0.7 seconds of flight,
+# so unlike a hitscan weapon it cannot ask "who is shooting" at the moment it
+# lands — the shooter has to be carried. Set by the launcher before add_child,
+# same contract as `damage`. Null is legal and means an unattributed blast:
+# it damages, and it pays nobody.
+var shooter: Node3D = null
 
 var _mat: StandardMaterial3D
 
@@ -136,5 +142,5 @@ func _detonate() -> void:
 		# Falls off to 45% at the rim, so landing it in the middle of a pack is
 		# meaningfully better than clipping the edge of one.
 		var falloff := 1.0 - 0.55 * (offset.length() / maxf(splash_radius, 0.01))
-		n.take_damage(damage * falloff)
+		n.take_damage(damage * falloff, shooter)
 	queue_free()

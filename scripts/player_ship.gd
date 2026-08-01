@@ -974,7 +974,7 @@ func _overcharge_discharge() -> void:
 		# Arc to each victim so it is obvious what the blast actually caught.
 		FX.beam(parent, global_position + Vector3(0, 0.2, 0), h.global_position,
 			Palette.AMBER, 0.1, 0.2)
-		h.take_damage(burst * lerpf(1.0, OVERCHARGE_EDGE_FALLOFF, t))
+		h.take_damage(burst * lerpf(1.0, OVERCHARGE_EDGE_FALLOFF, t), self)
 
 
 func _tick_ability(delta: float) -> void:
@@ -1157,6 +1157,10 @@ func _launch_torpedo(w: Dictionary, muzzle: Vector3, tgt: Node3D) -> void:
 	var shell := Torpedo.new()
 	shell.damage = damage
 	shell.splash_radius = float(w.get("splash", 2.2))
+	# Carried through the flight so the blast is still attributable when it
+	# lands 0.7s from now — the player may well be dead or docked by then, but
+	# the shot was theirs and the kill is too.
+	shell.shooter = self
 	shell.launch(muzzle, tgt.global_position)
 	get_parent().add_child(shell)
 
@@ -1197,7 +1201,10 @@ func _chain_from(origin: Node3D, from_pos: Vector3, damage: float, hops: int) ->
 func _damage_target(target: Node3D, damage: float, is_crit: bool) -> void:
 	if not is_instance_valid(target) or not target.has_method("take_damage"):
 		return
-	target.take_damage(damage)
+	# `self` is what makes this a PLAYER kill: attribution decides loot, credit
+	# and contract ticks on the far side (v18 / HORIZON-4 A1). Every weapon
+	# path the player owns — pulse, lance, arc chain — funnels through here.
+	target.take_damage(damage, self)
 	if is_crit:
 		FX.flash(get_parent(), target.global_position + Vector3(0, 0.4, 0), Palette.GOLD, 1.1, 0.16)
 

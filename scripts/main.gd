@@ -54,6 +54,7 @@ const HARNESS_VARS := [
 	"PYXIS_DOCKTEST",
 	"PYXIS_ECONDEMO",
 	"PYXIS_ENVTEST",
+	"PYXIS_FACTIONTEST",
 	"PYXIS_MANUALTEST",
 	"PYXIS_FEELTEST",
 	"PYXIS_FORGETEST",
@@ -653,6 +654,14 @@ func _ready() -> void:
 		_run_env_test()
 		return
 
+	if OS.get_environment("PYXIS_FACTIONTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_faction_test()
+		return
+
 	if OS.get_environment("PYXIS_MANUALTEST") != "":
 		GameState.lock_saving()
 		state = State.PLAYING
@@ -773,7 +782,7 @@ func _enter_playing() -> void:
 
 func spawn_sentries() -> void:
 	# Adds the system's garrison to the running scene without a rebuild.
-	SystemBuilder.build_sentries(system_def, system_root)
+	SystemBuilder.build_sentries(system_def, system_root, system_id)
 
 
 func start_new_game() -> void:
@@ -1236,9 +1245,13 @@ func _spawn_swarm_pack(swarm: Dictionary) -> void:
 
 	var count := randi_range(int(swarm.get("pack_min", 4)), int(swarm.get("pack_max", 6)))
 	var mult := float(system_def.get("difficulty", 1.0))
+	# v18 stage 3. The waves are the host engine's too. They were never a
+	# weather system -- something keeps sending them, and now the data says who.
+	var flag := SystemDB.faction_of(system_id)
 	for i in range(count):
 		var s := SwarmHostile.new()
 		s.difficulty = mult
+		s.faction = flag
 		system_root.add_child(s)
 		s.global_position = center + Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.5, 1.5))
 	FX.ring_pulse(self, center, Palette.THREAT, 2.5, 0.8)
@@ -1576,6 +1589,19 @@ func spawn_interdiction() -> void:
 	for i in range(count):
 		var r := SwarmHostile.new()
 		r.difficulty = difficulty
+		# v18 stage 3. THE BANNER GETS ITS NAME. Interdiction raiders are THE
+		# TITHE -- crimson paint, a demand, a toll, a parley -- all of which
+		# shipped long before the faction layer and none of which had an owner.
+		# Pulled forward from stage 5 because it is one line and because stage
+		# 2a's picket parley exemption currently guards a case that cannot
+		# occur: raiders were FERAL, and the Cordon is neutral to FERAL. This
+		# makes THE PARLEY IS IMMUNE a live assertion instead of a defensive one.
+		#
+		# The tint stays set by hand and therefore WINS over faction paint --
+		# FactionDB.tint_of is only applied when the spawner left tint clear --
+		# which is correct: RAID_TINT is the Tithe's colour, and the crimson a
+		# player has been taught to read must not shift under them.
+		r.faction = "tithe"
 		r.tint = RAID_TINT
 		r.despawn_radius = leash
 		# What they are carrying is what they took off the last hauler.
@@ -1591,6 +1617,7 @@ func spawn_interdiction() -> void:
 		var corsair := Hostile.new()
 		corsair.standoff = window
 		corsair.difficulty = difficulty
+		corsair.faction = "tithe"
 		corsair.despawn_radius = leash
 		corsair.add_to_group("raider")
 		system_root.add_child(corsair)
@@ -2245,8 +2272,16 @@ func _run_demo() -> void:
 	chart_panel.close_panel()
 	await get_tree().create_timer(0.4).timeout
 
-	# Breach the PYX-01 derelict — this is what charts PYX-02.
-	var derelict: Derelict = get_tree().get_first_node_in_group("crackable")
+	# Breach the PYX-01 SURVEY hull — this is what charts PYX-02. v18 put a
+	# training hull on the old berth, so the group lookup would otherwise pick
+	# whichever is first in the tree; and the survey hull is now 140u out, so
+	# the demo is placed at it rather than walked to it.
+	var derelict: Derelict = _find_survey_hull()
+	if derelict != null:
+		var demo_pilot: PlayerShip = get_tree().get_first_node_in_group("player")
+		if demo_pilot != null:
+			demo_pilot.teleport_to(derelict.breach_point + Vector3(0, 0, 3.0))
+			await get_tree().physics_frame
 	derelict.on_tapped()
 	await get_tree().create_timer(3.0).timeout
 	var frames := 0
@@ -4305,9 +4340,24 @@ func _spill_cubes() -> Array:
 
 
 func _find_crackable() -> Node3D:
+	# ANY hull. SPILLTEST's hold-cancel check only needs something to hold on
+	# to, so it takes whichever is nearest to hand.
 	for n in get_tree().get_nodes_in_group("crackable"):
 		if n is Derelict:
 			return n
+	return null
+
+
+func _find_survey_hull() -> Derelict:
+	# THE hull -- the one that charts the next system and files the opening
+	# bearing. v18 put a second crackable in PYX-01 (the tutorial's training
+	# hull), so "the derelict" stopped being answerable by
+	# get_first_node_in_group and became a question about which one carries
+	# `counts_as_survey`. Every caller that means PROGRESSION goes through here;
+	# callers that just need a hull to grab keep using _find_crackable.
+	for n in get_tree().get_nodes_in_group("crackable"):
+		if n is Derelict and (n as Derelict).counts_as_survey:
+			return n as Derelict
 	return null
 
 
@@ -5271,6 +5321,7 @@ func _run_deep_test() -> void:
 	var worst_post := 0.0
 	var found_posts := 0
 	var deep_seen := 0
+	var picket_seen := 0
 	for n in get_tree().get_nodes_in_group("hostiles"):
 		if not (n is Hostile):
 			continue
@@ -5281,14 +5332,30 @@ func _run_deep_test() -> void:
 		if n.is_in_group("deep_guard"):
 			deep_seen += 1
 			continue
+		# v18. A CORDON PICKET IS NOT AN AUTHORED SENTRY. It is the same class
+		# with a route, and being 36u from the nearest sentry post is the whole
+		# point of it — this clause is about machines that STAND SOMEWHERE, and
+		# a picket does not. Counted and printed rather than swallowed, for the
+		# reason the deep-guard count is: a number appearing here when you were
+		# not expecting one is the cheap way to notice pickets being built where
+		# they should not be (the tutorial and ATTRACT suppress them).
+		if not (n as Hostile).patrol.is_empty():
+			picket_seen += 1
+			continue
 		found_posts += 1
 		var nearest := INF
 		for p_v in posts:
 			nearest = minf(nearest, (n as Node3D).global_position.distance_to(p_v))
 		worst_post = maxf(worst_post, nearest)
-	print("[deep] SENTRY POSTS %d sentries, %d authored posts, furthest any of them sits from its post %.2fu (drift is 0.4), %d deep guards excluded -> %s" % [
-		found_posts, posts.size(), worst_post, deep_seen,
+	# The picket count is ASSERTED, not just printed: it must equal the routes
+	# this system authored. That turns a line about sentries standing still into
+	# one that also catches the Cordon failing to deploy — which would otherwise
+	# be invisible, since a missing picket makes every other clause here happier.
+	var routes: int = (SystemDB.get_system(system_id).get("patrols", []) as Array).size()
+	print("[deep] SENTRY POSTS %d sentries, %d authored posts, furthest any of them sits from its post %.2fu (drift is 0.4), %d deep guards and %d pickets excluded (%d routes authored) -> %s" % [
+		found_posts, posts.size(), worst_post, deep_seen, picket_seen, routes,
 		"PASS" if found_posts == posts.size() and found_posts > 0 and worst_post <= 0.6
+			and picket_seen == routes
 			else "FAIL"])
 
 	# 1. The bug the player found: the ship could outrun its own camera. Fly a
@@ -5755,7 +5822,9 @@ func _run_deep_test() -> void:
 	#     away disarms it. Both are visibly wrong.
 	var partial_key := gcell
 	if live_guards.size() > 1:
-		(live_guards[0] as Hostile).take_damage(999999.0)
+		# Attributed to the player: this stands in for a pilot clearing a post,
+		# and post_standing is only interesting for a post somebody CLEARED.
+		(live_guards[0] as Hostile).take_damage(999999.0, player)
 	await get_tree().create_timer(0.6).timeout
 	player.global_position = gplan["pos"] + Vector3(900.0, 0.0, 900.0)
 	for i in range(6):
@@ -5770,7 +5839,7 @@ func _run_deep_test() -> void:
 	# Now clear it outright and repeat.
 	for n in deep_space.guards_at(gcell):
 		if is_instance_valid(n):
-			(n as Hostile).take_damage(999999.0)
+			(n as Hostile).take_damage(999999.0, player)
 	await get_tree().create_timer(0.6).timeout
 	player.global_position = gplan["pos"] + Vector3(900.0, 0.0, 900.0)
 	for i in range(6):
@@ -8638,7 +8707,11 @@ func _pacing_kill_yield(kind: String, count: int) -> float:
 
 func _pacing_derelict_yield() -> float:
 	var player: PlayerShip = get_tree().get_first_node_in_group("player")
-	var derelict: Derelict = get_tree().get_first_node_in_group("crackable") as Derelict
+	# THE SURVEY HULL, explicitly. PACING_LOOP's `derelict: 1` term is the
+	# once-per-system windfall; measuring the tutorial's 16-crate training stub
+	# instead would silently drop the loop's biggest single earner and re-tune
+	# the whole economy against a number that means nothing.
+	var derelict: Derelict = _find_survey_hull()
 	if derelict == null:
 		print("[pacing]   derelict: none in this system -> 0")
 		return 0.0
@@ -9081,8 +9154,10 @@ func _run_tutorial_test() -> void:
 	await get_tree().create_timer(0.9).timeout
 	print("[tut] after refit: step=%d (expect 5)" % GameState.tutorial_step)
 
-	# Step 6: breach the derelict — the finale that charts PYX-02.
-	var derelict: Derelict = get_tree().get_first_node_in_group("crackable")
+	# Step 6: breach the TRAINING hull. v18: the finale teaches the verb and
+	# charts nothing — the survey hull outside the cordon opens the world, and
+	# the tutorial ends by handing over its bearing.
+	var derelict: Derelict = get_tree().get_first_node_in_group("training_hull")
 	derelict.on_tapped()
 	await get_tree().create_timer(3.0).timeout
 	var frames := 0
@@ -9943,6 +10018,21 @@ func _run_save_test() -> void:
 			_first_bay_cell(): {"salvage_quiet": 4},
 			"pyx01:99:99": {"salvage_quiet": 9},   # no station there: must be dropped
 		}
+		# v18 faction matrix. Two DISTINCT values on two DISTINCT pair shapes —
+		# one the player is party to, one between two third parties — for the
+		# same reason the ledger carries six distinct sentinels: equal values
+		# would let a swapped key mapping round-trip cleanly and pass. Written
+		# through shift_faction so the canonical key ordering is produced by
+		# the code under test rather than by the fixture.
+		#
+		# BEFORE the captain's log below, and that ordering is load-bearing.
+		# shift_faction NOTES A LOG LINE when the player is party to the shift
+		# (finding A10: standing the player changed and cannot see is not
+		# politics, it is a haunting) — so filing it after the log fill pushes
+		# "THE GRIN — STANDING RISES" into the ring, evicts LOGBOOK ENTRY 02,
+		# and fails an eviction-order assertion that is working perfectly.
+		GameState.shift_faction(FactionDB.SURVEYOR, "grin", 4)
+		GameState.shift_faction("gsa", "bastion", -3)
 		# v12 captain's log. Written through the real mutator rather than assigned:
 		# that keeps truncation and eviction in the path under test, and an
 		# untyped array literal cannot be assigned to an Array[String] member on
@@ -10491,6 +10581,69 @@ func _run_save_test() -> void:
 			and GameState.has_apex_down("pyx01") and GameState.apex_killed.is_empty()
 		print("[savetest] v17 THE KILL LIST REJECTS RUBBISH 3 entries in (one unknown, one duplicate), kept %s with no bonus collected -> %s" % [
 			str(GameState.apex_down), "PASS" if clean17 else "FAIL"])
+	elif mode == "migrate17":
+		# v18 adds the faction matrix. Unlike v15 and v17 this migration has NO
+		# grandfather and must not have one: the authored baseline IS the world
+		# a v17 save was written in — every hostile FERAL, FERAL hostile to the
+		# surveyor, nobody allied with anybody — so "absent key means baseline"
+		# already reproduces that save's reality exactly. There is nothing to
+		# infer and nothing that could be revoked.
+		var v17 := {
+			"version": 17,
+			"salvage": 8400,
+			"current_system": "pyx02",
+			"breached": ["pyx01"],
+			"lanes_open": ["pyx01", "pyx02"],
+			"apex_down": ["pyx01"],
+			"run_seed": 909090,
+			"tutorial_step": -1,
+		}
+		var f17 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f17.store_string(JSON.stringify(v17))
+		f17.close()
+		var ok17 := GameState.load_game()
+		# The claim is EMPTINESS, not "some particular pair reads N": the sparse
+		# invariant makes an empty store and "every pair at its baseline" the
+		# same statement, so this one check covers all 240 ordered pairs.
+		var att_v18 := GameState.faction_attitude(FactionDB.SURVEYOR, FactionDB.FERAL)
+		var base_v18 := FactionDB.baseline_attitude(FactionDB.SURVEYOR, FactionDB.FERAL)
+		var band_v18 := GameState.faction_band(FactionDB.FERAL, FactionDB.SURVEYOR)
+		var at_baseline: bool = GameState.faction_deltas.is_empty() \
+			and att_v18 == base_v18 \
+			and band_v18 == FactionDB.Band.HOSTILE
+		var kept17: bool = GameState.salvage == 8400 and GameState.run_seed == 909090 \
+			and GameState.has_apex_down("pyx01")
+		print("[savetest] v17->v18 A V17 SAVE ARRIVES AT THE BASELINE deltas=%s feral-vs-surveyor=%s, other state kept=%s -> %s" % [
+			str(GameState.faction_deltas),
+			FactionDB.BAND_NAMES[GameState.faction_band(FactionDB.FERAL, FactionDB.SURVEYOR)],
+			str(kept17), "PASS" if ok17 and at_baseline and kept17 else "FAIL"])
+
+		# The round trip, driven through the real mutator rather than by
+		# assigning the dict — shift_faction is what a contract will call.
+		GameState.shift_faction(FactionDB.SURVEYOR, "grin", 3)
+		GameState.shift_faction("gsa", "bastion", -2)
+		GameState.save_game()
+		GameState.faction_deltas = {}
+		GameState.load_game()
+		var round18: bool = int(GameState.faction_deltas.get(
+				FactionDB.pair_key(FactionDB.SURVEYOR, "grin"), 0)) == 3 \
+			and int(GameState.faction_deltas.get(
+				FactionDB.pair_key("gsa", "bastion"), 0)) == -2
+		print("[savetest] v18 ROUND TRIP faction_deltas %s -> %s" % [
+			str(GameState.faction_deltas), "PASS" if round18 else "FAIL"])
+
+		# And a delta driven back to zero must LEAVE the file, not sit in it as
+		# a stored 0 — the sparse invariant is what NO INPUT, NO DRIFT asserts
+		# against, so a zero that round-trips would quietly retire that check.
+		GameState.shift_faction(FactionDB.SURVEYOR, "grin", -3)
+		GameState.save_game()
+		GameState.faction_deltas = {"stale|key": 5}
+		GameState.load_game()
+		var sparse18: bool = not GameState.faction_deltas.has(
+			FactionDB.pair_key(FactionDB.SURVEYOR, "grin"))
+		print("[savetest] v18 ZERO IS ABSENCE cleared pair stored=%s, file now %s -> %s" % [
+			str(not sparse18), str(GameState.faction_deltas),
+			"PASS" if sparse18 else "FAIL"])
 	elif mode == "partial6":
 		# A v6 save written before a later setting existed must still get that
 		# setting's default rather than a missing key — the reason load merges
@@ -10561,6 +10714,20 @@ func _run_save_test() -> void:
 		print("[savetest] v10 LOGBOOK ledger %s, name '%s' (%d chars, cap %d) -> %s" % [
 			str(GameState.ledger), GameState.ship_name, GameState.ship_name.length(),
 			GameState.SHIP_NAME_MAX, "PASS" if led_ok and name_ok else "FAIL"])
+
+		# v18 faction matrix, through the real file layer. Two distinct pairs
+		# with two distinct values, and the SIZE checked too: a load that
+		# invented a third pair, or dropped one, would otherwise pass on the two
+		# it happened to keep.
+		var fac_player := int(GameState.faction_deltas.get(
+			FactionDB.pair_key(FactionDB.SURVEYOR, "grin"), 0))
+		var fac_third := int(GameState.faction_deltas.get(
+			FactionDB.pair_key("gsa", "bastion"), 0))
+		var fac_ok: bool = fac_player == 4 and fac_third == -3 \
+			and GameState.faction_deltas.size() == 2
+		print("[savetest] v18 FACTION MATRIX %s (surveyor|grin=%d, gsa|bastion=%d) -> %s" % [
+			str(GameState.faction_deltas), fac_player, fac_third,
+			"PASS" if fac_ok else "FAIL"])
 
 		# v12 captain's log. Compared element by element, never by size: the write
 		# leg put LOG_MAX + 2 in, so the surviving ten must be the LAST ten, in
@@ -12120,6 +12287,569 @@ func _world_fingerprint() -> String:
 const WORLD_FINGERPRINT_BEFORE_SEAMS := "3836096557"
 
 
+func _clear_faction_matrix() -> void:
+	# Between harness sections, NOT reset_to_starter: that rolls a fresh
+	# run_seed and tears down cargo, fit and progression to prove a point about
+	# diplomacy. Clearing the store is the smallest thing that restores the
+	# baseline, and the sparse invariant is what makes it sufficient.
+	GameState.faction_deltas = {}
+	GameState.faction_version += 1
+
+
+func _clear_loot_cubes() -> void:
+	# free(), not queue_free(): the count on the very next line has to see the
+	# cubes gone, and a queued free is still a child when it is read.
+	for c in system_root.get_children():
+		if c is LootCube:
+			c.free()
+
+
+func _run_faction_test() -> void:
+	# HORIZON 4 STAGE 1 — the allegiance layer, which ships with NO new content.
+	# Every claim below is about a RULE rather than about a rendering, because
+	# stage 1 deliberately changes nothing a player can see: the whole point is
+	# that the world after it is bit-identical to the world before it, and the
+	# only instrument that can say so is this file.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	if player:
+		player.invulnerable = true
+	_wave_timer = 1.0e9
+	_apex_wake_timer = -1.0
+	await get_tree().create_timer(0.3).timeout
+
+	# --- 1. NO INPUT, NO DRIFT ------------------------------------------------
+	# The assertion the whole "player actions only" decision rests on. A matrix
+	# that can move on a clock is a matrix no harness can defend, so the claim
+	# is made in the strongest available form: run real time, tick the world,
+	# and require the delta store to still be EMPTY -- which the sparse
+	# invariant makes equivalent to "every pair is exactly its baseline".
+	GameState.reset_to_starter()
+	# reset_to_starter ROLLS A FRESH run_seed from the system clock -- it is the
+	# one number in the game that must not be deterministic -- so calling it
+	# mid-harness silently un-pins the salt _ready pinned. Nothing below reads a
+	# lair, but leaving a harness unpinned is how the next assertion added here
+	# inherits a bug it did not cause.
+	GameState.run_seed = RUN_SEED_PINNED
+	var v_before := GameState.faction_version
+	var att_before := GameState.faction_attitude(FactionDB.SURVEYOR, "gsa")
+	await get_tree().create_timer(2.0).timeout
+	GameState.advance_clock(3600.0)
+	await get_tree().create_timer(0.5).timeout
+	var no_drift: bool = GameState.faction_deltas.is_empty() \
+		and GameState.faction_version == v_before \
+		and GameState.faction_attitude(FactionDB.SURVEYOR, "gsa") == att_before
+	print("[faction] NO INPUT, NO DRIFT 2.5s live + 1h clock, deltas=%d version moved=%s -> %s" % [
+		GameState.faction_deltas.size(), str(GameState.faction_version != v_before),
+		"PASS" if no_drift else "FAIL"])
+
+	# --- 2. the baseline IS the shipped world --------------------------------
+	# Stage 1's entire safety argument in one line. Every hostile the game
+	# spawns today defaults to FERAL, so if FERAL hates the surveyor and nothing
+	# else, the targeting rewrite cannot have changed who shoots whom. The
+	# second clause is the one that matters: no pair of NPC factions is HOSTILE
+	# in a way that any SHIPPED spawner could express, because nothing sets a
+	# faction yet.
+	var feral_enemies := GameState.enemies_of(FactionDB.FERAL)
+	var feral_ok: bool = feral_enemies.size() == 1 \
+		and feral_enemies[0] == FactionDB.SURVEYOR
+	# WIDENED IN STAGE 2a, and the widening is the point rather than a
+	# concession. The original clause was "every live flag is feral", which was
+	# the right claim while nothing else flew — but the Cordon now legitimately
+	# puts `gsa` pickets in charted space, so that form would fail on correct
+	# code forever. The invariant that actually matters survives intact: THE
+	# ONLY FLAG IN THE SKY THAT WANTS THE PLAYER DEAD IS STILL FERAL. Adding a
+	# faction is allowed; adding a second thing that shoots at you is not, and
+	# would be a design decision rather than a side effect.
+	var live_flags := {}
+	for n_v in get_tree().get_nodes_in_group("combatants"):
+		live_flags[String((n_v as Node3D).faction)] = true
+	var hostile_flags: Array = []
+	for f_v in live_flags:
+		var f := String(f_v)
+		if not FactionDB.is_faction(f):
+			hostile_flags.append("%s(unknown)" % f)
+		elif GameState.faction_band(f, FactionDB.SURVEYOR) == FactionDB.Band.HOSTILE:
+			hostile_flags.append(f)
+	# WIDENED AGAIN IN STAGE 3, and again the widening is the point. The claim
+	# was "feral is the only flag that hunts you"; stage 3 handed every ambient
+	# machine to its host engine, so feral is no longer in the sky at all. What
+	# survives is the property that actually matters, now stated more strongly:
+	# EXACTLY ONE FLAG IN CHARTED SPACE WANTS THE PLAYER DEAD, AND IT IS THE
+	# SYSTEM'S OWNER. A second would be a design decision, not a side effect.
+	var host := SystemDB.faction_of(system_id)
+	var one_hunter: bool = hostile_flags.size() == 1 \
+		and String(hostile_flags[0]) == host
+	print("[faction] ONE FLAG HUNTS YOU, AND IT OWNS THE SYSTEM %s host=%s, live flags %s, hostile-to-player %s -> %s" % [
+		system_id, host, str(live_flags.keys()), str(hostile_flags),
+		"PASS" if feral_ok and one_hunter else "FAIL"])
+
+	# --- 3. targeting honours the table --------------------------------------
+	# Driven through the real target selector on a real node at every band,
+	# not through a reimplementation of it. A sentry is flagged into each band
+	# in turn and asked who it would shoot; only HOSTILE may answer "the
+	# player". Restored to FERAL afterwards so nothing downstream inherits it.
+	var probe_sentry := Hostile.new()
+	probe_sentry.difficulty = 1.0
+	system_root.add_child(probe_sentry)
+	probe_sentry.global_position = player.global_position + Vector3(3.0, 0, 0)
+	await get_tree().process_frame
+	var band_rows: Array = []
+	var band_ok := true
+	for row in [["gsa", 0], ["bastion", 0], ["combine", 0], ["feral", 1]]:
+		probe_sentry.faction = String(row[0])
+		probe_sentry._enemies_version = -1          # force the cache to re-ask
+		probe_sentry._target = null
+		probe_sentry._aggro = null
+		probe_sentry._retarget_t = 0.0
+		var picked: Node3D = probe_sentry._combat_target(0.0)
+		var shoots := 1 if (picked != null and picked.is_in_group("player")) else 0
+		band_rows.append("%s:%s=%d" % [row[0],
+			FactionDB.BAND_NAMES[GameState.faction_band(String(row[0]), FactionDB.SURVEYOR)],
+			shoots])
+		if shoots != int(row[1]):
+			band_ok = false
+	print("[faction] TARGETING HONOURS THE TABLE %s (1 = would fire on the player) -> %s" % [
+		str(band_rows), "PASS" if band_ok else "FAIL"])
+
+	# --- 4. docked is still safe ---------------------------------------------
+	# The one rule that outranks the matrix AND aggro. Asserted against a
+	# genuinely hostile sentry that has already been shot by the player, which
+	# is the case a naive aggro implementation gets wrong.
+	probe_sentry.faction = FactionDB.FERAL
+	probe_sentry._enemies_version = -1
+	probe_sentry.take_damage(1.0, player)           # give it a grudge
+	var aggro_holds: bool = probe_sentry._combat_target(0.0) == player
+	player.docked = true
+	probe_sentry._retarget_t = 0.0
+	var while_docked: Node3D = probe_sentry._combat_target(0.0)
+	player.docked = false
+	# Reported from the value CAPTURED while docked, never re-measured in the
+	# print: undocking happens on the line above, so a second call would answer
+	# a different question and print "safe" for a sentry that was not.
+	print("[faction] DOCKED IS STILL SAFE aggro before dock=%s, target while docked=%s -> %s" % [
+		str(aggro_holds), "none" if while_docked == null else String(while_docked.name),
+		"PASS" if aggro_holds and while_docked == null else "FAIL"])
+
+	# --- 5. an NPC kill pays nothing, and a player kill still does -----------
+	# BOTH DIRECTIONS, in one measurement, because either half alone is a test
+	# that passes on broken code: "NPC kills pay nothing" is satisfied by an
+	# economy that pays nobody, and "player kills pay" is satisfied by one that
+	# pays everybody. The two are measured against the same counters.
+	# Counted EXACTLY rather than compared loosely, and counted on the next
+	# frame rather than after a settle: SwarmHostile._die spills synchronously,
+	# and a cube older than 0.35s starts flying at the player -- so a harness
+	# that waits is racing a magnet and measuring collection, not attribution.
+	# LOOT_COUNT is read from the class so the expected number cannot drift
+	# from the one the game actually uses.
+	# A ONE-ELEMENT ARRAY, not an int, and the reason is a GDScript rule that
+	# has silently defeated counters like this before: a lambda captures a local
+	# by VALUE, so `kills += 1` inside one increments a copy and the outer
+	# variable reads 0 forever — an assertion that can only ever say "no kills
+	# were credited", which is exactly the answer half this check wants to hear.
+	# An Array is captured by reference, so mutating its contents is visible.
+	var kills_seen := [0]
+	var tally := func(_kind: String) -> void: kills_seen[0] += 1
+	hostile_killed.connect(tally)
+
+	var victim_a := SwarmHostile.new()
+	system_root.add_child(victim_a)
+	victim_a.global_position = player.global_position + Vector3(9.0, 0, 9.0)
+	await get_tree().process_frame
+	_clear_loot_cubes()
+	victim_a.take_damage(99999.0, probe_sentry)     # machine kills machine
+	await get_tree().process_frame
+	var loot_npc := _count_loot_cubes()
+	var kills_npc: int = kills_seen[0]
+	_clear_loot_cubes()
+
+	var victim_b := SwarmHostile.new()
+	system_root.add_child(victim_b)
+	victim_b.global_position = player.global_position + Vector3(9.0, 0, -9.0)
+	await get_tree().process_frame
+	victim_b.take_damage(99999.0, player)           # the player kills one
+	await get_tree().process_frame
+	var loot_player := _count_loot_cubes()
+	var kills_player: int = kills_seen[0] - kills_npc
+	hostile_killed.disconnect(tally)
+	_clear_loot_cubes()
+
+	var npc_paid_nothing: bool = loot_npc == 0 and kills_npc == 0
+	var player_paid: bool = loot_player == SwarmHostile.LOOT_COUNT and kills_player == 1
+	print("[faction] ATTRIBUTION GATES THE PAYOUT npc kill: %d cubes %d credit | player kill: %d cubes (want %d) %d credit -> %s" % [
+		loot_npc, kills_npc, loot_player, SwarmHostile.LOOT_COUNT, kills_player,
+		"PASS" if npc_paid_nothing and player_paid else "FAIL"])
+
+	if is_instance_valid(probe_sentry):
+		probe_sentry.queue_free()
+
+	# --- 6. no caller may guess who is shooting ------------------------------
+	# Finding A1 as a STATIC assertion, because the dynamic one cannot see a
+	# call site that is never exercised. Both hostile classes declare
+	# take_damage with a REQUIRED attacker, so a caller that forgets the
+	# argument is a parse error rather than a silent mis-booking -- and this
+	# line fails the moment somebody "helpfully" adds a default to make a new
+	# call site compile.
+	var required_arg := true
+	var sig_seen: Array = []
+	for path in ["res://scripts/hostile.gd", "res://scripts/swarm_hostile.gd"]:
+		var src := FileAccess.get_file_as_string(path)
+		var idx := src.find("func take_damage(")
+		var sig := src.substr(idx, src.find(")", idx) - idx + 1) if idx >= 0 else "<absent>"
+		sig_seen.append(sig)
+		if idx < 0 or sig.find("attacker: Node3D)") < 0:
+			required_arg = false
+	print("[faction] ATTRIBUTION IS EXPLICIT %s -> %s" % [
+		str(sig_seen), "PASS" if required_arg else "FAIL"])
+
+	# --- 7. the matrix is bounded --------------------------------------------
+	# One act may not flip an alliance. The strongest single shift any stage may
+	# author is asserted to be smaller than a band, so standing is an arc rather
+	# than a switch -- and the store is asserted to CLAMP rather than to grow,
+	# so no amount of repetition can produce an unbounded save.
+	_clear_faction_matrix()
+	for i in range(200):
+		GameState.shift_faction(FactionDB.SURVEYOR, "grin", 5)
+	var pushed := int(GameState.faction_deltas.get(
+		FactionDB.pair_key(FactionDB.SURVEYOR, "grin"), 0))
+	var att_max := GameState.faction_attitude(FactionDB.SURVEYOR, "grin")
+	for i in range(400):
+		GameState.shift_faction(FactionDB.SURVEYOR, "grin", -5)
+	var pulled := int(GameState.faction_deltas.get(
+		FactionDB.pair_key(FactionDB.SURVEYOR, "grin"), 0))
+	var bounded: bool = pushed == FactionDB.DELTA_SPAN and pulled == -FactionDB.DELTA_SPAN \
+		and att_max <= FactionDB.ATTITUDE_MAX \
+		and GameState.faction_attitude(FactionDB.SURVEYOR, "grin") >= FactionDB.ATTITUDE_MIN
+	print("[faction] DELTAS ARE BOUNDED 200 pushes -> %d (cap %d), 400 pulls -> %d, attitude %d..%d -> %s" % [
+		pushed, FactionDB.DELTA_SPAN, pulled, FactionDB.ATTITUDE_MIN, FactionDB.ATTITUDE_MAX,
+		"PASS" if bounded else "FAIL"])
+
+	# --- 8. the Authority never fires on the surveyor ------------------------
+	# The one authored floor (HORIZON-4 §2), asserted in the form that matters:
+	# not "the number is >= -3" but "no amount of hostility makes a Cordon
+	# picket target the player". Driven through the real selector, both
+	# directions of the pair, after the worst grudge the mutator allows.
+	_clear_faction_matrix()
+	for i in range(200):
+		GameState.shift_faction(FactionDB.SURVEYOR, "gsa", -5)
+	var cordon := Hostile.new()
+	cordon.faction = "gsa"
+	system_root.add_child(cordon)
+	cordon.global_position = player.global_position + Vector3(2.0, 0, 0)
+	await get_tree().process_frame
+	cordon._enemies_version = -1
+	# NOT THE PLAYER — not "no target at all". Since stage 3 the system is full
+	# of gnomon sentries a picket may legitimately be shooting at, and asserting
+	# emptiness would fail on correct code while saying nothing about the floor.
+	var cordon_target: Node3D = cordon._combat_target(0.0)
+	var aims_at_player: bool = cordon_target != null \
+		and cordon_target.is_in_group("player")
+	var floor_holds: bool = not aims_at_player \
+		and GameState.faction_band("gsa", FactionDB.SURVEYOR) != FactionDB.Band.HOSTILE \
+		and GameState.faction_band(FactionDB.SURVEYOR, "gsa") != FactionDB.Band.HOSTILE
+	print("[faction] THE CORDON NEVER FIRES ON THE SURVEYOR after 200 hostile acts band=%s, picket target=%s -> %s" % [
+		FactionDB.BAND_NAMES[GameState.faction_band("gsa", FactionDB.SURVEYOR)],
+		"none" if cordon_target == null else ("THE PLAYER" if aims_at_player else "a machine"),
+		"PASS" if floor_holds else "FAIL"])
+	cordon.queue_free()
+
+	# --- 9. the load path rejects rubbish ------------------------------------
+	# The seams_cut/warehouse posture: a hand-edited file arrives as valid state
+	# or not at all. Four separate attacks in one fixture -- an unknown faction,
+	# a self-pair, a non-canonical key ordering (the same pair under a second
+	# name, which is how a symmetric store grows an asymmetry), and an
+	# out-of-range value.
+	_clear_faction_matrix()
+	GameState._load_faction_deltas({
+		"grin|surveyor": 3,             # canonical: g < s, kept
+		"surveyor|grin": -9,            # SAME PAIR, wrong order: must be dropped
+		"nosuch|gsa": 4,                # unknown faction: dropped
+		"gsa|gsa": 6,                   # self-pair: dropped
+		"bastion|gsa": 9999,            # clamped, not rejected
+		"embers|gsa": 0,                # zero is absence: must not be stored
+		"malformed": 2,                 # not a pair at all
+	})
+	var kept_keys: Array = GameState.faction_deltas.keys()
+	kept_keys.sort()
+	var clamped := int(GameState.faction_deltas.get("bastion|gsa", 0))
+	var load_ok: bool = kept_keys.size() == 2 \
+		and GameState.faction_deltas.has("grin|surveyor") \
+		and int(GameState.faction_deltas["grin|surveyor"]) == 3 \
+		and clamped == FactionDB.DELTA_SPAN
+	print("[faction] THE MATRIX REJECTS RUBBISH 7 entries in (unknown, self-pair, reversed key, 0, malformed), kept %s clamped=%d -> %s" % [
+		str(kept_keys), clamped, "PASS" if load_ok else "FAIL"])
+
+	# --- 10. every faction id round-trips as a save key ----------------------
+	# Ids are permanent save keys, so the roster and the baseline have to agree
+	# about what exists. Cheap, and it is the check that catches a typo'd id in
+	# BASELINE pointing at a faction nobody ever added.
+	var unknown_refs: Array = []
+	for a_v in FactionDB.BASELINE:
+		if not FactionDB.is_faction(String(a_v)):
+			unknown_refs.append(String(a_v))
+		for b_v in (FactionDB.BASELINE[a_v] as Dictionary):
+			if not FactionDB.is_faction(String(b_v)):
+				unknown_refs.append("%s->%s" % [a_v, b_v])
+	print("[faction] THE ROSTER IS CLOSED %d factions, %d baseline refs to nothing %s -> %s" % [
+		FactionDB.ids().size(), unknown_refs.size(), str(unknown_refs),
+		"PASS" if unknown_refs.is_empty() else "FAIL"])
+
+	# --- 11. THE CORDON STOPS AT THE MARKER ----------------------------------
+	# The band-1 beacon has promised since v13 that "security patrols do not
+	# operate beyond this marker", DEEPTEST pins the words, and this is the
+	# clause that makes the words true of SHIPS. Checked over the AUTHORED
+	# TABLE rather than over built nodes: it fires on the authoring mistake,
+	# before a picket exists, which is strictly earlier than a runtime clamp
+	# (which would drag the picket home and hide the error) could manage.
+	var outside: Array = []
+	var route_total := 0
+	for sid_v in SystemDB.ids():
+		var sid := String(sid_v)
+		var edge := SystemDB.bounds_of(sid)
+		for route_v in SystemDB.get_system(sid).get("patrols", []):
+			route_total += 1
+			for p_v in (route_v as Array):
+				var p: Vector3 = p_v
+				if Vector3(p.x, 0.0, p.z).length() >= edge:
+					outside.append("%s %s" % [sid, str(p)])
+	print("[faction] THE CORDON STOPS AT THE MARKER %d routes across %d systems, %d waypoints past the edge %s -> %s" % [
+		route_total, SystemDB.ids().size(), outside.size(), str(outside),
+		"PASS" if outside.is_empty() and route_total > 0 else "FAIL"])
+
+	# --- 12. PICKETS WALK THEIR BEAT -----------------------------------------
+	# Driven through the real node over real frames. This is the assertion that
+	# catches the assign-vs-add trap in _process: a picket whose position were
+	# assigned from the wander term would be overwritten every frame and sit
+	# still forever, which reads on screen as "the Cordon is deployed" and is
+	# in fact a garrison of statues.
+	var beat := Hostile.new()
+	beat.faction = "gsa"
+	# A route with NOTHING ON IT. Since stage 3 the southern half of PYX-01 is
+	# full of gnomon sentries a gsa picket will quite correctly peel off to
+	# fight, and a walking test that measures a firefight measures the wrong
+	# thing. The nearest authored post to this loop is ~36u away, comfortably
+	# outside PATROL_ENGAGE.
+	beat.patrol = [Vector3(10, 0, 20), Vector3(20, 0, 20), Vector3(20, 0, 10)] as Array[Vector3]
+	system_root.add_child(beat)
+	beat.position = Vector3(10, 0, 20)
+	await get_tree().process_frame
+	var start_at := beat.global_position
+	var visited := 0
+	var last_i := beat._patrol_i
+	# A TIME BUDGET, NOT A FRAME COUNT. Headless Godot runs frames as fast as it
+	# can, so `for i in range(360): await process_frame` is an unknown and
+	# machine-dependent amount of SIMULATED time — it measured 8u of a 12u leg
+	# on the first run and would have been a flake on any other box. The beat is
+	# specified in units per second, so the test has to be specified in seconds:
+	# a 12u leg at PATROL_SPEED 3.2 takes 3.75s, so 12s covers three of them.
+	var walked := 0.0
+	while walked < 12.0:
+		await get_tree().create_timer(0.1).timeout
+		walked += 0.1
+		if beat._patrol_i != last_i:
+			visited += 1
+			last_i = beat._patrol_i
+	var travelled := start_at.distance_to(beat.global_position)
+	print("[faction] PICKETS WALK THEIR BEAT moved %.1fu and advanced %d waypoints in %.0fs (leg is 12u at %.1fu/s) -> %s" % [
+		travelled, visited, walked, Hostile.PATROL_SPEED,
+		"PASS" if travelled > 2.0 and visited >= 2 else "FAIL"])
+
+	# --- 13. THE BEAT IS THE ANCHOR ------------------------------------------
+	# The property: engage range is measured from the ROUTE, not from the
+	# picket. A picket measuring from itself drifts outward along its own
+	# engagements, every individual step looking correct while charted space
+	# quietly goes unguarded.
+	#
+	# THE FIRST VERSION OF THIS CHECK PASSED ON BROKEN CODE, and the reason is
+	# worth recording because it is this project's recurring failure: a chain of
+	# contacts marching away from the route cannot ratchet anything, because
+	# _combat_target returns the NEAREST enemy — the picket locks onto the first
+	# one and stays there under both implementations. It measured a world in
+	# which the bug cannot express itself.
+	#
+	# The discriminating case is a contact near the MIDDLE OF A LEG and far from
+	# both of its endpoints. Route-measuring never engages it; self-measuring
+	# engages the moment the picket walks past. Asserted as a PURE FUNCTION call
+	# at a placed position rather than over frames: no timing, no flake, and it
+	# names the property directly.
+	var anchor := Hostile.new()
+	anchor.faction = "gsa"
+	# A 40u leg. Its midpoint is 20u from either end.
+	anchor.patrol = [Vector3(0, 0, -20), Vector3(0, 0, 20)] as Array[Vector3]
+	system_root.add_child(anchor)
+	anchor.position = Vector3.ZERO
+	await get_tree().process_frame
+	anchor._patrol_i = 1                      # walking toward (0, 0, 20)
+	anchor._enemies_version = -1
+
+	# Mid-leg bait: 10u from the picket standing at the midpoint, but 22.4u from
+	# the waypoint it is walking to — outside PATROL_ENGAGE either way you
+	# measure the ROUTE, inside it if you measure the PICKET.
+	var mid_bait := SwarmHostile.new()
+	system_root.add_child(mid_bait)
+	mid_bait.global_position = Vector3(10, 0, 0)
+	# Control: a contact genuinely near the waypoint, which must be engaged.
+	# Without it "returns false" is satisfied by a function that always refuses.
+	var post_bait := SwarmHostile.new()
+	system_root.add_child(post_bait)
+	post_bait.global_position = Vector3(8, 0, 20)
+	await get_tree().process_frame
+
+	var d_pick := anchor.global_position.distance_to(mid_bait.global_position)
+	var d_post := Vector3(0, 0, 20).distance_to(mid_bait.global_position)
+	var chases_midleg := anchor._worth_leaving_the_beat(mid_bait)
+	var chases_at_post := anchor._worth_leaving_the_beat(post_bait)
+	print("[faction] THE BEAT IS THE ANCHOR mid-leg contact %.1fu from the picket / %.1fu from its waypoint (engage %.0f): chased=%s | control at the waypoint chased=%s -> %s" % [
+		d_pick, d_post, Hostile.PATROL_ENGAGE, str(chases_midleg), str(chases_at_post),
+		"PASS" if not chases_midleg and chases_at_post else "FAIL"])
+	for n in [anchor, mid_bait, post_bait]:
+		if is_instance_valid(n):
+			n.queue_free()
+
+	# --- 14. THE PARLEY IS IMMUNE (finding A3) -------------------------------
+	# break_parley fires when a raider takes damage from ANYONE, so a picket
+	# that peeled onto a pack mid-standoff would answer the demand on the
+	# player's behalf and delete the choice the interdiction is built around —
+	# permanently, everywhere in charted space. Asserted as a REFUSAL TO
+	# ENGAGE rather than as "the standoff survived": the picket must not pick
+	# the fight in the first place.
+	var guard := Hostile.new()
+	guard.faction = "gsa"
+	guard.patrol = [Vector3(0, 0, 0), Vector3(4, 0, 0)] as Array[Vector3]
+	system_root.add_child(guard)
+	guard.position = Vector3.ZERO
+	var demanding := SwarmHostile.new()
+	demanding.add_to_group("raider")
+	demanding.standoff = 30.0
+	system_root.add_child(demanding)
+	demanding.global_position = Vector3(3, 0, 0)
+	await get_tree().process_frame
+	guard._enemies_version = -1
+	# Force the raider to be a legal target for the flag, so the ONLY thing
+	# that can refuse the engagement is the parley clause itself.
+	GameState.shift_faction("gsa", "tithe", -12)
+	demanding.faction = "tithe"
+	guard._enemies_version = -1
+	var engages_parleying := guard._worth_leaving_the_beat(demanding)
+	demanding.standoff = 0.0
+	var engages_after := guard._worth_leaving_the_beat(demanding)
+	print("[faction] THE PARLEY IS IMMUNE picket engages during standoff=%s, after it lapses=%s -> %s" % [
+		str(engages_parleying), str(engages_after),
+		"PASS" if not engages_parleying and engages_after else "FAIL"])
+	if is_instance_valid(guard):
+		guard.queue_free()
+	if is_instance_valid(demanding):
+		demanding.queue_free()
+
+	# --- 15. EVERY AMBIENT HOSTILE HAS AN OWNER ------------------------------
+	#     Stage 3's headline: the dead frontier's machines were never masterless.
+	#     Swept over what the system actually BUILT, so it fails on a spawner
+	#     that was missed rather than on a data table that agrees with itself.
+	var unowned: Array = []
+	var owned_flags := {}
+	for n_v in get_tree().get_nodes_in_group("combatants"):
+		var n := n_v as Node3D
+		var f := String(n.faction)
+		owned_flags[f] = int(owned_flags.get(f, 0)) + 1
+		if f == FactionDB.FERAL:
+			unowned.append(String(n.name))
+	print("[faction] EVERY AMBIENT HOSTILE HAS AN OWNER %s in charted %s, %d still unflagged -> %s" % [
+		str(owned_flags), system_id, unowned.size(),
+		"PASS" if unowned.is_empty() and not owned_flags.is_empty() else "FAIL"])
+
+	# --- 16. THE DEEP IS STILL UNCLAIMED -------------------------------------
+	#     Bands 3-4 belong to the three powers nobody has a word for yet. The
+	#     shipped data already says so — GUARD_DESIGNATION[3] is "UNFLAGGED — NO
+	#     PATTERN ON FILE" — so a stage-3 spawner reaching out there would make
+	#     the designation a lie and spend stage 6's reveal early. Asserted
+	#     through the real rule rather than by inspecting a node, because the
+	#     rule is what a future band edit would break.
+	var claim_rows := ""
+	var deep_ok := true
+	for band in range(5):
+		var f := deep_space.flag_for_band(band) if deep_space != null else FactionDB.FERAL
+		claim_rows += "b%d:%s " % [band, f]
+		var want_host: bool = band <= 2
+		if want_host and f != SystemDB.faction_of(system_id):
+			deep_ok = false
+		if not want_host and f != FactionDB.FERAL:
+			deep_ok = false
+	print("[faction] THE DEEP IS STILL UNCLAIMED %s(bands 3-4 must stay %s) -> %s" % [
+		claim_rows, FactionDB.FERAL, "PASS" if deep_ok else "FAIL"])
+
+	# --- 17. AMBIENT COMBAT DEPLETES NOTHING ---------------------------------
+	#     THE ASSERTION THIS STAGE EXISTS FOR, and the one that would have caught
+	#     the defect the prep pass found by hand: a picket and a sentry are the
+	#     same machine, so 120hp against 12.17dps is a mutual kill in 9.9s, and
+	#     ambient skirmishing would have emptied charted space of both sides
+	#     within half a minute of the player arriving.
+	#
+	#     ONLY THE PLAYER DEPLETES THE WORLD. Run the system with the player
+	#     parked far away and untouchable, long enough for three full
+	#     engage/rest cycles, and require the census to be IDENTICAL — not
+	#     merely non-zero, which any half-emptied system would satisfy.
+	var census_before := get_tree().get_nodes_in_group("combatants").size()
+	var pilot: PlayerShip = get_tree().get_first_node_in_group("player")
+	if pilot != null:
+		pilot.invulnerable = true
+		pilot.teleport_to(Vector3(0, 0, 400))
+	_wave_timer = 1.0e9        # no reinforcements: a census that grows hides a loss
+	var watched := 0.0
+	var budget := (FactionDB.SKIRMISH_TIME + FactionDB.SKIRMISH_REST) * 3.0
+	while watched < budget:
+		await get_tree().create_timer(0.25).timeout
+		watched += 0.25
+	var census_after := get_tree().get_nodes_in_group("combatants").size()
+	print("[faction] AMBIENT COMBAT DEPLETES NOTHING %.0fs unattended (3 x %.0fs cycles), census %d -> %d -> %s" % [
+		watched, FactionDB.SKIRMISH_TIME + FactionDB.SKIRMISH_REST,
+		census_before, census_after,
+		"PASS" if census_after == census_before and census_before > 0 else "FAIL"])
+
+	# --- 18. THE FIGHT ENDS (finding A6) -------------------------------------
+	#     The mechanism behind 17, measured directly: a machine engaged on
+	#     another machine breaks off before it can finish the job. Asserted as
+	#     "it stopped having a target", which is what the break-off actually
+	#     does — position, groups and post are untouched by design.
+	var red := Hostile.new()
+	red.faction = "gnomon"
+	system_root.add_child(red)
+	red.global_position = Vector3(0, 0, -300)
+	var blue := Hostile.new()
+	blue.faction = "gsa"
+	system_root.add_child(blue)
+	blue.global_position = Vector3(3, 0, -300)
+	await get_tree().process_frame
+	red._enemies_version = -1
+	blue._enemies_version = -1
+	var engaged_at := 0.0
+	var broke_at := -1.0
+	var t_fight := 0.0
+	while t_fight < FactionDB.SKIRMISH_TIME + 3.0:
+		await get_tree().create_timer(0.25).timeout
+		t_fight += 0.25
+		# "Engaged" means holding an NPC target, not merely holding one: a
+		# machine standing down still re-acquires the PLAYER, so `_target ==
+		# null` is a state the break-off never actually produces and testing
+		# for it measured nothing.
+		var on_npc: bool = red._target != null and is_instance_valid(red._target) \
+			and not red._target.is_in_group("player")
+		if on_npc and engaged_at <= 0.0:
+			engaged_at = t_fight
+		if engaged_at > 0.0 and not on_npc and broke_at < 0.0:
+			broke_at = t_fight
+	var both_alive: bool = is_instance_valid(red) and is_instance_valid(blue) \
+		and not red.is_dying() and not blue.is_dying()
+	print("[faction] THE FIGHT ENDS engaged at %.2fs, broke off at %.2fs (limit %.0fs), both alive=%s -> %s" % [
+		engaged_at, broke_at, FactionDB.SKIRMISH_TIME, str(both_alive),
+		"PASS" if engaged_at > 0.0 and broke_at > 0.0 and both_alive else "FAIL"])
+	for n in [red, blue]:
+		if is_instance_valid(n):
+			n.queue_free()
+
+	_clear_faction_matrix()
+	await get_tree().create_timer(0.2).timeout
+	get_tree().quit()
+
+
 func _run_hunt_test() -> void:
 	# THE HUNT, stage 1: the run salt, and the two-tier gate that turns the apex
 	# engine from an optional windfall into the door to the next system.
@@ -12608,6 +13338,7 @@ func _run_hunt_test() -> void:
 		["guard", 15.0, Vector3(-420, 0, 380)],
 		["watch", 5.0, Vector3(120, 0, 240)],
 		["rift", 4.0, Vector3(-260, 0, -300)],
+		["hull", Derelict.INTEL_ERROR_DEG, Vector3(-9, 0, -18)],
 		["rumor", 0.0, Vector3.ZERO],
 	]:
 		var n_before := GameState.apex_hint_count(system_id)
@@ -12618,7 +13349,144 @@ func _run_hunt_test() -> void:
 		channel_rows += "%s%s " % [String(spec[0]), "+1" if n_after == n_before + 1 else "!!"]
 	print("[hunt] EVERY CHANNEL FILES THROUGH ONE DOOR %s-> %d hints -> %s" % [
 		channel_rows, GameState.apex_hint_count(system_id),
-		"PASS" if channels_ok and GameState.apex_hint_count(system_id) == 6 else "FAIL"])
+		"PASS" if channels_ok and GameState.apex_hint_count(system_id) == 7 else "FAIL"])
+
+	# 9b. THE OPENING BEARING IS THE WIDEST. The hull's reading is the one cone
+	#     in the game nobody pays for, so it has to be strictly worse than every
+	#     cone somebody does. Read from the REAL constants rather than restated
+	#     here — a list of numbers copied into an assertion agrees with itself
+	#     forever, and the failure this guards is somebody tightening the free
+	#     hint to make the opening hunt friendlier and silently undercutting the
+	#     Last Watch's 900-salvage reading two systems away.
+	#
+	#     Three of the five are read from the constant the game actually uses;
+	#     `guard` and `relic` are inline literals at their call sites with no
+	#     named constant to read, so those two ARE restated here and this check
+	#     is only as good as they are. Naming them would close that gap and is
+	#     worth doing the next time either file is open.
+	var paid_cones := {
+		"guard(deep post)": 15.0,
+		"relic": 12.0,
+		"mast": SurveyMast.MAST_ERROR_DEG,
+		"watch(Last Watch)": float(DeepPortDB.by_id("deep_watch").get("hunt_error", 0.0)),
+		"rift": Rift.INTEL_ERROR_DEG,
+	}
+	var undercut := ""
+	for k in paid_cones:
+		if Derelict.INTEL_ERROR_DEG <= float(paid_cones[k]):
+			undercut += "%s(%.0f) " % [k, float(paid_cones[k])]
+	print("[hunt] THE OPENING BEARING IS THE WIDEST hull %.0f vs %s -> %s" % [
+		Derelict.INTEL_ERROR_DEG, str(paid_cones),
+		"PASS" if undercut == "" else "FAIL undercuts " + undercut])
+
+	# 9c. AND THE HULL ONLY SPEAKS FOR A SURVEY. Both directions, driven through
+	#     two REAL derelicts rather than through file_apex_intel — the claim is
+	#     about the breach path's guard, and calling the door directly would
+	#     prove nothing about who is allowed to knock. A charted hull charts and
+	#     files; a deep hulk does neither, for the same reason it never charted:
+	#     letting something 400u off the map hand over the opening lead would let
+	#     the expanse skip the hunt as well as the spine.
+	# Snapshotted, not cleared and abandoned: sections 10-14 run after this one
+	# and a harness that quietly empties `breached` on its way past is how the
+	# next assertion below inherits a world it did not ask for.
+	var breached_snapshot := GameState.breached.duplicate()
+	var breach_rows := ""
+	var breach_ok := true
+	for survey in [true, false]:
+		GameState.clear_apex_intel(system_id)
+		GameState.breached = []
+		var hull := Derelict.new()
+		hull.counts_as_survey = survey
+		system_root.add_child(hull)
+		hull.position = Vector3(0, 0, -26)
+		await get_tree().process_frame
+		var spins := 0
+		while not hull.is_cracked() and spins < 900:
+			# Re-pinned EVERY frame, the way _pacing_derelict_yield does it:
+			# hold_tick releases the hold and issues a move order the moment the
+			# ship drifts out of CRACK_RANGE, so a single teleport before the
+			# loop is a hold that quietly stops progressing partway through.
+			player.teleport_to(hull.breach_point + Vector3(0, 0, 3.0))
+			player.velocity = Vector3.ZERO
+			hull.hold_begin()
+			hull.hold_tick(get_physics_process_delta_time())
+			spins += 1
+			await get_tree().physics_frame
+		var filed := GameState.apex_hint_count(system_id)
+		var hull_charted := GameState.breached.has(system_id)
+		breach_rows += "%s: %d hint / charted=%s  " % [
+			"charted hull" if survey else "deep hulk", filed, str(hull_charted)]
+		if survey and not (filed == 1 and hull_charted):
+			breach_ok = false
+		if not survey and not (filed == 0 and not hull_charted):
+			breach_ok = false
+		if is_instance_valid(hull):
+			hull.queue_free()
+	print("[hunt] THE HULL GIVES A BEARING, AND ONLY FOR A SURVEY %s-> %s" % [
+		breach_rows, "PASS" if breach_ok else "FAIL"])
+
+	# 9d. THE HULLS ARE OUTSIDE AND CLEAR. Three properties of the v18
+	#     relocation, checked over the AUTHORED table for every system rather
+	#     than over the one that happens to be built:
+	#
+	#       past the marker   depth > 0, or "outside the cordon" is a fiction
+	#       in the Shoals     band 1, where PACK_CHANCE is 0.0 and nothing
+	#                         procedural spawns on the approach — which is what
+	#                         makes a tutorial-fresh pilot's first expedition
+	#                         survivable
+	#       clear of the lair by more than LAIR_KEEPOUT at the CLOSEST the
+	#                         authored bands allow, for ANY bearing. Checked
+	#                         against the band minimum rather than against this
+	#                         run's rolled lair: the bearings are independent, so
+	#                         a seed that happens to separate them proves nothing
+	#                         about the seed that does not.
+	var hull_rows := ""
+	var hulls_ok := true
+	for sid_v in SystemDB.ids():
+		var sid := String(sid_v)
+		var sdef := SystemDB.get_system(sid)
+		if (sdef.get("derelict", {}) as Dictionary).is_empty():
+			continue
+		var hdep := SystemDB.derelict_depth(sid)
+		var hband := DeepSpace.band_of(hdep)
+		var hr := SystemDB.derelict_pos(sid).length()
+		# The nearest the lair can ever be, over every legal bearing: the two
+		# are on independent bearings, so the worst case is co-linear and the
+		# separation is purely radial.
+		var lair_band: Array = ((sdef.get("apex", {}) as Dictionary)
+			.get("lair", {}) as Dictionary).get("depth", [0.0, 0.0])
+		var lair_min_r := float(sdef.get("bounds", 40.0)) + float(lair_band[0])
+		var worst_gap := lair_min_r - hr
+		var row_ok: bool = hdep >= DeepSpace.CONTENT_MIN_DEPTH and hband == 1 \
+			and worst_gap > DeepSpace.LAIR_KEEPOUT
+		if not row_ok:
+			hulls_ok = false
+		hull_rows += "%s depth %.0f band %d gap>=%.0f%s  " % [
+			sid, hdep, hband, worst_gap, "" if row_ok else " !!"]
+	print("[hunt] THE HULLS ARE OUTSIDE AND CLEAR %s(min depth %.0f, band must be 1, gap must beat LAIR_KEEPOUT %.0f) -> %s" % [
+		hull_rows, DeepSpace.CONTENT_MIN_DEPTH, DeepSpace.LAIR_KEEPOUT,
+		"PASS" if hulls_ok else "FAIL"])
+
+	# 9e. ONE HULL CARRIES THE PROGRESSION. With two crackables in PYX-01 the
+	#     question "which one charts" stopped being answerable by tree order,
+	#     and this is the assertion that keeps exactly one answer. Both clauses
+	#     matter: TWO survey hulls would make charting a race, and ZERO would
+	#     make the next system unreachable.
+	var survey_hulls := 0
+	var training_hulls := 0
+	for n in get_tree().get_nodes_in_group("crackable"):
+		if not (n is Derelict):
+			continue
+		if (n as Derelict).counts_as_survey:
+			survey_hulls += 1
+		else:
+			training_hulls += 1
+	var trainers_flagged := get_tree().get_nodes_in_group("training_hull").size()
+	print("[hunt] ONE HULL CARRIES THE PROGRESSION %s: %d survey hull, %d non-survey (%d in the training group) -> %s" % [
+		system_id, survey_hulls, training_hulls, trainers_flagged,
+		"PASS" if survey_hulls == 1 and training_hulls == trainers_flagged else "FAIL"])
+	GameState.clear_apex_intel(system_id)
+	GameState.breached = breached_snapshot
 
 	# 10. INTEL BUYS INFORMATION, NOT ADVANTAGE. Filing hints must move no
 	#     number the economy or the fight cares about. The hunt is allowed to

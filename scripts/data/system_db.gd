@@ -55,7 +55,33 @@ const SYSTEMS := {
 			{"pos": Vector3(-7, -4, 27), "scale": Vector3(2.6, 2, 2.4)},
 			{"pos": Vector3(8, -3, 29), "scale": Vector3(2.2, 2, 2.6)},
 		],
-		"derelict": {"pos": Vector3(-9, 0, -18), "rot_y": 25.0, "loot": 70, "crack_time": 1.8},
+		# v18. OUTSIDE THE CORDON. The survey hull no longer sits 20u from the
+		# Anchor -- it drifted out past the marker, on the SAME BEARING its wreck
+		# used to lie on (the old authored point was (-9, 0, -18), which is 243
+		# degrees), so the fiction is that the field drifted rather than that a
+		# designer moved it.
+		#
+		# AUTHORED, NOT ROLLED, and that is the difference between this and the
+		# lair. The engine hides and finding it is the game; the hull is a
+		# DESTINATION the unlock hint sends you to, and a second searchable thing
+		# in the deep would dilute the hunt rather than double it.
+		# LOOT CUT 70 -> 64 (and 95 -> 87, 130 -> 119) BECAUSE THE HULL MOVED,
+		# not because the hull was too rich. spawn_loot re-grades a fraction of
+		# every drop by the BAND IT IS SPILLED IN, so the identical hull cracked
+		# the identical way started paying ~8% more purely for standing at
+		# depth 100 instead of depth 0 — measured, 5022 -> 5423 per hull, which
+		# pushed PACINGTEST's binding MIDTIER from 2.92 to 2.98 against a hard
+		# ceiling of 3.00. A relocation is not a pay rise, and 0.02 of headroom
+		# is not headroom. The cut hands the difference back so the player gets
+		# the same hull for the same work, further away.
+		"derelict": {"bearing_deg": 243.0, "depth": 100.0, "rot_y": 25.0,
+			"loot": 64, "crack_time": 1.8},
+		# The tutorial's hull, on the old berth. Small, and it charts NOTHING --
+		# `counts_as_survey` false, the same flag a deep hulk has carried since
+		# the expanse shipped, so no new gate is designed for it. It teaches the
+		# verb; the hull outside the cordon opens the world.
+		"training_hull": {"pos": Vector3(-9, 0, -18), "rot_y": 25.0,
+			"loot": 16, "crack_time": 1.4},
 		# v15. THE LAIR. The engine no longer sits at an authored point inside the
 		# charted volume -- it hides out in the expanse, at a bearing and depth
 		# derived from the run salt (SystemDB.lair_pos). `depth` is the band it
@@ -68,6 +94,12 @@ const SYSTEMS := {
 			# were standing and fires down it a beat later — the starting boss
 			# teaches the series' one rule: standing still is what kills you.
 			"name": "THE GNOMON", "attack": "shadow_lance"},
+		# v18 stage 3. WHO OWNS THIS SYSTEM. The engine was never masterless: the
+		# sentries standing over the lanes and the swarms that keep arriving are
+		# its forces, and silencing it is taking a system off a government rather
+		# than switching off a machine. One key, read once by the builder and
+		# handed to every spawner, so "whose side is this" has a single answer.
+		"faction": "gnomon",
 		# Freeport: neutral prices and a narrow spread. The market you learn on.
 		"port": {
 			"id": "anchor",
@@ -140,6 +172,27 @@ const SYSTEMS := {
 			Vector3(-6, 0, -12), Vector3(-14, 0, -13),
 			Vector3(8, 0, -16), Vector3(15, 0, -20),
 		],
+		# v18. THE CORDON'S BEAT. Absolute world waypoints, walked as a loop.
+		#
+		# THE ROUTES ARE THE ENTITY BUDGET. Ambient picket-vs-sentry combat is
+		# an AUTHORING decision, not an emergent one: each route is drawn to
+		# pass within engage range of exactly ONE sentry post, so a system has
+		# as many standing skirmishes as it has routes and no more. That is what
+		# keeps the count legible on a 720-wide phone and the frame budget
+		# knowable — see HORIZON-4 §7.
+		#
+		# Every waypoint must sit inside `bounds`: the band-1 beacon has
+		# promised since v13 that patrols do not operate past the marker, and
+		# THE CORDON STOPS AT THE MARKER checks this table rather than waiting
+		# for a picket to be built and then dragging it home.
+		#
+		# Route 1 covers the Anchor approach and the derelict lane, crossing the
+		# post at (-6, 0, -12). Route 2 walks the Cantina side and crosses
+		# (8, 0, -16)'s neighbourhood on its northern leg.
+		"patrols": [
+			[Vector3(-16, 0, 3), Vector3(-9, 0, -9), Vector3(-2, 0, -14), Vector3(-10, 0, 6)],
+			[Vector3(11, 0, 21), Vector3(17, 0, 6), Vector3(9, 0, -13), Vector3(2, 0, 12)],
+		],
 		"swarm": {"interval": 22.0, "pack_min": 4, "pack_max": 6, "cap": 10, "first_delay": 6.0},
 		"difficulty": 1.0,
 		"loot_mult": 1.0,
@@ -184,7 +237,10 @@ const SYSTEMS := {
 			{"pos": Vector3(-19, -5, -27), "scale": Vector3(9, 4, 7)},
 			{"pos": Vector3(-34, -6, -6), "scale": Vector3(4, 3, 4)},
 		],
-		"derelict": {"pos": Vector3(14, 0, -21), "rot_y": -40.0, "loot": 95, "crack_time": 2.1},
+		# Same rule, same bearing its wreck used to lie on (304 degrees), pushed
+		# further out because PYX-02 is further from home.
+		"derelict": {"bearing_deg": 304.0, "depth": 130.0, "rot_y": -40.0,
+			"loot": 87, "crack_time": 2.1},
 		# THE REACHES. Past where the beacons reliably answer — a hunt you fit for.
 		"apex": {"lair": {"depth": [620.0, 780.0]},
 			"difficulty": 1.45, "loot": 120, "bonus": 22000,
@@ -192,6 +248,7 @@ const SYSTEMS := {
 			# your position under a ground-ring telegraph — area denial where the
 			# Gnomon was a line, so the dodge you learned needs re-learning.
 			"name": "THE ARMILLARY", "attack": "flare_mortar"},
+		"faction": "armillary",
 		# Mining colony: digs alloys and volatiles, starves for isotopes and cores.
 		"port": {
 			"id": "cinderworks",
@@ -233,6 +290,14 @@ const SYSTEMS := {
 			Vector3(-9, 0, -11), Vector3(6, 0, -7),
 			Vector3(19, 0, -15), Vector3(-17, 0, -19),
 		],
+		# Three routes: PYX-02 is the Combine's industrial heart and the
+		# Authority escorts its shipping. Crossing (6,0,-7), (-9,0,-11) and
+		# (19,0,-15) respectively — one post each, per PYX-01's note.
+		"patrols": [
+			[Vector3(26, 0, 16), Vector3(12, 0, 2), Vector3(4, 0, -9), Vector3(16, 0, 8)],
+			[Vector3(-30, 0, 25), Vector3(-18, 0, 8), Vector3(-7, 0, -9), Vector3(-22, 0, 12)],
+			[Vector3(30, 0, -22), Vector3(21, 0, -13), Vector3(8, 0, -20), Vector3(24, 0, -28)],
+		],
 		"swarm": {"interval": 14.0, "pack_min": 5, "pack_max": 8, "cap": 16, "first_delay": 4.0},
 		"difficulty": 1.5,
 		"loot_mult": 1.35,
@@ -272,7 +337,9 @@ const SYSTEMS := {
 			{"pos": Vector3(26, -5, -10), "scale": Vector3(7, 5, 6)},
 			{"pos": Vector3(-14, -5, 26), "scale": Vector3(5, 4, 4)},
 		],
-		"derelict": {"pos": Vector3(-6, 0, -25), "rot_y": 70.0, "loot": 130, "crack_time": 2.4},
+		# 257 degrees -- the bearing of the old authored point (-6, 0, -25).
+		"derelict": {"bearing_deg": 257.0, "depth": 150.0, "rot_y": 70.0,
+			"loot": 119, "crack_time": 2.4},
 		# THE QUIET. No colour left, nothing transmitting, and the last engine.
 		"apex": {"lair": {"depth": [1150.0, 1450.0]},
 			"difficulty": 2.0, "loot": 160, "bonus": 32000,
@@ -280,6 +347,7 @@ const SYSTEMS := {
 			# it drags you toward the hub and the sweep arm, so the final boss
 			# weaponizes the positioning the other two only pressured.
 			"name": "THE MERIDIAN", "attack": "grav_tether"},
+		"faction": "meridian",
 		# Military yards: refines its own isotopes, pays well for alloys and relics.
 		# Alloys Cinderworks->Bastion and isotopes Bastion->Cinderworks are the two
 		# routes that fall out of these numbers without anyone scripting them.
@@ -322,6 +390,16 @@ const SYSTEMS := {
 			Vector3(-11, 0, -13), Vector3(-2, 0, -17), Vector3(7, 0, -11),
 			Vector3(14, 0, -19), Vector3(0, 0, -6), Vector3(-18, 0, -21),
 			Vector3(19, 0, -24),
+		],
+		# Four routes, the heaviest presence on the chart: Bastion Yards is the
+		# Authority's own military yard, and PYX-03 is where the Cordon has the
+		# most to lose. Crossing (0,0,-6), (-11,0,-13), (7,0,-11) and
+		# (14,0,-19).
+		"patrols": [
+			[Vector3(-18, 0, 12), Vector3(-8, 0, 2), Vector3(2, 0, -8), Vector3(-12, 0, 4)],
+			[Vector3(-26, 0, -4), Vector3(-16, 0, -10), Vector3(-9, 0, -15), Vector3(-20, 0, -6)],
+			[Vector3(16, 0, 4), Vector3(9, 0, -6), Vector3(5, 0, -13), Vector3(13, 0, -2)],
+			[Vector3(28, 0, -22), Vector3(19, 0, -16), Vector3(12, 0, -21), Vector3(24, 0, -27)],
 		],
 		"swarm": {"interval": 34.0, "pack_min": 3, "pack_max": 4, "cap": 6, "first_delay": 12.0},
 		"difficulty": 2.2,
@@ -398,6 +476,50 @@ static func port_def_by_id(port_id: String) -> Dictionary:
 			if String((p as Dictionary)["id"]) == port_id:
 				return p
 	return {}
+
+
+static func faction_of(id: String) -> String:
+	# The host power of a system. Defaults to FERAL's id rather than to "" so a
+	# system def that forgets the key produces the SHIPPED world (unflagged
+	# automata hostile to the player) instead of a node with no allegiance at
+	# all -- the same fail-safe direction Hostile.faction's own default takes.
+	return String(get_system(id).get("faction", "feral"))
+
+
+static func derelict_pos(id: String) -> Vector3:
+	# WHERE THE SURVEY HULL IS. One pure function, for the same reason lair_pos
+	# is one: the builder calls it, the tutorial's bearing broadcast calls it,
+	# the expanse's keep-out calls it, and every harness calls it -- and the
+	# moment two places derive it independently they will disagree.
+	#
+	# It draws from NO RNG AT ALL, which is what keeps DEEPTEST's WORLD
+	# FINGERPRINT still: an authored bearing takes no number out of the linear
+	# sequence the expanse rolls from.
+	#
+	# Depth is measured PAST THE CHART EDGE, the rule the bands and the lairs
+	# already follow, so a bigger system pushes its own hull out with it.
+	var s := get_system(id)
+	var d: Dictionary = s.get("derelict", {})
+	if d.is_empty():
+		return Vector3.ZERO
+	# An absolute `pos` still wins where one is authored -- the training hull
+	# uses that shape, and so would any future hull that wants a hand-placed
+	# berth rather than a bearing.
+	if d.has("pos"):
+		return d["pos"]
+	var bearing := deg_to_rad(float(d.get("bearing_deg", 0.0)))
+	var radius := float(s.get("bounds", 40.0)) + float(d.get("depth", 100.0))
+	return Vector3(cos(bearing) * radius, 0.0, sin(bearing) * radius)
+
+
+static func derelict_depth(id: String) -> float:
+	# What the hull's depth past the chart edge actually is. Recomputed from
+	# derelict_pos rather than read back out of the def, so it can never
+	# disagree with where the thing was built -- lair_depth's rule.
+	var p := derelict_pos(id)
+	if p == Vector3.ZERO:
+		return 0.0
+	return maxf(p.length() - float(get_system(id).get("bounds", 40.0)), 0.0)
 
 
 static func lair_pos(id: String, run_seed: int) -> Vector3:
