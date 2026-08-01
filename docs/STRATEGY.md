@@ -4345,3 +4345,85 @@ This is finding A8 of HORIZON-4 resolved the way the doc demanded — "the numbe
 will move, and it must be recorded rather than reasoned about" — and it is the
 second time this horizon that the honest answer was to measure, decide, and
 measure again rather than to argue about whether a change was neutral.
+
+## 51. Factions — stage 3, the engines own their systems
+
+Every ambient machine in a charted system now flies its host engine's flag.
+The sentries standing over the lanes, the waves that keep arriving, the probes
+an apex vents — all of it belongs to THE GNOMON, THE ARMILLARY or THE MERIDIAN,
+which retcons something that was always latent: the dead frontier's automata
+were never masterless, and silencing an engine is **taking a system off a
+government** rather than switching off a machine.
+
+The interdiction raiders become **THE TITHE**, pulled forward from stage 5
+because it costs one line and because stage 2a's picket parley exemption was
+guarding a case that could not occur while raiders were `feral` and the Cordon
+was neutral to `feral`. Crimson paint, a demand, a toll and a parley all
+shipped long before the faction layer; now they have an owner.
+
+**Bands 3 and 4 stay unflagged**, and that restraint is the design. The Reaches
+and the Quiet belong to the three powers nobody has a word for yet, and the
+shipped data already says so — `GUARD_DESIGNATION[3]` is *"UNFLAGGED — NO
+PATTERN ON FILE"* and `[4]` is *"UNREADABLE — IT DOES NOT ANSWER"*. Claiming
+them for a known faction now would spend stage 6's reveal early **and make the
+designation a lie.** `THE DEEP IS STILL UNCLAIMED` asserts the rule rather than
+a node, so a future band edit cannot quietly annex them.
+
+### The problem stage 3 creates, and the fix that was not enough
+
+A picket and a sentry are **the same machine** — both `Hostile`, both taking
+the system's `difficulty`, neither setting `hp_scale`:
+
+    120 hp against 14 damage every 1.15s = 12.17 dps -> 9.9 SECONDS to a kill
+
+and because `difficulty` scales hp and damage *together*, it is 9.9 seconds in
+every system. Left alone, the moment sentries became `gnomon` and pickets were
+already `gsa`, ambient skirmishing would have traded the Cordon away within half
+a minute of the player arriving — tier 1's entire visible payload deleting
+itself while the player was somewhere else.
+
+The disengage timeout (finding A6) is the obvious answer, and **on its own it
+does not work.** Breaking off does not undo damage: three six-second bursts
+still land 219 against 120. `AMBIENT COMBAT DEPLETES NOTHING` caught it at
+**census 9 → 5** in 54 unattended seconds, and it would have shipped otherwise
+looking entirely correct.
+
+So there is a second half. `SKIRMISH_HP_FLOOR` — fire from another combatant
+wears a machine down but **cannot take it below half hull**. A sentry sitting
+at half strength is visible evidence that the border is contested, which is the
+whole reason the routes were drawn to cross a post in the first place; the last
+half of any hull belongs to the player.
+
+> **The property this protects, stated once so nobody trades it away later:
+> ONLY THE PLAYER DEPLETES THE WORLD.** Sentries do not respawn, and that has
+> always been fine because clearing a post is work the player did. A world that
+> empties itself unwatched is a different thing, and not one anybody asked for.
+
+Census now holds 9 → 9, and red-verifies to 9 → 8 with the floor removed.
+
+### The floor's own trap, caught before the sweep
+
+Gated on *"the attacker is not the player"*, the floor would have caught
+`ApexBoss` scrapping its own pending probes — `take_damage(99999, self)` on a
+phase change — and left them alive at half hull **through the phase they exist
+to be cleared by**. It is gated on the `combatants` group instead, which
+`ApexBoss` is not in. The lesson generalises: "not the player" and "another
+combatant" are not the same set, and the gap between them is every machine that
+damages something without being a faction.
+
+### Three assertions re-aimed rather than weakened
+
+Making picket-vs-sentry combat real broke three checks written for a world
+where it was not. Each was rewritten to its actual claim:
+
+| was | is | why |
+|---|---|---|
+| `FERAL IS THE ONLY THING HUNTING YOU` | `ONE FLAG HUNTS YOU, AND IT OWNS THE SYSTEM` | `feral` is no longer in the sky at all; the surviving claim is *stronger* — exactly one player-hostile flag, and it is the host |
+| Cordon floor: target `== null` | target is **not the player** | a picket with sentries around it legitimately has a target; asserting emptiness fails on correct code and says nothing about the floor |
+| `PICKETS WALK THEIR BEAT` on a central route | same test in empty sky | it was measuring a firefight instead of a patrol |
+
+The first is the pattern worth naming: **when a stage makes an assertion's
+world obsolete, find the property that survived and state it more strongly.**
+Deleting the check loses the guarantee; loosening it keeps a check that cannot
+fail. This is the second time this horizon that widening produced a better
+assertion than the one it replaced.
