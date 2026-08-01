@@ -5280,6 +5280,7 @@ func _run_deep_test() -> void:
 	var worst_post := 0.0
 	var found_posts := 0
 	var deep_seen := 0
+	var picket_seen := 0
 	for n in get_tree().get_nodes_in_group("hostiles"):
 		if not (n is Hostile):
 			continue
@@ -5290,14 +5291,30 @@ func _run_deep_test() -> void:
 		if n.is_in_group("deep_guard"):
 			deep_seen += 1
 			continue
+		# v18. A CORDON PICKET IS NOT AN AUTHORED SENTRY. It is the same class
+		# with a route, and being 36u from the nearest sentry post is the whole
+		# point of it — this clause is about machines that STAND SOMEWHERE, and
+		# a picket does not. Counted and printed rather than swallowed, for the
+		# reason the deep-guard count is: a number appearing here when you were
+		# not expecting one is the cheap way to notice pickets being built where
+		# they should not be (the tutorial and ATTRACT suppress them).
+		if not (n as Hostile).patrol.is_empty():
+			picket_seen += 1
+			continue
 		found_posts += 1
 		var nearest := INF
 		for p_v in posts:
 			nearest = minf(nearest, (n as Node3D).global_position.distance_to(p_v))
 		worst_post = maxf(worst_post, nearest)
-	print("[deep] SENTRY POSTS %d sentries, %d authored posts, furthest any of them sits from its post %.2fu (drift is 0.4), %d deep guards excluded -> %s" % [
-		found_posts, posts.size(), worst_post, deep_seen,
+	# The picket count is ASSERTED, not just printed: it must equal the routes
+	# this system authored. That turns a line about sentries standing still into
+	# one that also catches the Cordon failing to deploy — which would otherwise
+	# be invisible, since a missing picket makes every other clause here happier.
+	var routes: int = (SystemDB.get_system(system_id).get("patrols", []) as Array).size()
+	print("[deep] SENTRY POSTS %d sentries, %d authored posts, furthest any of them sits from its post %.2fu (drift is 0.4), %d deep guards and %d pickets excluded (%d routes authored) -> %s" % [
+		found_posts, posts.size(), worst_post, deep_seen, picket_seen, routes,
 		"PASS" if found_posts == posts.size() and found_posts > 0 and worst_post <= 0.6
+			and picket_seen == routes
 			else "FAIL"])
 
 	# 1. The bug the player found: the ship could outrun its own camera. Fly a
