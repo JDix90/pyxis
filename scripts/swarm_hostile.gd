@@ -48,6 +48,17 @@ var despawn_radius := 0.0
 var docked := false
 var _dock_point := Vector3.ZERO
 
+# Which flag this airframe flies (v18, Horizon 4 stage 1). Same contract and
+# same default as Hostile.faction: set before add_child, FERAL unless a
+# spawner says otherwise, and FERAL is the shipped world exactly.
+var faction := FactionDB.FERAL
+var _enemies: Array = []
+var _enemies_version := -1
+var _aggro: Node3D = null
+var _target: Node3D = null
+var _retarget_t := 0.0
+const RETARGET_INTERVAL := 0.4
+
 var _velocity := Vector3.ZERO
 var _fire_cooldown := 0.0
 # Seconds of parley standoff remaining. While positive the pack keeps its orbit
@@ -68,6 +79,9 @@ func _ready() -> void:
 	# deliberately do not. See project.godot's [physics] comment.
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
 	add_to_group("hostiles")
+	# See Hostile._ready: the allegiance-aware pool, kept apart from "hostiles"
+	# because that name means "opposed to the player" everywhere it is read.
+	add_to_group("combatants")
 	add_to_group("swarm")
 	hp = MAX_HP * difficulty * hp_scale
 	_orbit_dir = 1.0 if randf() < 0.5 else -1.0
@@ -139,39 +153,53 @@ func _physics_process(delta: float) -> void:
 		_core_mat.emission_energy_multiplier = 3.0 + sin(_phase * 3.0) * 1.2
 		return
 
-	var player: Node3D = get_tree().get_first_node_in_group("player")
-	if not player:
-		return
-	if player.docked:
-		# Lose interest and drift: a docked ship is not prey.
-		_velocity = _velocity.move_toward(Vector3.ZERO, ACCEL * 0.5 * delta)
-		global_position += _velocity * delta
-		return
-
-	var to_player := player.global_position - global_position
-	to_player.y = 0.0
-	var dist := to_player.length()
-
-	if despawn_radius > 0.0 and dist > despawn_radius:
-		_give_up()
-		return
-
-	# Seek to orbit distance, strafe around it, and shove off siblings so the
-	# pack spreads instead of stacking into one dot.
+	# BEFORE the target lookup, not after. A departing raider has already shed
+	# every group and is pure theater — deciding its exit on whether it can
+	# still find something to hate would make the burn-out stutter into a drift
+	# the moment the player docked, which is precisely when a paid-off raid
+	# ends.
 	if _departing:
 		# Burning out. Groups are already shed, so the raid is already over; this
 		# is theater, and brief.
 		global_position += _velocity * delta
 		return
 
+	var player: Node3D = get_tree().get_first_node_in_group("player")
+	if not player:
+		return
+	var target := _combat_target(delta)
+	if target == null:
+		# Nothing this flag hates is in reach — which for a FERAL dart means the
+		# player is docked, and this is the shipped "a docked ship is not prey"
+		# drift, word for word.
+		_velocity = _velocity.move_toward(Vector3.ZERO, ACCEL * 0.5 * delta)
+		global_position += _velocity * delta
+		return
+
+	# THE LEASH STAYS ON THE PLAYER whatever the target is. despawn_radius
+	# exists so a pack picked up 400u out is not waiting at the Anchor when the
+	# player flies home (see the field comment) — it is about litter following
+	# the AUDIENCE, not about whoever the pack is currently shooting.
+	var player_dist := Vector3(player.global_position.x - global_position.x, 0.0,
+		player.global_position.z - global_position.z).length()
+	if despawn_radius > 0.0 and player_dist > despawn_radius:
+		_give_up()
+		return
+
+	var to_target := target.global_position - global_position
+	to_target.y = 0.0
+	var dist := to_target.length()
+
+	# Seek to orbit distance, strafe around it, and shove off siblings so the
+	# pack spreads instead of stacking into one dot.
 	var standoff_hold := standoff > 0.0
 	if standoff_hold:
 		standoff -= delta
 
 	var desired := Vector3.ZERO
 	if dist > 0.01:
-		var radial := to_player.normalized() * (dist - ORBIT_RADIUS)
-		var tangent := Vector3(-to_player.z, 0, to_player.x).normalized() * _orbit_dir
+		var radial := to_target.normalized() * (dist - ORBIT_RADIUS)
+		var tangent := Vector3(-to_target.z, 0, to_target.x).normalized() * _orbit_dir
 		desired = (radial + tangent * 2.2).normalized() * MAX_SPEED
 
 	var push := Vector3.ZERO
@@ -205,15 +233,74 @@ func _physics_process(delta: float) -> void:
 	if standoff_hold:
 		return
 	if dist <= ATTACK_RANGE and _fire_cooldown <= 0.0 \
-			and Obstacles.blocked(global_position, player.global_position) == null:
+			and Obstacles.blocked(global_position, target.global_position) == null:
 		_fire_cooldown = FIRE_INTERVAL
-		FX.beam(get_parent(), global_position, player.global_position, Palette.THREAT, 0.035, 0.1)
+		FX.beam(get_parent(), global_position, target.global_position, Palette.THREAT, 0.035, 0.1)
 		Sfx.play("fire", -18.0, 1.5)
-		if player.has_method("take_hit"):
-			player.take_hit(DAMAGE * difficulty, self)
+		if target.has_method("take_hit"):
+			target.take_hit(DAMAGE * difficulty, self)
+		elif target.has_method("take_damage"):
+			target.take_damage(DAMAGE * difficulty, self)
 
 
-func take_damage(amount: float) -> void:
+func _refresh_enemies() -> void:
+	if _enemies_version == GameState.faction_version:
+		return
+	_enemies_version = GameState.faction_version
+	_enemies = GameState.enemies_of(faction)
+
+
+func _targetable(n: Node3D) -> bool:
+	if n == null or not is_instance_valid(n) or not n.is_inside_tree():
+		return false
+	if n.is_in_group("player"):
+		return not n.docked
+	# A docked apex probe is still a live target — shooting it off reopens the
+	# plate — so `docked` is checked only on the player, whose docking is the
+	# game's one safe state.
+	return n.is_in_group("combatants")
+
+
+func _combat_target(delta: float) -> Node3D:
+	# See Hostile._combat_target: aggro, then nearest hated flag, cached
+	# between scans. For a FERAL dart the enemy list is [surveyor] and this
+	# returns the player and walks nothing — the shipped behaviour, restated.
+	_refresh_enemies()
+	if _targetable(_aggro):
+		return _aggro
+	_aggro = null
+
+	_retarget_t -= delta
+	if _targetable(_target) and _retarget_t > 0.0:
+		return _target
+	_retarget_t = RETARGET_INTERVAL
+
+	var best: Node3D = null
+	var best_d := INF
+	var hates_player := _enemies.has(FactionDB.SURVEYOR)
+	if hates_player:
+		var p: Node3D = get_tree().get_first_node_in_group("player")
+		if _targetable(p):
+			best = p
+			best_d = global_position.distance_to(p.global_position)
+	if _enemies.size() > (1 if hates_player else 0):
+		for n_v in get_tree().get_nodes_in_group("combatants"):
+			var n := n_v as Node3D
+			if n == self or not _targetable(n):
+				continue
+			if not _enemies.has(n.faction):
+				continue
+			var d := global_position.distance_to(n.global_position)
+			if d < best_d:
+				best_d = d
+				best = n
+	_target = best
+	return best
+
+
+func take_damage(amount: float, attacker: Node3D) -> void:
+	# `attacker` required, no default — HORIZON-4 finding A1. See
+	# Hostile.take_damage for why neither default is safe.
 	if _dying:
 		return
 	# Shooting a raider IS the answer to the demand. The whole pack drops the
@@ -222,11 +309,14 @@ func take_damage(amount: float) -> void:
 		var m := get_tree().get_first_node_in_group("main")
 		if m and m.has_method("break_parley"):
 			m.break_parley()
+	if attacker != null and attacker != self \
+			and (not ("faction" in attacker) or String(attacker.faction) != faction):
+		_aggro = attacker
 	hp -= amount
 	FX.flash(get_parent(), global_position, Palette.WHITE_HOT, 0.4, 0.08)
 	Sfx.play("hit", -15.0, 1.4)
 	if hp <= 0.0:
-		_die()
+		_die(attacker)
 
 
 func depart() -> void:
@@ -240,6 +330,7 @@ func depart() -> void:
 	_departing = true
 	drop_good = ""
 	remove_from_group("hostiles")
+	remove_from_group("combatants")
 	remove_from_group("swarm")
 	remove_from_group("raider")
 	var away := global_position - _last_player_pos()
@@ -262,16 +353,18 @@ func _give_up() -> void:
 	# worth nothing, or the leash becomes a way to farm packs by running away.
 	_dying = true
 	remove_from_group("hostiles")
+	remove_from_group("combatants")
 	remove_from_group("swarm")
 	remove_from_group("raider")
 	queue_free()
 
 
-func _die() -> void:
+func _die(attacker: Node3D) -> void:
 	_dying = true
 	var parent := get_parent()
 	var pos := global_position
 	remove_from_group("hostiles")
+	remove_from_group("combatants")
 	remove_from_group("swarm")
 
 	FX.flash(parent, pos, Palette.WHITE_HOT, 1.1, 0.14)
@@ -280,6 +373,14 @@ func _die() -> void:
 	var rig := get_tree().get_first_node_in_group("camera_rig")
 	if rig:
 		rig.shake(0.03)
+
+	# ATTRIBUTION GATES THE PAYOUT, never the theater — see Hostile._die.
+	var player_kill := attacker != null and is_instance_valid(attacker) \
+		and attacker.is_in_group("player")
+	if not player_kill:
+		queue_free()
+		return
+
 	var main := get_tree().get_first_node_in_group("main")
 	if main and main.has_method("report_kill"):
 		main.report_kill("swarm")

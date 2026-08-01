@@ -46,6 +46,30 @@ var designation := ""
 # Parley standoff, mirroring SwarmHostile: positive means hold fire.
 var standoff := 0.0
 
+# Which flag this machine flies (v18, Horizon 4 stage 1). Set by the spawner
+# BEFORE add_child, same contract as tint/difficulty. The default is FERAL —
+# the dead frontier's unflagged automata, HOSTILE to the surveyor and
+# indifferent to everything else — which is the shipped world stated as data,
+# so every existing spawner is untouched by construction.
+var faction := FactionDB.FERAL
+
+# Enemy list cached against GameState.faction_version — the matrix moves only
+# on player actions, so recomputing it per frame would be paying every tick
+# for something that changes a few times an hour.
+var _enemies: Array = []
+var _enemies_version := -1
+# Defend-if-attacked: whoever shot this machine last, held until dead or gone.
+# Band-independent by design (HORIZON-4 §4) — being fired on is its own
+# diplomacy. The Cordon's never-retaliate-at-the-surveyor exception is stage 2
+# behaviour and lands with the Cordon, not here.
+var _aggro: Node3D = null
+var _target: Node3D = null
+var _retarget_t := 0.0
+# How often the sentry re-asks "who is nearest that I hate". Between scans it
+# keeps its answer, which bounds the group walk the same way the drift bounds
+# its wander.
+const RETARGET_INTERVAL := 0.4
+
 var _fire_cooldown := 0.0
 var _charging := false
 var _home := Vector3.ZERO
@@ -59,6 +83,12 @@ var _body_parts: Array[MeshInstance3D] = []
 
 func _ready() -> void:
 	add_to_group("hostiles")
+	# The allegiance-aware pool: everything a faction rule can point a gun at.
+	# Deliberately a SECOND group rather than a reuse of "hostiles" — that name
+	# is load-bearing in a dozen places that mean "things opposed to the
+	# player", and an allied ship in it would be counted, swept and cleaned up
+	# as an enemy by every one of them.
+	add_to_group("combatants")
 	max_hp = BASE_HP * difficulty * hp_scale
 	hp = max_hp
 	# _home is captured on the FIRST FRAME, not here. _ready fires from
@@ -167,15 +197,72 @@ func _process(delta: float) -> void:
 	_weapon(delta)
 
 
+func _refresh_enemies() -> void:
+	if _enemies_version == GameState.faction_version:
+		return
+	_enemies_version = GameState.faction_version
+	_enemies = GameState.enemies_of(faction)
+
+
+func _targetable(n: Node3D) -> bool:
+	# Alive, in the world, and legal to shoot. The docked check is the one rule
+	# that outranks everything including aggro: safety at port has to be total,
+	# or it is not safety.
+	if n == null or not is_instance_valid(n) or not n.is_inside_tree():
+		return false
+	if n.is_in_group("player"):
+		return not n.docked
+	return n.is_in_group("combatants")
+
+
+func _combat_target(delta: float) -> Node3D:
+	# Who this machine is currently fighting. Aggro first (whoever shot it),
+	# then the nearest thing its flag is HOSTILE toward. In the shipped world
+	# every faction is FERAL, whose only enemy is the surveyor — so this walks
+	# no group and returns exactly what get_first_node_in_group("player") did,
+	# which is the stage-1 contract: same world, restated as a rule.
+	_refresh_enemies()
+	if _targetable(_aggro):
+		return _aggro
+	_aggro = null
+
+	_retarget_t -= delta
+	if _targetable(_target) and _retarget_t > 0.0:
+		return _target
+	_retarget_t = RETARGET_INTERVAL
+
+	var best: Node3D = null
+	var best_d := INF
+	var hates_player := _enemies.has(FactionDB.SURVEYOR)
+	if hates_player:
+		var p: Node3D = get_tree().get_first_node_in_group("player")
+		if _targetable(p):
+			best = p
+			best_d = global_position.distance_to(p.global_position)
+	# The NPC scan only runs when the matrix actually names an NPC enemy —
+	# which no shipped faction pair does, so today this branch costs nothing.
+	if _enemies.size() > (1 if hates_player else 0):
+		for n_v in get_tree().get_nodes_in_group("combatants"):
+			var n := n_v as Node3D
+			if n == self or not _targetable(n):
+				continue
+			if not _enemies.has(n.faction):
+				continue
+			var d := global_position.distance_to(n.global_position)
+			if d < best_d:
+				best_d = d
+				best = n
+	_target = best
+	return best
+
+
 func _weapon(delta: float) -> void:
 	if standoff > 0.0:
 		standoff -= delta
 		return
-	var player: Node3D = get_tree().get_first_node_in_group("player")
-	# A docked ship is not a target: safety at port has to be total, or it is
-	# not safety.
-	if not player or player.docked \
-			or global_position.distance_to(player.global_position) > ENGAGE_RANGE:
+	var target := _combat_target(delta)
+	if target == null \
+			or global_position.distance_to(target.global_position) > ENGAGE_RANGE:
 		_charging = false
 		_core_mat.emission_energy_multiplier = 2.5
 		return
@@ -189,24 +276,40 @@ func _weapon(delta: float) -> void:
 		_fire_cooldown = FIRE_INTERVAL
 		_core_mat.emission_energy_multiplier = 2.5
 		var muzzle := global_position + Vector3(0, 0.1, 0)
-		var cover = Obstacles.blocked(muzzle, player.global_position)
+		var cover = Obstacles.blocked(muzzle, target.global_position)
 		if cover != null:
-			# Cover protects the player from sentries too, not just the reverse.
+			# Cover protects the target from sentries too, not just the reverse.
 			FX.beam(get_parent(), muzzle, cover, Palette.THREAT, 0.05, 0.12)
 			return
-		FX.beam(get_parent(), muzzle, player.global_position, Palette.THREAT, 0.05, 0.14)
+		FX.beam(get_parent(), muzzle, target.global_position, Palette.THREAT, 0.05, 0.14)
 		Sfx.play("fire", -14.0, 0.72)
-		if player.has_method("take_hit"):
-			player.take_hit(DAMAGE * difficulty, self)
+		# The player has a shield model and take_hit; a machine has take_damage.
+		# Same shot, two bookkeepings.
+		if target.has_method("take_hit"):
+			target.take_hit(DAMAGE * difficulty, self)
+		elif target.has_method("take_damage"):
+			target.take_damage(DAMAGE * difficulty, self)
 
 
-func take_damage(amount: float) -> void:
+func take_damage(amount: float, attacker: Node3D) -> void:
+	# `attacker` is REQUIRED, with no default, and that is finding A1 of
+	# HORIZON-4: either default silently mis-books a kill — null-means-nobody
+	# strips loot from every legacy caller, null-means-player mints credit for
+	# NPC fire. Every caller says who is shooting; PYXIS_FACTIONTEST reads the
+	# sources and fails any call that does not.
 	if _dying:
 		return
 	if standoff > 0.0 and is_in_group("raider"):
 		var m2 := get_tree().get_first_node_in_group("main")
 		if m2 and m2.has_method("break_parley"):
 			m2.break_parley()
+	# Being shot is its own diplomacy: return fire at the shooter, whatever the
+	# matrix says about their flag. Same-faction fire is not aggro (the apex
+	# venting probes must not turn a probe against its own engine), and a
+	# docked player is refused by _targetable, not remembered here.
+	if attacker != null and attacker != self \
+			and (not ("faction" in attacker) or String(attacker.faction) != faction):
+		_aggro = attacker
 	hp -= amount
 	var frac := clampf(hp / max_hp, 0.0, 1.0)
 	_hp_fill.scale.x = maxf(frac, 0.001)
@@ -217,13 +320,14 @@ func take_damage(amount: float) -> void:
 	if rig:
 		rig.shake(0.012)
 	if hp <= 0.0:
-		_die()
+		_die(attacker)
 
 
 func _give_up() -> void:
 	# Not a kill: no loot, no credit, no staged death. It is simply not there.
 	_dying = true
 	remove_from_group("hostiles")
+	remove_from_group("combatants")
 	remove_from_group("raider")
 	queue_free()
 
@@ -235,22 +339,34 @@ func depart() -> void:
 		return
 	_dying = true
 	remove_from_group("hostiles")
+	remove_from_group("combatants")
 	remove_from_group("raider")
 	var tw := create_tween()
 	tw.tween_property(self, "scale", Vector3.ONE * 0.1, 1.8).set_ease(Tween.EASE_IN)
 	tw.tween_callback(queue_free)
 
 
-func _die() -> void:
+func _die(attacker: Node3D) -> void:
 	_dying = true
 	var parent := get_parent()
 	var pos := global_position
 	var tree := get_tree()
 	remove_from_group("hostiles")
+	remove_from_group("combatants")
+
+	# ATTRIBUTION GATES THE PAYOUT, never the theater (v18). Kill credit,
+	# contract ticks and the loot spill flow only from a player-attributed
+	# death; a machine shot down by another machine explodes exactly as loudly
+	# and pays exactly nothing — _give_up's "breaking off contact has to be
+	# worth nothing" argument, applied to a fight the player did not win.
+	# The death FX, the post bookkeeping and queue_free are unconditional:
+	# world state is not a payment.
+	var player_kill := attacker != null and is_instance_valid(attacker) \
+		and attacker.is_in_group("player")
 
 	var rig := tree.get_first_node_in_group("camera_rig")
 	var main := tree.get_first_node_in_group("main")
-	if main and main.has_method("report_kill"):
+	if player_kill and main and main.has_method("report_kill"):
 		main.report_kill("sentry")
 
 	# If this was a deep guard, its post may have just fallen. `_dying` is already
@@ -282,14 +398,16 @@ func _die() -> void:
 		FX.burst(parent, pos, Palette.THREAT, 25, 6.5, 0.2, 0.55)
 	)
 
-	# Stage 3: secondary burst + loot spill, then free.
+	# Stage 3: secondary burst + loot spill, then free. The spill is the gated
+	# half — an NPC kill gets the burst and nothing adrift.
 	tree.create_timer(DEATH_STAGE_3).timeout.connect(func() -> void:
 		FX.burst(parent, pos, Color(1.0, 0.8, 0.4), 35, 5.0, 0.2, 0.7)
-		var m := tree.get_first_node_in_group("main")
-		var crate := CommodityDB.roll_drop("sentry")
-		for i in range(LOOT_COUNT):
-			var spot := pos + Vector3(randf_range(-0.4, 0.4), 0.1, randf_range(-0.4, 0.4))
-			if m:
-				m.spawn_loot(parent, spot, crate if i == 0 else "")
+		if player_kill:
+			var m := tree.get_first_node_in_group("main")
+			var crate := CommodityDB.roll_drop("sentry")
+			for i in range(LOOT_COUNT):
+				var spot := pos + Vector3(randf_range(-0.4, 0.4), 0.1, randf_range(-0.4, 0.4))
+				if m:
+					m.spawn_loot(parent, spot, crate if i == 0 else "")
 		queue_free()
 	)

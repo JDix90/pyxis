@@ -3901,3 +3901,117 @@ price table that genuinely endangers `MIDTIER` is `lance_1`'s own 5,800, because
 three assertions are denominated in it. Cutting it to 5,000 would read 3.34
 against a 3.00 ceiling and fail immediately. Every other price — including every
 reactor — is invisible to it.
+
+## 47. Factions — stage 1, the allegiance layer
+
+The design is in `docs/HORIZON-4-FACTIONS.md`: fourteen factions in four tiers,
+staged across six pieces of work. This section records the first of them.
+
+**Stage 1 ships no content, and that is the whole point.** The world after it
+is bit-identical to the world before it. What changed is that "who does this
+machine shoot" stopped being a hardcoded answer and became a rule — and that
+combat now knows *who killed what*, which nothing in this codebase has ever
+tracked.
+
+### `hostiles` had to keep meaning "hostile to you"
+
+The obvious implementation is to make faction membership a group and let
+`hostiles` be derived. It does not survive contact with the code. That group is
+read by the radar, by `_count_raiders`, by the torpedo's splash sweep, by
+Overcharge's blast, by every harness that sweeps the system, and by
+PACINGTEST's yield loop — all of which mean *things opposed to the player*. An
+allied picket in it would be painted red, blasted by the player's own
+area weapons, and counted as a live raid.
+
+So allegiance got its own group, `combatants`, and `hostiles` was left alone.
+Two group memberships instead of one derived membership, and the cost is one
+extra `remove_from_group` in four teardown paths.
+
+### `take_damage`'s missing argument was the dangerous part
+
+Adding an attacker means touching every call site. The tempting move —
+`take_damage(amount, attacker = null)` — compiles all of them silently, and
+**neither default is safe**:
+
+- `null` means "nobody" → every legacy call stops dropping loot, and the
+  economy dies quietly. PACINGTEST would report a yield of zero and the pacing
+  band would collapse.
+- `null` means "the player" → every future NPC caller that forgets the argument
+  mints player credit for a kill nobody made.
+
+The argument is therefore **required, with no default**, on both hostile
+classes. A forgotten attacker is a parse error rather than a mis-booking.
+`ATTRIBUTION IS EXPLICIT` reads both files and fails if a default ever appears,
+because the dynamic check cannot see a call site that is never exercised.
+
+`ApexBoss.take_damage` is the one exception and takes `_attacker` with a
+default. Its death is attributed by a different mechanism entirely
+(`on_apex_defeated` → `mark_apex_down`, with the bonus riding on cracking the
+wreck), and nothing but the player has ever been able to damage one.
+
+### The change nobody asked for, found by making attribution honest
+
+The apex scraps its own pending probes on a phase change and on death.
+`probe.take_damage(99999.0)` went through the ordinary swarm death path, so
+**every one of those probes paid the player two loot crates and ticked a
+`kill_swarm` contract.** They are specifically the probes the player *failed*
+to kill during the seal — the ones that were about to weld a plate shut.
+
+They now pay nothing. This is a deliberate behaviour change, not a refactor
+artifact, and it is recorded here because it is invisible in a diff that looks
+like a signature change. It does not move `PACING_LOOP`, which has no apex term
+at all (the first-kill bonus is excluded by omission from a hand-written sum),
+and it does not move BALANCE, which measures seals and phases rather than loot.
+
+### A matrix that can be asserted
+
+The user chose a **full dynamic matrix** over a scalar-plus-static-table, and
+**player actions only** over seeded drift. That combination is what makes it
+defensible: `shift_faction` is the only mutator, nothing calls it from a timer,
+and `NO INPUT, NO DRIFT` runs the world for real, advances the clock an hour,
+and requires the delta store to still be **empty**.
+
+Empty is the load-bearing word. Deltas are **sparse by invariant** — a value
+driven back to zero is erased rather than stored — so "the player has changed
+nothing" and "the dict is empty" are the same statement, and one check covers
+all 240 ordered pairs instead of touring them. `ZERO IS ABSENCE` in
+`SAVETEST=migrate17` is what stops that invariant quietly lapsing.
+
+The baseline lives in `FactionDB` and the arithmetic lives in `GameState`, and
+the split is §39's cycle lesson: `FactionDB` names no scene class and no
+autoload, because `hostile.gd`, `swarm_hostile.gd` and `main.gd` all name *it*.
+An autoload is outside the `class_name` registry, so it is the one place that
+can read both the table and the save without closing a loop that would declare
+every class in the project undeclared.
+
+### v18 is the first migration with nothing to grandfather
+
+v15 could revoke a lane; v17 had to guess which engines were down. v18 needs
+neither, and the reason is worth stating: **the authored baseline IS the world a
+v17 save was written in.** Every hostile is `feral`, `feral` is HOSTILE to the
+surveyor, nobody is allied with anybody. An absent key arriving at the baseline
+reproduces that save's reality exactly, so there is nothing to infer and nothing
+that could be taken away.
+
+### Two defects the review caught before the harness could
+
+Both are recorded because neither would have failed loudly.
+
+**A lambda captures a local by value.** The kill counter was
+`var kills := 0` with `kills += 1` inside a signal handler — which increments a
+copy and leaves the outer variable at 0 forever. The assertion would have read
+"no kills were credited", which is exactly what half of
+`ATTRIBUTION GATES THE PAYOUT` wants to hear. It is a one-element Array now, and
+the reason is written above it.
+
+**A self-pair is canonically ordered.** `pair_key("gsa", "gsa")` is legitimately
+`"gsa|gsa"`, so the load path's canonical-ordering check waved a self-delta
+straight through — the one entry `faction_attitude` can never read back, since
+it short-circuits on `a == b`. Rejected explicitly now, and
+`THE MATRIX REJECTS RUBBISH` fires four separate attacks at that function.
+
+A third was caught in the moved code rather than the new code: `SwarmHostile`'s
+`_departing` branch had drifted *below* the target lookup, so a paid-off raider
+whose target docked would have stuttered from burn-out into idle drift at
+exactly the moment a raid ends. It is back above the lookup, with a comment
+saying why it lives there.

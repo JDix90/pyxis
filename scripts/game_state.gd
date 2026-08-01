@@ -21,7 +21,7 @@ signal system_unlocked(id: String)
 signal lane_opened(id: String)
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 17
+const SAVE_VERSION := 18
 const SAVE_DEBOUNCE := 1.0
 
 # v6 defaults. Kept as one dictionary each so a migration only has to merge
@@ -307,6 +307,25 @@ var commission_claimed := 0
 # unclaimable on every run after the first.
 var commissioned := false
 
+# v18. THE FACTION MATRIX — Horizon 4 stage 1 (docs/HORIZON-4-FACTIONS.md §4).
+#
+# Player-caused deltas over FactionDB.BASELINE, keyed by FactionDB.pair_key
+# (canonical "a|b", a <= b), value clamped to ±FactionDB.DELTA_SPAN. SPARSE BY
+# INVARIANT: a delta that returns to 0 is erased rather than stored, so "the
+# player has changed nothing" and "the dict is empty" are the same statement —
+# which is what lets NO INPUT, NO DRIFT assert on emptiness instead of on a
+# tour of every pair.
+#
+# The baseline lives in FactionDB and the arithmetic lives HERE, not there:
+# FactionDB is a pure leaf outside the class_name registry's reach (§39's
+# cycle), and an autoload is the one place that can read both the table and
+# the save without joining that graph.
+var faction_deltas := {}
+# Bumped whenever any attitude may have changed (shift, load, reset), so a
+# hostile can cache its enemy list against a version instead of recomputing
+# per frame — the apex_intel/intel_version pattern.
+var faction_version := 0
+
 # Overridable so scripted demos and tests never touch the player's real save.
 var save_path := SAVE_PATH
 # Guarded by _save_locked below: a harness that has said "never write" cannot be
@@ -441,6 +460,104 @@ func accent_unlocked(index: int) -> bool:
 	return index < REGISTRY_ACCENT or commissioned
 
 
+# --- the faction matrix (v18, Horizon 4 stage 1) -----------------------------
+
+func faction_attitude(a: String, b: String) -> int:
+	# How a feels about b: authored baseline plus the symmetric player-caused
+	# delta, clamped at READ time — clamping the read rather than the pieces is
+	# what keeps an asymmetric baseline plus a symmetric delta from pushing one
+	# direction of a pair out of range while the other stays in.
+	var att := clampi(FactionDB.baseline_attitude(a, b)
+		+ int(faction_deltas.get(FactionDB.pair_key(a, b), 0)),
+		FactionDB.ATTITUDE_MIN, FactionDB.ATTITUDE_MAX)
+	# The one authored floor (HORIZON-4 §2): the Authority never reaches the
+	# band where the Cordon would fire on the surveyor. Applied to both
+	# directions of the pair — a player hostile to a power that is merely wary
+	# of them would have pickets returning fire "in defence", which is the same
+	# broken world by a side door.
+	if (a == FactionDB.SURVEYOR and b == "gsa") or (a == "gsa" and b == FactionDB.SURVEYOR):
+		att = maxi(att, FactionDB.GSA_SURVEYOR_FLOOR)
+	return att
+
+
+func faction_band(a: String, b: String) -> int:
+	return FactionDB.band_of(faction_attitude(a, b))
+
+
+func enemies_of(faction: String) -> Array:
+	# Every faction id `faction` would fire on unprovoked. Callers cache the
+	# result against faction_version rather than calling per frame — this walks
+	# the whole roster and is priced for "attitudes changed", not "every tick".
+	var out: Array = []
+	for other_v in FactionDB.ids():
+		var other := String(other_v)
+		if other == faction:
+			continue
+		if faction_band(faction, other) == FactionDB.Band.HOSTILE:
+			out.append(other)
+	return out
+
+
+func shift_faction(a: String, b: String, amount: int) -> void:
+	# THE ONLY MUTATOR, and it moves both directions of one pair at once —
+	# deltas are symmetric by design (HORIZON-4 §2), so there is nothing else a
+	# caller could mean. Player actions are the only legitimate callers; nothing
+	# in the game may call this from a timer, a spawn, or another faction's
+	# fortunes. NO INPUT, NO DRIFT is asserted against exactly this property.
+	if amount == 0 or not FactionDB.is_faction(a) or not FactionDB.is_faction(b) or a == b:
+		return
+	var key := FactionDB.pair_key(a, b)
+	var cur := int(faction_deltas.get(key, 0))
+	var nxt := clampi(cur + amount, -FactionDB.DELTA_SPAN, FactionDB.DELTA_SPAN)
+	if nxt == cur:
+		return
+	# Sparse by invariant: zero is absence, never a stored value.
+	if nxt == 0:
+		faction_deltas.erase(key)
+	else:
+		faction_deltas[key] = nxt
+	faction_version += 1
+	# The A10 line: politics the player changed and cannot see is not politics,
+	# it is a haunting. One log line, only for shifts the player is party to —
+	# third-party shifts get their line from the contract copy that caused them.
+	if a == FactionDB.SURVEYOR or b == FactionDB.SURVEYOR:
+		var other := b if a == FactionDB.SURVEYOR else a
+		note_log("%s — STANDING %s" % [FactionDB.display_name(other),
+			"RISES" if amount > 0 else "FALLS"])
+	_queue_save()
+
+
+func _load_faction_deltas(saved: Variant) -> void:
+	# Rebuilt entry by entry — the seams_cut/warehouse posture. A key must name
+	# two real factions in canonical order, a value arrives clamped, and a zero
+	# is dropped rather than stored so the sparse invariant survives a
+	# hand-edited file. Anything else is rejected by name, not tolerated.
+	faction_deltas = {}
+	faction_version += 1
+	if not (saved is Dictionary):
+		return
+	for k_v in (saved as Dictionary):
+		var key := String(k_v)
+		var parts := key.split("|")
+		if parts.size() != 2:
+			continue
+		if not FactionDB.is_faction(parts[0]) or not FactionDB.is_faction(parts[1]):
+			continue
+		# A faction's relationship with ITSELF is a constant, not state. Rejected
+		# explicitly because pair_key("gsa", "gsa") is legitimately "gsa|gsa", so
+		# the canonical-ordering check below waves a self-pair straight through —
+		# and a stored self-delta would be the one entry faction_attitude can
+		# never read back, since it short-circuits on a == b.
+		if parts[0] == parts[1]:
+			continue
+		if FactionDB.pair_key(parts[0], parts[1]) != key:
+			continue  # non-canonical ordering: the same pair under a second name
+		var val := clampi(int((saved as Dictionary)[k_v]),
+			-FactionDB.DELTA_SPAN, FactionDB.DELTA_SPAN)
+		if val != 0:
+			faction_deltas[key] = val
+
+
 func shake_enabled() -> bool:
 	# Reduced motion subsumes shake: someone who asked for less movement is not
 	# asking to keep the camera lurching. The reverse is not true.
@@ -568,6 +685,10 @@ func reset_to_starter() -> void:
 	seams_cut = {}
 	apex_intel = {}
 	intel_version += 1
+	# A new survey is a new political slate: the deltas are RUN STATE, cleared
+	# with the ledger. The baseline needs no reset — it is a const table.
+	faction_deltas = {}
+	faction_version += 1
 	warehouse = {}
 	# A new survey is a new logbook. ship_name is deliberately NOT reset — see the
 	# field comment: what you called your ship outlives the run that named it.
@@ -1824,6 +1945,7 @@ func save_game() -> void:
 		"captains_log": captains_log,
 		"commission_claimed": commission_claimed,
 		"commissioned": commissioned,
+		"faction_deltas": faction_deltas,
 	}
 	var f := FileAccess.open(save_path, FileAccess.WRITE)
 	if f == null:
@@ -1975,6 +2097,11 @@ func load_game() -> bool:
 	_load_seams_cut(data.get("seams_cut", {}))
 	_load_apex_intel(data.get("apex_intel", {}))
 	_load_warehouse(data.get("warehouse", {}))
+	# v18. A v17 save has no key and arrives at the authored baseline — which by
+	# construction IS the world that save was written in, so the migration can
+	# neither grant nor revoke anything. No grandfather branch needed, and per
+	# the v8/v14 precedent there never should be one.
+	_load_faction_deltas(data.get("faction_deltas", {}))
 
 	# v6 fields. Merged key-by-key onto the defaults rather than taken wholesale,
 	# so a v6 save written before a later setting existed still gets that

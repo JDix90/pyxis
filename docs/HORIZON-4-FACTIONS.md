@@ -1,8 +1,16 @@
-# Horizon 4 — Factions (SPECCED, NOT BUILT)
+# Horizon 4 — Factions
 
-Status as of the end of the 2026-07-31 session: **fully designed with the user,
-adversarially reviewed, no code written.** Every fork below was put to the user
-as an explicit question and answered; the answers are recorded as settled.
+Status as of the end of the 2026-08-01 session: **fully designed with the user
+and adversarially reviewed. Stage 1 is BUILT (save v18, STRATEGY §47);
+stages 2–6 are specced, not built.**
+
+> **Stage 1 has not been swept.** It was written in an environment with no
+> Godot binary. See README's unmeasured-baseline note before trusting any
+> number, and run the `--import` pass first — stage 1 adds a `class_name`.
+
+Every fork below was put to the user as an explicit question and answered; the
+answers are recorded as settled. Where building stage 1 changed a decision, the
+section says so inline rather than being quietly edited.
 
 This file follows the HORIZON-3-COMMISSION.md pattern: numbered sections,
 "settled — do not re-litigate" markers, rejected alternatives recorded rather
@@ -157,7 +165,33 @@ into ports to keep the count at five (the user explicitly asked for placeless
 additions; the Tithe in particular *must* be placeless — a toll collector with
 a dock is a shop).
 
-## 4. Stage 1 — the allegiance layer, alone
+## 4. Stage 1 — the allegiance layer, alone — **BUILT**
+
+> **As built.** The narrative of what changed and why is STRATEGY §47; what
+> follows is the plan, kept as written, with build-time corrections marked.
+> Shipped: `scripts/data/faction_db.gd`, the matrix and v18 save in
+> `game_state.gd`, faction/targeting/attribution on both hostile classes,
+> every `take_damage` caller updated, `PYXIS_FACTIONTEST` (10 assertions) and
+> `SAVETEST=migrate17` (3).
+>
+> **Four corrections the build made to this plan:**
+> 1. The `combatants` group is what carries allegiance; `hostiles` is
+>    untouched and still means "opposed to the player". The plan's phrasing
+>    ("allies are emphatically not in `hostiles`") was right but understated —
+>    `hostiles` could not be *derived*, because six systems read it as the
+>    player-opposition set.
+> 2. Deltas are **sparse by invariant** (zero is erased, never stored). This
+>    was not in the plan and is what lets `NO INPUT, NO DRIFT` assert on
+>    emptiness rather than touring 240 pairs.
+> 3. Not a correction but a confirmation worth recording: §2's split — an
+>    asymmetric authored baseline, symmetric player deltas — survived contact
+>    with the code, and is now enforced rather than merely intended. A
+>    canonical `pair_key` makes an asymmetric *delta* unrepresentable, while
+>    the authored table stays free to say the Grin hates the Authority more
+>    than the Authority minds the Grin.
+> 4. The apex scrapping its own pending probes no longer pays the player loot
+>    or kill credit. Deliberate, and the one player-visible behaviour change in
+>    a stage that promised none — see STRATEGY §47.
 
 The foundation ships first, with **zero new content**, the way Hunt stage 1
 built the door before stage 2 moved anything. Visible change to a player:
@@ -201,6 +235,101 @@ What it contains:
   group is load-bearing everywhere (raid counting, cleanup, BANDS-style
   sweeps). Allies get `"cordon"`/`"allied"` groups and their own teardown;
   children of SystemRoot die with the warp for free, like everything else.
+
+## 4b. Stage 2 preparation — what stage 1 leaves ready, and what it does not
+
+Written at the end of the stage-1 session, while the code was in hand. §5 and
+§6 are the *design*; this is the implementation runway.
+
+### What stage 2 inherits, already built and asserted
+
+- `faction` on both hostile classes, set before `add_child`. A Cordon picket
+  is `var h := Hostile.new(); h.faction = "gsa"` — no new class, no new
+  spawner shape.
+- Allegiance-aware targeting. A `"gsa"` picket already refuses to fire on the
+  player at any standing (asserted by `THE CORDON NEVER FIRES ON THE
+  SURVEYOR`, which stands up a real picket and asks the real selector), and
+  already engages anything its row calls HOSTILE. **Stage 2 does not write
+  targeting code.** It writes patrol movement.
+- Attribution. A picket killing a sentry pays nothing and ticks nothing,
+  today, with no further work — `SKIRMISH PAYS NOTHING` (stage 3's assertion)
+  is already true by construction.
+- `FactionDB.TINTS` carries the Cordon's authority blue and the precedence
+  rule (faction > raid > band) as a written-down comment. **Nothing reads it
+  yet.** Wiring it is stage 2's, and it owes the palette audit (finding A2).
+
+### The five edits stage 2 actually makes
+
+1. **`hostile.gd`** — a waypoint patrol mode. It drifts around `_home` today
+   (`_process`, the `sin/cos` line); patrolling is a route and a leash back to
+   it. The engage envelope (~12u out, ~25u give-up) is new state, not a new
+   behaviour: `_combat_target` already returns the right node.
+2. **`system_db.gd`** — a `patrols` array per system, beside `sentries`, and
+   `derelict` grows `bearing_deg` + `depth`. Both are authored data.
+3. **`system_builder.gd`** — `_build_patrols` beside `_build_sentries` (and
+   into the `skip_sentries` quiet path: nothing shoots at a menu, and a title
+   screen over a patrol skirmish is noise). `_build_derelict` learns to place
+   from bearing/depth, and gains the `training` branch.
+4. **`derelict.gd`** — nothing, if the training hull is expressed as
+   `counts_as_survey: false` on an ordinary derelict def. That flag already
+   exists and already does exactly this for deep hulks. **Do not add a
+   `TrainingHull` class.**
+5. **`main.gd`** — the parley exemption (finding A3), and the harness work.
+
+### Numbers settled by stage 1's reading of the code
+
+- Relocation depth **100 / 130 / 150** for pyx01/02/03. All are inside band 1
+  (`BAND_EDGES[1]` is 160), where `PACK_CHANCE[1] = 0.0` — so no procedural
+  pack can ever spawn on the approach — and all are past
+  `CONTENT_MIN_DEPTH` (24). pyx01's hull lands at radius 140 from origin
+  against a lair at 300–380, so the derelict can never fall inside
+  `LAIR_KEEPOUT` (120) for any run seed. That is a provable property and
+  should be asserted as one, not assumed.
+- The derelict's own placement must draw from **no RNG stream** (authored
+  bearing and depth), which is what keeps DEEPTEST's WORLD FINGERPRINT still.
+  Its suppression radius runs at instantiation, in `built_plan` and its four
+  consumers — never in `plan_cell`. §39 already litigated this; re-read it
+  before touching the generator.
+
+### Collisions found while building stage 1 that stage 2 will hit
+
+- **`_load_system` line ~933** arms the apex wake from `GameState.breached`
+  and `_find_apex()`. It never reads the derelict's position, and `_wake_apex`
+  has been a proximity poll since v15 — so relocation genuinely does not
+  touch the wake chain. Verified, not assumed.
+- **PACINGTEST's `_pacing_derelict_yield`** grabs
+  `get_first_node_in_group("crackable")` in the charted system. Post-
+  relocation that is the **training hull**, and the `derelict: 1` term in
+  `PACING_LOOP` would silently measure a stub. This is finding A8 and it is
+  the most likely way stage 2 goes quietly wrong. Re-aim it *and re-measure
+  the loop* — the number will move, and it must be recorded rather than
+  reasoned about.
+- **`main.gd` line ~5266's comment** names "PYX-01's four lane guards,
+  authored 6-20u out to cover the derelict". The sentries move with the hull
+  (the ask says so); that comment moves with them.
+- **`tutorial.gd` step 5** looks up `get_first_node_in_group("crackable")` and
+  completes when it is gone. With two hulls in PYX-01 that lookup is
+  ambiguous — whichever is first in the tree wins. The tutorial must find the
+  **training** hull explicitly.
+
+### The one thing stage 2 cannot start without
+
+**§6's OPEN is a blocker, not a detail.** With a training hull in PYX-01,
+something has to decide what the tutorial's finale *charts*, and the two
+answers give different games:
+
+- **(a)** the training hull charts PYX-02, keeping §38's "the tutorial ends by
+  opening the world" — but then `GameState.breached` is set by a hull that
+  teaches rather than by the hull outside the cordon, and two hulls in one
+  system both claim the gate.
+- **(b)** the tutorial ends by teaching the verb and *pointing* at the cordon;
+  the relocated hull charts PYX-02, so the world opens on the player's first
+  real expedition. Stronger fiction, and it makes the relocation teach itself
+  — at the cost of a seventh tutorial step (`step_count()` returns 6) and a
+  longer onboarding.
+
+Ask before building. This is the same shape as the Commission doc's single
+OPEN, and it should be answered the same way.
 
 ## 5. Stage 2 — the Authority, the Cordon, and what "assist" means
 

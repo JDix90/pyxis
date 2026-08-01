@@ -706,7 +706,14 @@ func damage_multiplier() -> float:
 
 # --- damage -----------------------------------------------------------------
 
-func take_damage(amount: float) -> void:
+func take_damage(amount: float, _attacker: Node3D = null) -> void:
+	# The engine takes the attacker for SIGNATURE COMPATIBILITY only, and the
+	# underscore says so: it is the one combatant whose death is already
+	# attributed by a different mechanism entirely (on_apex_defeated ->
+	# mark_apex_down, and the first-kill bonus rides on cracking the wreck, a
+	# second trip). The default is safe HERE and nowhere else — nothing but the
+	# player has ever been able to damage an apex, and CORE_RANGE below is what
+	# keeps it that way.
 	if state in [State.DORMANT, State.WAKING, State.DYING]:
 		FX.flash(get_parent(), global_position, Palette.TEAL, 1.0, 0.12)
 		Sfx.play("hit", -18.0, 1.9)
@@ -749,7 +756,10 @@ func _advance_phase() -> void:
 
 	for probe in _pending_probes:
 		if is_instance_valid(probe) and probe.has_method("take_damage"):
-			probe.take_damage(99999.0)
+			# `self`, not the player: the engine is scrapping its own pending
+			# probes on a phase change. Attributing them to the player would
+			# pay loot and tick a kill_swarm contract for ships nobody shot.
+			probe.take_damage(99999.0, self)
 	_pending_probes.clear()
 	for i in range(PLATE_COUNT):
 		_plate_welded[i] = false
@@ -785,7 +795,10 @@ func _die() -> void:
 
 	for probe in _pending_probes:
 		if is_instance_valid(probe) and probe.has_method("take_damage"):
-			probe.take_damage(99999.0)
+			# `self`, not the player: the engine is scrapping its own pending
+			# probes on a phase change. Attributing them to the player would
+			# pay loot and tick a kill_swarm contract for ships nobody shot.
+			probe.take_damage(99999.0, self)
 	_pending_probes.clear()
 
 	var main := tree.get_first_node_in_group("main")

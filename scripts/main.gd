@@ -54,6 +54,7 @@ const HARNESS_VARS := [
 	"PYXIS_DOCKTEST",
 	"PYXIS_ECONDEMO",
 	"PYXIS_ENVTEST",
+	"PYXIS_FACTIONTEST",
 	"PYXIS_MANUALTEST",
 	"PYXIS_FEELTEST",
 	"PYXIS_FORGETEST",
@@ -651,6 +652,14 @@ func _ready() -> void:
 		_load_system(GameState.current_system)
 		_enter_playing()
 		_run_env_test()
+		return
+
+	if OS.get_environment("PYXIS_FACTIONTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_faction_test()
 		return
 
 	if OS.get_environment("PYXIS_MANUALTEST") != "":
@@ -5755,7 +5764,9 @@ func _run_deep_test() -> void:
 	#     away disarms it. Both are visibly wrong.
 	var partial_key := gcell
 	if live_guards.size() > 1:
-		(live_guards[0] as Hostile).take_damage(999999.0)
+		# Attributed to the player: this stands in for a pilot clearing a post,
+		# and post_standing is only interesting for a post somebody CLEARED.
+		(live_guards[0] as Hostile).take_damage(999999.0, player)
 	await get_tree().create_timer(0.6).timeout
 	player.global_position = gplan["pos"] + Vector3(900.0, 0.0, 900.0)
 	for i in range(6):
@@ -5770,7 +5781,7 @@ func _run_deep_test() -> void:
 	# Now clear it outright and repeat.
 	for n in deep_space.guards_at(gcell):
 		if is_instance_valid(n):
-			(n as Hostile).take_damage(999999.0)
+			(n as Hostile).take_damage(999999.0, player)
 	await get_tree().create_timer(0.6).timeout
 	player.global_position = gplan["pos"] + Vector3(900.0, 0.0, 900.0)
 	for i in range(6):
@@ -9952,6 +9963,14 @@ func _run_save_test() -> void:
 		GameState.captains_log.clear()
 		for i in range(GameState.LOG_MAX + 2):
 			GameState.note_log("LOGBOOK ENTRY %02d" % i)
+		# v18 faction matrix. Two DISTINCT values on two DISTINCT pair shapes —
+		# one the player is party to, one between two third parties — for the
+		# same reason the ledger carries six distinct sentinels: equal values
+		# would let a swapped key mapping round-trip cleanly and pass. Written
+		# through shift_faction so the canonical key ordering is produced by
+		# the code under test rather than by the fixture.
+		GameState.shift_faction(FactionDB.SURVEYOR, "grin", 4)
+		GameState.shift_faction("gsa", "bastion", -3)
 		GameState.save_game()
 		print("[savetest] wrote warehouse=", GameState.warehouse)
 		print("[savetest] wrote salvage=", GameState.salvage,
@@ -10491,6 +10510,68 @@ func _run_save_test() -> void:
 			and GameState.has_apex_down("pyx01") and GameState.apex_killed.is_empty()
 		print("[savetest] v17 THE KILL LIST REJECTS RUBBISH 3 entries in (one unknown, one duplicate), kept %s with no bonus collected -> %s" % [
 			str(GameState.apex_down), "PASS" if clean17 else "FAIL"])
+	elif mode == "migrate17":
+		# v18 adds the faction matrix. Unlike v15 and v17 this migration has NO
+		# grandfather and must not have one: the authored baseline IS the world
+		# a v17 save was written in — every hostile FERAL, FERAL hostile to the
+		# surveyor, nobody allied with anybody — so "absent key means baseline"
+		# already reproduces that save's reality exactly. There is nothing to
+		# infer and nothing that could be revoked.
+		var v17 := {
+			"version": 17,
+			"salvage": 8400,
+			"current_system": "pyx02",
+			"breached": ["pyx01"],
+			"lanes_open": ["pyx01", "pyx02"],
+			"apex_down": ["pyx01"],
+			"run_seed": 909090,
+			"tutorial_step": -1,
+		}
+		var f17 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f17.store_string(JSON.stringify(v17))
+		f17.close()
+		var ok17 := GameState.load_game()
+		# The claim is EMPTINESS, not "some particular pair reads N": the sparse
+		# invariant makes an empty store and "every pair at its baseline" the
+		# same statement, so this one check covers all 240 ordered pairs.
+		var at_baseline: bool = GameState.faction_deltas.is_empty() \
+			and GameState.faction_attitude(FactionDB.SURVEYOR, FactionDB.FERAL)
+				== FactionDB.baseline_attitude(FactionDB.SURVEYOR, FactionDB.FERAL) \
+			and GameState.faction_band(FactionDB.FERAL, FactionDB.SURVEYOR)
+				== FactionDB.Band.HOSTILE
+		var kept17: bool = GameState.salvage == 8400 and GameState.run_seed == 909090 \
+			and GameState.has_apex_down("pyx01")
+		print("[savetest] v17->v18 A V17 SAVE ARRIVES AT THE BASELINE deltas=%s feral-vs-surveyor=%s, other state kept=%s -> %s" % [
+			str(GameState.faction_deltas),
+			FactionDB.BAND_NAMES[GameState.faction_band(FactionDB.FERAL, FactionDB.SURVEYOR)],
+			str(kept17), "PASS" if ok17 and at_baseline and kept17 else "FAIL"])
+
+		# The round trip, driven through the real mutator rather than by
+		# assigning the dict — shift_faction is what a contract will call.
+		GameState.shift_faction(FactionDB.SURVEYOR, "grin", 3)
+		GameState.shift_faction("gsa", "bastion", -2)
+		GameState.save_game()
+		GameState.faction_deltas = {}
+		GameState.load_game()
+		var round18: bool = int(GameState.faction_deltas.get(
+				FactionDB.pair_key(FactionDB.SURVEYOR, "grin"), 0)) == 3 \
+			and int(GameState.faction_deltas.get(
+				FactionDB.pair_key("gsa", "bastion"), 0)) == -2
+		print("[savetest] v18 ROUND TRIP faction_deltas %s -> %s" % [
+			str(GameState.faction_deltas), "PASS" if round18 else "FAIL"])
+
+		# And a delta driven back to zero must LEAVE the file, not sit in it as
+		# a stored 0 — the sparse invariant is what NO INPUT, NO DRIFT asserts
+		# against, so a zero that round-trips would quietly retire that check.
+		GameState.shift_faction(FactionDB.SURVEYOR, "grin", -3)
+		GameState.save_game()
+		GameState.faction_deltas = {"stale|key": 5}
+		GameState.load_game()
+		var sparse18: bool = not GameState.faction_deltas.has(
+			FactionDB.pair_key(FactionDB.SURVEYOR, "grin"))
+		print("[savetest] v18 ZERO IS ABSENCE cleared pair stored=%s, file now %s -> %s" % [
+			str(not sparse18), str(GameState.faction_deltas),
+			"PASS" if sparse18 else "FAIL"])
 	elif mode == "partial6":
 		# A v6 save written before a later setting existed must still get that
 		# setting's default rather than a missing key — the reason load merges
@@ -10561,6 +10642,20 @@ func _run_save_test() -> void:
 		print("[savetest] v10 LOGBOOK ledger %s, name '%s' (%d chars, cap %d) -> %s" % [
 			str(GameState.ledger), GameState.ship_name, GameState.ship_name.length(),
 			GameState.SHIP_NAME_MAX, "PASS" if led_ok and name_ok else "FAIL"])
+
+		# v18 faction matrix, through the real file layer. Two distinct pairs
+		# with two distinct values, and the SIZE checked too: a load that
+		# invented a third pair, or dropped one, would otherwise pass on the two
+		# it happened to keep.
+		var fac_player := int(GameState.faction_deltas.get(
+			FactionDB.pair_key(FactionDB.SURVEYOR, "grin"), 0))
+		var fac_third := int(GameState.faction_deltas.get(
+			FactionDB.pair_key("gsa", "bastion"), 0))
+		var fac_ok: bool = fac_player == 4 and fac_third == -3 \
+			and GameState.faction_deltas.size() == 2
+		print("[savetest] v18 FACTION MATRIX %s (surveyor|grin=%d, gsa|bastion=%d) -> %s" % [
+			str(GameState.faction_deltas), fac_player, fac_third,
+			"PASS" if fac_ok else "FAIL"])
 
 		# v12 captain's log. Compared element by element, never by size: the write
 		# leg put LOG_MAX + 2 in, so the surviving ten must be the LAST ten, in
@@ -12118,6 +12213,290 @@ func _world_fingerprint() -> String:
 # fingerprint line in it. A constant captured afterwards would agree with
 # whatever it was given and prove nothing.
 const WORLD_FINGERPRINT_BEFORE_SEAMS := "3836096557"
+
+
+func _clear_faction_matrix() -> void:
+	# Between harness sections, NOT reset_to_starter: that rolls a fresh
+	# run_seed and tears down cargo, fit and progression to prove a point about
+	# diplomacy. Clearing the store is the smallest thing that restores the
+	# baseline, and the sparse invariant is what makes it sufficient.
+	GameState.faction_deltas = {}
+	GameState.faction_version += 1
+
+
+func _clear_loot_cubes() -> void:
+	# free(), not queue_free(): the count on the very next line has to see the
+	# cubes gone, and a queued free is still a child when it is read.
+	for c in system_root.get_children():
+		if c is LootCube:
+			c.free()
+
+
+func _run_faction_test() -> void:
+	# HORIZON 4 STAGE 1 — the allegiance layer, which ships with NO new content.
+	# Every claim below is about a RULE rather than about a rendering, because
+	# stage 1 deliberately changes nothing a player can see: the whole point is
+	# that the world after it is bit-identical to the world before it, and the
+	# only instrument that can say so is this file.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	if player:
+		player.invulnerable = true
+	_wave_timer = 1.0e9
+	_apex_wake_timer = -1.0
+	await get_tree().create_timer(0.3).timeout
+
+	# --- 1. NO INPUT, NO DRIFT ------------------------------------------------
+	# The assertion the whole "player actions only" decision rests on. A matrix
+	# that can move on a clock is a matrix no harness can defend, so the claim
+	# is made in the strongest available form: run real time, tick the world,
+	# and require the delta store to still be EMPTY -- which the sparse
+	# invariant makes equivalent to "every pair is exactly its baseline".
+	GameState.reset_to_starter()
+	# reset_to_starter ROLLS A FRESH run_seed from the system clock -- it is the
+	# one number in the game that must not be deterministic -- so calling it
+	# mid-harness silently un-pins the salt _ready pinned. Nothing below reads a
+	# lair, but leaving a harness unpinned is how the next assertion added here
+	# inherits a bug it did not cause.
+	GameState.run_seed = RUN_SEED_PINNED
+	var v_before := GameState.faction_version
+	var att_before := GameState.faction_attitude(FactionDB.SURVEYOR, "gsa")
+	await get_tree().create_timer(2.0).timeout
+	GameState.advance_clock(3600.0)
+	await get_tree().create_timer(0.5).timeout
+	var no_drift: bool = GameState.faction_deltas.is_empty() \
+		and GameState.faction_version == v_before \
+		and GameState.faction_attitude(FactionDB.SURVEYOR, "gsa") == att_before
+	print("[faction] NO INPUT, NO DRIFT 2.5s live + 1h clock, deltas=%d version moved=%s -> %s" % [
+		GameState.faction_deltas.size(), str(GameState.faction_version != v_before),
+		"PASS" if no_drift else "FAIL"])
+
+	# --- 2. the baseline IS the shipped world --------------------------------
+	# Stage 1's entire safety argument in one line. Every hostile the game
+	# spawns today defaults to FERAL, so if FERAL hates the surveyor and nothing
+	# else, the targeting rewrite cannot have changed who shoots whom. The
+	# second clause is the one that matters: no pair of NPC factions is HOSTILE
+	# in a way that any SHIPPED spawner could express, because nothing sets a
+	# faction yet.
+	var feral_enemies := GameState.enemies_of(FactionDB.FERAL)
+	var feral_ok: bool = feral_enemies.size() == 1 \
+		and feral_enemies[0] == FactionDB.SURVEYOR
+	var live_flags := {}
+	for n_v in get_tree().get_nodes_in_group("combatants"):
+		live_flags[String((n_v as Node3D).faction)] = true
+	var all_feral: bool = live_flags.keys().size() <= 1 \
+		and (live_flags.is_empty() or live_flags.has(FactionDB.FERAL))
+	print("[faction] FERAL IS THE SHIPPED WORLD feral hates %s, live flags in-system %s -> %s" % [
+		str(feral_enemies), str(live_flags.keys()),
+		"PASS" if feral_ok and all_feral else "FAIL"])
+
+	# --- 3. targeting honours the table --------------------------------------
+	# Driven through the real target selector on a real node at every band,
+	# not through a reimplementation of it. A sentry is flagged into each band
+	# in turn and asked who it would shoot; only HOSTILE may answer "the
+	# player". Restored to FERAL afterwards so nothing downstream inherits it.
+	var probe_sentry := Hostile.new()
+	probe_sentry.difficulty = 1.0
+	system_root.add_child(probe_sentry)
+	probe_sentry.global_position = player.global_position + Vector3(3.0, 0, 0)
+	await get_tree().process_frame
+	var band_rows: Array = []
+	var band_ok := true
+	for row in [["gsa", 0], ["bastion", 0], ["combine", 0], ["feral", 1]]:
+		probe_sentry.faction = String(row[0])
+		probe_sentry._enemies_version = -1          # force the cache to re-ask
+		probe_sentry._target = null
+		probe_sentry._aggro = null
+		probe_sentry._retarget_t = 0.0
+		var picked: Node3D = probe_sentry._combat_target(0.0)
+		var shoots := 1 if (picked != null and picked.is_in_group("player")) else 0
+		band_rows.append("%s:%s=%d" % [row[0],
+			FactionDB.BAND_NAMES[GameState.faction_band(String(row[0]), FactionDB.SURVEYOR)],
+			shoots])
+		if shoots != int(row[1]):
+			band_ok = false
+	print("[faction] TARGETING HONOURS THE TABLE %s (1 = would fire on the player) -> %s" % [
+		str(band_rows), "PASS" if band_ok else "FAIL"])
+
+	# --- 4. docked is still safe ---------------------------------------------
+	# The one rule that outranks the matrix AND aggro. Asserted against a
+	# genuinely hostile sentry that has already been shot by the player, which
+	# is the case a naive aggro implementation gets wrong.
+	probe_sentry.faction = FactionDB.FERAL
+	probe_sentry._enemies_version = -1
+	probe_sentry.take_damage(1.0, player)           # give it a grudge
+	var aggro_holds: bool = probe_sentry._combat_target(0.0) == player
+	player.docked = true
+	probe_sentry._retarget_t = 0.0
+	var while_docked: Node3D = probe_sentry._combat_target(0.0)
+	player.docked = false
+	# Reported from the value CAPTURED while docked, never re-measured in the
+	# print: undocking happens on the line above, so a second call would answer
+	# a different question and print "safe" for a sentry that was not.
+	print("[faction] DOCKED IS STILL SAFE aggro before dock=%s, target while docked=%s -> %s" % [
+		str(aggro_holds), "none" if while_docked == null else String(while_docked.name),
+		"PASS" if aggro_holds and while_docked == null else "FAIL"])
+
+	# --- 5. an NPC kill pays nothing, and a player kill still does -----------
+	# BOTH DIRECTIONS, in one measurement, because either half alone is a test
+	# that passes on broken code: "NPC kills pay nothing" is satisfied by an
+	# economy that pays nobody, and "player kills pay" is satisfied by one that
+	# pays everybody. The two are measured against the same counters.
+	# Counted EXACTLY rather than compared loosely, and counted on the next
+	# frame rather than after a settle: SwarmHostile._die spills synchronously,
+	# and a cube older than 0.35s starts flying at the player -- so a harness
+	# that waits is racing a magnet and measuring collection, not attribution.
+	# LOOT_COUNT is read from the class so the expected number cannot drift
+	# from the one the game actually uses.
+	# A ONE-ELEMENT ARRAY, not an int, and the reason is a GDScript rule that
+	# has silently defeated counters like this before: a lambda captures a local
+	# by VALUE, so `kills += 1` inside one increments a copy and the outer
+	# variable reads 0 forever — an assertion that can only ever say "no kills
+	# were credited", which is exactly the answer half this check wants to hear.
+	# An Array is captured by reference, so mutating its contents is visible.
+	var kills_seen := [0]
+	var tally := func(_kind: String) -> void: kills_seen[0] += 1
+	hostile_killed.connect(tally)
+
+	var victim_a := SwarmHostile.new()
+	system_root.add_child(victim_a)
+	victim_a.global_position = player.global_position + Vector3(9.0, 0, 9.0)
+	await get_tree().process_frame
+	_clear_loot_cubes()
+	victim_a.take_damage(99999.0, probe_sentry)     # machine kills machine
+	await get_tree().process_frame
+	var loot_npc := _count_loot_cubes()
+	var kills_npc: int = kills_seen[0]
+	_clear_loot_cubes()
+
+	var victim_b := SwarmHostile.new()
+	system_root.add_child(victim_b)
+	victim_b.global_position = player.global_position + Vector3(9.0, 0, -9.0)
+	await get_tree().process_frame
+	victim_b.take_damage(99999.0, player)           # the player kills one
+	await get_tree().process_frame
+	var loot_player := _count_loot_cubes()
+	var kills_player: int = kills_seen[0] - kills_npc
+	hostile_killed.disconnect(tally)
+	_clear_loot_cubes()
+
+	var npc_paid_nothing: bool = loot_npc == 0 and kills_npc == 0
+	var player_paid: bool = loot_player == SwarmHostile.LOOT_COUNT and kills_player == 1
+	print("[faction] ATTRIBUTION GATES THE PAYOUT npc kill: %d cubes %d credit | player kill: %d cubes (want %d) %d credit -> %s" % [
+		loot_npc, kills_npc, loot_player, SwarmHostile.LOOT_COUNT, kills_player,
+		"PASS" if npc_paid_nothing and player_paid else "FAIL"])
+
+	if is_instance_valid(probe_sentry):
+		probe_sentry.queue_free()
+
+	# --- 6. no caller may guess who is shooting ------------------------------
+	# Finding A1 as a STATIC assertion, because the dynamic one cannot see a
+	# call site that is never exercised. Both hostile classes declare
+	# take_damage with a REQUIRED attacker, so a caller that forgets the
+	# argument is a parse error rather than a silent mis-booking -- and this
+	# line fails the moment somebody "helpfully" adds a default to make a new
+	# call site compile.
+	var required_arg := true
+	var sig_seen: Array = []
+	for path in ["res://scripts/hostile.gd", "res://scripts/swarm_hostile.gd"]:
+		var src := FileAccess.get_file_as_string(path)
+		var idx := src.find("func take_damage(")
+		var sig := src.substr(idx, src.find(")", idx) - idx + 1) if idx >= 0 else "<absent>"
+		sig_seen.append(sig)
+		if idx < 0 or sig.find("attacker: Node3D)") < 0:
+			required_arg = false
+	print("[faction] ATTRIBUTION IS EXPLICIT %s -> %s" % [
+		str(sig_seen), "PASS" if required_arg else "FAIL"])
+
+	# --- 7. the matrix is bounded --------------------------------------------
+	# One act may not flip an alliance. The strongest single shift any stage may
+	# author is asserted to be smaller than a band, so standing is an arc rather
+	# than a switch -- and the store is asserted to CLAMP rather than to grow,
+	# so no amount of repetition can produce an unbounded save.
+	_clear_faction_matrix()
+	for i in range(200):
+		GameState.shift_faction(FactionDB.SURVEYOR, "grin", 5)
+	var pushed := int(GameState.faction_deltas.get(
+		FactionDB.pair_key(FactionDB.SURVEYOR, "grin"), 0))
+	var att_max := GameState.faction_attitude(FactionDB.SURVEYOR, "grin")
+	for i in range(400):
+		GameState.shift_faction(FactionDB.SURVEYOR, "grin", -5)
+	var pulled := int(GameState.faction_deltas.get(
+		FactionDB.pair_key(FactionDB.SURVEYOR, "grin"), 0))
+	var bounded: bool = pushed == FactionDB.DELTA_SPAN and pulled == -FactionDB.DELTA_SPAN \
+		and att_max <= FactionDB.ATTITUDE_MAX \
+		and GameState.faction_attitude(FactionDB.SURVEYOR, "grin") >= FactionDB.ATTITUDE_MIN
+	print("[faction] DELTAS ARE BOUNDED 200 pushes -> %d (cap %d), 400 pulls -> %d, attitude %d..%d -> %s" % [
+		pushed, FactionDB.DELTA_SPAN, pulled, FactionDB.ATTITUDE_MIN, FactionDB.ATTITUDE_MAX,
+		"PASS" if bounded else "FAIL"])
+
+	# --- 8. the Authority never fires on the surveyor ------------------------
+	# The one authored floor (HORIZON-4 §2), asserted in the form that matters:
+	# not "the number is >= -3" but "no amount of hostility makes a Cordon
+	# picket target the player". Driven through the real selector, both
+	# directions of the pair, after the worst grudge the mutator allows.
+	_clear_faction_matrix()
+	for i in range(200):
+		GameState.shift_faction(FactionDB.SURVEYOR, "gsa", -5)
+	var cordon := Hostile.new()
+	cordon.faction = "gsa"
+	system_root.add_child(cordon)
+	cordon.global_position = player.global_position + Vector3(2.0, 0, 0)
+	await get_tree().process_frame
+	cordon._enemies_version = -1
+	var cordon_target: Node3D = cordon._combat_target(0.0)
+	var floor_holds: bool = cordon_target == null \
+		and GameState.faction_band("gsa", FactionDB.SURVEYOR) != FactionDB.Band.HOSTILE \
+		and GameState.faction_band(FactionDB.SURVEYOR, "gsa") != FactionDB.Band.HOSTILE
+	print("[faction] THE CORDON NEVER FIRES ON THE SURVEYOR after 200 hostile acts band=%s, picket target=%s -> %s" % [
+		FactionDB.BAND_NAMES[GameState.faction_band("gsa", FactionDB.SURVEYOR)],
+		"none" if cordon_target == null else String(cordon_target.name),
+		"PASS" if floor_holds else "FAIL"])
+	cordon.queue_free()
+
+	# --- 9. the load path rejects rubbish ------------------------------------
+	# The seams_cut/warehouse posture: a hand-edited file arrives as valid state
+	# or not at all. Four separate attacks in one fixture -- an unknown faction,
+	# a self-pair, a non-canonical key ordering (the same pair under a second
+	# name, which is how a symmetric store grows an asymmetry), and an
+	# out-of-range value.
+	_clear_faction_matrix()
+	GameState._load_faction_deltas({
+		"grin|surveyor": 3,             # canonical: g < s, kept
+		"surveyor|grin": -9,            # SAME PAIR, wrong order: must be dropped
+		"nosuch|gsa": 4,                # unknown faction: dropped
+		"gsa|gsa": 6,                   # self-pair: dropped
+		"bastion|gsa": 9999,            # clamped, not rejected
+		"embers|gsa": 0,                # zero is absence: must not be stored
+		"malformed": 2,                 # not a pair at all
+	})
+	var kept_keys: Array = GameState.faction_deltas.keys()
+	kept_keys.sort()
+	var clamped := int(GameState.faction_deltas.get("bastion|gsa", 0))
+	var load_ok: bool = kept_keys.size() == 2 \
+		and GameState.faction_deltas.has("grin|surveyor") \
+		and int(GameState.faction_deltas["grin|surveyor"]) == 3 \
+		and clamped == FactionDB.DELTA_SPAN
+	print("[faction] THE MATRIX REJECTS RUBBISH 7 entries in (unknown, self-pair, reversed key, 0, malformed), kept %s clamped=%d -> %s" % [
+		str(kept_keys), clamped, "PASS" if load_ok else "FAIL"])
+
+	# --- 10. every faction id round-trips as a save key ----------------------
+	# Ids are permanent save keys, so the roster and the baseline have to agree
+	# about what exists. Cheap, and it is the check that catches a typo'd id in
+	# BASELINE pointing at a faction nobody ever added.
+	var unknown_refs: Array = []
+	for a_v in FactionDB.BASELINE:
+		if not FactionDB.is_faction(String(a_v)):
+			unknown_refs.append(String(a_v))
+		for b_v in (FactionDB.BASELINE[a_v] as Dictionary):
+			if not FactionDB.is_faction(String(b_v)):
+				unknown_refs.append("%s->%s" % [a_v, b_v])
+	print("[faction] THE ROSTER IS CLOSED %d factions, %d baseline refs to nothing %s -> %s" % [
+		FactionDB.ids().size(), unknown_refs.size(), str(unknown_refs),
+		"PASS" if unknown_refs.is_empty() else "FAIL"])
+
+	_clear_faction_matrix()
+	await get_tree().create_timer(0.2).timeout
+	get_tree().quit()
 
 
 func _run_hunt_test() -> void:
