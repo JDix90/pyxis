@@ -61,6 +61,50 @@ const PACK_DROP := ["", "", "isotopes", "cores", "relics"]
 # Arc hop, which is the same lever the corsair pulls on a rich interdiction.
 const PACK_ESCORT_FROM := 3
 
+# --- chartfolk convoys -------------------------------------------------------
+# TERRITORY VERSUS TRAFFIC. The deep's GROUND stays the unknowns' — the band
+# flag, the nests, the guard posts, everything THE DEEP BELONGS TO THE UNKNOWNS
+# asserts — but the known factions TRAVEL it: small escorted groups walking a
+# short beat between two waypoints, sprung once per cell per session exactly
+# like a nest. They hold nothing, they claim nothing, and when the player
+# leaves they leash away. That distinction is what lets chart powers appear
+# out here without contradicting a claim the harness has pinned since stage 6.
+#
+# 200 is the floor the feature was asked for, and it also clears the Shoals —
+# the band whose whole job is teaching that going out is survivable. 1000 stops
+# a hundred units short of the Quiet: the Hollowing's ground stays untravelled,
+# which is most of what makes arriving there feel like the traffic KNOWS.
+const CONVOY_MIN_DEPTH := 200.0
+const CONVOY_MAX_DEPTH := 1000.0
+# Per-cell odds, on the convoy's own salted stream, AND a cell holds a pack or
+# a convoy, never both — so the effective rate is (1 - PACK_CHANCE) * this,
+# roughly 7% of eligible cells. Meeting traffic should stay an event.
+const CONVOY_CHANCE := 0.10
+# Mirrors PACK_INSET's arithmetic: a convoy anchor and a station in adjacent
+# cells are at least STATION_INSET + CONVOY_INSET = 36 >= STATION_SAFE_RADIUS
+# apart, because a cell only knows its own contents and cross-boundary
+# clearance has to come from geometry.
+const CONVOY_INSET := 14.0
+# Beat half-length. The worst cross-cell case keeps a waypoint 24u from a
+# neighbouring dock ring (22 + 14 - 12), clear of DOCK_RANGE + ENGAGE_RANGE;
+# and 24u end to end is 4x MARCH_ARRIVE, so darts genuinely walk it rather
+# than standing inside the arrive radius of both ends at once.
+const CONVOY_LEG := 12.0
+# Fixed pick order; the weight rows index it. Weighted toward the factions
+# with DESKS out here — league's relay, grin's haven and combine's forge are
+# band-2 stations, bastion's Blackwatch Yard is band 3 — because traffic near
+# a door it could plausibly be walking toward reads as a world, and the same
+# names on the standing line at the desk and the paint outside is the whole
+# faction system agreeing with itself. The Tithe is pinned low at 0.10: it is
+# the ONLY hostile convoy and the only one that pays, and 14's weather-not-tax
+# rule applies to how often the sky may contain it.
+const CONVOY_FACTIONS := ["league", "grin", "combine", "embers", "procession",
+	"bastion", "tithe"]
+const CONVOY_WEIGHTS := {
+	2: [0.22, 0.20, 0.20, 0.12, 0.11, 0.05, 0.10],
+	3: [0.15, 0.15, 0.15, 0.10, 0.10, 0.25, 0.10],
+}
+
 # --- deep stations -----------------------------------------------------------
 # Sparse and getting less so with distance — the reward for going out is that
 # there is somewhere out there. At these odds a 5x5 window holds a station about
@@ -354,6 +398,11 @@ const BUILD_BUDGET_USEC := 5000
 # hostile has; the CELL owns them, and _despawn_cell frees them explicitly.
 var _guards := {}       # Vector2i -> Array[Hostile]
 var _guard_origin := {} # Vector2i -> Vector3, the hulk the post stands over
+# Sprung convoys: Vector2i -> {"darts": [...], "escorts": [...], "wp": [a, b]}.
+# Members live in system_root like every sprung hostile; the LEASH ends their
+# lives, not the cell, so this dict only exists to drive _tick_convoys and to
+# give the harness a member list. Erased when its last member goes.
+var _convoys := {}
 var _cleared := {}      # Vector2i -> true, posts whose last guard died this session
 # Hulls already opened this session. The post standing over the wreck has had
 # this guarantee since it shipped and the mast on its stern has had it since the
@@ -499,6 +548,19 @@ static func guard_count(roll: float) -> int:
 		if roll < acc:
 			return GUARD_COUNTS[i]
 	return GUARD_COUNTS[GUARD_COUNTS.size() - 1]
+
+
+static func convoy_faction(band: int, roll: float) -> String:
+	# Pure, for guard_count's reason. Falls back to the band-3 row for any
+	# band without one — the same fail-toward-the-shipped-shape direction
+	# every default in this file takes.
+	var w: Array = CONVOY_WEIGHTS.get(band, CONVOY_WEIGHTS[3])
+	var acc := 0.0
+	for i in range(w.size()):
+		acc += float(w[i])
+		if roll < acc:
+			return String(CONVOY_FACTIONS[i])
+	return String(CONVOY_FACTIONS[0])
 
 
 static func guard_posts(hulk_pos: Vector3, rot_y: float, count: int,
@@ -689,6 +751,17 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 				"tint": Palette.band_color(band),
 				"drop": PACK_DROP[band],
 				"escort": band >= PACK_ESCORT_FROM,
+				# THE KEY _spring HAS BEEN READING SINCE STAGE 6, and it was
+				# never written. `pack.get("band", 0)` therefore always said 0,
+				# so every nest in the Reaches and the Quiet flew the HOST
+				# ENGINE's flag with a 140u leash — the Tally's no-leash tell
+				# never once fired from a real nest. THE DEEP BELONGS TO THE
+				# UNKNOWNS stayed green throughout because it asserts
+				# flag_for_band(), not what a spawned ship carries: the rule
+				# was right and every node was wrong. THE PACK REMEMBERS ITS
+				# BAND now asserts the nodes. (Fingerprint-safe: the world
+				# fingerprint hashes pack pos and count only.)
+				"band": band,
 			}
 
 	# APPENDED, after every existing roll and on its own salted stream, exactly
@@ -704,6 +777,53 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 	# nest and station in the game by one draw. PYXIS_MINETEST's WORLD
 	# FINGERPRINT is the check, against a hash recorded before seams existed.
 	out["seams"] = seams_for(cx, cz, band, out["rocks"])
+	# APPENDED AFTER THE SEAMS, on its own salted stream, for the reason both
+	# comments above give. Reads out["pack"] and keep_out — products of the
+	# shared stream — and never draws from `rng`.
+	#
+	# The red-verify taught the rule more precisely than it was written: a
+	# draw from `rng` HERE, after every existing draw, moves NOTHING — the
+	# fingerprint stayed green on it — because trailing the stream is exactly
+	# what makes appending safe. The same draw at the TOP of this function
+	# moved the fingerprint on the first run. So the salted stream is not
+	# protecting today's cells from this block; it is protecting this block
+	# from tomorrow's edits, and the NEXT appended feature from this one.
+	#
+	# EVERY DRAW HAPPENS BEFORE THE GATE. The salted stream's shape must not
+	# depend on what the shared stream rolled (a pack in this cell, a station
+	# nearby): a conditional draw would make the convoy's OWN determinism
+	# hostage to unrelated content, and THE DEEP IS TRAVELLED plans each cell
+	# twice to prove it cannot happen.
+	#
+	# The key is set UNCONDITIONALLY, empty or not, because _deep_probe
+	# indexes pl[key] without a .get — the same contract every other content
+	# key in this dict already honours.
+	out["convoy"] = {}
+	if band >= 2:
+		var crng := RandomNumberGenerator.new()
+		crng.seed = hash("%s|%d|%d|convoy" % [_id, cx, cz])
+		var convoy_roll := crng.randf()
+		var cp := base + Vector3(crng.randf_range(CONVOY_INSET, CELL - CONVOY_INSET), 0.0,
+			crng.randf_range(CONVOY_INSET, CELL - CONVOY_INSET))
+		var cang := crng.randf_range(0.0, TAU)
+		var cfac := convoy_faction(band, crng.randf())
+		var cesc := crng.randi_range(1, 2 if band >= 3 else 1)
+		var cdart := crng.randi_range(4 if band >= 3 else 3, 5 if band >= 3 else 4)
+		var cdepth := depth_at(cp)
+		var leg := Vector3(cos(cang), 0.0, sin(cang)) * CONVOY_LEG
+		# A cell holds a pack OR a convoy, never both: one _armed slot per
+		# cell stays structurally true, and a nest ambushing a convoy it
+		# spawned next to would be the generator staging theatre. Both beat
+		# endpoints respect the station keep-out, not just the anchor — the
+		# escorts WALK, and a waypoint on a dock ring is a picket post nobody
+		# authored.
+		if convoy_roll < CONVOY_CHANCE and (out["pack"] as Dictionary).is_empty() \
+				and cdepth >= CONVOY_MIN_DEPTH and cdepth <= CONVOY_MAX_DEPTH \
+				and cp.distance_to(keep_out) >= STATION_SAFE_RADIUS \
+				and (cp + leg).distance_to(keep_out) >= STATION_SAFE_RADIUS \
+				and (cp - leg).distance_to(keep_out) >= STATION_SAFE_RADIUS:
+			out["convoy"] = {"pos": cp, "band": band, "faction": cfac,
+				"escorts": cesc, "darts": cdart, "wp": [cp + leg, cp - leg]}
 	return out
 
 
@@ -753,7 +873,7 @@ func built_plan(cx: int, cz: int) -> Dictionary:
 	# Mutated in place, which is only safe because plan_cell builds a fresh
 	# dictionary on every call and shares nothing between them.
 	if _has_lair:
-		for key_v in ["station", "pack", "hulk"]:
+		for key_v in ["station", "pack", "hulk", "convoy"]:
 			var key := String(key_v)
 			var thing: Dictionary = plan[key]
 			if not thing.is_empty() \
@@ -763,9 +883,12 @@ func built_plan(cx: int, cz: int) -> Dictionary:
 	# over a wreck out past the cordon is the fiction working, and the hull has
 	# had sentries on it since the game shipped. What must not land here is a
 	# SECOND CRACKABLE (two hulls a few units apart, one of which charts the
-	# next system) or a docking ring on the breach point.
+	# next system) or a docking ring on the breach point. "convoy" IS filtered,
+	# deliberately stricter than the pack: its escorts walk a beat, and a beat
+	# ringing the breach point would read as a second guard post nobody
+	# authored.
 	if _has_hull:
-		for key_v in ["station", "hulk"]:
+		for key_v in ["station", "hulk", "convoy"]:
 			var key := String(key_v)
 			var thing: Dictionary = plan[key]
 			if not thing.is_empty() \
@@ -925,9 +1048,20 @@ func _stream(around: Vector3) -> void:
 				# built_plan, not plan_cell: arming a nest is instantiation, and a
 				# nest armed inside the keep-out would ambush the player in the
 				# middle of the boss arena from a node that was never built.
-				var pack: Dictionary = built_plan(cx, cz)["pack"]
+				var bp := built_plan(cx, cz)
+				var pack: Dictionary = bp["pack"]
 				if not pack.is_empty() and not _sprung.has(key):
 					_armed[key] = pack
+				# A convoy arms through the same slot — the generator already
+				# guarantees a cell rolls one or the other, and the "kind" tag
+				# is what _check_encounters dispatches on. Mutating bp is safe
+				# for built_plan's own reason: plan_cell builds a fresh dict
+				# per call and shares nothing.
+				var convoy: Dictionary = bp.get("convoy", {})
+				if not convoy.is_empty() and not _sprung.has(key) \
+						and not _armed.has(key):
+					convoy["kind"] = "convoy"
+					_armed[key] = convoy
 				if _cells[key] != null:
 					_build_queue.append(key)
 
@@ -1011,8 +1145,13 @@ func _register_cell(cx: int, cz: int):
 	var mark: Dictionary = plan.get("landmark", {})
 	# Seams only exist where rocks do, so they cannot make an otherwise-empty
 	# cell contentful -- but naming them here keeps the check honest if that ever
-	# stops being true.
-	if rocks.is_empty() and hulk.is_empty() and station.is_empty() and mark.is_empty():
+	# stops being true. A convoy counts too, for the landmark's exact reason: a
+	# cell whose only content is a convoy would otherwise be discarded as empty
+	# and the "content implies a container node" invariant would quietly stop
+	# being true in the sparse cells this feature exists to make less empty.
+	var convoy: Dictionary = plan.get("convoy", {})
+	if rocks.is_empty() and hulk.is_empty() and station.is_empty() \
+			and mark.is_empty() and convoy.is_empty():
 		return null
 
 	var tag := _owner_tag(cx, cz)
@@ -1177,7 +1316,10 @@ func _check_encounters(at: Vector3) -> void:
 			var pack: Dictionary = _armed[key]
 			var p: Vector3 = pack["pos"]
 			if Vector2(p.x - at.x, p.z - at.z).length() <= ENCOUNTER_TRIGGER:
-				_spring(key, pack)
+				if String(pack.get("kind", "pack")) == "convoy":
+					_spring_convoy(key, pack)
+				else:
+					_spring(key, pack)
 	if not _guards.is_empty():
 		_check_hails(at)
 
@@ -1260,6 +1402,117 @@ func _spring(key: Vector2i, pack: Dictionary) -> void:
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud and hud.has_method("show_toast"):
 		hud.show_toast("CONTACT — %s" % band_name(depth_at(origin)), pack["tint"])
+
+
+func _spring_convoy(key: Vector2i, cfg: Dictionary) -> void:
+	# TRAFFIC, NOT TERRITORY. A convoy is the deep's other kind of encounter:
+	# somebody's cargo walking a short beat past the chart, escorted, painted,
+	# and — for six of the seven flags — not hostile to the surveyor at all.
+	# _sprung is the income bound and the memory both: one convoy per cell per
+	# session, exactly a nest's contract, so flying a circle cannot re-summon
+	# what you already met (or already farmed).
+	_armed.erase(key)
+	_sprung[key] = true
+	var root := get_parent()
+	if root == null:
+		return
+	var origin: Vector3 = cfg["pos"]
+	var flag := String(cfg["faction"])
+	var band := int(cfg["band"])
+	# EXPLICIT on both classes. Hostile would fall back to faction paint on
+	# its own; SwarmHostile never does — its tint default is THREAT red — and
+	# a convoy of generic red darts would read as an attack you are somehow
+	# not being blamed for.
+	var paint := FactionDB.tint_of(flag)
+	var cid := cell_key(_id, key.x, key.y)
+	var wp: Array = cfg["wp"]
+	# Typed, appended, then assigned — the system_builder shape. An untyped
+	# array literal fails the Array[Vector3] assignment at runtime.
+	var route: Array[Vector3] = []
+	route.append(wp[0] as Vector3)
+	route.append(wp[1] as Vector3)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("%s|%d|%d|convoyspring" % [_id, key.x, key.y])
+	var darts: Array = []
+	var escorts: Array = []
+	for i in range(int(cfg["darts"])):
+		var s := SwarmHostile.new()
+		s.difficulty = float(PACK_DIFFICULTY[band])
+		s.hp_scale = float(PACK_HP[band])
+		s.faction = flag
+		s.tint = paint
+		# EVERYTHING LEASHED, the Tithe included. The Tally's no-leash is the
+		# one tell that class of thing has (HORIZON-4 §9), and it stays
+		# unique; and _sprung already forbids the leash-away-and-return
+		# re-arm, which is the farm that forces guard posts to 0.0.
+		s.despawn_radius = HOSTILE_LEASH
+		# Staggered: half walk each way, so the group reads as a working
+		# beat rather than a school of fish.
+		s.march_to = wp[i % 2]
+		s.add_to_group("deep_convoy")
+		s.set_meta("convoy_id", cid)
+		root.add_child(s)
+		s.global_position = origin + Vector3(rng.randf_range(-2.5, 2.5), 0.0,
+			rng.randf_range(-2.5, 2.5))
+		darts.append(s)
+	for i in range(int(cfg["escorts"])):
+		var h := Hostile.new()
+		h.difficulty = float(PACK_DIFFICULTY[band])
+		h.faction = flag
+		h.tint = paint
+		h.despawn_radius = HOSTILE_LEASH
+		h.patrol = route
+		h.add_to_group("deep_convoy")
+		h.set_meta("convoy_id", cid)
+		root.add_child(h)
+		h.global_position = origin + Vector3(rng.randf_range(-3.5, 3.5), 0.0,
+			rng.randf_range(-3.5, 3.5))
+		escorts.append(h)
+	_convoys[key] = {"darts": darts, "escorts": escorts, "wp": wp}
+	FX.ring_pulse(root, origin, paint, 3.0, 0.9)
+	if flag == "tithe":
+		# Only the hostile one gets the alarm. The klaxon means "you are
+		# about to be shot at", and six of these seven are not that.
+		Sfx.play("klaxon", -12.0, 1.15)
+	var hud := get_tree().get_first_node_in_group("hud")
+	if hud and hud.has_method("show_toast"):
+		hud.show_toast("TRAFFIC — %s" % FactionDB.display_name(flag), paint)
+
+
+func _tick_convoys() -> void:
+	# Re-arms the march when a dart clears a waypoint — arrival zeroes
+	# march_to (SwarmHostile._march_step), and the FARTHER endpoint is always
+	# the right next leg because arrival means standing within MARCH_ARRIVE
+	# (6u) of one end of a 24u beat. No per-dart state to keep true.
+	# Convoys are sparse; this walks a handful of nodes, almost always none.
+	for key_v in _convoys.keys():
+		var rec: Dictionary = _convoys[key_v]
+		var live := 0
+		var wps: Array = rec["wp"]
+		for d_v in rec["darts"]:
+			# Untyped loop variable: a leashed-away dart is a freed node, and
+			# a typed access would fail at the boundary before
+			# is_instance_valid could speak.
+			if not is_instance_valid(d_v):
+				continue
+			live += 1
+			if d_v.march_to == Vector3.ZERO:
+				var a: Vector3 = wps[0]
+				var b: Vector3 = wps[1]
+				d_v.march_to = a if d_v.global_position.distance_to(a) \
+					> d_v.global_position.distance_to(b) else b
+		for e_v in rec["escorts"]:
+			if is_instance_valid(e_v):
+				live += 1
+		if live == 0:
+			_convoys.erase(key_v)   # keys() is a copy; erasing mid-walk is safe
+
+
+func live_convoy(key: Vector2i) -> Dictionary:
+	# Harness support, armed_nests' sibling: the live members of a sprung
+	# convoy, or {} — so an assertion can sweep exactly one convoy's ships
+	# without inferring membership from position.
+	return _convoys.get(key, {})
 
 
 func _build_post(key: Vector2i, cfg: Dictionary) -> void:
@@ -1419,6 +1672,7 @@ func _despawn_all() -> void:
 		_despawn_cell(key_v)
 	_armed.clear()
 	_sprung.clear()
+	_convoys.clear()
 	_guards.clear()
 	_guard_origin.clear()
 	_cleared.clear()
@@ -1451,6 +1705,8 @@ func armed_nests() -> Array:
 	# Where the loaded ambushes are, for PYXIS_HUNTTEST's arena assertion. A nest
 	# is the one piece of deep content with no node until it springs, so counting
 	# what is in the tree would report an empty arena that is merely a quiet one.
+	# Since convoys, an armed entry may also be one of those — built_plan filters
+	# both kinds out of the lair keep-out, so the arena clause reads the same.
 	var out: Array = []
 	for key_v in _armed:
 		out.append((_armed[key_v] as Dictionary)["pos"])
@@ -1477,6 +1733,7 @@ func _process(_delta: float) -> void:
 		if player != null:
 			_stream(player.global_position)
 			_check_encounters(player.global_position)
+			_tick_convoys()
 
 	var depth := maxf(Vector2(c.x, c.z).length() - _bounds, 0.0)
 	var k := clampf(depth / DEEP_FULL, 0.0, 1.0)
