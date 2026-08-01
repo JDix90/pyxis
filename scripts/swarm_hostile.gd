@@ -66,6 +66,31 @@ const RETARGET_INTERVAL := 0.4
 var _skirmish := 0.0
 var _skirmish_rest := 0.0
 
+# --- the march (v18, stage 4) ------------------------------------------------
+# WHERE THIS SHIP IS GOING, if it is going anywhere. Vector3.ZERO means "not
+# marching", which is every dart that has ever existed — so the whole mode is
+# inert by construction for waves, raiders, nests and apex probes.
+#
+# This is the FIRST NON-ORBIT MOVEMENT this class has had. Everything else it
+# does is expressed relative to a target it is circling; a column crossing the
+# Shoals toward the chart edge is expressed relative to a place, and ignores
+# whoever it passes until something shoots at it.
+var march_to := Vector3.ZERO
+# How near the destination counts as arrived. Generous: the column is dozens of
+# ships wide and the point is the crossing, not the parking.
+const MARCH_ARRIVE := 6.0
+# Marching speed. MAX_SPEED is 7.5, which crosses 75u in ten seconds — the
+# whole event would be over before the warning broadcast finished reading. At
+# 2.8 the column takes ~27s to reach the line, which is long enough to fly out
+# and meet it, or to watch it come.
+const MARCH_SPEED := 2.8
+
+# Whether this ship belongs to a muster column. Kept separate from `march_to`
+# because a column ship that has ARRIVED (march_to cleared) is still a muster
+# ship for as long as it lives — it is what the census counts and what the
+# payout ban keys on.
+var muster := false
+
 var _velocity := Vector3.ZERO
 var _fire_cooldown := 0.0
 # Seconds of parley standoff remaining. While positive the pack keeps its orbit
@@ -175,6 +200,18 @@ func _physics_process(delta: float) -> void:
 	if not player:
 		return
 	var target := _combat_target(delta)
+
+	# THE MARCH. Held until something is actually in reach: a column crossing
+	# empty space walks, and only stops walking when a fight arrives. Checked
+	# against ATTACK_RANGE rather than "has a target", because _combat_target
+	# returns the nearest hated thing at ANY distance — a column that halted the
+	# moment it could see the far side of the line would never cross at all.
+	if march_to != Vector3.ZERO:
+		var engaged: bool = target != null \
+			and global_position.distance_to(target.global_position) <= ATTACK_RANGE * 2.0
+		if not engaged:
+			_march_step(delta)
+			return
 	if target == null:
 		# Nothing this flag hates is in reach — which for a FERAL dart means the
 		# player is docked, and this is the shipped "a docked ship is not prey"
@@ -248,6 +285,30 @@ func _physics_process(delta: float) -> void:
 			target.take_hit(DAMAGE * difficulty, self)
 		elif target.has_method("take_damage"):
 			target.take_damage(DAMAGE * difficulty, self)
+
+
+func _march_step(delta: float) -> void:
+	# Goal-directed, expressed as a target position and clamped to the remaining
+	# distance — §13's rule, and the same shape Hostile._walk_beat uses, so the
+	# two movement modes in this codebase read alike.
+	var step := march_to - global_position
+	step.y = 0.0
+	if step.length() <= MARCH_ARRIVE:
+		# Arrived. It stops marching and becomes an ordinary hostile holding the
+		# ground it took, which is what makes "the line broke" a state rather
+		# than a scripted outcome.
+		march_to = Vector3.ZERO
+		return
+	var want := step.normalized() * MARCH_SPEED
+	_velocity = _velocity.move_toward(Obstacles.steer(global_position, want, 0.4),
+		ACCEL * delta)
+	global_position += _velocity * delta
+	global_position.y = 0.0
+	global_position = Obstacles.resolve(global_position, 0.4)
+	if _velocity.length() > 0.2:
+		rotation.y = lerp_angle(rotation.y, atan2(-_velocity.x, -_velocity.z), 10.0 * delta)
+	_phase += delta * 3.0
+	_core_mat.emission_energy_multiplier = 2.4 + sin(_phase * 2.0) * 0.6
 
 
 func _refresh_enemies() -> void:
@@ -354,8 +415,13 @@ func take_damage(amount: float, attacker: Node3D) -> void:
 	# phase change, and the boss is in "hostiles" but not "combatants" — so a
 	# "not the player" test would floor those probes at half hull and leave them
 	# alive through the phase they were supposed to be cleared by.
+	# THE SET-PIECE EXEMPTION. The ambient floor exists so the world does not
+	# empty itself unwatched — but a muster is announced, bounded, cleaned up
+	# after, and SUPPOSED to resolve. A line that could not be broken and a
+	# column that could not be stopped would be two crowds of machines shooting
+	# each other forever, which is the opposite of a set-piece.
 	if attacker != null and is_instance_valid(attacker) \
-			and attacker.is_in_group("combatants"):
+			and attacker.is_in_group("combatants") and not muster:
 		hp = maxf(hp, MAX_HP * difficulty * hp_scale * FactionDB.SKIRMISH_HP_FLOOR)
 	FX.flash(get_parent(), global_position, Palette.WHITE_HOT, 0.4, 0.08)
 	Sfx.play("hit", -15.0, 1.4)
@@ -421,13 +487,33 @@ func _die(attacker: Node3D) -> void:
 	# ATTRIBUTION GATES THE PAYOUT, never the theater — see Hostile._die.
 	var player_kill := attacker != null and is_instance_valid(attacker) \
 		and attacker.is_in_group("player")
-	if not player_kill:
-		queue_free()
-		return
+	# WHAT A KILL IS WORTH, and it is three questions rather than one.
+	#
+	# 1. Did the PLAYER do it — stage 1's attribution rule.
+	# 2. Was this thing HOSTILE TO THE PLAYER? Stage 2a put Cordon pickets in
+	#    charted space, and stage 1's gate alone would have paid 2 crates and
+	#    a kill_swarm contract tick for shooting one. Pickets never return fire
+	#    (the WARY floor) and REBUILD ON EVERY _load_system — so warping out and
+	#    back would have minted a fresh row of non-retaliating piñatas on demand.
+	#    That is §27's deep-hulk printer with a badge on, and it shipped in 2a.
+	# 3. Is this a MUSTER ship? The muster carries nothing by design
+	#    (HORIZON-4 §8): PACING_LOOP sits at 97% of its ceiling and a recurring
+	#    event that paid would be recurring income whatever it was called.
+	var was_hostile := GameState.faction_band(faction, FactionDB.SURVEYOR) \
+		== FactionDB.Band.HOSTILE
+	var pays := player_kill and was_hostile and not muster
+	# Shooting something that was not shooting at you is noticed, even when it
+	# pays nothing. The GSA floor bounds how far this can go, so the Cordon can
+	# resent the player without ever opening fire on them.
+	if player_kill and not was_hostile and not muster:
+		GameState.shift_faction(FactionDB.SURVEYOR, faction, -1)
 
 	var main := get_tree().get_first_node_in_group("main")
-	if main and main.has_method("report_kill"):
-		main.report_kill("swarm")
+	if player_kill and main and main.has_method("report_kill"):
+		main.report_kill("muster" if muster else "swarm")
+	if not pays:
+		queue_free()
+		return
 
 	# A raider drops what it stole; a survey-field swarm rolls the usual table.
 	var crate := drop_good if drop_good != "" else CommodityDB.roll_drop("swarm")

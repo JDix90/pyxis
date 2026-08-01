@@ -81,6 +81,10 @@ const PATROL_RELEASE := 25.0
 
 var _patrol_i := 0
 
+# Whether this machine belongs to a muster (v18, stage 4). Set by the event
+# spawner; false on everything else, which is every machine that shipped.
+var muster := false
+
 # --- the skirmish clock (v18, stage 3, finding A6) ---------------------------
 # The numbers and the reasoning live in FactionDB.SKIRMISH_TIME so both hostile
 # classes share one clock rather than two that have to be kept equal.
@@ -465,8 +469,13 @@ func take_damage(amount: float, attacker: Node3D) -> void:
 	# phase change, and the boss is in "hostiles" but not "combatants" — so a
 	# "not the player" test would floor those probes at half hull and leave them
 	# alive through the phase they were supposed to be cleared by.
+	# THE SET-PIECE EXEMPTION. The ambient floor exists so the world does not
+	# empty itself unwatched — but a muster is announced, bounded, cleaned up
+	# after, and SUPPOSED to resolve. A line that could not be broken and a
+	# column that could not be stopped would be two crowds of machines shooting
+	# each other forever, which is the opposite of a set-piece.
 	if attacker != null and is_instance_valid(attacker) \
-			and attacker.is_in_group("combatants"):
+			and attacker.is_in_group("combatants") and not muster:
 		hp = maxf(hp, max_hp * FactionDB.SKIRMISH_HP_FLOOR)
 	var frac := clampf(hp / max_hp, 0.0, 1.0)
 	_hp_fill.scale.x = maxf(frac, 0.001)
@@ -521,10 +530,34 @@ func _die(attacker: Node3D) -> void:
 	var player_kill := attacker != null and is_instance_valid(attacker) \
 		and attacker.is_in_group("player")
 
+	# WHAT A KILL IS WORTH, and it is three questions rather than one.
+	#
+	# 1. Did the PLAYER do it — stage 1's attribution rule.
+	# 2. Was this thing HOSTILE TO THE PLAYER? Stage 2a put Cordon pickets in
+	#    charted space, and stage 1's gate alone would have paid 14 crates and
+	#    a kill_sentry contract tick for shooting one. Pickets never return fire
+	#    (the WARY floor) and REBUILD ON EVERY _load_system — so warping out and
+	#    back would have minted a fresh row of non-retaliating piñatas on demand.
+	#    That is §27's deep-hulk printer with a badge on, and it shipped in 2a.
+	# 3. Is this a MUSTER ship? The muster carries nothing by design
+	#    (HORIZON-4 §8): PACING_LOOP sits at 97% of its ceiling and a recurring
+	#    event that paid would be recurring income whatever it was called.
+	var was_hostile := GameState.faction_band(faction, FactionDB.SURVEYOR) \
+		== FactionDB.Band.HOSTILE
+	var pays := player_kill and was_hostile and not muster
+	# Shooting something that was not shooting at you is noticed, even when it
+	# pays nothing. The GSA floor bounds how far this can go, so the Cordon can
+	# resent the player without ever opening fire on them.
+	if player_kill and not was_hostile and not muster:
+		GameState.shift_faction(FactionDB.SURVEYOR, faction, -1)
+
 	var rig := tree.get_first_node_in_group("camera_rig")
 	var main := tree.get_first_node_in_group("main")
 	if player_kill and main and main.has_method("report_kill"):
-		main.report_kill("sentry")
+		# A muster kill reports its OWN kind, so no contract can match it —
+		# "kill_muster" is a key nothing in contract_db asks for. The column is
+		# the fastest kill_swarm filler in the game and must not count.
+		main.report_kill("muster" if muster else "sentry")
 
 	# If this was a deep guard, its post may have just fallen. `_dying` is already
 	# true above, so post_standing correctly does not count this node. Credited
@@ -559,7 +592,7 @@ func _die(attacker: Node3D) -> void:
 	# half — an NPC kill gets the burst and nothing adrift.
 	tree.create_timer(DEATH_STAGE_3).timeout.connect(func() -> void:
 		FX.burst(parent, pos, Color(1.0, 0.8, 0.4), 35, 5.0, 0.2, 0.7)
-		if player_kill:
+		if pays:
 			var m := tree.get_first_node_in_group("main")
 			var crate := CommodityDB.roll_drop("sentry")
 			for i in range(LOOT_COUNT):

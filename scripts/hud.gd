@@ -176,6 +176,47 @@ class RadarLayer:
 					"size": SIZE_NORMAL,
 				})
 
+		# --- muster force clusters (v18, stage 4) ------------------------
+		# ONE MARKER PER FORCE, not per ship. A muster puts ~32 machines in the
+		# sky and MAX_MARKERS is 12: rendered individually they would evict the
+		# port, the hull and every seam off the board and leave a border of
+		# identical arrows, which is noise rather than information.
+		#
+		# Every muster node is marked `seen` here, which is what suppresses its
+		# individual marker below — the dedup mechanism that already exists,
+		# rather than a second exclusion the per-node loop would have to learn.
+		# So this sidesteps the marker cap instead of reworking the tier system.
+		for spec_m in [
+			["muster_column", Palette.THREAT, SIZE_APEX],
+			["muster_line", Palette.TEAL, SIZE_APEX],
+		]:
+			var group := String(spec_m[0])
+			var sum := Vector3.ZERO
+			var live := 0
+			for node in get_tree().get_nodes_in_group(group):
+				var n := node as Node3D
+				if not is_instance_valid(n):
+					continue
+				seen[n.get_instance_id()] = true
+				sum += n.global_position
+				live += 1
+			if live == 0:
+				continue
+			var centre_of := sum / float(live)
+			var scr := _project(cam, centre_of, centre, rect)
+			if inset.grow(-OFFSCREEN_PAD + EDGE_MARGIN).has_point(scr):
+				continue
+			found.append({
+				# A stable synthetic id: the group name hashed. Instance ids
+				# belong to nodes, and this marker outlives any one of them.
+				"id": group.hash(),
+				"tier": TIER_APEX,   # a massed force outranks a single contact
+				"dist": player.global_position.distance_to(centre_of),
+				"screen": scr,
+				"color": spec_m[1] as Color,
+				"size": float(spec_m[2]),
+			})
+
 		for spec in [
 			["apex", TIER_APEX, Palette.THREAT, SIZE_APEX],
 			["dockable", TIER_PORT, Palette.TEAL, SIZE_NORMAL],
