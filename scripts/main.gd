@@ -13402,13 +13402,25 @@ func _run_faction_test() -> void:
 	#     when it got there. Waypoint 0 sits 4u from the sentry so the
 	#     leave-the-beat gate (PATROL_ENGAGE 12, measured from the waypoint) says
 	#     yes from the start and the picket is closing rather than declining.
-	bord_picket.patrol = [Vector3(18, 0, 22), Vector3(18, 0, -10)] as Array[Vector3]
+	#
+	#     The player is parked at (0,0,400) and invulnerable by the block above,
+	#     200u past the sentry — far enough that the gnomon flag picks the
+	#     closing picket over it, which is what puts an NPC on the clock at all.
+	#
+	#     AND IT HAS TO BE ALONE. Staged inside charted space, the pair sat among
+	#     PYX-01's four authored sentries and the two pickets the garrison check
+	#     just deployed, and BOTH fixtures took fire from machines that were not
+	#     the other fixture — so it passed with the clock bug still in, twice, for
+	#     two different reasons. Out at radius 200 with generation off there is
+	#     nothing else in the sky, so damage on either of these two came from the
+	#     other one.
+	bord_picket.patrol = [Vector3(0, 0, 196), Vector3(0, 0, 168)] as Array[Vector3]
 	system_root.add_child(bord_picket)
-	bord_picket.position = Vector3(18, 0, -10)
+	bord_picket.position = Vector3(0, 0, 168)
 	var bord_sentry := Hostile.new()
 	bord_sentry.faction = "gnomon"
 	system_root.add_child(bord_sentry)
-	bord_sentry.position = Vector3(22, 0, 22)
+	bord_sentry.position = Vector3(0, 0, 200)
 	await get_tree().process_frame
 	var bord_pmax := bord_picket.max_hp
 	var bord_smax := bord_sentry.max_hp
