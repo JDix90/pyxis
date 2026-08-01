@@ -66,9 +66,12 @@ only if all three checks pass.
 
 Not in the sweep, on purpose: `PYXIS_WORLDTOUR`, `PYXIS_DEMO`, `PYXIS_ECONDEMO`
 and the `*SHOTS` modes assert nothing, and WORLDTOUR never calls `quit()` unless
-`PYXIS_SHOTS` is set. `PYXIS_TITLETEST`, `TUTORIALTEST`, `INPUTTEST`, `DOCKTEST`
-and `MARKETTEST` print `[tag]` observations for reading rather than PASS lines;
-they run, but contribute 0 to the count.
+`PYXIS_SHOTS` is set. `PYXIS_TITLETEST`, `INPUTTEST`, `DOCKTEST` and
+`MARKETTEST` print `[tag]` observations for reading rather than PASS lines;
+they run, but contribute 0 to the count. `TUTORIALTEST` used to be in that
+list, and its one promoted line — `WORLD REOPENED` — immediately failed and
+exposed a tutorial that could not be finished (STRATEGY §54). The others are
+candidates for the same treatment.
 
 A fresh clone or worktree has no `.godot/` import cache, and several harnesses
 running at once will race to build one and fail to load every WAV. Import once
@@ -90,11 +93,21 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **488 PASS / 1 FAIL / 0 script errors** across 55 runs, save
-format **v18** — measured on Godot 4.6.stable, headless. 489 assertion lines,
+Current baseline: **492 PASS / 1 FAIL / 0 script errors** across 55 runs, save
+format **v18** — measured on Godot 4.6.stable, headless. 493 assertion lines,
 of which the one failure is the standing HOLDTEST issue below. Horizon 4
-(factions, STRATEGY §47, §49–53) is complete: six stages, +41 assertions, all
+(factions, STRATEGY §47, §49–54) is complete: six stages, +45 assertions, all
 red-verified.
+
+**A playtest of the merged build found four defects this sweep did not**
+(STRATEGY §54), and the reason is worth carrying into the next horizon: the
+tutorial could not be completed by playing it, the Cordon never deployed on a
+new game, and no two machines in the game ever shot at each other. Every one
+of those sat behind a green check. `AMBIENT COMBAT DEPLETES NOTHING` is
+satisfied perfectly by a world where nobody fires; `TUTORIALTEST` printed
+`sentries=0` beside the words `(expect >0)` every sweep for four stages, as an
+observation nobody read. **A guarantee needs a partner that proves something
+happens, and an observation is not an assertion.**
 
 **Two numbers to know before you add anything that earns or costs frames**,
 both measured this session rather than reasoned about:

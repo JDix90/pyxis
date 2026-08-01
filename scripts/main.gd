@@ -234,6 +234,36 @@ const MUSTER_WAVE_GAP := 7.0
 # broadcast is what stops the player learning to expect a payout that is not
 # coming.
 const MUSTER_TINT := Color(0.95, 0.85, 0.25)
+# How far inside the marker the line stands. Enough that Hostile's 0.4
+# station-keeping wander can never carry a picket over it (THE LINE IS THE EDGE).
+const MUSTER_LINE_INSET := 3.0
+# HOW FAR PAST THE LINE COUNTS AS THROUGH, and it is the number the whole event
+# turned on. Measured, not chosen:
+#
+# The line stands INSIDE the marker, so a column ship that comes to fight it is
+# inside the marker too — by construction, before a shot is fired. The breach
+# test used to read `depth_at(ship) <= 0.0`, which is "inside the marker", so it
+# fired the instant the first ship closed to engage. Measured over a full event:
+# line 960hp -> 960hp, column 816hp -> 816hp, CLOSED at 23.75s. Not one point of
+# damage in either direction, every single time. The column marched 75u, touched
+# the edge, and the whole thing dissolved as LINE BROKEN before anyone shot at
+# anyone. That is what a player watching it saw, and it is what they reported.
+#
+# So "through" has to be measured against the LINE, not the marker, and it has
+# to clear the envelope of a ship that is merely FIGHTING the line: SwarmHostile
+# orbits at ORBIT_RADIUS 3.2, weaves +/-1.2, and takes up to ~1.8 of separation
+# shove — 6.2 inward at worst. 10.0 leaves headroom for the drift on top and is
+# still comfortably short of anything the player would call charted space.
+const MUSTER_BREACH_MARGIN := 10.0
+# THE BACKSTOP. Both of this event's exits are emergent — the column is wiped,
+# or a column ship gets through — so a balance change that made neither happen
+# would leave `_muster_active` true forever. That is not merely a stuck event:
+# muster_eligible() and interdiction_eligible() both refuse while one is live,
+# so a single stall would silently brick BOTH event systems for the rest of the
+# session. Generous enough that it never lands on a fight that is still going
+# (the measured event resolves inside 90s), and it resolves as HELD because a
+# column that spent three minutes failing to get through did not get through.
+const MUSTER_TIMEOUT := 300.0
 
 # --- THE PROCESSION (v18, stage 5) -------------------------------------------
 # The nomad fleet: the known faction that shows up rather than sits still. Its
@@ -329,6 +359,7 @@ var _muster_point := Vector3.ZERO      # where the line forms, on the chart edge
 var _muster_origin := Vector3.ZERO     # where the column gathers, 75u out
 var _muster_released := 0
 var _muster_wave_t := 0.0
+var _muster_elapsed := 0.0
 
 var _procession: Port = null
 var _procession_window := -1
@@ -863,8 +894,10 @@ func _enter_playing() -> void:
 
 
 func spawn_sentries() -> void:
-	# Adds the system's garrison to the running scene without a rebuild.
-	SystemBuilder.build_sentries(system_def, system_root, system_id)
+	# Adds the system's garrison to the running scene without a rebuild. The
+	# garrison is the engine's sentries AND the Cordon's pickets — one call,
+	# because they are one list (SystemBuilder.build_garrison).
+	SystemBuilder.build_garrison(system_def, system_root, system_id)
 
 
 func start_new_game() -> void:
@@ -1533,6 +1566,7 @@ func _open_muster() -> void:
 	_muster_active = true
 	_muster_released = 0
 	_muster_wave_t = 0.0
+	_muster_elapsed = 0.0
 	# ON THE ARC, NOT ON A CHORD. The marker is a CIRCLE — `chart_edge()` is a
 	# radius — so a line strung straight across the bearing bulges outside it at
 	# the ends. Measured: the outermost picket sat 0.4u past the marker once
@@ -1544,7 +1578,7 @@ func _open_muster() -> void:
 	# the radius carries a 3u inset so Hostile's 0.4 station-keeping wander can
 	# never take one over either.
 	var base_ang := atan2(_muster_bearing().z, _muster_bearing().x)
-	var line_r := maxf(chart_edge() - 3.0, 1.0)
+	var line_r := _muster_line_radius()
 	var span := 3.4 / line_r          # radians between neighbours, ~3.4u apart
 	for i in range(MUSTER_LINE):
 		var g := Hostile.new()
@@ -1588,6 +1622,15 @@ func _release_muster_wave() -> void:
 	FX.ring_pulse(self, _muster_origin, MUSTER_TINT, 6.0, 1.0)
 
 
+func _muster_line_radius() -> float:
+	# ONE function, because _open_muster places the line at this radius and
+	# _tick_muster_battle measures the breach against it. Two copies of
+	# `chart_edge() - 3.0` is how the line and the test that judges it drift
+	# apart, and the drift is invisible: both halves keep working, the event
+	# just stops being winnable.
+	return maxf(chart_edge() - MUSTER_LINE_INSET, 1.0)
+
+
 func _muster_census(group: String) -> int:
 	var n := 0
 	for node in get_tree().get_nodes_in_group(group):
@@ -1603,20 +1646,33 @@ func _tick_muster_battle(delta: float) -> void:
 		_release_muster_wave()
 
 	var column := _muster_census("muster_column")
-	# THE LINE BREAKS when a column ship gets inside the marker. Measured on
-	# depth rather than on distance to the line point, because the line is the
-	# CHART EDGE and a ship that went round the end of it has still crossed.
+	# THE LINE BREAKS when a column ship gets PAST THE LINE — not when it gets
+	# inside the marker. Still measured on RADIUS rather than on distance to the
+	# line point, because a ship that went round the end of the line has still
+	# crossed; only the threshold changed, from "the marker" to "the line, plus
+	# the width of a fight" (MUSTER_BREACH_MARGIN, which carries the whole
+	# derivation and the measurement that forced it).
+	var through_r := maxf(_muster_line_radius() - MUSTER_BREACH_MARGIN, 0.0)
 	var breached := false
 	for node in get_tree().get_nodes_in_group("muster_column"):
 		var n := node as Node3D
-		if is_instance_valid(n) and deep_space != null \
-				and deep_space.depth_at(n.global_position) <= 0.0:
+		if is_instance_valid(n) \
+				and Vector2(n.global_position.x, n.global_position.z).length() <= through_r:
 			breached = true
 			break
 	if breached:
 		_close_muster(false)
 		return
 	if _muster_released >= MUSTER_COLUMN and column == 0:
+		_close_muster(true)
+		return
+	_muster_elapsed += delta
+	if _muster_elapsed >= MUSTER_TIMEOUT:
+		# Never expected to fire. Logged rather than silent so that if it ever
+		# does, the next reader learns the fight stopped resolving instead of
+		# finding an event that quietly got shorter.
+		print("[muster] TIMEOUT after %.0fs with %d column ships alive — closing as held" % [
+			_muster_elapsed, column])
 		_close_muster(true)
 
 
@@ -9538,16 +9594,40 @@ func _run_tutorial_test() -> void:
 	await get_tree().create_timer(Tutorial.GARRISON_DELAY + 1.5).timeout
 	_wave_timer = 0.2
 	await get_tree().create_timer(1.5).timeout
-	print("[tut] world reopened: sentries=%d (expect >0) swarm=%d (expect >0)" % [
-		_count_sentries(), get_tree().get_nodes_in_group("swarm").size()])
+	# PICKETS COUNTED SEPARATELY, and as a PASS/FAIL rather than a number to
+	# read. This line used to print `sentries=%d` from a counter that lumped
+	# pickets in with standing machines, so "sentries=6" was equally true of a
+	# system with the Cordon deployed and one without it — the missing garrison
+	# half walked straight past the one harness that drives the real tutorial.
+	var tut_routes: int = (SystemDB.get_system(system_id).get("patrols", []) as Array).size()
+	print("[tut] WORLD REOPENED sentries=%d (expect >0) pickets=%d (expect %d) swarm=%d (expect >0) -> %s" % [
+		_count_sentries(), _count_pickets(), tut_routes,
+		get_tree().get_nodes_in_group("swarm").size(),
+		"PASS" if _count_sentries() > 0 and tut_routes > 0
+			and _count_pickets() == tut_routes
+			and get_tree().get_nodes_in_group("swarm").size() > 0 else "FAIL"])
 	await _shot(shots, "t6_free_play.png")
 	get_tree().quit()
 
 
 func _count_sentries() -> int:
+	# STANDING machines only. A picket is the same class with a route and it is
+	# counted by _count_pickets instead — lumping them made "sentries=6" true of
+	# a system with four sentries and two pickets AND of one with six sentries
+	# and no Cordon at all, which is exactly how the missing garrison half got
+	# past the tutorial harness.
 	var n := 0
 	for h in get_tree().get_nodes_in_group("hostiles"):
-		if h is Hostile:
+		if h is Hostile and (h as Hostile).patrol.is_empty() \
+				and not h.is_in_group("deep_guard"):
+			n += 1
+	return n
+
+
+func _count_pickets() -> int:
+	var n := 0
+	for h in get_tree().get_nodes_in_group("hostiles"):
+		if h is Hostile and not (h as Hostile).patrol.is_empty():
 			n += 1
 	return n
 
@@ -12972,6 +13052,42 @@ func _run_faction_test() -> void:
 		route_total, SystemDB.ids().size(), outside.size(), str(outside),
 		"PASS" if outside.is_empty() and route_total > 0 else "FAIL"])
 
+	# --- 11b. THE GARRISON IS WHAT THE TUTORIAL HELD BACK ---------------------
+	# DRIVEN THROUGH spawn_sentries(), which is the function the tutorial's
+	# finale timer actually calls. Every other Cordon assertion in this suite
+	# drives SystemBuilder.build() — and that is exactly why this shipped: a new
+	# game builds its system with the garrison held back for the guided run and
+	# then restores it IN PLACE five seconds after the finale, rather than
+	# reloading (a rebuild there would delete the breach loot the player just
+	# earned). Stage 2a added pickets to the hold-back and not to the put-back,
+	# so a player who pressed NEW SURVEY had no Cordon at all until they warped
+	# out of PYX-01 — the headline feature of the horizon, invisible for the
+	# whole first session, on the one path every new player takes.
+	#
+	# BOTH HALVES IN ONE MEASUREMENT, because either alone passes on broken
+	# code: "pickets exist afterwards" is satisfied by a garrison that was never
+	# suppressed, and "none while suppressed" is satisfied by a Cordon that
+	# never deploys at all. The count has to go 0 -> N *through that call*.
+	# COLLECTED FIRST, THEN FREED. Mutating a group while iterating it is the
+	# other half of the deferred-free trap, and `gar_d` is a second name rather
+	# than a reused `gar_n` because a GDScript loop variable scopes to the whole
+	# FUNCTION — two `for gar_n in ...` in one function is a parse error, not a
+	# shadow (this suite has paid for that lesson four times).
+	var gar_doomed: Array = []
+	for gar_n in get_tree().get_nodes_in_group("hostiles"):
+		gar_doomed.append(gar_n)
+	for gar_d in gar_doomed:
+		(gar_d as Node).free()      # immediate: queue_free leaves them in the group
+	var gar_s0 := _count_sentries()
+	var gar_p0 := _count_pickets()
+	spawn_sentries()
+	await get_tree().process_frame
+	var gar_routes: int = (SystemDB.get_system(system_id).get("patrols", []) as Array).size()
+	print("[faction] THE GARRISON IS WHAT THE TUTORIAL HELD BACK before spawn_sentries %d sentries / %d pickets, after %d sentries / %d pickets (%d routes authored) -> %s" % [
+		gar_s0, gar_p0, _count_sentries(), _count_pickets(), gar_routes,
+		"PASS" if gar_s0 == 0 and gar_p0 == 0 and _count_sentries() > 0
+			and gar_routes > 0 and _count_pickets() == gar_routes else "FAIL"])
+
 	# --- 12. PICKETS WALK THEIR BEAT -----------------------------------------
 	# Driven through the real node over real frames. This is the assertion that
 	# catches the assign-vs-add trap in _process: a picket whose position were
@@ -13251,6 +13367,85 @@ func _run_faction_test() -> void:
 		census_before, census_after,
 		"PASS" if census_after == census_before and census_before > 0 else "FAIL"])
 
+	# --- 17b. THE BORDER IS CONTESTED ----------------------------------------
+	#     THE OTHER HALF OF 17, and its absence is why the horizon shipped with
+	#     no visible faction combat at all. "The census does not drop" is
+	#     satisfied perfectly by a world where nobody ever fires — which is
+	#     exactly what shipped, and 17 called it a PASS every single run.
+	#
+	#     An assertion is only worth what it can see: a guarantee that nothing
+	#     dies needs a partner that proves something HAPPENS, or the cheapest
+	#     way to satisfy it is to break combat entirely.
+	#
+	#     Measured on two machines placed within weapons range of each other,
+	#     one from each side of the border, with the player parked far away and
+	#     nothing else nearby to distract either of them. BOTH must lose hull,
+	#     and BOTH must still be flying: that pair of clauses is the contested
+	#     border and the depletion guarantee in one line, and neither clause
+	#     alone can be satisfied by breaking the other.
+	set_deep_generation(false)
+	var bord_picket := Hostile.new()
+	bord_picket.faction = "gsa"
+	# A real beat, because a picket is what stands on this border — and one
+	# whose waypoints sit inside PATROL_ENGAGE of the sentry, so the "is this
+	# worth leaving the beat for" gate says yes rather than the test measuring
+	# a machine that correctly declined.
+	#
+	#     AND IT HAS TO CLOSE. The first version placed the pair 4u apart — inside
+	#     weapons range on frame one — and PASSED with the skirmish-clock bug
+	#     still in, because acquisition and fire coincided so the clock never had
+	#     the chance to burn on the approach. The red-verify is what said so.
+	#     That is not the case this is about: a picket walking a beat ACQUIRES a
+	#     sentry from across the system and has to travel. The start is ~32u out,
+	#     which is 7.8s of approach at PATROL_SPEED against a 6s clock, so under
+	#     the old rule the picket broke off BEFORE arriving and was standing down
+	#     when it got there. Waypoint 0 sits 4u from the sentry so the
+	#     leave-the-beat gate (PATROL_ENGAGE 12, measured from the waypoint) says
+	#     yes from the start and the picket is closing rather than declining.
+	#
+	#     The player is parked at (0,0,400) and invulnerable by the block above,
+	#     200u past the sentry — far enough that the gnomon flag picks the
+	#     closing picket over it, which is what puts an NPC on the clock at all.
+	#
+	#     AND IT HAS TO BE ALONE. Staged inside charted space, the pair sat among
+	#     PYX-01's four authored sentries and the two pickets the garrison check
+	#     just deployed, and BOTH fixtures took fire from machines that were not
+	#     the other fixture — so it passed with the clock bug still in, twice, for
+	#     two different reasons. Out at radius 200 with generation off there is
+	#     nothing else in the sky, so damage on either of these two came from the
+	#     other one.
+	bord_picket.patrol = [Vector3(0, 0, 196), Vector3(0, 0, 168)] as Array[Vector3]
+	system_root.add_child(bord_picket)
+	bord_picket.position = Vector3(0, 0, 168)
+	var bord_sentry := Hostile.new()
+	bord_sentry.faction = "gnomon"
+	system_root.add_child(bord_sentry)
+	bord_sentry.position = Vector3(0, 0, 200)
+	await get_tree().process_frame
+	var bord_pmax := bord_picket.max_hp
+	var bord_smax := bord_sentry.max_hp
+	var bord_t := 0.0
+	# Long enough for the 7.8s approach AND a burst on arrival; short enough that
+	# a picket that broke off en route (the old rule) is still resting when the
+	# window closes.
+	while bord_t < 18.0:
+		await get_tree().create_timer(0.25).timeout
+		bord_t += 0.25
+	var bord_alive: bool = is_instance_valid(bord_picket) and is_instance_valid(bord_sentry) \
+		and bord_picket.hp > 0.0 and bord_sentry.hp > 0.0
+	var bord_traded: bool = bord_alive \
+		and bord_picket.hp < bord_pmax and bord_sentry.hp < bord_smax
+	print("[faction] THE BORDER IS CONTESTED after %.0fs closing from %.0fu: picket %.0f/%.0f hp, sentry %.0f/%.0f hp, both still flying=%s -> %s" % [
+		bord_t, 32.0,
+		bord_picket.hp if is_instance_valid(bord_picket) else -1.0, bord_pmax,
+		bord_sentry.hp if is_instance_valid(bord_sentry) else -1.0, bord_smax,
+		str(bord_alive), "PASS" if bord_traded and bord_alive else "FAIL"])
+	if is_instance_valid(bord_picket):
+		bord_picket.free()
+	if is_instance_valid(bord_sentry):
+		bord_sentry.free()
+	set_deep_generation(true)
+
 	# --- 18. THE FIGHT ENDS (finding A6) -------------------------------------
 	#     The mechanism behind 17, measured directly: a machine engaged on
 	#     another machine breaks off before it can finish the job. Asserted as
@@ -13411,6 +13606,90 @@ func _run_faction_test() -> void:
 		salv_before, GameState.salvage,
 		str(GameState.log_lines().size() > log_before), still_live,
 		"PASS" if GameState.salvage == salv_before and still_live == 0 else "FAIL"])
+	_muster_cooldown = 0.0
+	_muster_timer = 1.0e9
+
+	# --- 19b. THE MUSTER IS A FIGHT ------------------------------------------
+	#     THE ASSERTION THAT WAS MISSING, and its absence let the event ship
+	#     broken for three stages. Everything section 19 checks is true of a
+	#     muster in which not one shot is fired: the warning precedes the spawn,
+	#     the line stands inside the marker, the budget holds, nothing is
+	#     bankable, the outcome is logged. All PASS. Measured over a whole event,
+	#     twice: line 960hp -> 960hp, column 816hp -> 816hp, CLOSED at 23.75s.
+	#     The column marched seventy-five units, touched the edge and dissolved,
+	#     and every assertion in the suite called that a working set-piece.
+	#
+	#     TWO CAUSES, both invisible to a check on positions and counts. The
+	#     breach test read "inside the marker" while the line stands INSIDE the
+	#     marker, so it fired the instant the first ship closed to engage. And
+	#     the skirmish clock counted ACQUISITION rather than fire, so both sides
+	#     burned their six seconds on contacts eighty units away and were resting
+	#     when they finally met.
+	#
+	#     So this drives the real event to its real end and asserts the thing
+	#     that makes it an event: BOTH SIDES LOSE HULL. Deliberately not "the
+	#     line wins" — who wins is emergent and is supposed to be — and
+	#     deliberately both directions, because a column wiped by an invulnerable
+	#     line is a cutscene, not a battle.
+	var fig_pilot: PlayerShip = get_tree().get_first_node_in_group("player")
+	if fig_pilot != null:
+		# Out of the way and out of the fight: this measures the Cordon against the
+		# column, and a player in the middle of it would be measuring themselves.
+		fig_pilot.invulnerable = true
+		fig_pilot.teleport_to(Vector3(0, 0, 0))
+	_muster_cooldown = 0.0
+	_warn_muster()
+	_muster_warn = 0.01
+	await get_tree().create_timer(0.4).timeout
+	var fig_line0 := 0.0
+	for node in get_tree().get_nodes_in_group("muster_line"):
+		fig_line0 += float(node.hp)
+	var fig_col_peak := 0.0
+	var fig_line_low := fig_line0
+	var fig_col_low := 1.0e9
+	var fig_t := 0.0
+	# A TIME BUDGET WITH REAL HEADROOM. The measured event resolves at ~43s once
+	# both sides can actually shoot; 120 is generous without reaching
+	# MUSTER_TIMEOUT, so a run that hits this ceiling means the fight stopped
+	# resolving rather than that the budget was tight.
+	while fig_t < 120.0:
+		await get_tree().create_timer(0.25).timeout
+		fig_t += 0.25
+		# BREAK BEFORE SAMPLING, NOT AFTER. _close_muster calls depart() on every
+		# ship, which removes it from the muster groups immediately — so a sample
+		# taken on the closing tick reads 0hp for BOTH sides and satisfies "both
+		# lost hull" no matter what happened. The first version of this printed
+		# `line 960 -> 0 hp, column peak 816 -> 0 hp -> PASS` on a run that was
+		# genuinely a fight, and would have printed exactly the same thing on one
+		# that was not. Only live events are sampled.
+		if not _muster_active:
+			break
+		var fig_lh := 0.0
+		var fig_ch := 0.0
+		for node in get_tree().get_nodes_in_group("muster_line"):
+			if is_instance_valid(node):
+				fig_lh += float(node.hp)
+		for node in get_tree().get_nodes_in_group("muster_column"):
+			if is_instance_valid(node):
+				fig_ch += float(node.hp)
+		fig_col_peak = maxf(fig_col_peak, fig_ch)
+		fig_line_low = minf(fig_line_low, fig_lh)
+		# Sampled only once the column is fully out, so the low-water mark is a
+		# casualty count rather than "the first wave has not spawned yet".
+		if _muster_released >= MUSTER_COLUMN:
+			fig_col_low = minf(fig_col_low, fig_ch)
+		if not _muster_active:
+			break
+	var fig_line_hurt := fig_line_low < fig_line0
+	var fig_col_hurt := fig_col_low < fig_col_peak
+	var fig_ended: bool = not _muster_active
+	print("[faction] THE MUSTER IS A FIGHT resolved in %.1fs (ended=%s): line %.0f -> %.0f hp, column peak %.0f -> %.0f hp -> %s" % [
+		fig_t, str(fig_ended), fig_line0, fig_line_low, fig_col_peak, fig_col_low,
+		"PASS" if fig_ended and fig_line_hurt and fig_col_hurt else "FAIL"])
+	if fig_pilot != null:
+		fig_pilot.invulnerable = false
+	_close_muster(true)
+	await get_tree().create_timer(0.3).timeout
 	_muster_cooldown = 0.0
 	_muster_timer = 1.0e9
 

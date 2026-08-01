@@ -265,8 +265,29 @@ func _process(_delta: float) -> void:
 			# two crackables in PYX-01, "crackable" answers "whichever is first
 			# in the tree", which is not a rule a tutorial step should turn on.
 			var derelict: Node3D = get_tree().get_first_node_in_group("training_hull")
-			# The derelict leaves the group the instant it is breached.
-			if derelict == null:
+			# ASK THE HULL WHETHER IT IS CRACKED. The comment that used to sit
+			# here said "the derelict leaves the group the instant it is
+			# breached" and it was simply false: Derelict._breach() removes
+			# itself from `crackable` and from nothing else, and the node is
+			# never freed — it stays in the scene as an opened wreck, and stays
+			# in `training_hull` forever.
+			#
+			# So this condition could never become true, and THE LAST STEP OF
+			# THE TUTORIAL COULD NOT BE COMPLETED BY PLAYING IT. The only exit
+			# was the SKIP button, which lands on _finish() directly. A player
+			# who did as they were told and breached the hull sat at step 5
+			# with the world still held back: no sentries, no pickets, no
+			# waves, no events, forever.
+			#
+			# Shipped in stage 2b, when the step was re-pointed from the
+			# `crackable` group to the new `training_hull` one without the
+			# matching removal. TUTORIALTEST drove the whole sequence every
+			# sweep and printed `sentries=0` — as an observation nobody read,
+			# until it became a PASS/FAIL.
+			#
+			# The null check stays as well: a hull that IS gone is also done,
+			# and this must not depend on the node outliving the step.
+			if derelict == null or (derelict as Derelict).is_cracked():
 				_complete_step()
 
 

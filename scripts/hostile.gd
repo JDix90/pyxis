@@ -350,6 +350,25 @@ func _combat_target(delta: float) -> Node3D:
 		# a fresh six seconds every time.
 		_skirmish = maxf(_skirmish - delta, 0.0)
 		return picked
+	# THE CLOCK COUNTS FIRE, NOT ACQUISITION — and getting this wrong made every
+	# faction fight in the game invisible.
+	#
+	# _pick_target returns the nearest hated thing AT ANY DISTANCE; there is no
+	# range limit in it, deliberately, because that is what lets a picket decide
+	# whether something is worth leaving the beat for. But the clock used to
+	# start ticking the moment that pointer was non-null, so a machine spent its
+	# six seconds on a contact eighty units away that it could not shoot, broke
+	# off, and was resting by the time the contact arrived. Measured on a muster:
+	# line 960hp -> 960hp, column 816hp -> 816hp across the whole event, twice,
+	# with the two sides passing straight through each other.
+	#
+	# SKIRMISH_TIME's own comment says "six seconds of FIRE cannot finish that".
+	# It was written as a weapons timer and implemented as an acquisition timer.
+	# In range, it counts; out of range the machine is closing or watching, and
+	# the clock unwinds exactly as it does with no target at all.
+	if global_position.distance_to(picked.global_position) > ENGAGE_RANGE:
+		_skirmish = maxf(_skirmish - delta, 0.0)
+		return picked
 	_skirmish += delta
 	if _skirmish >= FactionDB.SKIRMISH_TIME:
 		# Break off. Groups, position and post are untouched — the machine simply
