@@ -13172,7 +13172,12 @@ func _run_faction_test() -> void:
 		survived = mark.shield > 0.0
 		mark.shield = mark.shield_max
 		mark.invulnerable = true
+	# FREED AND WAITED ON. queue_free is deferred, so without the frame this
+	# probe is still in `combatants` when AMBIENT COMBAT DEPLETES NOTHING takes
+	# its baseline a few lines below — and that check then reads its own litter
+	# being cleaned up as the world depleting itself (census 10 -> 9).
 	hollow.queue_free()
+	await get_tree().process_frame
 	print("[faction] THE HOLLOWING CANNOT KILL YOU 10 volleys at 60x damage -> shield %.2f left, still flying=%s -> %s" % [
 		shield_left, str(survived),
 		"PASS" if survived and shield_left <= 1.01 else "FAIL"])
