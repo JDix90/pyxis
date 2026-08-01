@@ -2556,6 +2556,15 @@ func _panel_text_contains(root: Node, needle: String) -> bool:
 		return false
 	if root is Label and String((root as Label).text).findn(needle) >= 0:
 		return true
+	# AND BUTTONS, which this walk ignored for its whole existence. Half of what
+	# a port sheet SAYS is written on its controls -- "BUY THE WORD", "DEPART",
+	# every market row's action -- so a helper that read only Labels could not
+	# see them, and an assertion asking whether a button was on screen got the
+	# same answer whether it was there or not. THE WORD IS SOLD ONCE failed in
+	# BOTH directions on that, which is the tell: a measurement that cannot
+	# distinguish its two outcomes is not measuring.
+	if root is Button and String((root as Button).text).findn(needle) >= 0:
+		return true
 	for child in root.get_children():
 		if _panel_text_contains(child, needle):
 			return true
