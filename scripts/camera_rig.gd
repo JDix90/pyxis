@@ -263,8 +263,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _mouse_button(event: InputEventMouseButton) -> void:
-	# Desktop path. Deliberately separate from touch: mouse emulation is off so
-	# these two device families can disagree about what the primary button means.
+	# Desktop path. Deliberately separate from touch: BOTH emulation directions
+	# are off in project.godot, so these two device families can disagree about
+	# what the primary button means. Both matters -- for a long time only
+	# emulate_touch_from_mouse was off, emulate_mouse_from_touch defaulted to
+	# true, and every phone tap arrived here as well as in the touch branch.
 	if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 		_target_zoom = clampf(_target_zoom * 0.9, ZOOM_MIN, ZOOM_MAX)
 		return
