@@ -573,7 +573,7 @@ func _die(attacker: Node3D) -> void:
 	# AND WHOEVER THIS WAS SHOOTING AT MAY OWE THE PLAYER FOR IT. Read here
 	# because _aggro and _target are still valid -- the group removals above
 	# touch neither -- and gone a frame later.
-	if player_kill and main and main.has_method("credit_convoy_defence"):
+	if player_kill and main and main.has_method("credit_defence"):
 		# BOTH FIELDS, IN THIS ORDER, and the order is the whole point. Shooting
 		# this ship set _aggro to the PLAYER -- that is what take_damage does --
 		# so reading _aggro first would credit the player's own convoy_id, which
@@ -585,8 +585,8 @@ func _die(attacker: Node3D) -> void:
 		# bounded per convoy per session, so a double call cannot double-pay,
 		# and the alternative is a conditional that has to stay true about
 		# which field means what.
-		main.credit_convoy_defence(_target)
-		main.credit_convoy_defence(_aggro)
+		main.credit_defence(_target)
+		main.credit_defence(_aggro)
 	if not pays:
 		queue_free()
 		return

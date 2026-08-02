@@ -407,11 +407,11 @@ func _begin_survey() -> void:
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud and hud.has_method("prompt"):
 		if survivors >= PLATE_COUNT:
-			hud.prompt("IRIS SEALED — CLEAR THE PROBES")
+			hud.prompt("CORE SEALED — DESTROY THE PROBES TO OPEN IT")
 		elif survivors > 0:
-			hud.prompt("IRIS PARTIAL — %d PLATE(S) WELDED" % survivors)
+			hud.prompt("CORE PART-SEALED — %d PLATE(S) STILL WELDED SHUT" % survivors)
 		else:
-			hud.prompt("IRIS OPEN — FULL EXPOSURE")
+			hud.prompt("CORE FULLY OPEN — HIT IT NOW")
 
 
 func _begin_seal() -> void:
@@ -439,7 +439,7 @@ func _begin_seal() -> void:
 
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud and hud.has_method("prompt"):
-		hud.prompt("VENTING PROBES")
+		hud.prompt("VENTING PROBES — DESTROY THEM TO REOPEN THE CORE")
 
 
 func _vent_probes(count: int) -> void:
@@ -917,7 +917,7 @@ func _sync_hud() -> void:
 func _state_label() -> String:
 	match state:
 		State.WAKING: return "WAKING"
-		State.SURVEY: return "IRIS OPEN"
-		State.SEAL: return "SEALED"
+		State.SURVEY: return "CORE OPEN"
+		State.SEAL: return "CORE SEALED"
 		State.PHASING: return "RECONFIGURING"
 	return ""

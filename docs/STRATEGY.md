@@ -5054,3 +5054,71 @@ answer was split across two corners of a phone screen. The heading moved down
 to sit directly above the band line. The top-left stack keeps SALVAGE / HOLD /
 HULL — the *ship's* state, read while looking at the ship. The bottom-left
 corner is the *chart's*, read while deciding where to point.
+
+## 58. Covering somebody, and saying what you meant (v18, playtest round 3)
+
+### The favour was real and almost nobody could earn it
+
+Stage 5 gave the matrix its first positive mover: kill something that was
+attacking a **convoy** and the convoy's flag remembers it. That fixed the
+one-way ratchet in principle — four of the seven chartfolk flags had no way up
+at all — and left it unreachable in practice, because a convoy is one of half a
+dozen kinds of flagged ship in the sky. Sentries hold lanes, pickets patrol the
+cordon, guards sit on posts, the Procession moves. Every one of them can be
+caught in a fight it did not pick, and helping any of them counted for nothing.
+
+`credit_defence` now takes anything in `combatants` carrying a flag. Two bounds,
+because a favour that pays per corpse is a standing printer:
+
+- a **convoy** keeps its per-convoy-per-session bound — a column fights one
+  action, and a per-ship bound would pay six times for one rescue;
+- **everything else** is bounded per flag per system visit. A brawl is worth one
+  step to the flag it was fought for however many hulls burn in it, so parking
+  beside a border skirmish and farming it is worth exactly what helping once is.
+  Warping out and back re-arms it, deliberately — a second trip is a second
+  favour — and `DELTA_SPAN` still caps where the arc can end.
+
+It is **not** gated on the flag's current band. Covering the ships of a faction
+that despises you is the one way back that does not involve a toll, and it
+should read as exactly that: you turned up, and it counted.
+
+The muster is excluded, for HORIZON-4 §8's reason applied to a second currency:
+a recurring event that pays is recurring income whatever it is denominated in.
+
+### Standing moved and never said why
+
+`_flush_standing_toast` named the faction and the band — "THE RELAY LEAGUE —
+STANDING RISES · FRIENDLY" — which is the A10 complaint one layer up. The player
+watches a number move and cannot tell which of the last ten seconds moved it, so
+they cannot choose to do it again. A mover may now attach a **cause**, and the
+toast leads with it: "COVERED THEIR SHIP — THE RELAY LEAGUE · NOW FRIENDLY".
+Movers that are self-evident where they fire — a toll paid on a sheet the player
+is looking at — pass no cause and read exactly as they did.
+
+### The copy that named things without explaining them
+
+A separate pass over the lines a player meets while something is shooting at
+them. The rule applied was not "write it plainly" — the game's voice is terse
+and diegetic on purpose — but **every line must either use a word the game has
+taught, or say what to do about it**. What failed that test:
+
+| was | is | why |
+|---|---|---|
+| `IRIS SEALED — CLEAR THE PROBES` | `CORE SEALED — DESTROY THE PROBES TO OPEN IT` | "iris" is never taught; the core is the thing being shot |
+| `IRIS PARTIAL — n PLATE(S) WELDED` | `CORE PART-SEALED — n PLATE(S) STILL WELDED SHUT` | said a state, not a consequence |
+| `IRIS OPEN — FULL EXPOSURE` | `CORE FULLY OPEN — HIT IT NOW` | exposure *of what*, and *so what* |
+| `VENTING PROBES` | `VENTING PROBES — DESTROY THEM TO REOPEN THE CORE` | named an event with no verb attached |
+| `CARRIER WASH` | `JAMMED — SOMETHING IS CLOSE` | the old line was pure jargon; the new one still says HERE and never THAT WAY, which is the constraint that matters |
+| `THE SHEAR IS FAILING — n OF m` | `THE SHEAR IS COLLAPSING — n OF m · TAKE THE CRATES NOW` | a countdown the player could not read as one |
+| `ARCHEOLOGY n — X NOW READS IN THE FIELD` | `ARCHEOLOGY n — IDENTIFY X SALVAGE WITHOUT DOCKING` | "reads in the field" is the codebase's phrase, not the player's |
+| `NO ROOM TO STOW THAT READ` | `HOLD FULL — NO ROOM FOR WHAT IT IDENTIFIES AS` | "a read" as a noun appears nowhere the player has been taught |
+| `THE CORDON IS STANDING TO` | `THE CORDON IS MUSTERING — A LINE IS FORMING` | military idiom, and the game already has a word for this event |
+| `SLOT OPEN — TAKE ANOTHER AT ANY PORT` | `CONTRACT SLOT FREE — PICK UP ANOTHER AT ANY PORT` | which slot? |
+| `BERTH LOGGED — X xN` | `NEW BERTH CHARTED — X xN` | "logged" hid that this was the charting payout |
+| `THERMAL SINK ABSORBED THE WASH` | `THERMAL SINK ABSORBED THE BLAST — LESS DAMAGE TAKEN` | the module has to be seen paying for itself |
+
+`CARRIER WASH` is the one worth arguing about, because §56 chose it
+deliberately: it had to say HERE and never THAT WAY, and never be more precise
+than the radar cutoff it precedes. `JAMMED — SOMETHING IS CLOSE` keeps both
+properties — byte-identical at 119 units and at 5 — and drops the only part that
+was doing no work, which was the word "carrier".

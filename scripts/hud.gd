@@ -1066,7 +1066,7 @@ func _apply_system_tag() -> void:
 		# units and at 5, so no bearing can be extracted from it, and its
 		# boundary sits outside the radar cutoff it precedes -- it can never be
 		# more precise than the instrument it is announcing.
-		_system_label.text += " · CARRIER WASH"
+		_system_label.text += " · JAMMED — SOMETHING IS CLOSE"
 	var c: Color = Palette.band_color(band)
 	_system_label.add_theme_color_override("font_color", Color(c.r, c.g, c.b, 0.75))
 

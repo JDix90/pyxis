@@ -391,7 +391,7 @@ func _breach() -> void:
 	if deep and main and main.deep_space:
 		main.deep_space.note_hulk_cracked(cell)
 	if GameState.mark_archeology(GameState.ARCHEOLOGY_PER_BREACH) and hud:
-		hud.show_toast("ARCHEOLOGY %d — %s NOW READS IN THE FIELD" % [
+		hud.show_toast("ARCHEOLOGY %d — IDENTIFY %s SALVAGE WITHOUT DOCKING" % [
 			GameState.archeology, DeepSpace.BAND_NAMES[GameState.archeology]],
 			Palette.GOLD)
 

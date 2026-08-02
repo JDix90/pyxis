@@ -606,7 +606,8 @@ func emp_stun(duration: float) -> void:
 		FX.ring_pulse(get_parent(), global_position, Palette.TEAL, 3.2, 0.5)
 		var hud := get_tree().get_first_node_in_group("hud")
 		if hud:
-			hud.show_toast("THERMAL SINK ABSORBED THE WASH", Palette.TEAL)
+			hud.show_toast("THERMAL SINK ABSORBED THE BLAST — LESS DAMAGE TAKEN",
+				Palette.TEAL)
 	FX.shockwave(get_parent(), global_position, Palette.TEAL, 7.0, 0.7)
 	FX.burst(get_parent(), global_position, Color(0.55, 0.85, 1.0), 30, 5.0, 0.14, 0.5)
 	var rig := get_tree().get_first_node_in_group("camera_rig")

@@ -535,7 +535,8 @@ func _do_field_read(sid: String, out: String) -> void:
 		Sfx.play("tap", -14.0, 0.6)
 		var hud := get_tree().get_first_node_in_group("hud")
 		if hud:
-			hud.show_toast("NO ROOM TO STOW THAT READ", Palette.THREAT)
+			hud.show_toast("HOLD FULL — NO ROOM FOR WHAT IT IDENTIFIES AS",
+				Palette.THREAT)
 		return
 	Sfx.play("equip", -7.0, 1.1)
 	var hud2 := get_tree().get_first_node_in_group("hud")
