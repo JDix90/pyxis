@@ -169,7 +169,8 @@ func pulse() -> void:
 		FX.shockwave(get_parent(), global_position, Palette.WHITE_HOT, 14.0, 1.1)
 		Sfx.play("breach", -8.0, 0.7)
 		if hud:
-			hud.show_toast("THE SHEAR HAS CLOSED", Palette.AMBER_DIM)
+			hud.show_toast("THE SHEAR CLOSED — WHAT WAS LEFT IN IT IS GONE",
+				Palette.AMBER_DIM)
 		# `band` is where the shear SAT, not what it paid — the pot is
 		# _rich_band(). The log records the place, in the toast's own words.
 		GameState.note_log("THE SHEAR CLOSED — %s" % DeepSpace.BAND_NAMES[band])
@@ -178,7 +179,8 @@ func pulse() -> void:
 			m.set("live_rift", null)
 		queue_free()
 	elif hud:
-		hud.show_toast("THE SHEAR IS FAILING — %d OF %d" % [pulses_done, PULSES],
+		hud.show_toast("THE SHEAR IS COLLAPSING — %d OF %d · TAKE THE CRATES NOW"
+			% [pulses_done, PULSES],
 			Palette.THREAT)
 
 

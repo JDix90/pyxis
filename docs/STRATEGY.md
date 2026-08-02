@@ -4985,3 +4985,186 @@ on its buttons, so the helper eight assertions rely on to read "the
 rendered tree" was blind to all of it. The tell was that the assertion
 failed in BOTH directions — a measurement that cannot distinguish its two
 outcomes is not measuring.
+
+## 57. The engine that would not wake (v18, playtest round 3)
+
+A playtest screenshot: the ship parked a few units off THE GNOMON, three
+hundred units out in the Drift, `CARRIER WASH` on the band line — and the
+engine asleep. No wake, no refusal, no line. An inert prop at the end of a
+three-hundred-unit hunt.
+
+### The gate was in the wrong function
+
+Breaching this system's survey hull is what arms the apex (§38): the breach
+charts the next system, and killing the engine opens the lane to it. That gate
+is real and it is load-bearing — `travel_to` asks only about the lane, so an
+engine that woke for anyone who found it could be killed into a lane leading
+somewhere the player had never charted.
+
+The defect was **where the gate was asked**, not what it decided.
+`_load_system` armed the proximity poll only for an already-breached system:
+
+```gdscript
+if GameState.breached.has(id) and _find_apex() != null:
+    _apex_wake_timer = APEX_WAKE_DELAY
+```
+
+So in an unbreached system the poll never ran at all. Nothing was watching for
+the player's arrival, so arriving produced nothing — not a wake, and not a
+refusal either. The gate did not *decline* to open; it was never asked.
+
+The poll now runs wherever there is a live engine, and `_wake_apex` asks the
+survey question one step later — where there is a player standing in front of
+it to answer. Same gate, same verdict, and now a sentence: the engine states
+its terms once per visit on the GSA relay, with the hull's bearing and depth,
+because the player is three hundred units past the thing they need to breach.
+The poll stays armed either way, so breaching and returning wakes it with no
+further ceremony — and, as the assertion proves, breaching *without moving*
+wakes it where the ship already stands.
+
+### Why it became reachable in v18, and why 30 assertions could not see it
+
+Reachable the day the tutorial stopped breaching the survey hull. Before v18
+the guided run ended on the real hull, so every player was breached before they
+could fly anywhere; §54 moved the finale to a training hull and put the survey
+hull a hundred units past the marker. From that day "fly out, get rich, find
+the lair" was an ordinary way to play — and the first thing it met was scenery.
+
+The assertions could not see it because **all thirty of them wrote
+`_apex_wake_timer = 0.2` by hand** after teleporting to the lair. That skips
+the arming step entirely and starts the poll at its proximity test, so the one
+question that mattered — *does the poll ever run?* — had no coverage anywhere
+in a suite of thirty apex checks. This is the same shape as §54's tutorial
+step: a harness that stages the state it is supposed to be measuring.
+
+`A DORMANT ENGINE SAYS WHY` is driven by flying and waiting and touches
+`_apex_wake_timer` nowhere. It asserts all three halves — it sleeps, it says
+which way the hull is, and the breach wakes it from the same berth.
+
+Moving the gate also cost `PYXIS_DEEPTEST` a free pass: it staged a boss fight
+in an unbreached system and got away with it for as long as hand-arming skipped
+the check. It marks the breach now, the way SHIPTEST and RADARTEST always have.
+
+### One corner for everything navigational
+
+Same screenshot, second finding. `HDG 181 · WEST` sat top-left under `HULL`;
+the band, the range and the carrier wash sat bottom-left. "Which way am I
+pointing" and "how far out am I, in what" are one question asked twice, and the
+answer was split across two corners of a phone screen. The heading moved down
+to sit directly above the band line. The top-left stack keeps SALVAGE / HOLD /
+HULL — the *ship's* state, read while looking at the ship. The bottom-left
+corner is the *chart's*, read while deciding where to point.
+
+## 58. Covering somebody, and saying what you meant (v18, playtest round 3)
+
+### The favour was real and almost nobody could earn it
+
+Stage 5 gave the matrix its first positive mover: kill something that was
+attacking a **convoy** and the convoy's flag remembers it. That fixed the
+one-way ratchet in principle — four of the seven chartfolk flags had no way up
+at all — and left it unreachable in practice, because a convoy is one of half a
+dozen kinds of flagged ship in the sky. Sentries hold lanes, pickets patrol the
+cordon, guards sit on posts, the Procession moves. Every one of them can be
+caught in a fight it did not pick, and helping any of them counted for nothing.
+
+`credit_defence` now takes anything in `combatants` carrying a flag. Two bounds,
+because a favour that pays per corpse is a standing printer:
+
+- a **convoy** keeps its per-convoy-per-session bound — a column fights one
+  action, and a per-ship bound would pay six times for one rescue;
+- **everything else** is bounded per flag per system visit. A brawl is worth one
+  step to the flag it was fought for however many hulls burn in it, so parking
+  beside a border skirmish and farming it is worth exactly what helping once is.
+  Warping out and back re-arms it, deliberately — a second trip is a second
+  favour — and `DELTA_SPAN` still caps where the arc can end.
+
+It is **not** gated on the flag's current band. Covering the ships of a faction
+that despises you is the one way back that does not involve a toll, and it
+should read as exactly that: you turned up, and it counted.
+
+The muster is excluded, for HORIZON-4 §8's reason applied to a second currency:
+a recurring event that pays is recurring income whatever it is denominated in.
+
+### Standing moved and never said why
+
+`_flush_standing_toast` named the faction and the band — "THE RELAY LEAGUE —
+STANDING RISES · FRIENDLY" — which is the A10 complaint one layer up. The player
+watches a number move and cannot tell which of the last ten seconds moved it, so
+they cannot choose to do it again. A mover may now attach a **cause**, and the
+toast leads with it: "COVERED THEIR SHIP — THE RELAY LEAGUE · NOW FRIENDLY".
+Movers that are self-evident where they fire — a toll paid on a sheet the player
+is looking at — pass no cause and read exactly as they did.
+
+### The copy that named things without explaining them
+
+A separate pass over the lines a player meets while something is shooting at
+them. The rule applied was not "write it plainly" — the game's voice is terse
+and diegetic on purpose — but **every line must either use a word the game has
+taught, or say what to do about it**. What failed that test:
+
+| was | is | why |
+|---|---|---|
+| `IRIS SEALED — CLEAR THE PROBES` | `CORE SEALED — DESTROY THE PROBES TO OPEN IT` | "iris" is never taught; the core is the thing being shot |
+| `IRIS PARTIAL — n PLATE(S) WELDED` | `CORE PART-SEALED — n PLATE(S) STILL WELDED SHUT` | said a state, not a consequence |
+| `IRIS OPEN — FULL EXPOSURE` | `CORE FULLY OPEN — HIT IT NOW` | exposure *of what*, and *so what* |
+| `VENTING PROBES` | `VENTING PROBES — DESTROY THEM TO REOPEN THE CORE` | named an event with no verb attached |
+| `CARRIER WASH` | `JAMMED — SOMETHING IS CLOSE` | the old line was pure jargon; the new one still says HERE and never THAT WAY, which is the constraint that matters |
+| `THE SHEAR IS FAILING — n OF m` | `THE SHEAR IS COLLAPSING — n OF m · TAKE THE CRATES NOW` | a countdown the player could not read as one |
+| `ARCHEOLOGY n — X NOW READS IN THE FIELD` | `ARCHEOLOGY n — IDENTIFY X SALVAGE WITHOUT DOCKING` | "reads in the field" is the codebase's phrase, not the player's |
+| `NO ROOM TO STOW THAT READ` | `HOLD FULL — NO ROOM FOR WHAT IT IDENTIFIES AS` | "a read" as a noun appears nowhere the player has been taught |
+| `THE CORDON IS STANDING TO` | `THE CORDON IS MUSTERING — A LINE IS FORMING` | military idiom, and the game already has a word for this event |
+| `SLOT OPEN — TAKE ANOTHER AT ANY PORT` | `CONTRACT SLOT FREE — PICK UP ANOTHER AT ANY PORT` | which slot? |
+| `BERTH LOGGED — X xN` | `NEW BERTH CHARTED — X xN` | "logged" hid that this was the charting payout |
+| `THERMAL SINK ABSORBED THE WASH` | `THERMAL SINK ABSORBED THE BLAST — LESS DAMAGE TAKEN` | the module has to be seen paying for itself |
+
+`CARRIER WASH` is the one worth arguing about, because §56 chose it
+deliberately: it had to say HERE and never THAT WAY, and never be more precise
+than the radar cutoff it precedes. `JAMMED — SOMETHING IS CLOSE` keeps both
+properties — byte-identical at 119 units and at 5 — and drops the only part that
+was doing no work, which was the word "carrier".
+
+### The assertion an unrelated dice roll could poison
+
+`RAIDTEST`'s `THE HOLD IS NOT A SHIELD` went red on the first sweep after §57,
+and the shape of the failure was the tell: `parked+open ineligible=true,
+moving+open eligible=false`. Both halves of one question came back "not
+eligible", which is not what a broken *rule* looks like — it is what a blocked
+*precondition* looks like.
+
+`_tick_interdiction` rolls a raid of its own accord once `_raid_timer` reaches
+zero, and P9 and P10 both leave that timer at exactly `0.0`. So the first frame
+in which the tick finds nothing else blocking it decrements past zero and
+spawns; `_raid_active` latches true; and every `interdiction_eligible()` after
+that returns false regardless of where the ship is or what sheet is up. The
+parked half then passes *for the wrong reason* and the moving half fails, which
+is precisely the printed line.
+
+It needs the roll to land inside one specific frame, and what decides that is
+how much other work `_process` is doing that tick — so it sat dormant for as
+long as the frame budget happened not to line up, and surfaced when §57 added a
+proximity poll that runs in every system rather than only breached ones. The
+poll is not the bug and removing it would only re-hide this.
+
+`_pin_raid_idle()` now sets the three fields the check *assumes* immediately
+before it reads, in both P10 and P11. `_raid_timer` is the one that matters:
+zeroing `_raid_active` and `_raid_cooldown` without it leaves the roll armed and
+merely moves which frame it fires in. Three consecutive runs at 26/0, matching
+the pre-§57 baseline exactly.
+
+The general lesson is the one §54 already paid for once: **a measurement an
+unrelated dice roll can poison is not measuring the thing it names.** Staging
+belongs where it is read, not several statements and an `await` earlier.
+
+### The sweep after round 3
+
+**55 runs | 517 PASS | 1 FAIL | 0 script errors | save intact.** Up three on the
+514 baseline, which is exactly the three assertions this round added:
+`A DORMANT ENGINE SAYS WHY`, `COVERING ANYBODY IS EARNED, AND BOUNDED PER FLAG`,
+and `A STANDING TOAST SAYS WHAT EARNED IT`. The one failure is the standing
+HOLDTEST readout issue, untouched by any of this.
+
+The dormant-engine check was red-verified the way the house rules require —
+the breach test put back into `_load_system`, and the assertion prints
+`slept=true, said …=false, woke=false` against its green
+`slept=true, said …=true, woke=true`. Both halves of what it claims move when
+the defect returns, which is the only thing that makes it worth its runtime.

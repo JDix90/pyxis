@@ -524,6 +524,43 @@ func _ready() -> void:
 	_hull_label.add_theme_font_size_override("font_size", 12)
 	top.add_child(_hull_label)
 
+	_gain_label = Label.new()
+	_gain_label.add_theme_color_override("font_color", Palette.GOLD)
+	_gain_label.add_theme_font_size_override("font_size", 19)
+	_gain_label.modulate.a = 0.0
+	_gain_label.position = Vector2(30, 88)
+	_gain_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(_gain_label)
+
+	# ONE CORNER FOR EVERYTHING NAVIGATIONAL.
+	#
+	# Heading used to live top-left under HULL, at the far end of the screen from
+	# the band and the range it has to be read WITH. "Which way am I pointing"
+	# and "how far out am I, in what" are one question asked twice, and splitting
+	# the answer across two corners made the player do the join themselves --
+	# every time, on a phone, usually while something was shooting. They stack in
+	# one place now.
+	#
+	# ORDER IS HEADING ABOVE THE BAND LINE, and it is not arbitrary: the band
+	# line is anchored to the bottom edge and is the one that must not move, so
+	# the compass grows upward off it. GROW_DIRECTION_BEGIN on the box is what
+	# makes that true -- the box is pinned by its BOTTOM, so adding the heading
+	# row pushes the heading up rather than pushing the band line down into the
+	# action dock.
+	#
+	# The top-left stack keeps SALVAGE / HOLD / HULL: those are the SHIP's state,
+	# and they are read while looking at the ship. This corner is the CHART's,
+	# and it is read while deciding where to point.
+	var nav := VBoxContainer.new()
+	nav.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	# Back in the corner: the controls moved to the centre dock, so the
+	# bottom-left is the label's again and the clearance hack is unnecessary.
+	nav.position = Vector2(26, -30)
+	nav.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	nav.add_theme_constant_override("separation", -2)
+	nav.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(nav)
+
 	# WHICH WAY THE NOSE IS POINTING, and it is overdue. Six channels hand the
 	# player a bearing -- the free relay, two paid desks, the mast, the relic,
 	# the rift -- and until this label nothing in the cockpit read one back. The
@@ -537,32 +574,23 @@ func _ready() -> void:
 	#
 	# %03d matches the paid channel's "BEARING %03d" digit for digit, so a
 	# hint and the instrument compare directly instead of by translation.
-	# SIZE_LABEL and AMBER_DIM match HOLD directly above: a glance readout,
-	# not an alarm.
+	#
+	# AMBER_DIM at 12 used to be chosen to match HOLD, which it no longer sits
+	# under. It keeps both: a size below the band line's 13 and an alpha below
+	# its 0.75 make the compass read as the quieter half of this corner, which
+	# is right — the band line changes when the WORLD does, the heading changes
+	# every time the stick moves.
 	_heading_label = Label.new()
 	_heading_label.text = "HDG --- · ----"
 	_heading_label.add_theme_color_override("font_color", Palette.AMBER_DIM)
 	_heading_label.add_theme_font_size_override("font_size", 12)
-	top.add_child(_heading_label)
-
-	_gain_label = Label.new()
-	_gain_label.add_theme_color_override("font_color", Palette.GOLD)
-	_gain_label.add_theme_font_size_override("font_size", 19)
-	_gain_label.modulate.a = 0.0
-	_gain_label.position = Vector2(30, 88)
-	_gain_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_root.add_child(_gain_label)
+	nav.add_child(_heading_label)
 
 	_system_label = Label.new()
 	_system_label.text = "SYS // PYX-01 :: DERELICT FIELD"
 	_system_label.add_theme_color_override("font_color", Color(1.0, 0.13, 0.45, 0.65))
 	_system_label.add_theme_font_size_override("font_size", 13)
-	_system_label.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	# Back in the corner: the controls moved to the centre dock, so the
-	# bottom-left is the label's again and the clearance hack is unnecessary.
-	_system_label.position = Vector2(26, -30)
-	_system_label.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_root.add_child(_system_label)
+	nav.add_child(_system_label)
 
 	_prompt_label = Label.new()
 	_prompt_label.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
@@ -1038,7 +1066,7 @@ func _apply_system_tag() -> void:
 		# units and at 5, so no bearing can be extracted from it, and its
 		# boundary sits outside the radar cutoff it precedes -- it can never be
 		# more precise than the instrument it is announcing.
-		_system_label.text += " · CARRIER WASH"
+		_system_label.text += " · JAMMED — SOMETHING IS CLOSE"
 	var c: Color = Palette.band_color(band)
 	_system_label.add_theme_color_override("font_color", Color(c.r, c.g, c.b, 0.75))
 

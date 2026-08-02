@@ -198,6 +198,12 @@ var _carrier_wash := false
 var _carrier_poll := 0.0
 var _standing_pending := {}     # faction id -> summed delta for this volley
 var _standing_settle := 0.0
+# faction id -> why it moved, for the toast. Set by the mover, consumed by the
+# flush, and never persisted: a cause is a caption on a moment.
+var _standing_causes := {}
+# Which flags have already been thanked for a rescue this system visit. Reset in
+# _load_system, for the reason credit_defence spells out.
+var _defended_flags := {}
 
 const RAID_COOLDOWN := 90.0
 const RAID_CORSAIR_HOLD := 12000   # rich enough to bring something with armour
@@ -359,6 +365,9 @@ var _pending_dock: Port = null
 var _hitstop := false
 var _wave_timer := 6.0
 var _apex_wake_timer := -1.0
+# Whether this visit has already been told why the engine is asleep. Per system
+# load, not per run: see _wake_apex.
+var _apex_dormant_told := false
 
 var _raid_timer := RAID_ROLL_INTERVAL
 var _raid_cooldown := 0.0
@@ -1107,9 +1116,25 @@ func _load_system(id: String) -> void:
 	var swarm: Dictionary = system_def.get("swarm", {})
 	_wave_timer = float(swarm.get("first_delay", 6.0))
 
-	# Already-breached systems have a live engine: arm its wake-up.
-	if GameState.breached.has(id) and _find_apex() != null:
+	# A system with a live engine polls for the hunter, breached or not.
+	#
+	# THE BREACH TEST USED TO LIVE HERE, and that is the defect this moved. The
+	# poll is what notices the player has arrived at the lair; gating the poll on
+	# the survey meant an unbreached system never noticed anything, so a pilot who
+	# found the engine before filing the survey got no wake, no refusal and no
+	# line -- an inert prop, three hundred units out, that the radar had just
+	# spent DETECT_RANGE leading them to. Reachable from the day v18 moved the
+	# survey hull past the marker: the tutorial stopped breaching it, so arriving
+	# at the lair first is now an ordinary way to play rather than a perverse one.
+	#
+	# The gate itself is unchanged and still absolute -- _wake_apex asks the same
+	# question, one step later, where there is a player standing in front of it to
+	# answer. What moved is WHEN the question gets asked, not what it decides.
+	if _find_apex() != null:
 		_apex_wake_timer = APEX_WAKE_DELAY
+	_apex_dormant_told = false
+	# A new system is a new set of people to do a favour for. See credit_defence.
+	_defended_flags = {}
 
 	if hud:
 		hud.set_system_tag(SystemDB.display_name(id))
@@ -1522,13 +1547,24 @@ func _flush_standing_toast() -> void:
 		else:
 			others += 1
 	var summed := int(_standing_pending.get(lead, 0))
+	var cause := String(_standing_causes.get(lead, ""))
 	_standing_pending = {}
+	_standing_causes = {}
 	_standing_settle = 0.0
 	if lead == "" or summed == 0 or hud == null:
 		return
 	var band := GameState.faction_band(FactionDB.SURVEYOR, lead)
+	# THE CAUSE GOES FIRST WHERE THERE IS ONE. "STANDING RISES" tells a player
+	# that a number moved; it does not tell them which of the last ten seconds
+	# did it, and a player who cannot connect the act to the consequence cannot
+	# choose to repeat it. Movers that are self-evident at the moment they fire
+	# (a toll paid on a sheet the player is looking at) pass no cause and read
+	# exactly as they did.
 	var line := "%s — STANDING %s · %s" % [FactionDB.display_name(lead),
 		"RISES" if summed > 0 else "FALLS", FactionDB.BAND_NAMES[band]]
+	if cause != "":
+		line = "%s — %s · NOW %s" % [cause, FactionDB.display_name(lead),
+			FactionDB.BAND_NAMES[band]]
 	if others > 0:
 		line += "  (+%d MORE)" % others
 	# Band.ALLIED is 0 and Band.HOSTILE is 4, so "friendly or better" is <=.
@@ -1541,29 +1577,73 @@ func _flush_standing_toast() -> void:
 	Sfx.play("equip", -14.0, 1.25 if summed > 0 else 0.8)
 
 
-func credit_convoy_defence(victim_target) -> void:
-	# KILLING SOMETHING THAT WAS ATTACKING A CONVOY IS A FAVOUR, AND IS
+func credit_defence(saved) -> void:
+	# KILLING SOMETHING THAT WAS SHOOTING AT SOMEBODY'S SHIP IS A FAVOUR, AND IS
 	# REMEMBERED. Four of the seven chartfolk flags -- league, combine, bastion,
 	# procession -- had no positive mover at all before this: every faction had
 	# a way to lose standing and only three had a way to gain it, so the matrix
-	# was a one-way ratchet for most of the roster. The Tally hunts convoys in
-	# the Reaches, so this fires by playing rather than by seeking it out.
+	# was a one-way ratchet for most of the roster.
+	#
+	# THIS USED TO BE CONVOYS ONLY, and the narrowness was the limitation rather
+	# than the design. A convoy is one of half a dozen kinds of flagged ship out
+	# there -- sentries hold lanes, pickets patrol the cordon, guards sit on
+	# posts, the Procession moves -- and every one of them can be caught in a
+	# fight it did not pick. Restricting the favour to the one kind that travels
+	# in a column meant the commonest way a player actually helps somebody
+	# counted for nothing. Now anything flagged and fighting counts.
+	#
+	# TWO BOUNDS, because a favour that pays per corpse is a standing printer:
+	#
+	#   * a CONVOY keeps its own per-convoy-per-session bound. It is a column of
+	#     ships fighting one action, and a bound per ship would pay six times for
+	#     one rescue.
+	#   * anything else is bounded PER FACTION PER SYSTEM VISIT. A brawl is worth
+	#     one step to the flag it was fought for, however many hulls burn in it,
+	#     so parking beside a border skirmish and farming the wreckage is worth
+	#     exactly as much as helping once. Warping out and back re-arms it, which
+	#     is deliberate -- a second trip is a second favour -- and DELTA_SPAN
+	#     still caps where the whole arc can end up.
+	#
+	# NOT GATED ON THE FLAG'S CURRENT BAND, and that is a design call rather than
+	# an oversight. Covering the ships of a faction that despises you is the one
+	# way back that does not involve a toll, and it should read as exactly that:
+	# you turned up, and it counted. Their ships shooting at you meanwhile is the
+	# cost of trying.
 	#
 	# UNTYPED, for the dispatcher's reason: what arrives is a dying ship's last
-	# target, which may already be freed.
+	# target, which may already be freed. The player is never in `combatants`, so
+	# the ship that was shooting at YOU cannot bill itself as a rescue.
 	#
 	# quiet=true: the standing toast is the narration this needed, and a
 	# logbook slot is for things worth reading back at a dock.
-	if not is_instance_valid(victim_target):
+	if not is_instance_valid(saved):
 		return
-	var n := victim_target as Node
-	if n == null or not n.is_in_group("deep_convoy") or deep_space == null:
+	var n := saved as Node
+	if n == null or not n.is_in_group("combatants"):
 		return
-	var flag := String(victim_target.faction)
-	if not FactionDB.is_faction(flag):
+	# The muster carries nothing by design (HORIZON-4 §8) and that has to include
+	# standing: it is a recurring event, and a recurring event that paid would be
+	# recurring income whatever the currency.
+	if bool(n.get("muster")):
 		return
-	if not deep_space.note_convoy_defended(String(n.get_meta("convoy_id", ""))):
+	var flag := String(n.get("faction"))
+	if not FactionDB.is_faction(flag) or flag == FactionDB.SURVEYOR:
 		return
+
+	if n.is_in_group("deep_convoy"):
+		if deep_space == null:
+			return
+		if not deep_space.note_convoy_defended(String(n.get_meta("convoy_id", ""))):
+			return
+	elif _defended_flags.has(flag):
+		return
+	else:
+		_defended_flags[flag] = true
+
+	# The cause, so the toast can say WHY. Standing that moves without a reason
+	# on screen is the A10 complaint one layer up: the player can see the number
+	# change and still not know what they did to change it.
+	_standing_causes[flag] = "COVERED THEIR SHIP"
 	GameState.shift_faction(FactionDB.SURVEYOR, flag, 1, true)
 
 
@@ -1774,7 +1854,7 @@ func _open_muster() -> void:
 		g.global_position = Vector3(cos(a) * line_r, 0.0, sin(a) * line_r)
 		g.add_to_group("muster_line")
 	if hud:
-		hud.show_toast("THE CORDON IS STANDING TO", Palette.TEAL)
+		hud.show_toast("THE CORDON IS MUSTERING — A LINE IS FORMING", Palette.TEAL)
 	Sfx.play("klaxon", -10.0, 0.9)
 	_release_muster_wave()
 
@@ -2410,7 +2490,7 @@ func _complete_dock(port: Port) -> void:
 			if good != "" and GameState.load_cargo(good, SurveyMast.YIELD_UNITS) > 0:
 				deep_space.note_surveyed(cell)
 				if hud:
-					hud.show_toast("BERTH LOGGED — %s x%d" % [
+					hud.show_toast("NEW BERTH CHARTED — %s x%d" % [
 						CommodityDB.short_name(good), SurveyMast.YIELD_UNITS],
 						CommodityDB.color_of(good))
 					hud.refresh_cargo()
@@ -2608,8 +2688,54 @@ func _wake_apex() -> void:
 			or hunter.global_position.distance_to(boss.global_position) > ApexBoss.WAKE_RANGE:
 		_apex_wake_timer = 1.0     # check again shortly
 		return
+
+	# AND THE ENGINE ANSWERS A FILED SURVEY, WHICH IT NOW SAYS OUT LOUD.
+	#
+	# Breaching this system's hull is what arms the engine (Derelict._breach ->
+	# arm_apex_wake), and that gate is load-bearing: the kill opens the lane to
+	# the next system, charting it is the breach's job, and travel_to asks only
+	# about the lane -- so an engine that woke for anyone who found it could be
+	# killed into a lane leading somewhere the player had never charted.
+	#
+	# What was missing was any way to LEARN that. The refusal was silent and
+	# invisible: no wake, no line, and an engine that sits there being scenery.
+	# So the poll keeps running and the engine states its terms once per visit,
+	# on the channel that gave the assignment in the first place -- and the
+	# bearing comes back with it, because the player is three hundred units out
+	# and the thing they need is behind them.
+	#
+	# Told ONCE per system load rather than once ever: it is a redirection, and a
+	# pilot who comes back out here a week later needs it as much as they did the
+	# first time. The poll stays armed either way, so breaching the hull and
+	# returning wakes the engine with no further ceremony.
+	if not GameState.breached.has(system_id):
+		_apex_wake_timer = 1.0
+		if not _apex_dormant_told:
+			_apex_dormant_told = true
+			_announce_dormant_apex(boss)
+		return
+
 	_set_boss_active(true)
 	boss.wake()
+
+
+func _announce_dormant_apex(boss: ApexBoss) -> void:
+	Sfx.play("alarm", -12.0, 0.7)
+	if hud == null:
+		return
+	hud.prompt("%s — DORMANT" % boss.boss_name)
+	var deg := SystemDB.derelict_bearing_deg(system_id)
+	var hull_depth := int(round(SystemDB.derelict_depth(system_id)))
+	if hull_depth > 0:
+		hud.show_broadcast("GSA RELAY — SURVEY OUTSTANDING",
+			"You have found it. It will not answer you — %s wakes when a survey "
+				% boss.boss_name
+			+ "is filed on this system, and ours is still outstanding. The hull "
+			+ "is %du out on bearing %03d. Breach it, then come back here."
+				% [hull_depth, deg], Palette.GOLD)
+	else:
+		hud.show_toast("DORMANT — NO SURVEY FILED", Palette.AMBER)
+	GameState.note_log("FOUND %s — DORMANT" % boss.boss_name)
 
 
 func _set_boss_active(v: bool) -> void:
@@ -5933,6 +6059,24 @@ func _run_deep_test() -> void:
 	player.invulnerable = true
 	_wave_timer = 1.0e9
 	_apex_wake_timer = -1.0
+	# THE SURVEY GOES ON FILE UP HERE, and the position is the whole point.
+	#
+	# Section 30 stages a boss fight, and the engine answers a filed survey and
+	# nothing else (main._wake_apex). This suite got away with never filing one
+	# for as long as the breach test lived in _load_system: hand-arming the timer
+	# jumped straight past it. It does not any more, so the precondition has to
+	# be staged for real -- SHIPTEST and RADARTEST have both always done exactly
+	# this before parking on the lair.
+	#
+	# AT THE TOP RATHER THAN AT SECTION 30, because mark_breached CHARTS the next
+	# system and charting BROADCASTS. show_broadcast holds its plate for 7.65s,
+	# and section 31 samples broadcast_text() about six seconds after section 30
+	# to prove the beacons are silent inside charted space -- so filing the survey
+	# down there put an unrelated transmission on screen and BEACONS read it. Up
+	# here the plate has faded many minutes before anything asks. Safe against the
+	# wake it arms, too: the line above disarms the poll and nothing re-arms it
+	# until section 30 asks for the fight.
+	GameState.mark_breached(system_id)
 	await get_tree().create_timer(0.4).timeout
 
 	# 0. Sentries stand where they were authored to stand.
@@ -7511,7 +7655,8 @@ func _run_narrow_shots() -> void:
 		# No wide capture has ever contained a toast or a broadcast, which is part
 		# of why an 8px band overlap shipped: the frames that would have shown it
 		# never had anything in those bands.
-		hud.show_toast("ARCHEOLOGY 2 — THE DRIFT NOW READS IN THE FIELD", Palette.GOLD)
+		hud.show_toast("ARCHEOLOGY 2 — IDENTIFY THE DRIFT SALVAGE WITHOUT DOCKING",
+			Palette.GOLD)
 		hud.show_broadcast("SUBSPACE ADVISORY — AUTOMATED",
 			"SHEAR DETECTED · BEARING 240 · 190u OUT · IT WILL NOT HOLD",
 			Palette.band_color(2))
@@ -8400,6 +8545,32 @@ func _run_contract_test() -> void:
 
 # --- interdiction harness ---------------------------------------------------
 
+func _pin_raid_idle() -> void:
+	# THE PRECONDITIONS OF A CONSOLE-CAMPING CHECK, PINNED WHERE THEY ARE READ.
+	#
+	# P10 and P11 both ask one question — with a sheet up, is a parked ship
+	# sheltered and a moving one not — and both used to set up the world several
+	# statements and an `await` before the answer. That window is long enough for
+	# `_tick_interdiction` to roll a raid on its own: P9 and P10 leave `_raid_timer`
+	# at exactly 0.0, so the first frame in which the tick finds nothing blocking
+	# it decrements past zero and SPAWNS. `_raid_active` then latches true, and
+	# BOTH reads come back ineligible — which renders as "parked correctly
+	# refused, moving wrongly refused", the failure looking like a bug in the rule
+	# rather than in the staging.
+	#
+	# It survived because it needs the roll to land inside one specific frame, and
+	# what decides that is how much other work `_process` is doing — so it sat
+	# dormant until an unrelated change moved the frame budget and then failed
+	# about half the time. A measurement an unrelated dice roll can poison is not
+	# measuring the thing it names.
+	#
+	# `_raid_timer` is the one that matters: zeroing the other two without it
+	# leaves the roll armed and merely moves which frame it fires in.
+	_raid_active = false
+	_raid_cooldown = 0.0
+	_raid_timer = RAID_ROLL_INTERVAL
+
+
 func _run_raid_test() -> void:
 	var player: PlayerShip = get_tree().get_first_node_in_group("player")
 	player.invulnerable = true
@@ -8776,6 +8947,7 @@ func _run_raid_test() -> void:
 	player.velocity = Vector3.ZERO
 	refit_panel.open()
 	await get_tree().process_frame
+	_pin_raid_idle()
 	var parked_ok := not interdiction_eligible()
 	player.velocity = Vector3(6.0, 0.0, 0.0)
 	var moving_ok := interdiction_eligible()
@@ -8803,6 +8975,7 @@ func _run_raid_test() -> void:
 	player.velocity = Vector3.ZERO
 	hold_screen.open()
 	await get_tree().process_frame
+	_pin_raid_idle()
 	var h_parked := not interdiction_eligible()
 	player.velocity = Vector3(6.0, 0.0, 0.0)
 	var h_moving := interdiction_eligible()
@@ -14732,6 +14905,87 @@ func _run_faction_test() -> void:
 		"PASS" if def_first == 1 and def_second == 1 and def_idle_delta == 1
 			else "FAIL"])
 
+	# COVERING ANYBODY'S SHIP IS EARNED, AND BOUNDED PER FLAG PER VISIT. The
+	# favour used to require a `deep_convoy`, which is one of half a dozen kinds
+	# of flagged ship out there — so the commonest way a player actually helps
+	# somebody (wading into a border skirmish) counted for nothing.
+	#
+	# FOUR CLAUSES, and the middle two are the ones that make it a mechanic
+	# rather than a faucet: a second rescue of the SAME flag this visit pays
+	# nothing, a rescue of a DIFFERENT flag still pays, and a muster ship pays
+	# nothing at all (HORIZON-4 §8 — a recurring event must not be income, in any
+	# currency). Without the third clause a single per-visit latch would look
+	# identical to a correct per-faction one.
+	_clear_faction_matrix()
+	_defended_flags = {}
+	var cov_pilot: PlayerShip = get_tree().get_first_node_in_group("player")
+	var cov_key := FactionDB.pair_key(FactionDB.SURVEYOR, "combine")
+	var cov_key2 := FactionDB.pair_key(FactionDB.SURVEYOR, "bastion")
+
+	# A plain flagged picket — NOT in deep_convoy — caught in a fight.
+	var cov_deltas := []
+	for spec_v in [
+		{"flag": "combine", "muster": false, "key": cov_key},
+		{"flag": "combine", "muster": false, "key": cov_key},    # same flag again
+		{"flag": "bastion", "muster": false, "key": cov_key2},   # different flag
+		{"flag": "bastion", "muster": true, "key": cov_key2},    # a muster ship
+	]:
+		var spec: Dictionary = spec_v
+		var saved := Hostile.new()
+		saved.faction = String(spec["flag"])
+		saved.muster = bool(spec["muster"])
+		system_root.add_child(saved)
+		saved.global_position = cov_pilot.global_position + Vector3(16, 0, 0)
+		var attacker := SwarmHostile.new()
+		attacker.faction = "unknown_a"
+		system_root.add_child(attacker)
+		attacker.global_position = saved.global_position + Vector3(0, 0, 2)
+		await get_tree().process_frame
+		attacker._target = saved
+		attacker.take_damage(99999.0, cov_pilot)
+		await get_tree().process_frame
+		cov_deltas.append(int(GameState.faction_deltas.get(String(spec["key"]), 0)))
+		if is_instance_valid(saved):
+			saved.free()
+	_clear_faction_matrix()
+	_defended_flags = {}
+	print("[faction] COVERING ANYBODY IS EARNED, AND BOUNDED PER FLAG picket rescued %+d (want +1), same flag again %+d (still +1), a different flag %+d (want +1), a muster ship %+d (still +1) -> %s" % [
+		cov_deltas[0], cov_deltas[1], cov_deltas[2], cov_deltas[3],
+		"PASS" if cov_deltas[0] == 1 and cov_deltas[1] == 1 and cov_deltas[2] == 1
+			and cov_deltas[3] == 1 else "FAIL"])
+
+	# AND THE TOAST SAYS WHY IT MOVED. Standing that changes with no cause on
+	# screen is the A10 complaint one layer up: the player watches a number move
+	# and cannot tell which of the last ten seconds did it, so they cannot choose
+	# to do it again. Read off the RENDERED toast rather than the format string.
+	_clear_faction_matrix()
+	_defended_flags = {}
+	hud.clear_toast()
+	var why_saved := Hostile.new()
+	why_saved.faction = "league"
+	system_root.add_child(why_saved)
+	why_saved.global_position = cov_pilot.global_position + Vector3(16, 0, 0)
+	var why_attacker := SwarmHostile.new()
+	why_attacker.faction = "unknown_a"
+	system_root.add_child(why_attacker)
+	why_attacker.global_position = why_saved.global_position + Vector3(0, 0, 2)
+	await get_tree().process_frame
+	why_attacker._target = why_saved
+	why_attacker.take_damage(99999.0, cov_pilot)
+	await get_tree().create_timer(STANDING_TOAST_SETTLE + 0.5).timeout
+	var why_line := hud.toast_text()
+	if is_instance_valid(why_saved):
+		why_saved.free()
+	_clear_faction_matrix()
+	_defended_flags = {}
+	print("[faction] A STANDING TOAST SAYS WHAT EARNED IT '%s' names the act=%s, names the flag=%s, names the band it landed in=%s -> %s" % [
+		why_line, str(why_line.contains("COVERED")),
+		str(why_line.contains(FactionDB.display_name("league"))),
+		str(why_line.contains("FRIENDLY")),
+		"PASS" if why_line.contains("COVERED")
+			and why_line.contains(FactionDB.display_name("league"))
+			and why_line.contains("FRIENDLY") else "FAIL"])
+
 	_clear_faction_matrix()
 	await get_tree().create_timer(0.2).timeout
 	get_tree().quit()
@@ -15628,13 +15882,13 @@ func _run_hunt_test() -> void:
 	player.global_position = wash_lair + Vector3(0, 0, DeepSpace.LAIR_KEEPOUT + 60.0)
 	wash_rig.global_position = player.global_position
 	await get_tree().create_timer(0.5).timeout
-	var wash_far: bool = hud.system_tag_text().contains("CARRIER WASH")
+	var wash_far: bool = hud.system_tag_text().contains("SOMETHING IS CLOSE")
 	var wash_far_marked: bool = wash_engine != null \
 		and not _radar_marker_for(wash_engine).is_empty()
 	player.global_position = wash_lair + Vector3(0, 0, DeepSpace.LAIR_KEEPOUT - 20.0)
 	wash_rig.global_position = player.global_position
 	await get_tree().create_timer(0.5).timeout
-	var wash_near: bool = hud.system_tag_text().contains("CARRIER WASH")
+	var wash_near: bool = hud.system_tag_text().contains("SOMETHING IS CLOSE")
 	var wash_near_marked: bool = wash_engine != null \
 		and not _radar_marker_for(wash_engine).is_empty()
 	print("[hunt] THE CARRIER WASHES OUT at %.0fu out: wash=%s; at %.0fu in: wash=%s; engine on the radar at either range=%s/%s (both must be false) -> %s" % [
@@ -15643,6 +15897,50 @@ func _run_hunt_test() -> void:
 		str(wash_far_marked), str(wash_near_marked),
 		"PASS" if not wash_far and wash_near and not wash_far_marked
 			and not wash_near_marked else "FAIL"])
+
+	# --- the engine answers a filed survey, and says so when it will not -----
+	# THE ONE PATH NO HARNESS EVER FLEW. Every other apex check in this file
+	# hand-sets `_apex_wake_timer = 0.2` after teleporting to the lair, which
+	# starts the poll at its proximity test and skips the question of whether the
+	# poll RUNS AT ALL. It did not: the arming test in _load_system asked about
+	# the breach, so an unbreached system never polled, and a pilot who found the
+	# engine before filing the survey got no wake, no refusal and no line. Thirty
+	# apex assertions and not one could see it, because all thirty armed the
+	# timer themselves.
+	#
+	# So this one is driven by FLYING AND WAITING, and touches _apex_wake_timer
+	# nowhere. Both directions in one check: the refusal has to speak, and the
+	# breach has to wake it where the ship already stands.
+	GameState.breached = []
+	_load_system("pyx01")
+	_wave_timer = 1.0e9
+	await get_tree().create_timer(0.5).timeout
+	var sleeper_boss := _find_apex()
+	var sleeper_ok := sleeper_boss != null
+	var sleeper_deg := SystemDB.derelict_bearing_deg("pyx01")
+	var sleeper_depth := int(round(SystemDB.derelict_depth("pyx01")))
+	if sleeper_ok:
+		player.global_position = sleeper_boss.global_position + Vector3(0, 0, 12.0)
+		wash_rig.global_position = player.global_position
+		# Long enough for APEX_WAKE_DELAY to expire AND for several 1s re-polls,
+		# so a poll that fired once and died is not mistaken for one that holds.
+		await get_tree().create_timer(APEX_WAKE_DELAY + 4.0).timeout
+	var sleeper_slept: bool = sleeper_ok and not boss_active \
+		and sleeper_boss.state == ApexBoss.State.DORMANT
+	# The refusal is only worth anything if it is READABLE, and the bearing is
+	# the whole payload: the player is 300u past the hull they need to breach.
+	var sleeper_said: String = hud.broadcast_text()
+	var sleeper_spoke: bool = sleeper_said.contains("%03d" % sleeper_deg) \
+		and sleeper_said.contains("%du" % sleeper_depth)
+	# And now file it, without moving the ship an inch.
+	GameState.mark_breached("pyx01")
+	if sleeper_ok:
+		await get_tree().create_timer(APEX_BREACH_DELAY + ApexBoss.WAKE_TIME + 2.0).timeout
+	var sleeper_woke: bool = sleeper_ok and boss_active \
+		and sleeper_boss.state != ApexBoss.State.DORMANT
+	print("[hunt] A DORMANT ENGINE SAYS WHY unbreached at 12u: slept=%s, said bearing %03d / %du=%s; after the breach, same berth: woke=%s -> %s" % [
+		str(sleeper_slept), sleeper_deg, sleeper_depth, str(sleeper_spoke), str(sleeper_woke),
+		"PASS" if sleeper_slept and sleeper_spoke and sleeper_woke else "FAIL"])
 
 	get_tree().quit()
 

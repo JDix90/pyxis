@@ -859,7 +859,7 @@ func _do_read(sid: String, out: String) -> void:
 			CommodityDB.color_of(out))
 		main.hud.refresh_cargo()
 		if GameState.last_read_tiered:
-			main.hud.show_toast("ARCHEOLOGY %d — %s NOW READS IN THE FIELD" % [
+			main.hud.show_toast("ARCHEOLOGY %d — IDENTIFY %s SALVAGE WITHOUT DOCKING" % [
 				GameState.archeology, DeepSpace.BAND_NAMES[GameState.archeology]],
 				Palette.GOLD)
 	_refresh()

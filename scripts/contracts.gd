@@ -145,7 +145,7 @@ func _complete(entry: Dictionary) -> void:
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud and hud.has_method("show_toast"):
 		hud.show_toast("CONTRACT COMPLETE  +%d" % reward, Palette.GOLD)
-		hud.prompt("SLOT OPEN — TAKE ANOTHER AT ANY PORT")
+		hud.prompt("CONTRACT SLOT FREE — PICK UP ANOTHER AT ANY PORT")
 	# Deliberately no refill. A finished contract frees a slot; what goes in it
 	# is the player's call at the next board.
 
