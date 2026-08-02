@@ -33,6 +33,16 @@ window/stretch/aspect="expand"
 ; click on empty space should do nothing, because a missed click on a small
 ; target used to fling the ship across the system.
 pointing/emulate_touch_from_mouse=false
+; AND THE OTHER DIRECTION, WHICH WAS THE ONE ACTUALLY BITING. Godot has two
+; emulation settings and only one of them was turned off; emulate_mouse_from_touch
+; defaults to TRUE, so every real tap on a phone ALSO raised a mouse button event.
+; CameraRig._unhandled_input dispatches touch and mouse down separate branches and
+; never marks input handled, so a single finger ran _select() TWICE -- which
+; silently collapsed both of the game's deliberate two-tap gestures into one tap:
+; the engage confirm on a neutral faction, and PortPanel's two-taps-outside to
+; undock. The comment on _mouse_button ("mouse emulation is off") was describing
+; the setting above and was half right, which is why it read as correct.
+pointing/emulate_mouse_from_touch=false
 
 [input]
 

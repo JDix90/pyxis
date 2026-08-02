@@ -7019,6 +7019,56 @@ func _run_deep_test() -> void:
 	print("[deep] THE PACK REMEMBERS ITS BAND plan band=%d (want 3), %d members sprung, all unknown_a=%s, all unleashed=%s -> %s" % [
 		band_static, nest_n, str(nest_flag_ok), str(nest_leash_ok),
 		"PASS" if band_static == 3 and nest_n > 0 and nest_flag_ok and nest_leash_ok else "FAIL"])
+
+	# 14b. EVERY CELL ANSWERS EVERY QUESTION. built_plan indexes plan["convoy"],
+	#      plan["pack"], plan["hulk"] and plan["station"] with no .get -- they
+	#      are keep-out filters, and a filter that tolerated a missing key would
+	#      silently stop filtering. So every path out of plan_cell must carry
+	#      every content key, including the band-0 early return.
+	#
+	#      This shipped broken and no assertion saw it, because band 0 means
+	#      INSIDE the charted volume and every probe in this suite skips those
+	#      cells before it indexes anything. The arithmetic that made it real:
+	#      cell centres sit at (64i+32, 64k+32), so the four innermost are
+	#      45.25u out, and PYX-02's bounds are 48.0 -- putting all four at
+	#      depth -2.75. pyx01 (40.0) and pyx03 (44.0) leave them at band 1.
+	#      One system, one band, and it errored on arrival for the whole
+	#      charted volume.
+	#
+	#      Swept over ALL THREE systems and both signs of the boundary rather
+	#      than over the one that broke.
+	var key_rows := ""
+	var keys_ok := true
+	var want_keys := ["band", "depth", "rocks", "hulk", "pack", "station", "convoy"]
+	for sys_v in ["pyx01", "pyx02", "pyx03"]:
+		var sid := String(sys_v)
+		var probe := DeepSpace.new()
+		# GENERATION OFF BEFORE IT ENTERS THE TREE. A DeepSpace defaults to
+		# generating=true and streams from its first _process, so a probe left
+		# live would arm and spring the SAME cells the real one owns -- and the
+		# first version of this assertion did exactly that, doubling the member
+		# count THE DEEP IS TRAVELLED measures two sections later.
+		probe.generating = false
+		add_child(probe)
+		probe.configure(SystemDB.get_system(sid), sid)
+		var band0 := 0
+		var missing := ""
+		for cz_k in range(-3, 4):
+			for cx_k in range(-3, 4):
+				var pl := probe.plan_cell(cx_k, cz_k)
+				if int(pl["band"]) == 0:
+					band0 += 1
+				for w_v in want_keys:
+					if not pl.has(String(w_v)):
+						keys_ok = false
+						if missing == "":
+							missing = "%s@(%d,%d)" % [String(w_v), cx_k, cz_k]
+		key_rows += "%s:%dband0%s " % [sid, band0, "" if missing == "" else "/MISSING " + missing]
+		# free(), not queue_free(): deferred deletion still runs _process on the
+		# way out, which is the other half of the same bug.
+		probe.free()
+	print("[deep] EVERY CELL ANSWERS EVERY QUESTION %s all 7 content keys present on every path -> %s" % [
+		key_rows, "PASS" if keys_ok else "FAIL"])
 	# By hand, and immediately: these have NO leash — left alive they chase
 	# the harness through every assertion that follows.
 	for n_15c in get_tree().get_nodes_in_group("hostiles"):
