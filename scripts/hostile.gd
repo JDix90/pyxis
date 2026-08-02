@@ -618,7 +618,19 @@ func _die(attacker: Node3D) -> void:
 	# because _aggro and _target are still valid -- the group removals above
 	# touch neither -- and gone a frame later.
 	if player_kill and main and main.has_method("credit_convoy_defence"):
-		main.credit_convoy_defence(_aggro if is_instance_valid(_aggro) else _target)
+		# BOTH FIELDS, IN THIS ORDER, and the order is the whole point. Shooting
+		# this ship set _aggro to the PLAYER -- that is what take_damage does --
+		# so reading _aggro first would credit the player's own convoy_id, which
+		# does not exist, and no favour would ever be recorded. _target is the
+		# field that still holds whatever it was hunting, because _pick_target
+		# returns an aggro node early without overwriting it.
+		#
+		# Called twice rather than chosen between: note_convoy_defended is
+		# bounded per convoy per session, so a double call cannot double-pay,
+		# and the alternative is a conditional that has to stay true about
+		# which field means what.
+		main.credit_convoy_defence(_target)
+		main.credit_convoy_defence(_aggro)
 
 	# If this was a deep guard, its post may have just fallen. `_dying` is already
 	# true above, so post_standing correctly does not count this node. Credited
