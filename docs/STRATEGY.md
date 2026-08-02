@@ -5122,3 +5122,35 @@ deliberately: it had to say HERE and never THAT WAY, and never be more precise
 than the radar cutoff it precedes. `JAMMED — SOMETHING IS CLOSE` keeps both
 properties — byte-identical at 119 units and at 5 — and drops the only part that
 was doing no work, which was the word "carrier".
+
+### The assertion an unrelated dice roll could poison
+
+`RAIDTEST`'s `THE HOLD IS NOT A SHIELD` went red on the first sweep after §57,
+and the shape of the failure was the tell: `parked+open ineligible=true,
+moving+open eligible=false`. Both halves of one question came back "not
+eligible", which is not what a broken *rule* looks like — it is what a blocked
+*precondition* looks like.
+
+`_tick_interdiction` rolls a raid of its own accord once `_raid_timer` reaches
+zero, and P9 and P10 both leave that timer at exactly `0.0`. So the first frame
+in which the tick finds nothing else blocking it decrements past zero and
+spawns; `_raid_active` latches true; and every `interdiction_eligible()` after
+that returns false regardless of where the ship is or what sheet is up. The
+parked half then passes *for the wrong reason* and the moving half fails, which
+is precisely the printed line.
+
+It needs the roll to land inside one specific frame, and what decides that is
+how much other work `_process` is doing that tick — so it sat dormant for as
+long as the frame budget happened not to line up, and surfaced when §57 added a
+proximity poll that runs in every system rather than only breached ones. The
+poll is not the bug and removing it would only re-hide this.
+
+`_pin_raid_idle()` now sets the three fields the check *assumes* immediately
+before it reads, in both P10 and P11. `_raid_timer` is the one that matters:
+zeroing `_raid_active` and `_raid_cooldown` without it leaves the roll armed and
+merely moves which frame it fires in. Three consecutive runs at 26/0, matching
+the pre-§57 baseline exactly.
+
+The general lesson is the one §54 already paid for once: **a measurement an
+unrelated dice roll can poison is not measuring the thing it names.** Staging
+belongs where it is read, not several statements and an `await` earlier.

@@ -8545,6 +8545,32 @@ func _run_contract_test() -> void:
 
 # --- interdiction harness ---------------------------------------------------
 
+func _pin_raid_idle() -> void:
+	# THE PRECONDITIONS OF A CONSOLE-CAMPING CHECK, PINNED WHERE THEY ARE READ.
+	#
+	# P10 and P11 both ask one question — with a sheet up, is a parked ship
+	# sheltered and a moving one not — and both used to set up the world several
+	# statements and an `await` before the answer. That window is long enough for
+	# `_tick_interdiction` to roll a raid on its own: P9 and P10 leave `_raid_timer`
+	# at exactly 0.0, so the first frame in which the tick finds nothing blocking
+	# it decrements past zero and SPAWNS. `_raid_active` then latches true, and
+	# BOTH reads come back ineligible — which renders as "parked correctly
+	# refused, moving wrongly refused", the failure looking like a bug in the rule
+	# rather than in the staging.
+	#
+	# It survived because it needs the roll to land inside one specific frame, and
+	# what decides that is how much other work `_process` is doing — so it sat
+	# dormant until an unrelated change moved the frame budget and then failed
+	# about half the time. A measurement an unrelated dice roll can poison is not
+	# measuring the thing it names.
+	#
+	# `_raid_timer` is the one that matters: zeroing the other two without it
+	# leaves the roll armed and merely moves which frame it fires in.
+	_raid_active = false
+	_raid_cooldown = 0.0
+	_raid_timer = RAID_ROLL_INTERVAL
+
+
 func _run_raid_test() -> void:
 	var player: PlayerShip = get_tree().get_first_node_in_group("player")
 	player.invulnerable = true
@@ -8921,6 +8947,7 @@ func _run_raid_test() -> void:
 	player.velocity = Vector3.ZERO
 	refit_panel.open()
 	await get_tree().process_frame
+	_pin_raid_idle()
 	var parked_ok := not interdiction_eligible()
 	player.velocity = Vector3(6.0, 0.0, 0.0)
 	var moving_ok := interdiction_eligible()
@@ -8948,6 +8975,7 @@ func _run_raid_test() -> void:
 	player.velocity = Vector3.ZERO
 	hold_screen.open()
 	await get_tree().process_frame
+	_pin_raid_idle()
 	var h_parked := not interdiction_eligible()
 	player.velocity = Vector3(6.0, 0.0, 0.0)
 	var h_moving := interdiction_eligible()
