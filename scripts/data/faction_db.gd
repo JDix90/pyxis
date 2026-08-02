@@ -237,7 +237,20 @@ const BASELINE := {
 		"gnomon": -4, "armillary": -4, "meridian": -4},
 	# The banner demands, it does not hate: hostile to the law and to the
 	# surveyor's cargo, merely unwelcome everywhere else.
-	"tithe": {"surveyor": -4, "gsa": -5, "bastion": -4, "league": -3,
+	# -6 TOWARD THE SURVEYOR, MATCHING THE SURVEYOR'S ROW, AND THE TWO MUST MOVE
+	# TOGETHER. Baselines are authored per DIRECTION but the player's delta is
+	# SYMMETRIC, so two directions that start on different numbers cross the
+	# HOSTILE boundary at different times. This row said -4 while the surveyor
+	# row said -6, which meant one paid toll flipped the BANNER to WARY -- its
+	# ships stopped targeting the player -- while the surveyor's side still read
+	# HOSTILE, so interdiction stayed eligible and spawned two more raids that
+	# could not fight. A klaxon, a demand and a pack that departs six seconds
+	# later is worse than no raid at all.
+	#
+	# They were equal at -4/-4 until the surveyor's side moved to -6; the fix is
+	# to move this one with it, not to pick a side at the reading. Three tolls
+	# now crosses both directions at once.
+	"tithe": {"surveyor": -6, "gsa": -5, "bastion": -4, "league": -3,
 		"gnomon": -4, "armillary": -4, "meridian": -4},
 	"procession": {"gsa": -1, "bastion": -1, "combine": -1, "embers": -1,
 		"grin": -1, "league": -1, "tithe": -2,

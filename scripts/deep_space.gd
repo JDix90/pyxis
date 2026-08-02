@@ -643,8 +643,20 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 	# harness compare two visits without having to fly there twice.
 	var depth := depth_at(cell_centre(cx, cz))
 	var band := band_of(depth)
+	# EVERY CONTENT KEY IS PRESENT ON EVERY PATH, including this early return.
+	# built_plan indexes plan["convoy"] with no .get -- it is a keep-out filter,
+	# and a filter that tolerates a missing key would silently stop filtering --
+	# so a band-0 cell that omitted the key was a runtime error, not an empty
+	# cell.
+	#
+	# Band 0 is depth <= 0, i.e. INSIDE the charted volume, which looks
+	# unreachable until you check the arithmetic: cell centres sit at
+	# (64i+32, 64k+32), so the four innermost are 45.25u from the origin, and
+	# PYX-02's bounds are 48.0 -- putting all four at depth -2.75. pyx01 (40.0)
+	# and pyx03 (44.0) leave them at band 1, which is why this only ever broke
+	# the second system, and only for a player who reached it.
 	var out := {"band": band, "depth": depth, "rocks": [], "hulk": {}, "pack": {},
-		"station": {}}
+		"station": {}, "convoy": {}}
 	if band == 0:
 		return out
 
@@ -1619,6 +1631,9 @@ func _check_convoy_hails(at: Vector3) -> void:
 		# MARKED FIRST, whatever happens next: a hail the dossier refuses as a
 		# duplicate must not be retried on every frame for the rest of the
 		# session.
+		# Marked before anything else, and it stays marked whatever happens
+		# next: a hail retried every frame for the rest of the session is a
+		# worse failure than a hail that had nothing to say.
 		_convoy_hailed[key] = true
 		var main := get_tree().get_first_node_in_group("main")
 		if main == null or not main.has_method("file_apex_intel"):
@@ -1626,10 +1641,25 @@ func _check_convoy_hails(at: Vector3) -> void:
 		# FILED FIRST, SPOKEN SECOND -- the hunt desk's rule, for its reason: a
 		# convoy that announced a fix nothing recorded would be worse than a
 		# convoy that said nothing at all.
-		if not main.file_apex_intel("convoy", speaker.global_position,
-				CONVOY_HINT_ERROR_DEG):
-			return
+		#
+		# BUT A REFUSAL IS STILL AN ANSWER. The dossier declines a hint for a
+		# system whose engine is already dead, which is most of a deep-farming
+		# player's session -- and the first version returned there, so the one
+		# convoy that would ever hail them burned its only line in silence.
+		# Standing the player spent a trade route earning produced no
+		# observable output at all. They get the greeting either way; only the
+		# cargo of it changes.
+		var filed: bool = main.file_apex_intel("convoy", speaker.global_position,
+			CONVOY_HINT_ERROR_DEG)
 		var hud := get_tree().get_first_node_in_group("hud")
+		if not filed:
+			if hud and hud.has_method("show_broadcast"):
+				hud.show_broadcast("%s CONVOY" % FactionDB.display_name(flag),
+					"Good hunting out here, surveyor. The lane is quiet and we "
+					+ "have nothing you do not already know — but you have our "
+					+ "thanks, and our channel, whenever you want them.",
+					FactionDB.tint_of(flag))
+			return
 		if hud and hud.has_method("show_broadcast"):
 			hud.show_broadcast("%s CONVOY" % FactionDB.display_name(flag),
 				"You have been good to us, surveyor. Our navigator has a fix on "
