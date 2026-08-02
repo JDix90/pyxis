@@ -5154,3 +5154,17 @@ the pre-§57 baseline exactly.
 The general lesson is the one §54 already paid for once: **a measurement an
 unrelated dice roll can poison is not measuring the thing it names.** Staging
 belongs where it is read, not several statements and an `await` earlier.
+
+### The sweep after round 3
+
+**55 runs | 517 PASS | 1 FAIL | 0 script errors | save intact.** Up three on the
+514 baseline, which is exactly the three assertions this round added:
+`A DORMANT ENGINE SAYS WHY`, `COVERING ANYBODY IS EARNED, AND BOUNDED PER FLAG`,
+and `A STANDING TOAST SAYS WHAT EARNED IT`. The one failure is the standing
+HOLDTEST readout issue, untouched by any of this.
+
+The dormant-engine check was red-verified the way the house rules require —
+the breach test put back into `_load_system`, and the assertion prints
+`slept=true, said …=false, woke=false` against its green
+`slept=true, said …=true, woke=true`. Both halves of what it claims move when
+the defect returns, which is the only thing that makes it worth its runtime.
