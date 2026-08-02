@@ -4985,3 +4985,72 @@ on its buttons, so the helper eight assertions rely on to read "the
 rendered tree" was blind to all of it. The tell was that the assertion
 failed in BOTH directions — a measurement that cannot distinguish its two
 outcomes is not measuring.
+
+## 57. The engine that would not wake (v18, playtest round 3)
+
+A playtest screenshot: the ship parked a few units off THE GNOMON, three
+hundred units out in the Drift, `CARRIER WASH` on the band line — and the
+engine asleep. No wake, no refusal, no line. An inert prop at the end of a
+three-hundred-unit hunt.
+
+### The gate was in the wrong function
+
+Breaching this system's survey hull is what arms the apex (§38): the breach
+charts the next system, and killing the engine opens the lane to it. That gate
+is real and it is load-bearing — `travel_to` asks only about the lane, so an
+engine that woke for anyone who found it could be killed into a lane leading
+somewhere the player had never charted.
+
+The defect was **where the gate was asked**, not what it decided.
+`_load_system` armed the proximity poll only for an already-breached system:
+
+```gdscript
+if GameState.breached.has(id) and _find_apex() != null:
+    _apex_wake_timer = APEX_WAKE_DELAY
+```
+
+So in an unbreached system the poll never ran at all. Nothing was watching for
+the player's arrival, so arriving produced nothing — not a wake, and not a
+refusal either. The gate did not *decline* to open; it was never asked.
+
+The poll now runs wherever there is a live engine, and `_wake_apex` asks the
+survey question one step later — where there is a player standing in front of
+it to answer. Same gate, same verdict, and now a sentence: the engine states
+its terms once per visit on the GSA relay, with the hull's bearing and depth,
+because the player is three hundred units past the thing they need to breach.
+The poll stays armed either way, so breaching and returning wakes it with no
+further ceremony — and, as the assertion proves, breaching *without moving*
+wakes it where the ship already stands.
+
+### Why it became reachable in v18, and why 30 assertions could not see it
+
+Reachable the day the tutorial stopped breaching the survey hull. Before v18
+the guided run ended on the real hull, so every player was breached before they
+could fly anywhere; §54 moved the finale to a training hull and put the survey
+hull a hundred units past the marker. From that day "fly out, get rich, find
+the lair" was an ordinary way to play — and the first thing it met was scenery.
+
+The assertions could not see it because **all thirty of them wrote
+`_apex_wake_timer = 0.2` by hand** after teleporting to the lair. That skips
+the arming step entirely and starts the poll at its proximity test, so the one
+question that mattered — *does the poll ever run?* — had no coverage anywhere
+in a suite of thirty apex checks. This is the same shape as §54's tutorial
+step: a harness that stages the state it is supposed to be measuring.
+
+`A DORMANT ENGINE SAYS WHY` is driven by flying and waiting and touches
+`_apex_wake_timer` nowhere. It asserts all three halves — it sleeps, it says
+which way the hull is, and the breach wakes it from the same berth.
+
+Moving the gate also cost `PYXIS_DEEPTEST` a free pass: it staged a boss fight
+in an unbreached system and got away with it for as long as hand-arming skipped
+the check. It marks the breach now, the way SHIPTEST and RADARTEST always have.
+
+### One corner for everything navigational
+
+Same screenshot, second finding. `HDG 181 · WEST` sat top-left under `HULL`;
+the band, the range and the carrier wash sat bottom-left. "Which way am I
+pointing" and "how far out am I, in what" are one question asked twice, and the
+answer was split across two corners of a phone screen. The heading moved down
+to sit directly above the band line. The top-left stack keeps SALVAGE / HOLD /
+HULL — the *ship's* state, read while looking at the ship. The bottom-left
+corner is the *chart's*, read while deciding where to point.

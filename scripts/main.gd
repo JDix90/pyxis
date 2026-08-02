@@ -359,6 +359,9 @@ var _pending_dock: Port = null
 var _hitstop := false
 var _wave_timer := 6.0
 var _apex_wake_timer := -1.0
+# Whether this visit has already been told why the engine is asleep. Per system
+# load, not per run: see _wake_apex.
+var _apex_dormant_told := false
 
 var _raid_timer := RAID_ROLL_INTERVAL
 var _raid_cooldown := 0.0
@@ -1107,9 +1110,23 @@ func _load_system(id: String) -> void:
 	var swarm: Dictionary = system_def.get("swarm", {})
 	_wave_timer = float(swarm.get("first_delay", 6.0))
 
-	# Already-breached systems have a live engine: arm its wake-up.
-	if GameState.breached.has(id) and _find_apex() != null:
+	# A system with a live engine polls for the hunter, breached or not.
+	#
+	# THE BREACH TEST USED TO LIVE HERE, and that is the defect this moved. The
+	# poll is what notices the player has arrived at the lair; gating the poll on
+	# the survey meant an unbreached system never noticed anything, so a pilot who
+	# found the engine before filing the survey got no wake, no refusal and no
+	# line -- an inert prop, three hundred units out, that the radar had just
+	# spent DETECT_RANGE leading them to. Reachable from the day v18 moved the
+	# survey hull past the marker: the tutorial stopped breaching it, so arriving
+	# at the lair first is now an ordinary way to play rather than a perverse one.
+	#
+	# The gate itself is unchanged and still absolute -- _wake_apex asks the same
+	# question, one step later, where there is a player standing in front of it to
+	# answer. What moved is WHEN the question gets asked, not what it decides.
+	if _find_apex() != null:
 		_apex_wake_timer = APEX_WAKE_DELAY
+	_apex_dormant_told = false
 
 	if hud:
 		hud.set_system_tag(SystemDB.display_name(id))
@@ -2608,8 +2625,54 @@ func _wake_apex() -> void:
 			or hunter.global_position.distance_to(boss.global_position) > ApexBoss.WAKE_RANGE:
 		_apex_wake_timer = 1.0     # check again shortly
 		return
+
+	# AND THE ENGINE ANSWERS A FILED SURVEY, WHICH IT NOW SAYS OUT LOUD.
+	#
+	# Breaching this system's hull is what arms the engine (Derelict._breach ->
+	# arm_apex_wake), and that gate is load-bearing: the kill opens the lane to
+	# the next system, charting it is the breach's job, and travel_to asks only
+	# about the lane -- so an engine that woke for anyone who found it could be
+	# killed into a lane leading somewhere the player had never charted.
+	#
+	# What was missing was any way to LEARN that. The refusal was silent and
+	# invisible: no wake, no line, and an engine that sits there being scenery.
+	# So the poll keeps running and the engine states its terms once per visit,
+	# on the channel that gave the assignment in the first place -- and the
+	# bearing comes back with it, because the player is three hundred units out
+	# and the thing they need is behind them.
+	#
+	# Told ONCE per system load rather than once ever: it is a redirection, and a
+	# pilot who comes back out here a week later needs it as much as they did the
+	# first time. The poll stays armed either way, so breaching the hull and
+	# returning wakes the engine with no further ceremony.
+	if not GameState.breached.has(system_id):
+		_apex_wake_timer = 1.0
+		if not _apex_dormant_told:
+			_apex_dormant_told = true
+			_announce_dormant_apex(boss)
+		return
+
 	_set_boss_active(true)
 	boss.wake()
+
+
+func _announce_dormant_apex(boss: ApexBoss) -> void:
+	Sfx.play("alarm", -12.0, 0.7)
+	if hud == null:
+		return
+	hud.prompt("%s — DORMANT" % boss.boss_name)
+	var deg := SystemDB.derelict_bearing_deg(system_id)
+	var hull_depth := int(round(SystemDB.derelict_depth(system_id)))
+	if hull_depth > 0:
+		hud.show_broadcast("GSA RELAY — SURVEY OUTSTANDING",
+			"You have found it. It will not answer you — %s wakes when a survey "
+				% boss.boss_name
+			+ "is filed on this system, and ours is still outstanding. The hull "
+			+ "is %du out on bearing %03d. Breach it, then come back here."
+				% [hull_depth, deg], Palette.GOLD)
+	else:
+		hud.show_toast("DORMANT — NO SURVEY FILED", Palette.AMBER)
+	GameState.note_log("FOUND %s — DORMANT" % boss.boss_name)
 
 
 func _set_boss_active(v: bool) -> void:
@@ -5933,6 +5996,24 @@ func _run_deep_test() -> void:
 	player.invulnerable = true
 	_wave_timer = 1.0e9
 	_apex_wake_timer = -1.0
+	# THE SURVEY GOES ON FILE UP HERE, and the position is the whole point.
+	#
+	# Section 30 stages a boss fight, and the engine answers a filed survey and
+	# nothing else (main._wake_apex). This suite got away with never filing one
+	# for as long as the breach test lived in _load_system: hand-arming the timer
+	# jumped straight past it. It does not any more, so the precondition has to
+	# be staged for real -- SHIPTEST and RADARTEST have both always done exactly
+	# this before parking on the lair.
+	#
+	# AT THE TOP RATHER THAN AT SECTION 30, because mark_breached CHARTS the next
+	# system and charting BROADCASTS. show_broadcast holds its plate for 7.65s,
+	# and section 31 samples broadcast_text() about six seconds after section 30
+	# to prove the beacons are silent inside charted space -- so filing the survey
+	# down there put an unrelated transmission on screen and BEACONS read it. Up
+	# here the plate has faded many minutes before anything asks. Safe against the
+	# wake it arms, too: the line above disarms the poll and nothing re-arms it
+	# until section 30 asks for the fight.
+	GameState.mark_breached(system_id)
 	await get_tree().create_timer(0.4).timeout
 
 	# 0. Sentries stand where they were authored to stand.
@@ -15643,6 +15724,50 @@ func _run_hunt_test() -> void:
 		str(wash_far_marked), str(wash_near_marked),
 		"PASS" if not wash_far and wash_near and not wash_far_marked
 			and not wash_near_marked else "FAIL"])
+
+	# --- the engine answers a filed survey, and says so when it will not -----
+	# THE ONE PATH NO HARNESS EVER FLEW. Every other apex check in this file
+	# hand-sets `_apex_wake_timer = 0.2` after teleporting to the lair, which
+	# starts the poll at its proximity test and skips the question of whether the
+	# poll RUNS AT ALL. It did not: the arming test in _load_system asked about
+	# the breach, so an unbreached system never polled, and a pilot who found the
+	# engine before filing the survey got no wake, no refusal and no line. Thirty
+	# apex assertions and not one could see it, because all thirty armed the
+	# timer themselves.
+	#
+	# So this one is driven by FLYING AND WAITING, and touches _apex_wake_timer
+	# nowhere. Both directions in one check: the refusal has to speak, and the
+	# breach has to wake it where the ship already stands.
+	GameState.breached = []
+	_load_system("pyx01")
+	_wave_timer = 1.0e9
+	await get_tree().create_timer(0.5).timeout
+	var sleeper_boss := _find_apex()
+	var sleeper_ok := sleeper_boss != null
+	var sleeper_deg := SystemDB.derelict_bearing_deg("pyx01")
+	var sleeper_depth := int(round(SystemDB.derelict_depth("pyx01")))
+	if sleeper_ok:
+		player.global_position = sleeper_boss.global_position + Vector3(0, 0, 12.0)
+		wash_rig.global_position = player.global_position
+		# Long enough for APEX_WAKE_DELAY to expire AND for several 1s re-polls,
+		# so a poll that fired once and died is not mistaken for one that holds.
+		await get_tree().create_timer(APEX_WAKE_DELAY + 4.0).timeout
+	var sleeper_slept: bool = sleeper_ok and not boss_active \
+		and sleeper_boss.state == ApexBoss.State.DORMANT
+	# The refusal is only worth anything if it is READABLE, and the bearing is
+	# the whole payload: the player is 300u past the hull they need to breach.
+	var sleeper_said: String = hud.broadcast_text()
+	var sleeper_spoke: bool = sleeper_said.contains("%03d" % sleeper_deg) \
+		and sleeper_said.contains("%du" % sleeper_depth)
+	# And now file it, without moving the ship an inch.
+	GameState.mark_breached("pyx01")
+	if sleeper_ok:
+		await get_tree().create_timer(APEX_BREACH_DELAY + ApexBoss.WAKE_TIME + 2.0).timeout
+	var sleeper_woke: bool = sleeper_ok and boss_active \
+		and sleeper_boss.state != ApexBoss.State.DORMANT
+	print("[hunt] A DORMANT ENGINE SAYS WHY unbreached at 12u: slept=%s, said bearing %03d / %du=%s; after the breach, same berth: woke=%s -> %s" % [
+		str(sleeper_slept), sleeper_deg, sleeper_depth, str(sleeper_spoke), str(sleeper_woke),
+		"PASS" if sleeper_slept and sleeper_spoke and sleeper_woke else "FAIL"])
 
 	get_tree().quit()
 

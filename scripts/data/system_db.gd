@@ -532,6 +532,21 @@ static func derelict_depth(id: String) -> float:
 	return maxf(p.length() - float(get_system(id).get("bounds", 40.0)), 0.0)
 
 
+static func derelict_bearing_deg(id: String) -> int:
+	# WHICH WAY THE SURVEY HULL LIES, as a compass number the player can fly.
+	#
+	# Derived from derelict_pos rather than read back out of `bearing_deg`, for
+	# derelict_depth's reason: a hull authored with an absolute `pos` has no
+	# bearing field at all, and reading the def would hand back 0 for it -- a
+	# confident heading pointing at nothing. Two callers now say this number out
+	# loud (the tutorial's survey assignment and the dormant engine's re-point),
+	# and the moment they derive it independently they will disagree.
+	var p := derelict_pos(id)
+	if p == Vector3.ZERO:
+		return 0
+	return int(round(fposmod(rad_to_deg(atan2(p.z, p.x)), 360.0)))
+
+
 static func lair_pos(id: String, run_seed: int) -> Vector3:
 	# WHERE THE ENGINE HIDES. One pure function, called by the builder, by the
 	# intel channels, by the dressing and by every harness -- because the moment

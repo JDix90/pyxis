@@ -123,7 +123,7 @@ func _finish() -> void:
 		# this line cannot disagree with where the hull actually is.
 		var hull_at: Vector3 = SystemDB.derelict_pos(main.system_id)
 		if hull_at != Vector3.ZERO and main.hud:
-			var deg := int(round(fposmod(rad_to_deg(atan2(hull_at.z, hull_at.x)), 360.0)))
+			var deg := SystemDB.derelict_bearing_deg(main.system_id)
 			main.hud.show_broadcast("GSA RELAY — SURVEY ASSIGNMENT",
 				"Authority granted. The hull we need surveyed is not in charted "
 				+ "space — it is %du out on bearing %03d, past the cordon. "
