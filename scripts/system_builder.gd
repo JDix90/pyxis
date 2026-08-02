@@ -111,8 +111,24 @@ static func _build_lattice(def: Dictionary, container: Node3D) -> void:
 		line.material_override = Palette.emissive(Color(color.r, color.g, color.b, 0.12), 1.2)
 		lattice.add_child(line)
 
-	var spin := lattice.create_tween().set_loops()
-	spin.tween_property(lattice, "rotation:y", TAU, 240.0).from(0.0)
+	# NO SPIN, AS OF THE COMPASS. This lattice turned a full revolution every
+	# 240 seconds -- 1.5 degrees a second -- which was harmless while nothing in
+	# the game claimed a fixed north. It is not harmless beside a HDG readout:
+	# eight radial spokes rotating slowly past an instrument that says NORTH is
+	# the world contradicting the cockpit, and a player navigating by the spokes
+	# (which look exactly like a compass rose, because they are one) drifts a
+	# degree and a half every second without being told.
+	#
+	# Left at rotation zero, spoke i sits at TAU*i/spokes, so the authored eight
+	# put a spoke on each of DeepSpace.QUADRANTS' four cardinals. It becomes the
+	# instrument it always resembled.
+	#
+	# WHAT ELSE THE TWEEN TOUCHED: nothing. Only this node's own rotation.y; the
+	# rings are surfaces of revolution and never looked different for it, and no
+	# code anywhere reads lattice.rotation. It also ignored reduce_motion(),
+	# which it should not have -- so this closes an accessibility gap by
+	# deletion rather than by another branch.
+	lattice.add_to_group("lattice")
 
 
 static func _build_starfield(def: Dictionary, container: Node3D) -> void:

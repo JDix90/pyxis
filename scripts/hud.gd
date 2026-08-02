@@ -81,6 +81,12 @@ class RadarLayer:
 	# certain thing on the board -- it is not a contact, it is a guess -- and
 	# when the 12-marker cap bites it should be the first thing to go.
 	const TIER_HUNT := 5
+	# Every tier, in tier order, by the NAME THE MANUAL PRINTS. The manual's
+	# rows stay hand-written -- each carries a colour and a sentence, which is
+	# copy, not data -- but COVERAGE becomes assertable: a tier added here
+	# without a legend row turns THE MANUAL IS TRUE TO THE DEVICE AND TO THE
+	# HUD red, naming the tier nobody documented.
+	const TIER_NAMES := ["HOME", "APEX", "PORT", "SITE", "HOSTILE", "SEAM", "GHOST"]
 	# What the dossier has to be worth before the ghost appears at all. Three
 	# agreeing hints and a search circle under 200u is the point where an arrow
 	# is honest guidance rather than a confident lie: below that the estimate
@@ -406,6 +412,13 @@ var _boss_fill: ColorRect
 var _boss_plates: HBoxContainer
 var _cargo_label: Label
 var _hull_label: Label
+var _heading_label: Label
+# Last rendered heading, so the string is rebuilt only when it CHANGES. Same
+# guard and same reason as set_deep_tag's sub-unit short-circuit: a heading
+# moves every frame, and a per-frame String build for an unchanged value is
+# what that pattern exists to avoid. -1 forces the first build.
+var _heading_deg := -1
+var _heading_word := ""
 var _tutorial_box: VBoxContainer
 var _tutorial_step_label: Label
 var _tutorial_text: Label
@@ -424,6 +437,7 @@ var _crack_shown := 0.0
 var _crack_releasing := false
 var _crack_label: Label
 var _toast_tween: Tween = null
+var _toast_count := 0
 var _parley_button: Button
 var _bluff_button: Button
 var _broadcast_box: PanelContainer
@@ -442,6 +456,7 @@ var _system_base := ""
 var _system_short := ""
 var _deep_band := ""
 var _deep_out := 0.0
+var _deep_wash := false
 var _gain_timer: SceneTreeTimer = null
 
 
@@ -508,6 +523,27 @@ func _ready() -> void:
 	_hull_label.add_theme_color_override("font_color", Palette.TEAL)
 	_hull_label.add_theme_font_size_override("font_size", 12)
 	top.add_child(_hull_label)
+
+	# WHICH WAY THE NOSE IS POINTING, and it is overdue. Six channels hand the
+	# player a bearing -- the free relay, two paid desks, the mast, the relic,
+	# the rift -- and until this label nothing in the cockpit read one back. The
+	# playtest that produced it did not report a wrong hint; it reported a hint
+	# in a vocabulary the ship did not speak.
+	#
+	# HDG, not BRG. A BEARING in this game is a direction TO something (the
+	# desks quote one, the shear quotes one); a HEADING is where you are
+	# pointing. Spending the same noun on both is exactly the confusion the
+	# apex hint fix is undoing, so the readout gets its own word.
+	#
+	# %03d matches the paid channel's "BEARING %03d" digit for digit, so a
+	# hint and the instrument compare directly instead of by translation.
+	# SIZE_LABEL and AMBER_DIM match HOLD directly above: a glance readout,
+	# not an alarm.
+	_heading_label = Label.new()
+	_heading_label.text = "HDG --- · ----"
+	_heading_label.add_theme_color_override("font_color", Palette.AMBER_DIM)
+	_heading_label.add_theme_font_size_override("font_size", 12)
+	top.add_child(_heading_label)
 
 	_gain_label = Label.new()
 	_gain_label.add_theme_color_override("font_color", Palette.GOLD)
@@ -927,6 +963,13 @@ func cargo_text() -> String:
 	return _cargo_label.text if _cargo_label != null else ""
 
 
+func heading_text() -> String:
+	# cargo_text()'s sibling, and for cargo_text()'s reason: an assertion that
+	# recomputed the bearing from the ship would agree with itself while the
+	# label showed a heading from ten seconds ago.
+	return _heading_label.text if _heading_label != null else ""
+
+
 func gain_cargo(good: String) -> void:
 	refresh_cargo()
 	_gain_label.text = "+1 %s" % CommodityDB.short_name(good)
@@ -948,13 +991,15 @@ func set_system_tag(text: String) -> void:
 	_apply_system_tag()
 
 
-func set_deep_tag(band_name: String, out_distance: float) -> void:
+func set_deep_tag(band_name: String, out_distance: float, wash := false) -> void:
 	# band_name "" means inside the charted system, where this whole readout
 	# collapses back to exactly the string it has always shown.
-	if band_name == _deep_band and absf(out_distance - _deep_out) < 1.0:
+	if band_name == _deep_band and absf(out_distance - _deep_out) < 1.0 \
+			and wash == _deep_wash:
 		return
 	_deep_band = band_name
 	_deep_out = out_distance
+	_deep_wash = wash
 	_apply_system_tag()
 
 
@@ -982,6 +1027,18 @@ func _apply_system_tag() -> void:
 	var band := DeepSpace.band_of(_deep_out)
 	_system_label.text = "SYS // %s · %s %s · %du OUT" % [
 		_system_short, Palette.band_glyph(band), _deep_band, int(round(_deep_out))]
+	if _deep_wash:
+		# THE ENGINE'S OWN JAMMING, read on your instruments before it is read
+		# on your radar. The lair keep-out strips stations, nests, hulks and
+		# convoys, so the arena is QUIETER than the sky around it -- an
+		# anti-signal, and precisely why a playtester flew through the right
+		# region and kept going. This turns that silence into a statement.
+		#
+		# It says HERE and never THAT WAY: the string is byte-identical at 119
+		# units and at 5, so no bearing can be extracted from it, and its
+		# boundary sits outside the radar cutoff it precedes -- it can never be
+		# more precise than the instrument it is announcing.
+		_system_label.text += " · CARRIER WASH"
 	var c: Color = Palette.band_color(band)
 	_system_label.add_theme_color_override("font_color", Color(c.r, c.g, c.b, 0.75))
 
@@ -1017,6 +1074,34 @@ func broadcast_text() -> String:
 	return _broadcast_body.text if _broadcast_box.visible else ""
 
 
+func toast_busy() -> bool:
+	# Whether a toast is mid-flight. This label has no queue by design (see
+	# show_toast), so a caller with something to say that can WAIT asks first
+	# rather than clipping the sentence already on screen.
+	return _toast_tween != null and _toast_tween.is_valid()
+
+
+func toast_text() -> String:
+	# Gated on visibility, exactly like broadcast_text(): a label still holding
+	# its last string at alpha 0 is not a thing the player was told.
+	return _toast_label.text if _toast_label != null \
+		and _toast_label.modulate.a > 0.01 else ""
+
+
+func toast_count() -> int:
+	# How many toasts have been RAISED this session. The harness counts volleys
+	# with it -- six kills producing six toasts and six kills producing one are
+	# indistinguishable from the rendered text alone.
+	return _toast_count
+
+
+func clear_toast() -> void:
+	if _toast_tween != null and _toast_tween.is_valid():
+		_toast_tween.kill()
+	_toast_label.text = ""
+	_toast_label.modulate.a = 0.0
+
+
 func system_tag_text() -> String:
 	return _system_label.text
 
@@ -1045,6 +1130,7 @@ func show_arrival(text: String) -> void:
 
 
 func show_toast(text: String, color: Color) -> void:
+	_toast_count += 1
 	_toast_label.text = text
 	_toast_label.add_theme_color_override("font_color", color)
 	_toast_label.modulate.a = 0.0
@@ -1170,6 +1256,25 @@ func _process(_delta: float) -> void:
 	_hull_label.text = "HULL %d%%" % int(round(frac * 100.0))
 	_hull_label.add_theme_color_override("font_color",
 		Palette.TEAL if frac > 0.6 else (Palette.AMBER if frac > 0.25 else Palette.THREAT))
+
+	# THE ONE SOURCE OF TRUTH, ASKED RATHER THAN RE-DERIVED. DeepSpace's note
+	# above quadrant_of forbids a second copy of the sector maths -- the moment
+	# two of them derive "which quarter is that" independently they disagree at
+	# a boundary -- so this feeds it the ship's own forward vector. quadrant_of
+	# is pure over a direction, so a direction is a legal argument.
+	#
+	# Ship forward is -basis.z, and atan2(z, x) is the producers' expression
+	# verbatim. A PARKED ship holds its last heading, which is what a compass
+	# does; an EMP tumble spins the readout, which is the tell and not a bug.
+	var fwd := -player.global_transform.basis.z
+	# The modulo is load-bearing: round(359.6) is 360, and HDG 360 is not a
+	# heading anybody quotes.
+	var hdg := int(round(fposmod(rad_to_deg(atan2(fwd.z, fwd.x)), 360.0))) % 360
+	var quarter := DeepSpace.quadrant_of(Vector3(fwd.x, 0.0, fwd.z))
+	if hdg != _heading_deg or quarter != _heading_word:
+		_heading_deg = hdg
+		_heading_word = quarter
+		_heading_label.text = "HDG %03d · %s" % [hdg, quarter]
 
 	var info: Dictionary = player.ability_info()
 	if info.is_empty():

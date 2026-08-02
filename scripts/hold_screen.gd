@@ -77,6 +77,10 @@ func _ready() -> void:
 	# in one line rather than left to add_child order -- chart and refit are both
 	# at 2 today and which one draws on top is an accident of construction.
 	layer = 4
+	# Named by group so CameraRig's hotkey can reach the manifest without
+	# holding a typed reference to a node Main owns -- the same arrangement
+	# every other cross-console call in this project uses.
+	add_to_group("hold_screen")
 	_build()
 	visible = false
 	_apply_layout()

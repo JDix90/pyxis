@@ -100,6 +100,18 @@ const CONVOY_LEG := 12.0
 # rule applies to how often the sky may contain it.
 const CONVOY_FACTIONS := ["league", "grin", "combine", "embers", "procession",
 	"bastion", "tithe"]
+# What a good name is worth out here: ONE reading, once, from people who know
+# you. FRIENDLY or better -- the band a defence, a toll, a fence deal or a held
+# line can each buy -- and the band is the only thing any code reads anyway.
+const CONVOY_HAIL_MIN_BAND := FactionDB.Band.FRIENDLY
+# The cone their navigator quotes, and it is deliberately the WIDEST reading in
+# the game: equal to the free hull cone, so a gift can never undercut something
+# somebody paid for. The two agree by ASSERTION rather than by a compile-time
+# reference -- DeepSpace naming Derelict would add an edge to the class graph
+# for the sake of one number, the same arrangement LAIR_KEEPOUT and
+# ApexBoss.LEASH_RANGE already use. A CONVOY CONE IS THE WIDEST reads both.
+const CONVOY_HINT_ERROR_DEG := 20.0
+
 const CONVOY_WEIGHTS := {
 	2: [0.22, 0.20, 0.20, 0.12, 0.11, 0.05, 0.10],
 	3: [0.15, 0.15, 0.15, 0.10, 0.10, 0.25, 0.10],
@@ -412,6 +424,8 @@ var _cleared := {}      # Vector2i -> true, posts whose last guard died this ses
 # a warp resets it and the geometry argument in 22 keeps covering all three.
 var _cracked := {}      # Vector2i -> true, hulls breached this session
 var _hailed := {}       # Vector2i -> true, posts already announced this session
+var _convoy_hailed := {}  # Vector2i -> true, convoys that have already spoken
+var _defended := {}       # convoy_id -> true, convoys already credited
 var _counted := {}      # Vector2i -> true, posts already credited to the logbook
 # Cells whose landmark has already been read this session. Session-only like
 # _sprung, and for the same reason 17 gives: persisting it would be a
@@ -1322,6 +1336,8 @@ func _check_encounters(at: Vector3) -> void:
 					_spring(key, pack)
 	if not _guards.is_empty():
 		_check_hails(at)
+	if not _convoys.is_empty():
+		_check_convoy_hails(at)
 
 
 func _check_hails(at: Vector3) -> void:
@@ -1571,6 +1587,69 @@ func is_surveyed(key: Vector2i) -> bool:
 	return _surveyed.has(key)
 
 
+func _check_convoy_hails(at: Vector3) -> void:
+	# THE ONE THING A FRIEND OUT HERE HAS TO GIVE. Reuses ENCOUNTER_TRIGGER for
+	# _check_hails' reason: one distance for "the expanse has noticed you" beats
+	# two that drift apart. One-shot per convoy per session, _sprung's contract,
+	# so flying a circle cannot re-read the same navigator.
+	#
+	# NO BUTTON, and that is the parley doctrine applied rather than ignored:
+	# the HUD licenses a transient action for A DECISION WITH A COST. A hail
+	# costs nothing and can be refused by nobody, so a button would be a confirm
+	# dialog for a gift. The player's action is the approach -- which the
+	# convoy's own radar marker is already inviting.
+	for key_v in _convoys.keys():
+		var key: Vector2i = key_v
+		if _convoy_hailed.has(key):
+			continue
+		var rec: Dictionary = _convoys[key]
+		var speaker: Node3D = null
+		for m_v in (rec["escorts"] as Array) + (rec["darts"] as Array):
+			if is_instance_valid(m_v):
+				speaker = m_v as Node3D
+				break
+		if speaker == null:
+			continue
+		var flag := String(speaker.faction)
+		if GameState.faction_band(FactionDB.SURVEYOR, flag) > CONVOY_HAIL_MIN_BAND:
+			continue
+		if Vector2(speaker.global_position.x - at.x,
+				speaker.global_position.z - at.z).length() > ENCOUNTER_TRIGGER:
+			continue
+		# MARKED FIRST, whatever happens next: a hail the dossier refuses as a
+		# duplicate must not be retried on every frame for the rest of the
+		# session.
+		_convoy_hailed[key] = true
+		var main := get_tree().get_first_node_in_group("main")
+		if main == null or not main.has_method("file_apex_intel"):
+			return
+		# FILED FIRST, SPOKEN SECOND -- the hunt desk's rule, for its reason: a
+		# convoy that announced a fix nothing recorded would be worse than a
+		# convoy that said nothing at all.
+		if not main.file_apex_intel("convoy", speaker.global_position,
+				CONVOY_HINT_ERROR_DEG):
+			return
+		var hud := get_tree().get_first_node_in_group("hud")
+		if hud and hud.has_method("show_broadcast"):
+			hud.show_broadcast("%s CONVOY" % FactionDB.display_name(flag),
+				"You have been good to us, surveyor. Our navigator has a fix on "
+				+ "what is jamming the lane — it is not a good one, we are "
+				+ "haulers and not a survey, but it is honest and it is yours.",
+				FactionDB.tint_of(flag))
+		return
+
+
+func note_convoy_defended(cid: String) -> bool:
+	# ONE CREDIT PER CONVOY PER SESSION, _sprung's shape and _sprung's argument.
+	# A Tally pack is six to eight ships; uncapped, one encounter would be six
+	# steps of trust and reach ALLIED in an afternoon. Returns whether this was
+	# the first, so the caller never has to know how the bound is stored.
+	if cid == "" or _defended.has(cid):
+		return false
+	_defended[cid] = true
+	return true
+
+
 func note_guard_died(key: Vector2i) -> void:
 	# Called from Hostile._die, NOT from _despawn_cell. A player who clears a post
 	# and then keeps working the wreck beside it never triggers a despawn, so
@@ -1677,6 +1756,8 @@ func _despawn_all() -> void:
 	_guard_origin.clear()
 	_cleared.clear()
 	_hailed.clear()
+	_convoy_hailed.clear()
+	_defended.clear()
 	_counted.clear()
 	_cracked.clear()
 	_surveyed.clear()

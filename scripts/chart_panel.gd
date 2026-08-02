@@ -208,6 +208,24 @@ func _draw_plot() -> void:
 	_plot.draw_arc(mid, bounds * scale, 0.0, TAU, 48,
 		Color(Palette.TEAL.r, Palette.TEAL.g, Palette.TEAL.b, 0.35), 1.0, true)
 
+	# 1b. WHICH WAY IS WHICH. The orientation contract at the top of this
+	#     function is what makes a cone drawn here flyable -- but until the
+	#     cockpit grew a HDG readout the reader had to take it on trust, and a
+	#     rumour naming a quarter of the sky had nothing on this plot to point
+	#     at. The four letters come from DeepSpace.QUADRANTS through
+	#     quadrant_of, so the plot, the rumour and the readout cannot drift
+	#     apart -- and the unit vectors below are the same ones quadrant_of
+	#     classifies, rather than a table of letters typed out here.
+	var font := ThemeDB.fallback_font
+	if font != null:
+		var edge := minf(size.x, size.y) * 0.5 - 5.0
+		for dir_v in [Vector2(1, 0), Vector2(0, 1), Vector2(-1, 0), Vector2(0, -1)]:
+			var d: Vector2 = dir_v
+			var word := DeepSpace.quadrant_of(Vector3(d.x, 0.0, d.y))
+			_plot.draw_string(font, mid + d * edge - Vector2(3.0, -3.0),
+				word.substr(0, 1), HORIZONTAL_ALIGNMENT_LEFT, -1, UIKit.SIZE_FINE,
+				Color(Palette.TEAL.r, Palette.TEAL.g, Palette.TEAL.b, 0.55))
+
 	# 2. The authored band — the free information, and the clamp every estimate
 	#    lives inside. Drawn as a thick ring rather than two thin circles so it
 	#    reads as an AREA to search, not as two boundaries.

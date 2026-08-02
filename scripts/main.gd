@@ -182,6 +182,23 @@ const RAID_MIN_HOLD := 1500        # below this you are not worth the fuel
 const RAID_VALUE_SCALE := 40000.0  # hold value at which the odds hit the ceiling
 const RAID_MIN_CHANCE := 0.05
 const RAID_MAX_CHANCE := 0.35
+# ONE VOLLEY IS ONE ANNOUNCEMENT. The timer RESTARTS on every shift, so a
+# six-ship pack reports once -- when the shooting stops -- rather than six
+# times. HUD.show_toast has no queue and no throttle by design, so without
+# this the second kill's toast kills the first one's tween mid-read and the
+# player sees a flicker instead of a sentence.
+const STANDING_TOAST_SETTLE := 0.7
+# The lair's tell. Deliberately LAIR_KEEPOUT, because that is the radius whose
+# emptiness is the problem being fixed: the keep-out strips every other kind of
+# content, so the arena reads as a quieter patch of nothing rather than as
+# somewhere to look.
+const CARRIER_HYSTERESIS := 8.0
+const CARRIER_POLL_INTERVAL := 0.25
+var _carrier_wash := false
+var _carrier_poll := 0.0
+var _standing_pending := {}     # faction id -> summed delta for this volley
+var _standing_settle := 0.0
+
 const RAID_COOLDOWN := 90.0
 const RAID_CORSAIR_HOLD := 12000   # rich enough to bring something with armour
 const RAID_SPAWN_DIST := 17.0
@@ -436,6 +453,12 @@ func _ready() -> void:
 	add_child(contracts)
 	contracts.changed.connect(func() -> void: hud.set_contracts(contracts.rows()))
 
+	# Standing, on screen, at the moment it moves. Accumulated rather than shown
+	# directly: see STANDING_TOAST_SETTLE.
+	GameState.standing_shifted.connect(func(other: String, delta_v: int, _band: int) -> void:
+		_standing_pending[other] = int(_standing_pending.get(other, 0)) + delta_v
+		_standing_settle = STANDING_TOAST_SETTLE)
+
 	GameState.system_unlocked.connect(func(id: String) -> void:
 		hud.show_toast("CHARTED — %s" % SystemDB.display_name(id), Palette.TEAL)
 		Barks.fire("chart_unlocked")
@@ -457,11 +480,39 @@ func _ready() -> void:
 			# hunt and a needle in an infinite haystack, and it is deliberately
 			# too vague to fly straight to -- a Drift quadrant is still tens of
 			# thousands of square units of nothing.
+			#
+			# IT SAYS QUARTER, NOT BEARING. The paid channel means "%03d, plus
+			# or minus twenty degrees" by the word bearing; spending the same
+			# noun on a ninety-degree sector invited exactly the failure a
+			# playtester reported -- fly one straight line and turn around.
+			# And it quotes the AUTHORED annulus rather than the band's name:
+			# THE DRIFT is 280 units thick and pyx01's lair band is 80, so the
+			# old line answered an 80-unit question with a 280-unit number.
+			var span := _lair_depth_range(jam_req)
 			hud.show_broadcast("GSA RELAY — LANE OBSTRUCTED",
 				"%s is charted and unreachable. %s is transmitting across the lane "
 				% [SystemDB.display_name(id), engine]
-				+ "from %s, bearing %s. Silence it and the way is yours."
-				% [_lair_band_name(jam_req), _lair_quadrant(jam_req)], Palette.THREAT)
+				+ "from the %s quarter of %s, between %du and %du past the marker. "
+				% [_lair_quadrant(jam_req), _lair_band_name(jam_req),
+					int(span.x), int(span.y)]
+				+ "That is a QUARTER OF THE SKY, not a bearing. Silence it and "
+				+ "the way is yours.", Palette.THREAT)
+			# AND IT IS WRITTEN DOWN. The word used to live for seven and a half
+			# seconds on a plate and then cease to exist -- while the chart
+			# panel, two taps away, said "no intel" and shaded all three hundred
+			# and sixty degrees, contradicting a transmission the player had
+			# just been read. STRATEGY §48 named this gap and closed only the
+			# hull-cone half of it.
+			#
+			# Files as a RING hint, which is precisely what this is: a band and
+			# a quarter, no bearing. Rings score as ninety degrees, so this is
+			# the first thing the dossier's cap evicts and a free rumour can
+			# never crowd out a reading somebody paid for.
+			#
+			# Guarded on the dossier being about the system the player is
+			# standing in, which is file_apex_intel's own rule.
+			if jam_req == system_id:
+				file_apex_intel("rumor", Vector3.ZERO, 0.0)
 	)
 
 	tutorial = Tutorial.new()
@@ -1259,7 +1310,29 @@ func _process(delta: float) -> void:
 	# compare per frame rather than a string build.
 	var depth := deep_depth()
 	if hud:
-		hud.set_deep_tag(DeepSpace.band_name(depth) if depth > 0.0 else "", depth)
+		# THROTTLED, not per frame: _find_apex walks a group and allocates an
+		# array to do it, and the answer cannot meaningfully change in a
+		# sixtieth of a second at 9 units per second. Four polls a second is
+		# well under the 8-unit hysteresis below.
+		_carrier_poll -= delta
+		if _carrier_poll <= 0.0:
+			_carrier_poll = CARRIER_POLL_INTERVAL
+			var washed := false
+			if depth > 0.0:
+				var engine := _find_apex()
+				if engine != null:
+					# Hysteresis so a ship sitting on the boundary does not
+					# strobe the readout -- which would be both ugly and a
+					# finer measurement than this is meant to give.
+					var edge := DeepSpace.LAIR_KEEPOUT \
+						+ (CARRIER_HYSTERESIS if _carrier_wash else 0.0)
+					var ship: Node3D = get_tree().get_first_node_in_group("player")
+					if ship != null:
+						washed = ship.global_position.distance_to(
+							engine.global_position) < edge
+			_carrier_wash = washed
+		hud.set_deep_tag(DeepSpace.band_name(depth) if depth > 0.0 else "", depth,
+			_carrier_wash)
 	# The score's second axis, fed from the same poll that already drives the
 	# wayfinding label and the beacons. Music smooths it internally, so this is a
 	# raw value every frame rather than something this function has to rate-limit.
@@ -1271,6 +1344,17 @@ func _process(delta: float) -> void:
 		air.set_depth(depth)
 		air.set_threat(1.0 if _threat_near_player() else 0.0)
 	_tick_broadcast(depth)
+	if not _standing_pending.is_empty():
+		_standing_settle -= delta
+		# WAITS FOR THE SURFACE, not merely for the clock. Three of the movers
+		# have already narrated their cause on this exact label -- pay_toll
+		# writes "TOLL TAKEN", the fence writes its own line -- and landing on
+		# top of one would clip the sentence that explains WHY standing moved.
+		# The waiting lives here rather than in HUD: the surface stays dumb and
+		# the caller does the queueing, which is the same division show_parley
+		# settled on.
+		if _standing_settle <= 0.0 and hud != null and not hud.toast_busy():
+			_flush_standing_toast()
 	# The captain's log's one frame-adjacent source, and the only one that needs
 	# an argument for why it is still discrete. It reads the RUN's high-water mark
 	# rather than _broadcast_band: that field is per-system-visit and resets on
@@ -1413,11 +1497,108 @@ func close_consoles_for_raid() -> void:
 			panel.close_panel()
 
 
+func _flush_standing_toast() -> void:
+	# NAMES THE FACTION AND THE BAND IT LANDED IN. The band is the only thing
+	# any code reads -- nine call sites, all against Band.HOSTILE -- and it is
+	# the only part the player can act on: a raw delta is a number about a
+	# number. Format follows the dock sheet's "%s — STANDING: %s" and the log's
+	# RISES/FALLS, so this reads as the same instrument speaking rather than a
+	# third one with its own opinions.
+	#
+	# A MOMENT, NOT A ROW: stage 5 settled that standing gets a statement of
+	# record at dock and never a permanent HUD element. This is the moment; the
+	# dock sheet is still the record.
+	var lead := ""
+	var lead_mag := -1
+	var others := 0
+	for id_v in _standing_pending:
+		var id := String(id_v)
+		var mag := absi(int(_standing_pending[id]))
+		if mag > lead_mag:
+			if lead != "":
+				others += 1
+			lead_mag = mag
+			lead = id
+		else:
+			others += 1
+	var summed := int(_standing_pending.get(lead, 0))
+	_standing_pending = {}
+	_standing_settle = 0.0
+	if lead == "" or summed == 0 or hud == null:
+		return
+	var band := GameState.faction_band(FactionDB.SURVEYOR, lead)
+	var line := "%s — STANDING %s · %s" % [FactionDB.display_name(lead),
+		"RISES" if summed > 0 else "FALLS", FactionDB.BAND_NAMES[band]]
+	if others > 0:
+		line += "  (+%d MORE)" % others
+	# Band.ALLIED is 0 and Band.HOSTILE is 4, so "friendly or better" is <=.
+	var col := Palette.GOLD
+	if band == FactionDB.Band.HOSTILE:
+		col = Palette.THREAT
+	elif band <= FactionDB.Band.FRIENDLY:
+		col = Palette.TEAL
+	hud.show_toast(line, col)
+	Sfx.play("equip", -14.0, 1.25 if summed > 0 else 0.8)
+
+
+func credit_convoy_defence(victim_target) -> void:
+	# KILLING SOMETHING THAT WAS ATTACKING A CONVOY IS A FAVOUR, AND IS
+	# REMEMBERED. Four of the seven chartfolk flags -- league, combine, bastion,
+	# procession -- had no positive mover at all before this: every faction had
+	# a way to lose standing and only three had a way to gain it, so the matrix
+	# was a one-way ratchet for most of the roster. The Tally hunts convoys in
+	# the Reaches, so this fires by playing rather than by seeking it out.
+	#
+	# UNTYPED, for the dispatcher's reason: what arrives is a dying ship's last
+	# target, which may already be freed.
+	#
+	# quiet=true: the standing toast is the narration this needed, and a
+	# logbook slot is for things worth reading back at a dock.
+	if not is_instance_valid(victim_target):
+		return
+	var n := victim_target as Node
+	if n == null or not n.is_in_group("deep_convoy") or deep_space == null:
+		return
+	var flag := String(victim_target.faction)
+	if not FactionDB.is_faction(flag):
+		return
+	if not deep_space.note_convoy_defended(String(n.get_meta("convoy_id", ""))):
+		return
+	GameState.shift_faction(FactionDB.SURVEYOR, flag, 1, true)
+
+
+func _raid_wants_the_player() -> bool:
+	# Whether ANY raider still counts the player as prey. Asked through the one
+	# dispatcher, so a raider the player has shot -- _aggro is the player --
+	# still counts and a fight in progress is never cut short underneath them.
+	for n in get_tree().get_nodes_in_group("raider"):
+		if is_instance_valid(n) and GameState.hostile_to_player(n):
+			return true
+	return false
+
+
+func is_playing() -> bool:
+	# The RULE the attract gate means, rather than a rendering of it. Chrome
+	# visibility happens to track this today, but chrome is a picture and this
+	# is the fact -- CameraRig's hotkeys and the harness both ask here.
+	return state == State.PLAYING
+
+
 func interdiction_eligible() -> bool:
 	# Every exclusion here is a place where being jumped would be unfair rather
 	# than tense: docked is the game's one safe state, the tutorial has not
 	# taught combat yet, an apex fight is already the hardest thing on offer, and
 	# a warp is a cutscene.
+	#
+	# AND THE BANNER HAS TO WANT YOU. Tithe standing is not decoration: enemies_of
+	# has read it since stage 1, so a player who has paid their way out of
+	# HOSTILE is not prey, and a pack spawned to interdict somebody it will not
+	# fire on is a klaxon with nothing behind it. See faction_db's note on the
+	# tithe baseline for why that band is three tolls deep rather than one.
+	#
+	# spawn_interdiction() stays UNGATED on purpose -- it is public so the
+	# harness can force a raid without gambling on a dice roll, and two suites
+	# call it directly.
 	#
 	# Consoles count too. They do not pause the game, so a raid could begin while
 	# the player was reading the refit list — the klaxon fires behind a sheet
@@ -1432,7 +1613,8 @@ func interdiction_eligible() -> bool:
 		and (not console_open() or console_camping()) \
 		and not _raid_active \
 		and not muster_active() \
-		and _raid_cooldown <= 0.0
+		and _raid_cooldown <= 0.0 \
+		and GameState.faction_band(FactionDB.SURVEYOR, "tithe") == FactionDB.Band.HOSTILE
 
 
 func procession_system(window: int) -> String:
@@ -1785,6 +1967,21 @@ func _tick_interdiction(delta: float) -> void:
 			_parley_until = 0.0
 			if hud:
 				hud.hide_parley()
+		# A PACK THAT HAS LOST INTEREST LEAVES, and before this it could not.
+		# Paying a toll lifts Tithe standing out of HOSTILE, which is the whole
+		# point of paying -- but a raider whose flag no longer counts the player
+		# as prey then has no target, and carries no leash in charted space. It
+		# drifted forever, _count_raiders() never reached zero, and _raid_active
+		# latched for the session: no further raids, and because muster_eligible
+		# reads the same flag, NO MUSTERS EITHER. A warp was the only cure, and
+		# nothing told the player that.
+		#
+		# Routed through depart(), the exit raiders already use when paid off:
+		# it sheds every group at once and pays nothing back.
+		if _parley_until <= 0.0 and not _raid_wants_the_player():
+			for n_lapsed in get_tree().get_nodes_in_group("raider"):
+				if is_instance_valid(n_lapsed) and n_lapsed.has_method("depart"):
+					n_lapsed.depart()
 		if _count_raiders() == 0:
 			_raid_active = false
 			_raid_cooldown = RAID_COOLDOWN
@@ -2326,6 +2523,16 @@ func file_apex_intel(kind: String, from: Vector3, err_deg: float) -> bool:
 	return true
 
 
+func _lair_depth_range(sys_id: String) -> Vector2:
+	# The AUTHORED annulus, not the band it happens to fall in. THE DRIFT spans
+	# 280 units; pyx01's lair band spans 80. Quoting the band for the truth was
+	# a coarser answer than the data had to give.
+	var lair: Dictionary = (SystemDB.get_system(sys_id).get("apex", {}) as Dictionary) \
+		.get("lair", {})
+	var d: Array = lair.get("depth", [200.0, 300.0])
+	return Vector2(float(d[0]), float(d[1]))
+
+
 func _lair_quadrant(sys_id: String) -> String:
 	# Delegates to DeepSpace.quadrant_of -- the sector maths is shared with the
 	# dossier's validator and Hunt's estimator, and a second copy here would be a
@@ -2348,6 +2555,15 @@ func _panel_text_contains(root: Node, needle: String) -> bool:
 	if root == null:
 		return false
 	if root is Label and String((root as Label).text).findn(needle) >= 0:
+		return true
+	# AND BUTTONS, which this walk ignored for its whole existence. Half of what
+	# a port sheet SAYS is written on its controls -- "BUY THE WORD", "DEPART",
+	# every market row's action -- so a helper that read only Labels could not
+	# see them, and an assertion asking whether a button was on screen got the
+	# same answer whether it was there or not. THE WORD IS SOLD ONCE failed in
+	# BOTH directions on that, which is the tell: a measurement that cannot
+	# distinguish its two outcomes is not measuring.
+	if root is Button and String((root as Button).text).findn(needle) >= 0:
 		return true
 	for child in root.get_children():
 		if _panel_text_contains(child, needle):
@@ -8389,6 +8605,45 @@ func _run_raid_test() -> void:
 		"PASS" if _count_raiders() == 0 and not _raid_active
 			and _raid_cooldown > 0.0 else "FAIL"])
 
+	# P3b. A LAPSED RAID CLEANS ITSELF UP — the sibling deadlock, found by
+	#      reading rather than by playing, because it takes a session to see.
+	#      PAY ENDS covers the pack that was PAID. This covers the pack that
+	#      simply stopped caring: paying a toll lifts Tithe standing out of
+	#      HOSTILE, and a raider that no longer counts the player as prey has
+	#      no target and no leash in charted space. It drifted forever,
+	#      _count_raiders() never reached zero, and _raid_active latched for
+	#      the session — taking every future raid AND every muster with it.
+	#
+	#      Both directions in one measurement, because "the pack leaves" alone
+	#      is satisfied by a cleanup that ends every raid the instant it begins.
+	_clear_faction_matrix()
+	GameState.shift_faction(FactionDB.SURVEYOR, "tithe", 3)   # -6 -> -3, WARY
+	spawn_interdiction()
+	_parley_until = 0.0
+	for i_lapse in range(30):
+		await get_tree().physics_frame
+	_tick_interdiction(0.01)
+	var lapsed_left := _count_raiders()
+	var lapsed_clear := not _raid_active
+	var muster_back := muster_eligible() or not _raid_active
+	# The other direction: a banner that DOES want the player keeps its pack.
+	_clear_faction_matrix()
+	spawn_interdiction()
+	_parley_until = 0.0
+	for i_hot in range(30):
+		await get_tree().physics_frame
+	_tick_interdiction(0.01)
+	var hostile_stays := _count_raiders() > 0
+	for n_cleanup in get_tree().get_nodes_in_group("raider"):
+		if is_instance_valid(n_cleanup) and n_cleanup.has_method("depart"):
+			n_cleanup.depart()
+	_raid_active = false
+	_clear_faction_matrix()
+	print("[raid] A LAPSED RAID CLEANS ITSELF UP at WARY: %d raiders left (want 0), _raid_active cleared=%s, eligibility recovered=%s; at HOSTILE the pack stays=%s -> %s" % [
+		lapsed_left, str(lapsed_clear), str(muster_back), str(hostile_stays),
+		"PASS" if lapsed_left == 0 and lapsed_clear and muster_back
+			and hostile_stays else "FAIL"])
+
 	# P4. THE TOLL TAKES HOT CARGO, and pays nothing back. Contraband went first
 	#     (weight x value), the removed value covers the toll, and no loot exists
 	#     anywhere a departing raider stood.
@@ -8765,6 +9020,50 @@ func _run_radar_test() -> void:
 				worst = "bearing %d -> (%.0f, %.0f)" % [ang, p.x, p.y]
 	print("[radar] ON SCREEN every marker inside the viewport at all 24 bearings -> %s %s" % [
 		"PASS" if inside else "FAIL", worst])
+
+	# 3b. THE READOUT FOLLOWS THE HEADING. The cockpit's answer to the six
+	#     channels that hand out bearings. Driven by turning the real ship and
+	#     reading the RENDERED label -- an assertion that recomputed the bearing
+	#     would agree with itself while the label showed a heading from ten
+	#     seconds ago, which is what cargo_text() and _chrome_height() were both
+	#     added to stop.
+	#
+	#     Parked deliberately: with no speed and no target PlayerShip leaves
+	#     rotation.y alone, so this measures the readout rather than the
+	#     autopilot, and it exercises the "a parked ship holds its heading"
+	#     property at the same time.
+	player.velocity = Vector3.ZERO
+	player.has_move_target = false
+	if player.has_method("clear_target"):
+		player.clear_target()
+	var hdg_rows := ""
+	var hdg_ok := true
+	var hdg_last := ""
+	for want_deg in [0, 90, 180, 270]:
+		# The exact inverse of hud's -basis.z read: a yaw whose forward vector
+		# points at want_deg in the atan2(z, x) convention every producer uses.
+		var rads := deg_to_rad(float(want_deg))
+		player.rotation.y = atan2(-cos(rads), -sin(rads))
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var want := "HDG %03d · %s" % [want_deg,
+			DeepSpace.quadrant_of(Vector3(cos(rads), 0.0, sin(rads)))]
+		var got := hud.heading_text()
+		hdg_rows += "%s|" % got
+		if got != want:
+			hdg_ok = false
+			hdg_rows += "(want %s)" % want
+		hdg_last = got
+	# And it must still be MOVING at the end -- a label latched by a broken
+	# rate-limit would have matched every row above if the first one happened
+	# to be right and nothing ever rebuilt it.
+	player.rotation.y = atan2(-cos(0.0), -sin(0.0))
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var hdg_moves: bool = hud.heading_text() != hdg_last
+	print("[radar] THE READOUT FOLLOWS THE HEADING %s all four cardinals=%s, still updating after the last=%s -> %s" % [
+		hdg_rows, str(hdg_ok), str(hdg_moves),
+		"PASS" if hdg_ok and hdg_moves else "FAIL"])
 
 	# 4. v15. THE ENGINE IS NOT ON THE MAP UNTIL YOU ARE ON TOP OF IT.
 	#
@@ -9881,7 +10180,48 @@ func _run_input_test() -> void:
 	var click_moves := player.has_move_target
 	print("[input] DEVICE SPLIT touch_on_empty_moves=%s (must be true)  click_on_empty_moves=%s (must be false)" % [
 		str(touch_moves), str(click_moves)])
+
+	# THE HOLD HAS A SECOND DOOR. §54's rule, applied: assert the path the
+	# PLAYER takes, not the function it wraps. Calling hold_screen.toggle()
+	# here would pass with no action declared in project.godot, no key bound
+	# and no handler written — it would test that a method toggles a boolean,
+	# which was never in doubt. So this builds a real InputEventKey on the
+	# real physical keycode and pushes it through the real dispatcher.
+	#
+	# The third clause is the attract guard: CameraRig keeps receiving events
+	# behind the title screen (only SHIP input is disabled there), so without
+	# is_playing() the manifest slides up over the menu.
+	hold_screen.close_panel()
+	await get_tree().process_frame
+	var opened := await _press_hold_key()
+	var closed := not await _press_hold_key()
+	_enter_attract()
+	hold_screen.close_panel()
+	await get_tree().process_frame
+	var attract_ignored := not await _press_hold_key()
+	_enter_playing()
+	await get_tree().process_frame
+	print("[input] THE HOLD HAS A SECOND DOOR i opens=%s, i closes again=%s, refused behind the title=%s -> %s" % [
+		str(opened), str(closed), str(attract_ignored),
+		"PASS" if opened and closed and attract_ignored else "FAIL"])
 	get_tree().quit()
+
+
+func _press_hold_key() -> bool:
+	# One press-and-release of the physical I key, through Input itself, and
+	# the resulting state of the manifest. Two frames: Godot buffers input by
+	# one, and the sheet's visibility settles on the next.
+	var down := InputEventKey.new()
+	down.physical_keycode = KEY_I
+	down.pressed = true
+	Input.parse_input_event(down)
+	await get_tree().process_frame
+	var up := InputEventKey.new()
+	up.physical_keycode = KEY_I
+	up.pressed = false
+	Input.parse_input_event(up)
+	await get_tree().process_frame
+	return hold_screen.is_open
 
 
 func _distinct(items: Array) -> int:
@@ -12225,11 +12565,16 @@ func _run_access_test() -> void:
 	# --- 5. rebinding -------------------------------------------------------
 	GameState.reset_bindings()
 	var before := _keys_for("move_up")
-	var ok := GameState.rebind("move_up", KEY_I)
+	# KEY_Y, not KEY_I: I is toggle_hold's shipped default now, and a probe that
+	# rebinds move_up onto another action's real key would be measuring the
+	# conflict-stealing loop by accident instead of the rebind it names. Y is
+	# unclaimed and carries no plausible future semantic (unlike M for map or
+	# C for chart).
+	var ok := GameState.rebind("move_up", KEY_Y)
 	var after := _keys_for("move_up")
 	print("[access] REBIND move_up %s -> %s (accepted=%s) -> %s" % [
 		str(before), str(after), str(ok),
-		"PASS" if ok and after.has(KEY_I) and not after.has(KEY_W) else "FAIL"])
+		"PASS" if ok and after.has(KEY_Y) and not after.has(KEY_W) else "FAIL"])
 
 	# A key already spoken for is TAKEN from its old owner, never shared. Two
 	# actions on one key is not a binding, it is a bug found mid-flight.
@@ -12245,6 +12590,25 @@ func _run_access_test() -> void:
 	print("[access] NO SHARED KEY move_up=%s move_down=%s, no overlap=%s, both still bound=%s -> %s" % [
 		str(up), str(down), str(no_overlap), str(both_bound),
 		"PASS" if no_overlap and both_bound else "FAIL"])
+
+	# EVERY ACTION IS REBINDABLE OR RESERVED, and this is the clause NO SHARED
+	# KEY structurally cannot see. That assertion drives rebind() and can only
+	# police actions rebind() knows about; an action declared in project.godot
+	# and left out of REBINDABLE is invisible to the conflict loop, so it can
+	# sit on another action's key forever and every rebinding assertion above
+	# stays green. So: assert the INVARIANT -- the InputMap and the list agree,
+	# with `cancel` the one authored exception named right here.
+	var declared: Array = []
+	for a_v in InputMap.get_actions():
+		var a := String(a_v)
+		if not a.begins_with("ui_"):
+			declared.append(a)
+	declared.sort()
+	var accounted: Array = GameState.REBINDABLE.duplicate()
+	accounted.append("cancel")
+	accounted.sort()
+	print("[access] EVERY ACTION IS REBINDABLE OR RESERVED declared=%s accounted=%s -> %s" % [
+		str(declared), str(accounted), "PASS" if declared == accounted else "FAIL"])
 
 	# Cancel is not rebindable, and that is deliberate: it is the way out of
 	# every console and of the settings page that would fix a bad binding.
@@ -12617,6 +12981,38 @@ func _run_manual_test() -> void:
 	print("[manual] THE CLAMP HOLDS worst page '%s' is %.0f rows of %.0f, every page's viewport = min(content, room) (%s) -> %s" % [
 		worst_page, worst, avail, clamp_wrong if clamp_wrong != "" else "exact on all pages",
 		"PASS" if worst <= avail and clamp_wrong == "" else "FAIL"])
+
+	# THE MANUAL IS TRUE TO THE DEVICE AND TO THE HUD. Two sweeps, one claim:
+	# nothing a desktop player can read may name a gesture they cannot make,
+	# and every readout and radar tier must be documented somewhere.
+	#
+	# The device half caught a real one: the ship's VERY FIRST sentence told
+	# desktop players to tap a bearing, on a build where mouse-to-touch
+	# emulation is deliberately off and tapping does nothing at all. Swept over
+	# every bark rather than the one line somebody remembered to check.
+	var taps := ""
+	if not DisplayServer.is_touchscreen_available():
+		for k_v in Barks.LINES:
+			if Barks.line_for(String(k_v)).findn("tap") >= 0:
+				taps += "%s " % String(k_v)
+	# The HUD half: coverage, not copy. TIER_NAMES is the radar's own list, so
+	# a tier added without a legend row fails here naming the tier.
+	manual.open()
+	# _page + _refresh(), the navigation every other assertion in this harness
+	# uses. There is no _show_page() -- calling one stalled the whole suite
+	# rather than failing loudly, which is its own small lesson about reaching
+	# into a console by a name nobody checked.
+	manual._page = "hud"
+	manual._refresh()
+	await get_tree().process_frame
+	var undocumented := ""
+	for want_v in ["SALVAGE", "HOLD", "HULL", "HDG"] + HUD.RadarLayer.TIER_NAMES:
+		if not _panel_text_contains(manual, String(want_v)):
+			undocumented += "%s " % String(want_v)
+	manual.close_panel()
+	print("[manual] THE MANUAL IS TRUE TO THE DEVICE AND TO THE HUD gestures a desktop cannot make: %s; readouts and tiers with no entry: %s -> %s" % [
+		taps if taps != "" else "none", undocumented if undocumented != "" else "none",
+		"PASS" if taps == "" and undocumented == "" else "FAIL"])
 	get_tree().quit()
 
 
@@ -12791,6 +13187,24 @@ func _run_env_test() -> void:
 	print("[env] BAND SILHOUETTES %s distinct kinds, all build=%s -> %s" % [
 		str(kinds), str(kinds.size() == DeepSpace.LANDMARKS.size() - 1),
 		"PASS" if kinds.size() == DeepSpace.LANDMARKS.size() - 1 else "FAIL"])
+
+	# THE WORLD DOES NOT SPIN UNDER THE COMPASS. The cartography lattice looks
+	# exactly like a compass rose -- eight radial spokes on a ring -- and it
+	# used to turn a full revolution every 240 seconds. That was harmless while
+	# nothing in the game claimed a fixed north; beside a HDG readout it is the
+	# world contradicting the instrument, and a player navigating by the spokes
+	# drifts a degree and a half every second with nothing to tell them.
+	#
+	# Two seconds at the old rate is about three degrees of drift, so the bar
+	# here is two orders of magnitude tighter than the bug.
+	var lat := get_tree().get_first_node_in_group("lattice") as Node3D
+	var spin_before := lat.rotation.y if lat != null else 0.0
+	await get_tree().create_timer(2.0).timeout
+	var spin_after := lat.rotation.y if lat != null else 0.0
+	var spin_drift := absf(spin_after - spin_before)
+	print("[env] THE WORLD DOES NOT SPIN UNDER THE COMPASS lattice found=%s, drift over 2s %.5f rad (old rate would be ~0.052) -> %s" % [
+		str(lat != null), spin_drift,
+		"PASS" if lat != null and spin_drift < 0.001 else "FAIL"])
 
 	get_tree().quit()
 
@@ -14064,6 +14478,210 @@ func _run_faction_test() -> void:
 			(probe_v as Node).free()
 	hunt_pilot.invulnerable = false
 
+	# --- 23. THE FEEDBACK AND THE FILTER -------------------------------------
+	# A STANDING SHIFT IS ANNOUNCED, ONCE PER VOLLEY. Standing has moved
+	# silently since it shipped: one line into a ten-slot logbook the player
+	# has to open a menu to read, and only for kills -- all three POSITIVE
+	# movers passed quiet=true and put nothing anywhere. Four clauses in one
+	# measurement, because each alone passes on broken code.
+	_clear_faction_matrix()
+	hud.clear_toast()
+	var say_logs := GameState.log_lines().size()
+	GameState.shift_faction(FactionDB.SURVEYOR, "league", 1, true)
+	await get_tree().create_timer(STANDING_TOAST_SETTLE + 0.5).timeout
+	var say_text := hud.toast_text()
+	var say_named: bool = say_text.contains(FactionDB.display_name("league")) \
+		and say_text.contains(FactionDB.BAND_NAMES[
+			GameState.faction_band(FactionDB.SURVEYOR, "league")])
+	# A shift between two OTHER factions is not the player's news.
+	hud.clear_toast()
+	GameState.shift_faction("gsa", "tithe", -1)
+	await get_tree().create_timer(STANDING_TOAST_SETTLE + 0.5).timeout
+	var say_quiet: bool = hud.toast_text() == ""
+	# And a volley is ONE announcement. Six toasts would clobber each other --
+	# this label has no queue -- so the player would see a flicker, not a line.
+	hud.clear_toast()
+	var say_before := hud.toast_count()
+	for i_volley in range(6):
+		GameState.shift_faction(FactionDB.SURVEYOR, "grin", -1)
+	await get_tree().create_timer(STANDING_TOAST_SETTLE + 0.8).timeout
+	var say_raised := hud.toast_count() - say_before
+	var say_no_log: bool = GameState.log_lines().size() == say_logs
+	_clear_faction_matrix()
+	print("[faction] A STANDING SHIFT IS ANNOUNCED, ONCE PER VOLLEY '%s' names faction and band=%s, third-party stays silent=%s, six shifts raise %d toast(s) (want 1), logbook untouched=%s -> %s" % [
+		say_text, str(say_named), str(say_quiet), say_raised, str(say_no_log),
+		"PASS" if say_named and say_quiet and say_raised == 1 and say_no_log else "FAIL"])
+
+	# A FRIENDLY IS NOT A TARGET, BUT A CHOICE. Driven through the REAL
+	# selector -- rig._tap on the projected screen point -- because the defect
+	# was in tap routing, not in targeting. Four clauses: the enemy locks on
+	# one tap, the neutral does not, the neutral locks on a SECOND tap inside
+	# the confirm window, and a neutral that has fired on the player is an
+	# ordinary target again on one tap. That last clause is what keeps the
+	# standing ramp alive.
+	_clear_faction_matrix()
+	var tap_pilot: PlayerShip = get_tree().get_first_node_in_group("player")
+	tap_pilot.invulnerable = true
+	tap_pilot.teleport_to(Vector3(0, 0, -600))
+	var tap_rig := get_tree().get_first_node_in_group("camera_rig") as CameraRig
+	var tap_cam := get_viewport().get_camera_3d()
+	var tap_foe := SwarmHostile.new()
+	tap_foe.faction = FactionDB.FERAL
+	system_root.add_child(tap_foe)
+	tap_foe.global_position = Vector3(-6, 0, -600)
+	var tap_friend := SwarmHostile.new()
+	tap_friend.faction = "league"
+	system_root.add_child(tap_friend)
+	tap_friend.global_position = Vector3(6, 0, -600)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	tap_pilot.clear_target()
+	tap_rig._tap(tap_cam.unproject_position(tap_foe.global_position))
+	var tap_foe_locks: bool = tap_pilot.attack_target == tap_foe
+	tap_pilot.clear_target()
+	tap_rig._tap(tap_cam.unproject_position(tap_friend.global_position))
+	var tap_friend_spared: bool = tap_pilot.attack_target != tap_friend
+	tap_rig._tap(tap_cam.unproject_position(tap_friend.global_position))
+	var tap_confirm_locks: bool = tap_pilot.attack_target == tap_friend
+	# Now it is answering, so it is a target like any other.
+	tap_pilot.clear_target()
+	tap_friend.take_damage(1.0, tap_pilot)
+	await get_tree().process_frame
+	tap_rig._tap(tap_cam.unproject_position(tap_friend.global_position))
+	var tap_answering_locks: bool = tap_pilot.attack_target == tap_friend
+	print("[faction] A FRIENDLY IS NOT A TARGET, BUT A CHOICE enemy locks on one tap=%s, neutral spared=%s, neutral locks on the second=%s, one that is shooting back locks at once=%s -> %s" % [
+		str(tap_foe_locks), str(tap_friend_spared), str(tap_confirm_locks),
+		str(tap_answering_locks),
+		"PASS" if tap_foe_locks and tap_friend_spared and tap_confirm_locks
+			and tap_answering_locks else "FAIL"])
+
+	# THE FILTER REACHES EVERY CONSUMER. Both directions in one measurement:
+	# with only the neutral in range none of the three consumers may see a
+	# threat, and with an enemy added all three must. Either half alone passes
+	# on broken code ("nothing is ever a target" and "everything always is").
+	tap_pilot.clear_target()
+	tap_foe.queue_free()
+	await get_tree().process_frame
+	tap_friend.global_position = tap_pilot.global_position + Vector3(3, 0, 0)
+	tap_friend._aggro = null
+	tap_friend._target = null
+	await get_tree().process_frame
+	var f_auto: bool = tap_pilot._nearest_hostile_in_range() == null
+	var f_cycle: bool = tap_pilot.cycle_target() == null
+	var f_music: bool = not Music._threat_present()
+	tap_pilot.clear_target()
+	var tap_foe2 := SwarmHostile.new()
+	tap_foe2.faction = FactionDB.FERAL
+	system_root.add_child(tap_foe2)
+	tap_foe2.global_position = tap_pilot.global_position + Vector3(-3, 0, 0)
+	await get_tree().process_frame
+	var f_auto2: bool = tap_pilot._nearest_hostile_in_range() == tap_foe2
+	var f_cycle2: bool = tap_pilot.cycle_target() == tap_foe2
+	var f_music2: bool = Music._threat_present()
+	tap_pilot.clear_target()
+	tap_friend.free()
+	tap_foe2.free()
+	tap_pilot.invulnerable = false
+	_clear_faction_matrix()
+	print("[faction] THE FILTER REACHES EVERY CONSUMER neutral alone: auto-target silent=%s cycle silent=%s music calm=%s; enemy added: auto=%s cycle=%s music=%s -> %s" % [
+		str(f_auto), str(f_cycle), str(f_music), str(f_auto2), str(f_cycle2),
+		str(f_music2),
+		"PASS" if f_auto and f_cycle and f_music and f_auto2 and f_cycle2
+			and f_music2 else "FAIL"])
+
+	# A HAIL IS EARNED, AND IT FILES ONCE. The only thing a friend out here has
+	# to give, and the only durable one: deep content is not persisted, so a
+	# station fix would be worthless the moment the player warped, while the
+	# apex dossier is saved. Three clauses: a NEUTRAL convoy says nothing, a
+	# FRIENDLY one files exactly one reading at the quoted cone, and it never
+	# speaks twice.
+	_clear_faction_matrix()
+	GameState.clear_apex_intel(system_id)
+	var hail_pilot: PlayerShip = get_tree().get_first_node_in_group("player")
+	hail_pilot.teleport_to(Vector3(0, 0, -900))
+	var hail_dart := SwarmHostile.new()
+	hail_dart.faction = "league"
+	hail_dart.add_to_group("deep_convoy")
+	hail_dart.set_meta("convoy_id", "harness_hail")
+	system_root.add_child(hail_dart)
+	hail_dart.global_position = hail_pilot.global_position + Vector3(8, 0, 0)
+	await get_tree().process_frame
+	var hail_key := Vector2i(4242, 4242)
+	deep_space._convoys[hail_key] = {"darts": [hail_dart], "escorts": [],
+		"wp": [hail_dart.global_position, hail_dart.global_position]}
+	deep_space._convoy_hailed.erase(hail_key)
+	deep_space._check_convoy_hails(hail_pilot.global_position)
+	var hail_at_neutral := GameState.apex_hints(system_id).size()
+	GameState.shift_faction(FactionDB.SURVEYOR, "league", 1)
+	deep_space._check_convoy_hails(hail_pilot.global_position)
+	var hail_after := GameState.apex_hints(system_id)
+	var hail_filed: bool = hail_after.size() == hail_at_neutral + 1
+	var hail_cone := 0.0
+	if hail_filed:
+		hail_cone = float((hail_after[hail_after.size() - 1] as Dictionary).get("err", -1.0))
+	deep_space._check_convoy_hails(hail_pilot.global_position)
+	var hail_once: bool = GameState.apex_hints(system_id).size() == hail_after.size()
+	deep_space._convoys.erase(hail_key)
+	hail_dart.free()
+	GameState.clear_apex_intel(system_id)
+	_clear_faction_matrix()
+	print("[faction] A HAIL IS EARNED, AND IT FILES ONCE neutral files %d (want 0), friendly files one=%s at ±%.0f° (want ±%.0f°), never twice=%s -> %s" % [
+		hail_at_neutral, str(hail_filed), hail_cone, DeepSpace.CONVOY_HINT_ERROR_DEG,
+		str(hail_once),
+		"PASS" if hail_at_neutral == 0 and hail_filed
+			and is_equal_approx(hail_cone, DeepSpace.CONVOY_HINT_ERROR_DEG)
+			and hail_once else "FAIL"])
+
+	# DEFENDING A CONVOY IS EARNED, AND BOUNDED. Four of the seven chartfolk
+	# flags had no way UP at all before this — every faction could be lost and
+	# only three could be won, so the matrix was a one-way ratchet. Bounded per
+	# convoy per session for the reason the nests are: a Tally pack is six to
+	# eight ships, and uncapped one encounter would buy ALLIED.
+	_clear_faction_matrix()
+	var def_pilot: PlayerShip = get_tree().get_first_node_in_group("player")
+	var def_convoy := SwarmHostile.new()
+	def_convoy.faction = "league"
+	def_convoy.add_to_group("deep_convoy")
+	def_convoy.set_meta("convoy_id", "harness_defend")
+	system_root.add_child(def_convoy)
+	def_convoy.global_position = def_pilot.global_position + Vector3(14, 0, 0)
+	await get_tree().process_frame
+	var def_key := FactionDB.pair_key(FactionDB.SURVEYOR, "league")
+	var def_attackers: Array = []
+	for i_def in range(2):
+		var raider := SwarmHostile.new()
+		raider.faction = "unknown_a"
+		system_root.add_child(raider)
+		raider.global_position = def_convoy.global_position + Vector3(0, 0, 2 + i_def)
+		def_attackers.append(raider)
+	await get_tree().process_frame
+	for a_v in def_attackers:
+		a_v._target = def_convoy
+	def_attackers[0].take_damage(99999.0, def_pilot)
+	await get_tree().process_frame
+	var def_first := int(GameState.faction_deltas.get(def_key, 0))
+	def_attackers[1].take_damage(99999.0, def_pilot)
+	await get_tree().process_frame
+	var def_second := int(GameState.faction_deltas.get(def_key, 0))
+	# And something that was hunting nobody pays nothing.
+	var def_idle := SwarmHostile.new()
+	def_idle.faction = "unknown_a"
+	system_root.add_child(def_idle)
+	def_idle.global_position = def_pilot.global_position + Vector3(0, 0, 20)
+	await get_tree().process_frame
+	def_idle._target = null
+	def_idle._aggro = null
+	def_idle.take_damage(99999.0, def_pilot)
+	await get_tree().process_frame
+	var def_idle_delta := int(GameState.faction_deltas.get(def_key, 0))
+	if is_instance_valid(def_convoy):
+		def_convoy.free()
+	_clear_faction_matrix()
+	print("[faction] DEFENDING A CONVOY IS EARNED, AND BOUNDED first kill %+d (want +1), second kill %+d (still +1), a kill that was hunting nobody %+d (still +1) -> %s" % [
+		def_first, def_second, def_idle_delta,
+		"PASS" if def_first == 1 and def_second == 1 and def_idle_delta == 1
+			else "FAIL"])
+
 	_clear_faction_matrix()
 	await get_tree().create_timer(0.2).timeout
 	get_tree().quit()
@@ -14598,6 +15216,22 @@ func _run_hunt_test() -> void:
 		Derelict.INTEL_ERROR_DEG, str(paid_cones),
 		"PASS" if undercut == "" else "FAIL undercuts " + undercut])
 
+	# 9b-ii. A CONVOY CONE IS THE WIDEST TOO, and it has to be: a hail is a
+	#     GIFT, so if it were tighter than anything on the ladder it would make
+	#     the paid readings worth less than the free one. Equal to the hull's is
+	#     the honest ceiling. DeepSpace cannot name Derelict without adding an
+	#     edge to the class graph for one number -- the same reason LAIR_KEEPOUT
+	#     restates ApexBoss.LEASH_RANGE -- so the two agree HERE or nowhere.
+	var convoy_undercut := ""
+	for c_k in paid_cones:
+		if DeepSpace.CONVOY_HINT_ERROR_DEG <= float(paid_cones[c_k]):
+			convoy_undercut = String(c_k)
+	print("[hunt] A CONVOY CONE IS THE WIDEST convoy %.0f vs hull %.0f and every paid cone %s -> %s" % [
+		DeepSpace.CONVOY_HINT_ERROR_DEG, Derelict.INTEL_ERROR_DEG, str(paid_cones),
+		"PASS" if convoy_undercut == ""
+			and DeepSpace.CONVOY_HINT_ERROR_DEG >= Derelict.INTEL_ERROR_DEG
+			else "FAIL undercuts " + convoy_undercut])
+
 	# 9c. AND THE HULL ONLY SPEAKS FOR A SURVEY. Both directions, driven through
 	#     two REAL derelicts rather than through file_apex_intel — the claim is
 	#     about the breach path's guard, and calling the door directly would
@@ -14822,6 +15456,143 @@ func _run_hunt_test() -> void:
 		GameState.apex_hint_count(system_id), "PASS" if gate_ok else "FAIL"])
 	player.global_position = Vector3.ZERO
 	GameState.clear_apex_intel(system_id)
+
+
+	# --- 15. THE WORD, THE DESK AND THE WASH ---------------------------------
+	#     Placed LAST on purpose: THE FREE WORD IS FILED drives the real
+	#     mark_breached, which fires system_unlocked and files a ring into this
+	#     system's dossier. INTEL NARROWS and BUYING INTEL NEVER WIDENS both
+	#     build their own dossiers in this same system, so anything that files
+	#     behind their backs has to come after them, not before.
+	var word_breached: Array[String] = GameState.breached.duplicate()
+	var word_lanes: Array[String] = GameState.lanes_open.duplicate()
+	GameState.clear_apex_intel(system_id)
+	GameState.breached = [] as Array[String]
+	GameState.lanes_open = [] as Array[String]
+	var word_before := GameState.apex_hints(system_id).size()
+	# THE REAL PATH. Calling file_apex_intel directly would prove nothing --
+	# what was missing was never the door, it was the CONNECTION to it. The
+	# relay spoke this word for seven and a half seconds and then destroyed
+	# it, while the chart panel two taps away said "no intel" and shaded all
+	# 360 degrees, contradicting the sentence the player was acting on.
+	GameState.mark_breached("pyx01")
+	await get_tree().process_frame
+	var word_hints := GameState.apex_hints(system_id)
+	var word_filed: bool = word_hints.size() == word_before + 1
+	var word_is_ring := false
+	if word_filed:
+		word_is_ring = String((word_hints[word_hints.size() - 1] as Dictionary)
+			.get("kind", "")) == "ring"
+	var word_body := hud.broadcast_text()
+	# It must name a SECTOR and must not call it a bearing -- the paid channel
+	# means "%03d, plus or minus twenty" by that noun, and spending it on a
+	# ninety-degree quarter is what sent a playtester down one straight line.
+	var word_says_quarter: bool = word_body.findn("quarter") >= 0
+	# The OLD CONSTRUCTION specifically -- "bearing NORTH" -- not the word
+	# itself. The new copy says "that is a quarter of the sky, NOT A BEARING",
+	# which is the correction, and an assertion that banned the noun outright
+	# would have forbidden the sentence doing the teaching.
+	var word_avoids_bearing: bool = word_body.findn(
+		"bearing %s" % _lair_quadrant(system_id)) < 0
+	# Selected explicitly rather than trusting open()'s default: open() reads
+	# GameState.current_system and returns EARLY if the sheet is already up, so
+	# an assertion that merely opened it would be reading whatever the last
+	# section left on screen -- which is how a check like this passes on a
+	# panel it never actually refreshed.
+	chart_panel.open()
+	chart_panel._selected = system_id
+	chart_panel._refresh()
+	await get_tree().process_frame
+	var word_chart_agrees: bool = not _panel_text_contains(chart_panel, "no intel")
+	chart_panel.close_panel()
+	print("[hunt] THE FREE WORD IS FILED, AND IT NAMES A SECTOR filed=%s as a ring=%s, says quarter=%s, avoids 'bearing'=%s, chart stops saying 'no intel'=%s -> %s" % [
+		str(word_filed), str(word_is_ring), str(word_says_quarter),
+		str(word_avoids_bearing), str(word_chart_agrees),
+		"PASS" if word_filed and word_is_ring and word_says_quarter
+			and word_avoids_bearing and word_chart_agrees else "FAIL"])
+
+	# THE WORD IS SOLD ONCE. With the ring on file the ring desk has nothing
+	# left to sell -- it never did for the current system, and filing the free
+	# broadcast is what made that visible. Both directions: the button is gone
+	# with a ring on file and back without one.
+	# THE DESK HAS TO EXIST TO BE READ. HUNTTEST travels between systems, and
+	# the cantina is a pyx01 port -- an earlier section can leave the harness
+	# standing somewhere it was never built. Without this the sweep below reads
+	# its own initial values and reports "hidden, and it did not come back",
+	# which is what a missing port looks like when nobody asks.
+	# AND THE ENGINE HAS TO BE ALIVE. _build_hunt_desk refuses to sell a hunt
+	# for a system whose engine is already dead, which is correct -- and which
+	# earlier sections of this harness make true. Both preconditions are
+	# restored here rather than assumed, and both are reported below, because
+	# a desk that never rendered and a row correctly suppressed produce the
+	# same silence.
+	GameState.apex_killed.erase("pyx01")
+	if system_id != "pyx01":
+		_load_system("pyx01")
+		await get_tree().create_timer(0.4).timeout
+	var desk_port: Port = null
+	for node_d in get_tree().get_nodes_in_group("dockable"):
+		if node_d is Port and String((node_d as Port).port_id) == "cantina":
+			desk_port = node_d as Port
+			break
+	var desk_hidden := true
+	var desk_returns := false
+	var desk_salvage := GameState.salvage
+	if desk_port != null:
+		port_panel.open_for(desk_port)
+		# THE DESK IS ON THE RUMOURS TAB, and open_for lands on the port's
+		# FIRST service. Without this the sweep would read a market list, find
+		# no BUY button in either direction, and report the row hidden because
+		# it was looking at the wrong page -- an assertion agreeing with itself
+		# about a screen it never opened.
+		port_panel._tab = "rumors"
+		port_panel._refresh()
+		await get_tree().process_frame
+		desk_hidden = not _panel_text_contains(port_panel, "BUY THE WORD")
+		GameState.clear_apex_intel(system_id)
+		port_panel._refresh()
+		await get_tree().process_frame
+		desk_returns = _panel_text_contains(port_panel, "BUY THE WORD")
+		port_panel.close_panel()
+	print("[hunt] THE WORD IS SOLD ONCE desk found=%s; with a ring on file it offers nothing=%s, without one it offers it again=%s, salvage unmoved=%s -> %s" % [
+		str(desk_port != null), str(desk_hidden), str(desk_returns),
+		str(GameState.salvage == desk_salvage),
+		"PASS" if desk_port != null and desk_hidden and desk_returns
+			and GameState.salvage == desk_salvage else "FAIL"])
+	GameState.breached = word_breached
+	GameState.lanes_open = word_lanes
+	GameState.clear_apex_intel(system_id)
+
+	# THE CARRIER WASHES OUT. The lair keep-out strips stations, nests, hulks
+	# and convoys, so the arena is QUIETER than the sky around it -- and
+	# "nothing here, keep moving" is exactly the wrong instinct. The wash turns
+	# that silence into a statement without putting the engine on the map.
+	#
+	# The fourth clause is the one that matters: NO RADAR MARKER at either
+	# sample. The inner sample sits at 100u, inside the 120u wash and outside
+	# the 90u detection cutoff, so if anybody ever reimplements this tell as a
+	# marker this assertion and THE ENGINE IS NOT ON THE MAP both go red.
+	var wash_lair := SystemDB.lair_pos(system_id, GameState.run_seed)
+	var wash_engine := _find_apex()
+	var wash_rig := get_tree().get_first_node_in_group("camera_rig") as CameraRig
+	player.global_position = wash_lair + Vector3(0, 0, DeepSpace.LAIR_KEEPOUT + 60.0)
+	wash_rig.global_position = player.global_position
+	await get_tree().create_timer(0.5).timeout
+	var wash_far: bool = hud.system_tag_text().contains("CARRIER WASH")
+	var wash_far_marked: bool = wash_engine != null \
+		and not _radar_marker_for(wash_engine).is_empty()
+	player.global_position = wash_lair + Vector3(0, 0, DeepSpace.LAIR_KEEPOUT - 20.0)
+	wash_rig.global_position = player.global_position
+	await get_tree().create_timer(0.5).timeout
+	var wash_near: bool = hud.system_tag_text().contains("CARRIER WASH")
+	var wash_near_marked: bool = wash_engine != null \
+		and not _radar_marker_for(wash_engine).is_empty()
+	print("[hunt] THE CARRIER WASHES OUT at %.0fu out: wash=%s; at %.0fu in: wash=%s; engine on the radar at either range=%s/%s (both must be false) -> %s" % [
+		DeepSpace.LAIR_KEEPOUT + 60.0, str(wash_far),
+		DeepSpace.LAIR_KEEPOUT - 20.0, str(wash_near),
+		str(wash_far_marked), str(wash_near_marked),
+		"PASS" if not wash_far and wash_near and not wash_far_marked
+			and not wash_near_marked else "FAIL"])
 
 	get_tree().quit()
 

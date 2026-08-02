@@ -279,7 +279,10 @@ func _threat_present() -> bool:
 	var r2 := THREAT_RADIUS * THREAT_RADIUS
 	for n in tree.get_nodes_in_group("hostiles"):
 		var h := n as Node3D
-		if is_instance_valid(h) \
+		# A flag that is not hunting you is not a threat, however close it
+		# passes. Flying alongside a neutral convoy used to raise the combat
+		# layer, which told the player they were in a fight nobody was having.
+		if is_instance_valid(h) and GameState.hostile_to_player(h) \
 				and h.global_position.distance_squared_to(player.global_position) <= r2:
 			return true
 	return false

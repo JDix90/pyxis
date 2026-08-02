@@ -93,13 +93,18 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **498 PASS / 1 FAIL / 0 script errors** across 55 runs, save
-format **v18** — measured on Godot 4.6.stable, headless. 499 assertion lines,
+Current baseline: **513 PASS / 1 FAIL / 0 script errors** across 55 runs, save
+format **v18** — measured on Godot 4.6.stable, headless. 514 assertion lines,
 of which the one failure is the standing HOLDTEST issue below. Horizon 4
 (factions, STRATEGY §47, §49–54) is complete: six stages, +45 assertions, all
 red-verified. Chartfolk convoys (STRATEGY §55) populate the deep 200–1000u
 out: known-faction traffic on the nest machinery, +6 assertions, all
-red-verified, MIDTIER unmoved at 2.93.
+red-verified. Playtest round 2 (STRATEGY §56) gave the cockpit a heading
+readout, the manifest a hotkey, standing an on-screen channel and the apex
+hunt a word it can keep: +15 assertions, all red-verified, MIDTIER 2.89.
+
+`INPUTTEST` contributes its first PASS line — the rest of its output stays
+observational, deliberately (see the promotion note below).
 
 **A playtest of the merged build found four defects this sweep did not**
 (STRATEGY §54), and the reason is worth carrying into the next horizon: the

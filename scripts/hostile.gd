@@ -254,6 +254,24 @@ func _process(delta: float) -> void:
 	_weapon(delta)
 
 
+
+func fights_the_player() -> bool:
+	# WHAT THE "hostiles" GROUP MEANT ALL ALONG. Both hostile classes join that
+	# group unconditionally in _ready and cannot stop -- it is load-bearing in a
+	# dozen places that read it as "things opposed to the player". What CAN move
+	# is the handful of consumers that use it to decide what the player may
+	# shoot, lock, or hear threat music for.
+	#
+	# THE SECOND CLAUSE IS WHY THE STANDING RAMP STILL WORKS. A machine the
+	# player has chosen to attack ANSWERS, and the moment it does it is an
+	# ordinary target again: tappable, auto-targetable, worth the music. Without
+	# it a deliberate attack on a neutral would produce return fire the player
+	# could not lock on to, which is a worse world than the one this fixes.
+	if GameState.faction_band(faction, FactionDB.SURVEYOR) == FactionDB.Band.HOSTILE:
+		return true
+	var p := get_tree().get_first_node_in_group("player")
+	return p != null and (_target == p or _aggro == p)
+
 func _refresh_enemies() -> void:
 	if _enemies_version == GameState.faction_version:
 		return
@@ -596,6 +614,23 @@ func _die(attacker: Node3D) -> void:
 		# "kill_muster" is a key nothing in contract_db asks for. The column is
 		# the fastest kill_swarm filler in the game and must not count.
 		main.report_kill("muster" if muster else "sentry")
+	# AND WHOEVER THIS WAS SHOOTING AT MAY OWE THE PLAYER FOR IT. Read here
+	# because _aggro and _target are still valid -- the group removals above
+	# touch neither -- and gone a frame later.
+	if player_kill and main and main.has_method("credit_convoy_defence"):
+		# BOTH FIELDS, IN THIS ORDER, and the order is the whole point. Shooting
+		# this ship set _aggro to the PLAYER -- that is what take_damage does --
+		# so reading _aggro first would credit the player's own convoy_id, which
+		# does not exist, and no favour would ever be recorded. _target is the
+		# field that still holds whatever it was hunting, because _pick_target
+		# returns an aggro node early without overwriting it.
+		#
+		# Called twice rather than chosen between: note_convoy_defended is
+		# bounded per convoy per session, so a double call cannot double-pay,
+		# and the alternative is a conditional that has to stay true about
+		# which field means what.
+		main.credit_convoy_defence(_target)
+		main.credit_convoy_defence(_aggro)
 
 	# If this was a deep guard, its post may have just fallen. `_dying` is already
 	# true above, so post_standing correctly does not count this node. Credited
