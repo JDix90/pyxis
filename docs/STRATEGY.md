@@ -5504,3 +5504,17 @@ candidates that looked closest — this rebuild, and BREAK OFF at the lair — b
 *re-arm* the poll, so the engine returns within seconds rather than staying dark.
 That is a real answer: on the evidence available, §57's fix accounts for the
 photographed state. Settling it beyond doubt needs the save.
+
+### The sweep after the compass and the two doors
+
+**56 runs | 531 PASS | 1 FAIL | 0 script errors | save intact.** Two up on 529 —
+the berth softlock and the colour-setting check. The one failure is still the
+standing HOLDTEST readout issue.
+
+Measured on a quiet machine, deliberately. An earlier run of this same tree came
+back 528/2, the extra failure being `STREAMTEST`'s frame time at a worst frame of
+50.7ms against a 40ms bound — while a review workflow was doing local file I/O
+alongside it. Three isolated runs gave 26.2 / 22.4 / 24.8ms, in line with the
+21.5 and 27.4 of the sweeps either side, and the mean never moved. A performance
+bound measured under contention is not a measurement, and the number was not
+written down until it had been taken properly.
