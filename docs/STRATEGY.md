@@ -5323,3 +5323,90 @@ The lesson is not that review is useful. It is that **every one of these lived
 under a comment asserting the opposite**, and the comments were written in good
 faith at the moment the code was. A confident note about an invariant is a claim,
 and a claim is exactly the thing worth testing.
+
+### The second wave: the assertions were the weak part
+
+A further pass over the same commit turned on the harness rather than the code,
+and found that several of the checks §59 leaned on could not fail.
+
+- **`AN OVERCHARGED CORE HITS HARDER` read a field nothing spends.** Its baseline
+  half was `stats.get("core_boost", 1.0)` compared against `1.0` — with no
+  diversion the key is absent, so the assertion compared its own default to a
+  literal and could not fail on any code. Rewritten to compute the burst the way
+  `PlayerShip` does, **it immediately went red on real code**: the discharge is
+  priced in fitted DPS, so burning a mount into the core multiplied dps by 0.50
+  and the boost by 1.75 for a net **0.875** — the most obvious way to feed the
+  reactor made the reactor weaker. The core's multiplier is now derived rather
+  than chosen (`1 / BURN.dps = 2.0` is the floor; it sits at 2.4), and the
+  assertion stages from a mount because that is the worst source there is.
+- **Two `NOTHING IS SPENT TWICE` columns passed for the wrong rule.** "Onto a
+  dark section" targeted `mount_b` at 30% integrity, where `mount_b` is damaged
+  anyway — the damaged-target rule refused it and the burned-target rule was
+  never reached. "Out of a carrier" used the core as a source, which can never be
+  a source at any integrity. Both printed `true` with the rule they name deleted.
+  Isolating them needs integrity to **move**, which is what shields do: a section
+  burned at 30% is no longer damaged at 90%, and a section boosted at 50% is
+  damaged at 10%.
+- **The shield leg measured the boost case twice.** Its "burned array" trade sent
+  the array into the *drive* at 10% integrity, where the drive is damaged too, so
+  the trade was refused, nothing happened, and the reading came from the previous
+  staging. Staging that silently did not happen is worse than none — every leg
+  now asserts that its own setup took.
+- **The ladder check was a declaration-order check.** `damaged_ids` walks
+  `SECTIONS` in order, so the expected lists matched whatever the thresholds were
+  as long as the table kept its order. The thresholds are now asserted to descend.
+- **The core check could not tell "never fails" from "not a section"** —
+  `is_damaged` returns false for an unknown id too.
+
+Two real bugs came out of the same pass. The panel's headline contradicted its
+own rows: shields regenerate, so a ship can be back above every threshold while
+sections it burned are still dark, and the sheet read `ALL SECTIONS NOMINAL …
+nothing to trade yet` directly above two rows saying DARK and OVERCHARGED. And
+**the confirmation of an irreversible action was invisible** — `show_toast`
+raises a label from alpha 0 with a tween on the HUD, which is pausable, so while
+this panel holds the pause the tween never advances; the toast surfaced minutes
+later on resume, describing something the player had forgotten doing. The sheet
+states the outcome itself now.
+
+The through-line from both waves: **the code was reviewed and the harness was
+trusted.** Six of the eleven checks were weaker than their names, and one of them
+was hiding a live balance bug that the rewrite surfaced within a second of
+running. An assertion is a claim like any other.
+
+### The sweep after the harness pass
+
+**56 runs | 529 PASS | 1 FAIL | 0 script errors | save intact.** Five up on 524:
+the fourth `NOTHING IS SPENT TWICE` column, the refit-preview check that the
+earlier fix shipped without, and the legs that were rewritten to assert their own
+staging. The one failure remains the standing HOLDTEST readout issue, which
+nothing in either wave touched.
+
+### Third attempt at one column, and the first two failed the same way
+
+The verification stage of the review pass — thirty-eight agents, each survivor
+handed to a separate skeptic told to refute it — cleared almost everything and
+left exactly one finding standing at HEAD: **the fix for a vacuous assertion was
+itself vacuous.**
+
+`NOTHING IS SPENT TWICE`'s burned-target column, three times:
+
+| | staging | what actually refused it |
+|---|---|---|
+| v1 | `drive -> mount_b @ 0.30` | the damaged-**target** rule (mount_b fails at 0.78) |
+| v2 | `drive -> mount_b @ 0.90` | the damaged-**source** rule — 0.78 is the highest threshold in the table, so at 90% *nothing* is damaged, including the source |
+| v3 | burn `mount_a @ 0.30`, then `drive -> mount_a @ 0.50` | `diverts.has(target)` — the rule it names |
+
+v2 was written specifically to fix v1, with a conjunct (`not is_damaged(target)`)
+that excluded v1's cause and said nothing about the new one. The vacuity moved
+instead of dying, and the commit that shipped it described the defect correctly
+while reproducing it.
+
+The rule is only load-bearing when the source is damaged and the target is dark
+**but repaired**, which needs two different integrities — burn low, attempt
+higher. Red-verified: deleting `diverts.has(target)` from `can_divert` turns that
+column, and only that column, false.
+
+The general shape is worth keeping: **a conjunct that rules out the previous
+cause is not the same as one that establishes the intended cause.** The cheap
+check is to delete the rule and watch the column; anything that still passes is
+still measuring something else.
