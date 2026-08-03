@@ -955,7 +955,12 @@ func _overcharge_discharge() -> void:
 	# DPS so this never becomes a dead button after a weapon upgrade, and falls
 	# off toward the rim so wading into a pack is genuinely the right play.
 	var parent := get_parent()
-	var burst := float(_stats.get("dps", 100.0)) * OVERCHARGE_BURST_SECONDS
+	# `core_boost` is what an overcharged REACTOR CORE buys (SectionDB). The core
+	# governs the fitted ability rather than any scalar, so it is spent here --
+	# the one place the ability turns into a number -- and defaults to 1.0 for
+	# every ship that has never diverted anything.
+	var burst := float(_stats.get("dps", 100.0)) * OVERCHARGE_BURST_SECONDS \
+		* float(_stats.get("core_boost", 1.0))
 
 	FX.flash(parent, global_position, Palette.WHITE_HOT, 2.4, 0.22)
 	FX.shockwave(parent, global_position, Palette.AMBER, OVERCHARGE_RADIUS, 0.55)

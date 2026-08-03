@@ -103,6 +103,17 @@ var fit := {}
 var reactor_tier := 0
 var stats := {}
 
+# Live power diversions: burned-out section id -> the section carrying its power.
+#
+# DELIBERATELY NOT SAVED, and that is the design rather than an omission. A
+# diversion is a wound you are still carrying, and it lasts exactly until you
+# reach a dock (clear_diverts, called from the dock completion). Writing it to
+# the save would mean a pilot who quit mid-fight loads back into a burned-out
+# mount with no memory of trading it away -- punishment for closing the game.
+# Everything else about this mechanic is derived from live integrity, so an
+# empty dictionary at load is the correct and complete state.
+var diverts := {}
+
 # v2 fields — travel, progression, and first-run state.
 var current_system := ""
 var breached: Array[String] = []
@@ -1945,8 +1956,56 @@ func preview_stats(slot: int, id: String) -> Dictionary:
 	return ModuleDB.compute_stats(probe)
 
 
+func divert_power(source: String, target: String, integrity: float) -> bool:
+	# BURN A DAMAGED SECTION TO OVERCHARGE A WORKING ONE. Refuses rather than
+	# half-applies, so a caller cannot mistake "nothing happened" for a trade --
+	# claim_commission's rule, and the panel reads the return to decide whether
+	# to narrate.
+	#
+	# INTEGRITY IS AN ARGUMENT, and the first draft of this got it wrong. It let
+	# the panel decide which rows were tappable and trusted that, which puts the
+	# rule "you may only burn something already broken" in the RENDERING -- so it
+	# would hold exactly as long as nobody added a second caller, and no
+	# assertion could see it without driving a UI. GameState cannot read the
+	# ship's shields, so the caller passes what it measured and the rule lives
+	# here where it can be tested.
+	if not SectionDB.is_section(source) or not SectionDB.is_section(target):
+		return false
+	if source == target or diverts.has(source):
+		return false
+	# Only a damaged section has power going spare, and a working section is
+	# never a legal source however desperate the player is.
+	if not SectionDB.is_damaged(source, integrity):
+		return false
+	if SectionDB.is_damaged(target, integrity):
+		return false
+	# A burned section cannot be a target, and a target cannot then be burned.
+	# Without both halves a player could route power through a section they had
+	# already sold, which reads as a bug however it is scored.
+	if diverts.has(target) or diverts.values().has(source):
+		return false
+	diverts[source] = target
+	_recompute()
+	return true
+
+
+func clear_diverts() -> bool:
+	# Docking is repair. Returns whether anything was actually undone so the
+	# dock line can stay quiet on a ship that never diverted.
+	if diverts.is_empty():
+		return false
+	diverts = {}
+	_recompute()
+	return true
+
+
 func _recompute() -> void:
 	stats = ModuleDB.compute_stats(fit)
+	# AFTER the catalog, never inside it. compute_stats is pure over a fit and is
+	# probed speculatively by the refit sheet and by cargo_after(); folding a
+	# live diversion into it would make those previews describe a ship that only
+	# exists while something is burned out.
+	stats = SectionDB.apply(stats, diverts)
 	fit_changed.emit(stats)
 
 

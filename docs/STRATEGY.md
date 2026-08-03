@@ -5168,3 +5168,84 @@ the breach test put back into `_load_system`, and the assertion prints
 `slept=true, said …=false, woke=false` against its green
 `slept=true, said …=true, woke=true`. Both halves of what it claims move when
 the defect returns, which is the only thing that makes it worth its runtime.
+
+## 59. Damage control, and the one console that stops the clock (v18)
+
+A panel off the `HULL` readout: which parts of the ship the damage has reached,
+and the ability to burn a broken one to overcharge a working one. Requested as a
+last-ditch move, and built as one.
+
+### The readout was never hull
+
+`HULL 92%` is `PlayerShip.shield_fraction()` and always has been. There is one
+survivability pool, no second number, and no located damage anywhere in the
+game. So "which sections are damaged" was not a display problem — it was a
+model that did not exist, and the first decision was where to get it from.
+
+**Derived, not tracked.** `SectionDB` reads the one number the game already
+keeps and says which parts of the ship that number has taken with it. Nothing
+about combat changed, no save migration was needed, and — critically — no death
+spiral was created. The pool *is* the shield array, so a model where a damaged
+array cut `shield_max` would knock out more sections, which would cut it again.
+Derivation makes that structurally impossible: **being damaged costs nothing by
+itself.** The integrity it is read from has already been paid. Damage only means
+a section is a legal thing to spend.
+
+The ladder is outside-in — starboard mount, drive coil, port mount, shield array
+— because a survey hull takes hits on its mounts before its spine. The reactor
+core never fails, and that is not generosity: the core performs the diversion, so
+a ship whose core was out could not divert, and the panel would go dead in
+exactly the moment it exists for.
+
+### What makes it desperate rather than routine
+
+Diverting burns the source section out **until the ship docks**. That is the
+entire cost side, and it is what stops this being a free loadout: you are
+spending a real capability to survive the next sixty seconds. The numbers are
+deliberately large in both directions (a mount is half the guns; an overcharge
+is +45–75%), because a trade that cost a mount for +10% would never be worth
+taking and the panel would be decoration.
+
+`diverts` is deliberately **not saved**. It is a wound you are still carrying,
+and writing it to disk would mean a pilot who quit mid-fight loads back into a
+burned-out mount with no memory of trading it away — punishment for closing the
+game. Everything else is derived from live integrity, so an empty dictionary at
+load is the correct and complete state.
+
+### The rule that was living in the rendering
+
+The first draft let the panel decide which rows were tappable and had
+`divert_power` trust that. The rule *you may only burn something already broken*
+therefore lived in a `disabled` flag — it would have held exactly as long as
+nobody added a second caller, and no assertion could reach it without driving a
+UI. `GameState` cannot read the ship's shields, so integrity is now an argument
+and the rule lives where it can be tested. This is the house rule stated
+plainly, caught on its own feature.
+
+### Pausing, which nothing else does
+
+§14's rule is that a raid must not begin behind a sheet the player cannot see
+past, and `console_camping()` exists because a sheet open at speed is a shield
+rather than a document. Damage control is the exception, and it earns it: a
+decision made at 12% integrity with a swarm on you is not a decision anybody can
+make while flying.
+
+It still registers in `console_open()` even though pausing already stops the
+raid roll dead — the pause goes up and comes down a frame either side of the
+sheet, and a rule that holds only in the frames nobody was looking at is not a
+rule. It is deliberately **not** in `close_consoles_for_raid()`: the klaxon
+clearing the desk is about sheets read while the world moved, and slamming this
+one shut would drop the pause back onto a ship with a pack on top of it.
+
+`Escape` is handled by the panel itself. `CameraRig`'s ladder stops receiving
+input the instant the tree pauses — its own comment says so about the pause menu
+— so a sheet that pauses has to own its way out or the key does nothing and the
+game reads as hung.
+
+### On the word "overcharge"
+
+It was already taken: `core_overcharge` is a fitted ability and `OVERCHARGE` is
+a button in the action dock. Spending the same noun twice is the confusion §58
+had just finished undoing, so the verb here is **DIVERT** and the resulting
+state is **OVERCHARGED** — the requested word survives where it describes a
+condition, and the button keeps its meaning.
