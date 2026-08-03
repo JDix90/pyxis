@@ -93,8 +93,8 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **517 PASS / 1 FAIL / 0 script errors** across 55 runs, save
-format **v18** — measured on Godot 4.6.stable, headless. 518 assertion lines,
+Current baseline: **524 PASS / 1 FAIL / 0 script errors** across 56 runs, save
+format **v18** — measured on Godot 4.6.stable, headless. 525 assertion lines,
 of which the one failure is the standing HOLDTEST issue below. Horizon 4
 (factions, STRATEGY §47, §49–54) is complete: six stages, +45 assertions, all
 red-verified. Chartfolk convoys (STRATEGY §55) populate the deep 200–1000u

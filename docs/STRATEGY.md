@@ -5249,3 +5249,16 @@ a button in the action dock. Spending the same noun twice is the confusion §58
 had just finished undoing, so the verb here is **DIVERT** and the resulting
 state is **OVERCHARGED** — the requested word survives where it describes a
 condition, and the button keeps its meaning.
+
+### The sweep with damage control in it
+
+**56 runs | 524 PASS | 1 FAIL | 0 script errors | save intact.** Seven up on the
+517 baseline, which is exactly the seven `DAMAGETEST` assertions; the run count
+moves 55 → 56 because the tag is new. The one failure remains the standing
+HOLDTEST readout issue.
+
+Two of the seven were red-verified rather than merely observed passing. Removing
+the damaged-source test turns `intact source refused=true` into `false`;
+removing the un-pause in `close_panel` turns `closed -> running=true` into
+`false`. Each fails on precisely the clause that names the defect, which is the
+only property that makes an assertion worth its runtime.
