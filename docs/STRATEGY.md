@@ -5372,3 +5372,11 @@ The through-line from both waves: **the code was reviewed and the harness was
 trusted.** Six of the eleven checks were weaker than their names, and one of them
 was hiding a live balance bug that the rewrite surfaced within a second of
 running. An assertion is a claim like any other.
+
+### The sweep after the harness pass
+
+**56 runs | 529 PASS | 1 FAIL | 0 script errors | save intact.** Five up on 524:
+the fourth `NOTHING IS SPENT TWICE` column, the refit-preview check that the
+earlier fix shipped without, and the legs that were rewritten to assert their own
+staging. The one failure remains the standing HOLDTEST readout issue, which
+nothing in either wave touched.
