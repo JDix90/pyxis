@@ -5410,3 +5410,48 @@ The general shape is worth keeping: **a conjunct that rules out the previous
 cause is not the same as one that establishes the intended cause.** The cheap
 check is to delete the rule and watch the column; anything that still passes is
 still measuring something else.
+
+## 60. The compass said 270 was north (v18, playtest round 3 follow-up)
+
+A rendered frame from §57's HUD check read `HDG 270 · NORTH`. It was internally
+consistent — fly to a quoted bearing and you arrive — but no compass any player
+has ever used puts north at 270, so the instrument read as broken whether or not
+it was.
+
+### The world convention and the displayed one are now different numbers
+
+Everything internal uses `atan2(z, x)`, where +X is 0: the lair derivation, the
+authored `bearing_deg` in every system def, Hunt's search cone, and — decisively
+— the bearings **already written into players' saves** as apex hints. Rotating
+that would have needed a save migration, and a hint that pointed 90° wrong is
+worse than no hint: it costs credits *and* sends you the wrong way.
+
+So the rotation happens at the glass. `DeepSpace.compass_deg` is the only thing
+that converts, every readout and every quoted bearing goes through it, and not
+one stored number moves. A save written last night still points where it always
+did. The offset is +90 because +X has to go from 0 to 90.
+
+`quadrant_of` is now derived from the displayed number rather than from its own
+copy of the sector maths, so the word and the digits on one line cannot
+contradict each other. They agreed before only because two tables happened to
+match.
+
+### The assertion that would have passed on the broken compass
+
+`THE READOUT FOLLOWS THE HEADING` staged a yaw *from a number* and expected the
+same number back. That is true of **any** convention — it would have passed just
+as happily on the version that printed `HDG 270 · NORTH`, which is exactly what
+it did for as long as that shipped.
+
+It names the four cardinals and the digits a player expects beside them now:
+
+| direction | reads |
+|---|---|
+| `-Z` | `HDG 000 · NORTH` |
+| `+X` | `HDG 090 · EAST` |
+| `+Z` | `HDG 180 · SOUTH` |
+| `-X` | `HDG 270 · WEST` |
+
+That is the form that can fail when the compass is wrong, and it is the third
+assertion this round rewritten for the same reason: a check that restates its own
+staging is not measuring the thing it names.

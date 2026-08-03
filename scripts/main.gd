@@ -1854,7 +1854,7 @@ func _warn_muster() -> void:
 	_muster_point = dir * chart_edge()
 	_muster_origin = dir * (chart_edge() + MUSTER_DEPTH)
 	_muster_warn = MUSTER_WARN
-	var deg := int(round(fposmod(rad_to_deg(atan2(dir.z, dir.x)), 360.0)))
+	var deg := DeepSpace.compass_deg(dir)
 	if hud:
 		hud.show_broadcast("CORDON ADVISORY — MASS CONTACT",
 			"Massed unflagged contacts forming %du beyond the marker, bearing %03d. "
@@ -2249,9 +2249,7 @@ func rift_rumor() -> String:
 	if live_rift == null or not is_instance_valid(live_rift):
 		return ""
 	var p := live_rift.global_position
-	var bearing := int(rad_to_deg(atan2(p.z, p.x)))
-	if bearing < 0:
-		bearing += 360
+	var bearing := DeepSpace.compass_deg(p)
 	return "A shear is standing open — bearing %03d, %du out. It will not hold, and neither will the price of what falls out of it." % [
 		bearing, int(deep_space.depth_at(p)) if deep_space else 0]
 
@@ -2645,8 +2643,10 @@ func file_apex_intel(kind: String, from: Vector3, err_deg: float) -> bool:
 		line = "INTEL — %s IN %s, %s" % [engine,
 			DeepSpace.BAND_NAMES[int(hint["band"])], String(hint["quadrant"])]
 	else:
+		# The hint's stored bearing is in the world convention (and is in players'
+		# saves that way); it is turned into a compass number here, at the glass.
 		line = "INTEL — %s · BEARING %03d ±%d° · SEARCH ±%du" % [engine,
-			int(round(float(hint["bearing"]))), int(round(err_deg)),
+			DeepSpace.to_compass(float(hint["bearing"])), int(round(err_deg)),
 			int(round(float(est["radius"])))]
 	if hud:
 		hud.show_toast(line, Palette.GOLD)
@@ -9313,15 +9313,25 @@ func _run_radar_test() -> void:
 	var hdg_rows := ""
 	var hdg_ok := true
 	var hdg_last := ""
-	for want_deg in [0, 90, 180, 270]:
-		# The exact inverse of hud's -basis.z read: a yaw whose forward vector
-		# points at want_deg in the atan2(z, x) convention every producer uses.
-		var rads := deg_to_rad(float(want_deg))
-		player.rotation.y = atan2(-cos(rads), -sin(rads))
+	# THE CARDINALS ARE WRITTEN OUT, NOT DERIVED, and that is the whole point of
+	# this check now. The old version staged a yaw from a number and expected the
+	# same number back, which is true of ANY convention -- it would have passed
+	# just as happily on the one that printed `HDG 270 · NORTH`. Naming the four
+	# directions and the digits a player expects beside them is the only form
+	# that can fail when the compass is wrong.
+	for spec_v in [
+		{"dir": Vector3(0, 0, -1), "deg": 0, "word": "NORTH"},
+		{"dir": Vector3(1, 0, 0), "deg": 90, "word": "EAST"},
+		{"dir": Vector3(0, 0, 1), "deg": 180, "word": "SOUTH"},
+		{"dir": Vector3(-1, 0, 0), "deg": 270, "word": "WEST"},
+	]:
+		var spec: Dictionary = spec_v
+		var d: Vector3 = spec["dir"]
+		# The inverse of hud's -basis.z read: yaw whose forward vector IS d.
+		player.rotation.y = atan2(-d.x, -d.z)
 		await get_tree().process_frame
 		await get_tree().process_frame
-		var want := "HDG %03d · %s" % [want_deg,
-			DeepSpace.quadrant_of(Vector3(cos(rads), 0.0, sin(rads)))]
+		var want := "HDG %03d · %s" % [int(spec["deg"]), String(spec["word"])]
 		var got := hud.heading_text()
 		hdg_rows += "%s|" % got
 		if got != want:

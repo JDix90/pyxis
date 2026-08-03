@@ -544,7 +544,10 @@ static func derelict_bearing_deg(id: String) -> int:
 	var p := derelict_pos(id)
 	if p == Vector3.ZERO:
 		return 0
-	return int(round(fposmod(rad_to_deg(atan2(p.z, p.x)), 360.0)))
+	# A COMPASS NUMBER, because both callers say it out loud. The def's authored
+	# `bearing_deg` stays in the world convention -- derelict_pos builds a
+	# position from it -- and this is the only place that converts.
+	return DeepSpace.compass_deg(p)
 
 
 static func lair_pos(id: String, run_seed: int) -> Vector3:

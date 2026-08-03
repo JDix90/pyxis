@@ -467,16 +467,47 @@ static func band_name(depth: float) -> String:
 # worse than no rumour: it costs credits AND sends you the wrong way.
 const QUADRANTS := ["EAST", "SOUTH", "WEST", "NORTH"]
 
+# THE ANGLE THE WORLD IS BUILT ON, and the one the player is shown, are not the
+# same number -- and keeping them separate is what makes this safe.
+#
+# Everything internal uses `atan2(z, x)`: the lair derivation, the authored
+# `bearing_deg` in every system def, Hunt's search cone, and the bearings already
+# WRITTEN INTO PLAYERS' SAVES as apex hints. In that convention +X is 0, so 0 is
+# EAST and 270 is NORTH -- which is fine for maths and indefensible on an
+# instrument. A playtest screenshot read `HDG 270 · NORTH`, and no compass any
+# player has ever used puts north at 270.
+#
+# So the rotation happens at the GLASS, never in the model. compass_deg is the
+# only thing that converts, every readout and every quoted bearing goes through
+# it, and not one stored number moves -- a save written last night still points
+# where it always did. The offset is +90 because +X must go from 0 to 90.
+const COMPASS_OFFSET := 90.0
+
+
+static func to_compass(world_deg: float) -> int:
+	# For callers that already hold an atan2(z, x) angle -- the stored hints and
+	# the authored defs both arrive that way.
+	return int(round(fposmod(world_deg + COMPASS_OFFSET, 360.0))) % 360
+
+
+static func compass_deg(pos: Vector3) -> int:
+	# For callers holding a direction. Equivalent to to_compass(atan2(z,x)) and
+	# asserted to be, so the two entry points cannot drift.
+	return to_compass(rad_to_deg(atan2(pos.z, pos.x)))
+
 
 static func quadrant_of(pos: Vector3) -> String:
-	var deg := fposmod(rad_to_deg(atan2(pos.z, pos.x)), 360.0)
+	# DERIVED FROM THE DISPLAYED NUMBER, so the word and the digits on the same
+	# line cannot contradict each other. They agreed before only because two
+	# separate tables happened to match; now there is one.
+	var deg := float(compass_deg(pos))
 	if deg < 45.0 or deg >= 315.0:
-		return "EAST"
+		return "NORTH"
 	if deg < 135.0:
-		return "SOUTH"
+		return "EAST"
 	if deg < 225.0:
-		return "WEST"
-	return "NORTH"
+		return "SOUTH"
+	return "WEST"
 
 
 static func band_color(depth: float) -> Color:

@@ -1300,13 +1300,15 @@ func _process(_delta: float) -> void:
 	# a boundary -- so this feeds it the ship's own forward vector. quadrant_of
 	# is pure over a direction, so a direction is a legal argument.
 	#
-	# Ship forward is -basis.z, and atan2(z, x) is the producers' expression
-	# verbatim. A PARKED ship holds its last heading, which is what a compass
-	# does; an EMP tumble spins the readout, which is the tell and not a bug.
+	# Ship forward is -basis.z. A PARKED ship holds its last heading, which is
+	# what a compass does; an EMP tumble spins the readout, which is the tell
+	# and not a bug.
+	#
+	# THROUGH compass_deg, which is what makes 000 mean north on this instrument
+	# rather than 270. It also does the wrap -- round(359.6) is 360, and HDG 360
+	# is not a heading anybody quotes.
 	var fwd := -player.global_transform.basis.z
-	# The modulo is load-bearing: round(359.6) is 360, and HDG 360 is not a
-	# heading anybody quotes.
-	var hdg := int(round(fposmod(rad_to_deg(atan2(fwd.z, fwd.x)), 360.0))) % 360
+	var hdg := DeepSpace.compass_deg(Vector3(fwd.x, 0.0, fwd.z))
 	var quarter := DeepSpace.quadrant_of(Vector3(fwd.x, 0.0, fwd.z))
 	if hdg != _heading_deg or quarter != _heading_word:
 		_heading_deg = hdg
