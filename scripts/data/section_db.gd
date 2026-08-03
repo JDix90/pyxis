@@ -41,7 +41,23 @@ const BOOST := {
 	"dps": 1.60,
 	"speed": 1.45,
 	"shield": 2.50,
-	"core": 1.75,
+	# THE CORE'S NUMBER IS DERIVED, NOT CHOSEN, and 1.75 was wrong.
+	#
+	# The discharge is `dps * OVERCHARGE_BURST_SECONDS * core_boost` -- it is
+	# priced in fitted DPS so it never becomes a dead button after a weapon
+	# upgrade. That means a `dps` source paying the core compounds: burning a
+	# mount multiplies dps by BURN.dps (0.50) and the core boost by 1.75, for a
+	# net 0.875. The most obvious way to feed the reactor made the reactor
+	# WEAKER, which is the mount-into-mount fallacy one level removed -- and the
+	# old assertion could not see it, because it read the boost field instead of
+	# the burst that reaches the trigger.
+	#
+	# So the floor is 1 / BURN.dps = 2.0, and this sits above it: the worst
+	# possible source (a mount) still buys 0.50 x 2.40 = 1.2x, and a source that
+	# costs no damage at all (the drive) buys the full 2.4x. Feeding the core
+	# from something that is not a gun is the better play, which is the right
+	# thing for the sheet to teach.
+	"core": 2.40,
 }
 
 # What a burned-out section costs. A mount is half the guns, so burning one is

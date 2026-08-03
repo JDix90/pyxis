@@ -15071,13 +15071,32 @@ func _run_damage_test() -> void:
 		if got != (spec["want"] as Array):
 			ladder_bad = "at %.0f%% got %s wanted %s" % [
 				float(spec["at"]) * 100.0, str(got), str(spec["want"])]
+	# AND THE THRESHOLDS THEMSELVES DESCEND. damaged_ids walks SECTIONS in
+	# declaration order, so the expected lists above would match whatever the
+	# thresholds were as long as the table stayed in the same order -- the check
+	# read like an ordering test and was really a declaration-order test.
+	# Comparing each fails_at to the one before is the property "outside-in"
+	# actually means, and it goes red if anyone reshuffles the table.
+	var descending := true
+	var prev := 2.0
+	for s_v in SectionDB.SECTIONS:
+		var at := float((s_v as Dictionary)["fails_at"])
+		if at < 0.0:
+			continue          # the core, which has no threshold at all
+		if at >= prev:
+			descending = false
+		prev = at
 	# The core is the thing doing the routing, so a dead core would mean a panel
 	# that goes blank exactly when it is needed. Checked at zero, not at a
-	# plausible number: the claim is "never", and never includes destroyed.
-	var core_holds: bool = not SectionDB.is_damaged("core", 0.0)
-	print("[damage] THE LADDER RUNS OUTSIDE-IN %s(%s); core alive at 0%%=%s -> %s" % [
-		ladder_report, ladder_bad if ladder_bad != "" else "ordered", str(core_holds),
-		"PASS" if ladder_bad == "" and core_holds else "FAIL"])
+	# plausible number: the claim is "never", and never includes destroyed. The
+	# is_section half matters: is_damaged also returns false for an id that does
+	# not exist, so without it this passes for a typo.
+	var core_holds: bool = SectionDB.is_section("core") \
+		and not SectionDB.is_damaged("core", 0.0)
+	print("[damage] THE LADDER RUNS OUTSIDE-IN %s(%s); thresholds descend=%s; core is a real section and alive at 0%%=%s -> %s" % [
+		ladder_report, ladder_bad if ladder_bad != "" else "ordered",
+		str(descending), str(core_holds),
+		"PASS" if ladder_bad == "" and descending and core_holds else "FAIL"])
 
 	# --- 2. only a broken section may be spent, and only on a working one -----
 	# Driven through divert_power, which is where the rule lives. The first
@@ -15099,13 +15118,38 @@ func _run_damage_test() -> void:
 	# core is the only always-legal target, so four taps multiplied its boost to
 	# 1.75^4 and the discharge hit for nine times its rated burst. The panel
 	# happened to grey the row, which is the rule living in the rendering again.
+	# EACH COLUMN MUST BE REFUSED BY THE RULE IT NAMES, and two of them were not.
+	# `onto a dark section` used mount_b as a target at 30%, where mount_b is
+	# damaged anyway (fails_at 0.78) -- so the damaged-target rule refused it and
+	# the burned-target rule was never reached. `out of a carrier` used the core
+	# as a source, which can never be a source at any integrity. Both printed
+	# `true` on code with the check they name deleted.
+	#
+	# Isolating them needs integrity to MOVE, which is exactly what shields do:
+	# a section burned at 30% is no longer damaged once regen carries the ship
+	# back to 90%, and a section boosted at 50% becomes damaged if the ship falls
+	# to 10%. Those are the only states in which the two rules are load-bearing,
+	# and they are ordinary play.
 	GameState.diverts = {}
 	GameState.divert_power("mount_b", "core", 0.30)
 	var twice: bool = not GameState.divert_power("mount_b", "array", 0.30)
-	var onto_burned: bool = not GameState.divert_power("drive", "mount_b", 0.30)
-	var from_carrier: bool = not GameState.divert_power("core", "array", 0.30)
+	# mount_b is DARK and, at 90%, no longer damaged -- so only the burned-target
+	# rule can refuse it.
+	var onto_burned: bool = not GameState.divert_power("drive", "mount_b", 0.90) \
+		and not SectionDB.is_damaged("mount_b", 0.90)
+	# The core CARRIES power and, being un-failable, is refused as a source by
+	# the carrier rule rather than by the damaged-source rule... which cannot
+	# distinguish. So stage a carrier that IS damaged: burn into the array while
+	# it is healthy, then drop to an integrity where the array itself is broken.
+	GameState.diverts = {}
+	GameState.divert_power("drive", "array", 0.50)
+	var carrier_now_damaged: bool = SectionDB.is_damaged("array", 0.10)
+	var from_carrier: bool = not GameState.divert_power("array", "core", 0.10) \
+		and carrier_now_damaged
+	GameState.diverts = {}
+	GameState.divert_power("mount_b", "core", 0.30)
 	var stacked: bool = not GameState.divert_power("drive", "core", 0.30)
-	print("[damage] NOTHING IS SPENT TWICE same source again=%s, onto a dark section=%s, out of a carrier=%s, second source onto one target=%s (all must be refused) -> %s" % [
+	print("[damage] NOTHING IS SPENT TWICE same source again=%s, onto a dark-but-repaired section=%s, out of a damaged carrier=%s, second source onto one target=%s (all must be refused) -> %s" % [
 		str(twice), str(onto_burned), str(from_carrier), str(stacked),
 		"PASS" if twice and onto_burned and from_carrier and stacked else "FAIL"])
 
@@ -15138,15 +15182,26 @@ func _run_damage_test() -> void:
 	GameState.divert_power("mount_b", "array", 0.70)
 	var cap_boost := float(GameState.stats.get("shield_max", 0.0))
 	var regen_boost := float(GameState.stats.get("shield_regen", 0.0))
+	# THE BURN LEG HAS TO ACTUALLY BURN. The first version sent the array into
+	# the DRIVE at 10% integrity, where the drive is damaged too (fails_at 0.58)
+	# -- so the trade was refused, nothing happened, and `cap_burn` read the
+	# stats left over from the boost above. It measured the boost case twice and
+	# called one of them a burn. The core is the only section that is never
+	# damaged, so it is the only legal target at an integrity low enough for the
+	# array to be a legal source.
 	GameState.diverts = {}
-	GameState.divert_power("array", "drive", 0.10)
+	var burn_took: bool = GameState.divert_power("array", "core", 0.10)
 	var cap_burn := float(GameState.stats.get("shield_max", 0.0))
+	var regen_burn := float(GameState.stats.get("shield_regen", 0.0))
 	GameState.diverts = {}
 	GameState._recompute()
-	print("[damage] THE SHIELD TRADE NEVER MOVES CAPACITY shield_max %.0f -> %.0f boosted, %.0f burned (all must match); regen %.1f -> %.1f (must rise) -> %s" % [
-		cap_before, cap_boost, cap_burn, regen_before, regen_boost,
-		"PASS" if absf(cap_boost - cap_before) < 0.01 and absf(cap_burn - cap_before) < 0.01
-			and regen_boost > regen_before + 0.01 else "FAIL"])
+	print("[damage] THE SHIELD TRADE NEVER MOVES CAPACITY shield_max %.0f -> %.0f boosted, %.0f burned (all must match); regen %.1f -> %.1f boosted, %.1f burned (must rise then fall); burn actually took=%s -> %s" % [
+		cap_before, cap_boost, cap_burn, regen_before, regen_boost, regen_burn,
+		str(burn_took),
+		"PASS" if burn_took and absf(cap_boost - cap_before) < 0.01
+			and absf(cap_burn - cap_before) < 0.01
+			and regen_boost > regen_before + 0.01
+			and regen_burn < regen_before - 0.01 else "FAIL"])
 
 	# --- 3d. a new run does not inherit a burned-out ship --------------------
 	# `diverts` is not saved, which was mistaken for it being empty at the start
@@ -15253,15 +15308,70 @@ func _run_damage_test() -> void:
 	# The core governs the fitted ABILITY rather than a scalar, so it is the one
 	# section whose boost cannot be read off a stat the ship flies on. Asserted
 	# where it is actually spent.
+	# THE BASELINE HALF USED TO COMPARE THE TEST'S OWN DEFAULT TO 1.0. With no
+	# diversion the key is ABSENT, so `stats.get("core_boost", 1.0)` returned the
+	# literal the assertion then checked against 1.0 -- it could not fail, on any
+	# code, ever. Asking whether the key is absent is the question that has two
+	# answers.
+	#
+	# And the burst is computed here the way PlayerShip computes it, so this
+	# measures what reaches the trigger rather than a field nothing may read.
 	GameState.diverts = {}
 	GameState._recompute()
-	var plain_boost := float(GameState.stats.get("core_boost", 1.0))
+	var key_absent: bool = not GameState.stats.has("core_boost")
+	var plain_burst := float(GameState.stats.get("dps", 0.0)) \
+		* PlayerShip.OVERCHARGE_BURST_SECONDS \
+		* float(GameState.stats.get("core_boost", 1.0))
+	# STAGED FROM THE WORST POSSIBLE SOURCE. A mount is the only source that also
+	# cuts `dps`, which the discharge is priced in -- so if the burst rises for a
+	# mount it rises for everything. Read from a source that costs no damage (the
+	# drive) this assertion passes on a core boost of 1.75, which is a net LOSS
+	# from a mount; that is exactly the hole it now closes.
 	GameState.divert_power("mount_b", "core", 0.70)
 	var charged_boost := float(GameState.stats.get("core_boost", 1.0))
+	var charged_burst := float(GameState.stats.get("dps", 0.0)) \
+		* PlayerShip.OVERCHARGE_BURST_SECONDS * charged_boost
+	# AT 0.50, NOT 0.70. The drive only becomes a legal source below its own 0.58
+	# threshold, so staged at 0.70 this trade is refused, `_recompute` never runs
+	# and the read below returns the PREVIOUS staging's stats -- which is the
+	# same stale-read the shield leg was caught doing, reintroduced three lines
+	# later. `free_took` is asserted for that reason: staging that silently did
+	# not happen is worse than no staging at all.
+	GameState.diverts = {}
+	var free_took: bool = GameState.divert_power("drive", "core", 0.50)
+	var free_burst := float(GameState.stats.get("dps", 0.0)) \
+		* PlayerShip.OVERCHARGE_BURST_SECONDS \
+		* float(GameState.stats.get("core_boost", 1.0))
 	GameState.clear_diverts()
-	print("[damage] AN OVERCHARGED CORE HITS HARDER core_boost %.2f -> %.2f (must rise from 1.00) -> %s" % [
-		plain_boost, charged_boost,
-		"PASS" if absf(plain_boost - 1.0) < 0.001 and charged_boost > 1.01 else "FAIL"])
+	print("[damage] AN OVERCHARGED CORE HITS HARDER key absent when clean=%s, core_boost -> %.2f; discharge %.0f -> %.0f from a MOUNT (the worst source, must still rise) -> %.0f from the drive (staged=%s) -> %s" % [
+		str(key_absent), charged_boost, plain_burst, charged_burst, free_burst,
+		str(free_took),
+		"PASS" if key_absent and charged_boost > 1.01 and free_took
+			and charged_burst > plain_burst + 0.01
+			and free_burst > charged_burst + 0.01 else "FAIL"])
+
+	# --- 8. the refit console compares like with like ------------------------
+	# UIKit.delta_line renders delta_lines(GameState.stats, preview_stats(...)),
+	# so if only one side carries the diversion every module in the list
+	# advertises a fabricated gain: with a mount burned, the BEFORE dps was
+	# halved and the AFTER was not, so every weapon showed roughly +100% and
+	# equipping one re-applied the halving the strip had just promised to undo.
+	# Asserted by re-fitting the module ALREADY IN THE SLOT -- the delta of a
+	# no-op must be zero in every world, diverted or not, and that is a question
+	# with two possible answers.
+	GameState.diverts = {}
+	GameState._recompute()
+	var slot_now := String(GameState.fit.get(ModuleDB.Slot.WEAPON_A, ""))
+	var noop_clean := float(GameState.preview_stats(ModuleDB.Slot.WEAPON_A,
+		slot_now).get("dps", 0.0)) - float(GameState.stats.get("dps", 0.0))
+	GameState.divert_power("mount_b", "drive", 0.70)
+	var noop_diverted := float(GameState.preview_stats(ModuleDB.Slot.WEAPON_A,
+		slot_now).get("dps", 0.0)) - float(GameState.stats.get("dps", 0.0))
+	GameState.diverts = {}
+	GameState._recompute()
+	print("[damage] A REFIT PREVIEW COMPARES LIKE WITH LIKE re-fitting the equipped module reads %+.1f dps clean, %+.1f with a mount burned (both must be 0.0) -> %s" % [
+		noop_clean, noop_diverted,
+		"PASS" if absf(noop_clean) < 0.01 and absf(noop_diverted) < 0.01 else "FAIL"])
 
 	# A frame of the sheet, when asked for one. No assertion can tell you whether
 	# a panel READS, and this one is a wall of state the player meets while

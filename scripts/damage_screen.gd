@@ -37,6 +37,7 @@ var _rows: VBoxContainer
 var _title: Label
 var _status: Label
 var _hint: Label
+var _notice: Label
 # The section the player has armed as a power SOURCE, or "" for none. Two taps
 # to commit -- the same confirm shape the hold's dump button uses, because this
 # is likewise irreversible until a dock.
@@ -103,6 +104,16 @@ func _build() -> void:
 	_rows.add_theme_constant_override("separation", 4)
 	col.add_child(_rows)
 
+	# The panel's own confirmation line. Hidden until something is actually
+	# spent, so an untouched sheet carries no empty row.
+	_notice = Label.new()
+	_notice.add_theme_color_override("font_color", Palette.GOLD)
+	_notice.add_theme_font_size_override("font_size", 13)
+	_notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_notice.custom_minimum_size = Vector2(PANEL_W - 36, 0)
+	_notice.visible = false
+	col.add_child(_notice)
+
 	_hint = Label.new()
 	_hint.add_theme_color_override("font_color", Palette.AMBER_DIM)
 	_hint.add_theme_font_size_override("font_size", 12)
@@ -154,6 +165,13 @@ func _refresh() -> void:
 	if _armed != "":
 		_hint.text = "%s IS ARMED. TAP A WORKING SECTION TO SEND IT THAT POWER — the armed section goes dark until you dock." \
 			% String(SectionDB.section(_armed).get("name", ""))
+	elif damaged.is_empty() and not GameState.diverts.is_empty():
+		# THE HEADLINE MUST NOT CONTRADICT THE ROWS. Shields regenerate, so a
+		# ship can be back above every threshold while sections it burned are
+		# still dark -- the readout heals, the burnout does not. Without this
+		# branch the sheet said "ALL SECTIONS NOMINAL ... nothing to trade yet"
+		# directly above two rows reading DARK and OVERCHARGED.
+		_hint.text = "HULL PATCHED, POWER NOT RESTORED. Nothing is damaged any more, but what you burned stays dark until you dock."
 	elif not damaged.is_empty() and _nothing_can_be_spent(integrity):
 		# The honest version of the dead end rather than a hint that lies. A
 		# player at 15% with the core already carrying power has damaged sections
@@ -267,10 +285,16 @@ func _on_row(id: String, damaged: bool) -> void:
 		_refresh()
 		return
 	Sfx.play("equip", -4.0, 1.2)
-	var hud := get_tree().get_first_node_in_group("hud")
-	if hud and hud.has_method("show_toast"):
-		hud.show_toast("POWER DIVERTED — %s IS DARK" % String(
-			SectionDB.section(source).get("name", "")), Palette.AMBER)
+	# THE CONFIRMATION HAS TO BE ON THIS SHEET, because the HUD's cannot be seen
+	# from here. show_toast starts the label at alpha 0 and raises it with a
+	# tween on the HUD, which is a pausable node -- so while this panel holds the
+	# pause the tween never advances and the toast for an IRREVERSIBLE action is
+	# invisible at the exact moment it is taken, surfacing minutes later on
+	# resume as a line about something the player has forgotten doing. The rows
+	# repaint to DARK and OVERCHARGED immediately, and this says it in words.
+	_notice.text = "POWER DIVERTED — %s IS DARK UNTIL YOU DOCK" % String(
+		SectionDB.section(source).get("name", ""))
+	_notice.visible = true
 	GameState.note_log("DIVERTED %s TO %s" % [
 		String(SectionDB.section(source).get("name", "")),
 		String(SectionDB.section(id).get("name", ""))])
@@ -285,6 +309,7 @@ func open() -> void:
 	is_open = true
 	visible = true
 	_armed = ""
+	_notice.visible = false
 	_refresh()
 	Sfx.play("equip", -8.0, 0.85)
 	# THE PAUSE GOES UP LAST, after the sheet is populated. Building a panel
