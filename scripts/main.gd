@@ -459,7 +459,15 @@ func _ready() -> void:
 		# during the tutorial and behind the title card, and a sheet that paused
 		# the tree in either would strand a player in a state with no way out
 		# that they have been taught yet.
-		if state != State.PLAYING or tutorial_active() or docked_port != null:
+		# `warping` is in this list for toggle_pause's reason, stated there: the
+		# warp is a chain of awaited timers, and SceneTree.create_timer defaults
+		# to process_always, so pausing does not stop it. Without this the sheet
+		# goes up over a warp that keeps running behind it -- the system is
+		# rebuilt, the ship is teleported and the arrival plays, all under a
+		# stopped scrim, and the player resumes somewhere else with the flash
+		# quad from before the jump still on screen.
+		if state != State.PLAYING or tutorial_active() or docked_port != null \
+				or warping:
 			return
 		if damage_screen.is_open:
 			damage_screen.close_panel()
@@ -15085,17 +15093,113 @@ func _run_damage_test() -> void:
 		"PASS" if whole_refused and onto_broken and legal else "FAIL"])
 
 	# --- 3. nothing is spent twice -------------------------------------------
-	# Three ways to double-spend, all closed. Without the last two a player could
-	# route power through a section they had already sold, which reads as a bug
-	# whatever the scoreboard says.
+	# FOUR ways to double-spend, all closed. The fourth -- two sources into one
+	# target -- was missing from both the code and this assertion, and it was the
+	# expensive one: at low integrity every non-core section is damaged and the
+	# core is the only always-legal target, so four taps multiplied its boost to
+	# 1.75^4 and the discharge hit for nine times its rated burst. The panel
+	# happened to grey the row, which is the rule living in the rendering again.
 	GameState.diverts = {}
 	GameState.divert_power("mount_b", "core", 0.30)
 	var twice: bool = not GameState.divert_power("mount_b", "array", 0.30)
 	var onto_burned: bool = not GameState.divert_power("drive", "mount_b", 0.30)
 	var from_carrier: bool = not GameState.divert_power("core", "array", 0.30)
-	print("[damage] NOTHING IS SPENT TWICE same source again=%s, onto a dark section=%s, out of a carrier=%s (all must be refused) -> %s" % [
-		str(twice), str(onto_burned), str(from_carrier),
-		"PASS" if twice and onto_burned and from_carrier else "FAIL"])
+	var stacked: bool = not GameState.divert_power("drive", "core", 0.30)
+	print("[damage] NOTHING IS SPENT TWICE same source again=%s, onto a dark section=%s, out of a carrier=%s, second source onto one target=%s (all must be refused) -> %s" % [
+		str(twice), str(onto_burned), str(from_carrier), str(stacked),
+		"PASS" if twice and onto_burned and from_carrier and stacked else "FAIL"])
+
+	# --- 3b. a system cannot pay itself --------------------------------------
+	# Both mounts govern `dps`, so burning one into the other multiplied the same
+	# key by 0.50 and then 1.60 -- a net 0.80, a strict LOSS, rendered as
+	# OVERCHARGED in gold. It is also the most intuitive move on the sheet, so it
+	# had to be refused rather than merely documented. Asserted against the
+	# GOVERNS key rather than the pair, so a third weapon mount inherits it.
+	GameState.diverts = {}
+	var same_system: bool = not GameState.divert_power("mount_b", "mount_a", 0.50)
+	var cross_system: bool = GameState.divert_power("mount_b", "drive", 0.70)
+	GameState.diverts = {}
+	GameState._recompute()
+	print("[damage] A SYSTEM CANNOT PAY ITSELF mount->mount refused=%s (0.50x1.60 = a net loss sold as a boost), mount->drive allowed=%s -> %s" % [
+		str(same_system), str(cross_system),
+		"PASS" if same_system and cross_system else "FAIL"])
+
+	# --- 3c. the shield trade cannot move what damage is derived FROM --------
+	# THE DEATH SPIRAL, ASSERTED SHUT. Integrity is shield/shield_max, and an
+	# earlier version scaled shield_max for the "shield" system -- so
+	# overcharging the array dropped the integrity it is derived from and broke
+	# the array one line after powering it, and BURNING the array raised
+	# integrity and healed sections as a reward for destroying one. Capacity is
+	# now fixed by the fit and the trade moves regeneration only.
+	GameState.diverts = {}
+	GameState._recompute()
+	var cap_before := float(GameState.stats.get("shield_max", 0.0))
+	var regen_before := float(GameState.stats.get("shield_regen", 0.0))
+	GameState.divert_power("mount_b", "array", 0.70)
+	var cap_boost := float(GameState.stats.get("shield_max", 0.0))
+	var regen_boost := float(GameState.stats.get("shield_regen", 0.0))
+	GameState.diverts = {}
+	GameState.divert_power("array", "drive", 0.10)
+	var cap_burn := float(GameState.stats.get("shield_max", 0.0))
+	GameState.diverts = {}
+	GameState._recompute()
+	print("[damage] THE SHIELD TRADE NEVER MOVES CAPACITY shield_max %.0f -> %.0f boosted, %.0f burned (all must match); regen %.1f -> %.1f (must rise) -> %s" % [
+		cap_before, cap_boost, cap_burn, regen_before, regen_boost,
+		"PASS" if absf(cap_boost - cap_before) < 0.01 and absf(cap_burn - cap_before) < 0.01
+			and regen_boost > regen_before + 0.01 else "FAIL"])
+
+	# --- 3d. a new run does not inherit a burned-out ship --------------------
+	# `diverts` is not saved, which was mistaken for it being empty at the start
+	# of a run. It is only ever cleared by docking, so ABANDON TO TITLE then NEW
+	# SURVEY carried a burned mount into a brand-new ship -- reset_to_starter
+	# ends in _recompute(), which folded the stale dictionary straight back in,
+	# and the new pilot could not even open the panel to see why (it refuses
+	# during the tutorial).
+	GameState.diverts = {}
+	GameState.divert_power("mount_b", "core", 0.30)
+	var carried: bool = not GameState.diverts.is_empty()
+	GameState.reset_to_starter()
+	var cleared_by_reset: bool = GameState.diverts.is_empty()
+	print("[damage] A NEW RUN STARTS WHOLE diverted before reset=%s, empty after reset_to_starter=%s -> %s" % [
+		str(carried), str(cleared_by_reset),
+		"PASS" if carried and cleared_by_reset else "FAIL"])
+
+	# --- 3e. the catalog's floors survive a diversion ------------------------
+	# compute_stats floors max_speed at 1.6 and shield_max at 40, then
+	# SectionDB.apply used to multiply straight through them.
+	# PlayerShip.TETHER_DRAG_CEILING is sized against that speed floor with the
+	# note that being out-runnable by any legal fit is the promise the tether has
+	# to keep, so a burned drive must not be able to break it.
+	# STAGED AGAINST A NEAR-FLOOR BLOCK, because the starter fit is nowhere near
+	# one: burning its drive leaves max_speed at 5.09 against a floor of 1.60, so
+	# reading the live ship would print PASS whether the floor was enforced or
+	# not, and an assertion that cannot distinguish its two outcomes is not
+	# measuring. This drives the exact composition _recompute uses, on a block
+	# chosen to fall through the floor without it.
+	var floor_probe := {
+		"max_speed": 2.0, "accel": 4.0, "turn_rate": 2.0, "shield_max": 45.0,
+		"cargo_space": 10.0, "weapon_range_bonus": 0.0,
+		"dps": 100.0, "shield_regen": 5.0,
+	}
+	var unfloored: Dictionary = SectionDB.apply(floor_probe.duplicate(),
+		{"drive": "core"})
+	var would_sink := float(unfloored["max_speed"])          # 2.0 * 0.55 = 1.10
+	var held := float(ModuleDB.enforce_floors(unfloored.duplicate())["max_speed"])
+	# And the live pipeline agrees with that composition for the real fit, which
+	# is what proves _recompute actually calls it rather than the two functions
+	# merely composing correctly in a vacuum.
+	GameState.diverts = {}
+	GameState._recompute()
+	GameState.divert_power("drive", "core", 0.50)
+	var live := float(GameState.stats.get("max_speed", 0.0))
+	var expected := float(ModuleDB.enforce_floors(SectionDB.apply(
+		ModuleDB.compute_stats(GameState.fit), {"drive": "core"}))["max_speed"])
+	GameState.diverts = {}
+	GameState._recompute()
+	print("[damage] A DIVERSION CANNOT BREAK THE CATALOG FLOORS a burn would sink max_speed to %.2f, floored back to %.2f (floor 1.60); live pipeline %.2f == composed %.2f -> %s" % [
+		would_sink, held, live, expected,
+		"PASS" if would_sink < 1.6 and absf(held - 1.6) < 0.001
+			and absf(live - expected) < 0.001 else "FAIL"])
 
 	# --- 4. the trade actually moves the ship's numbers -----------------------
 	# Read off GameState.stats, which is what PlayerShip flies on -- not off

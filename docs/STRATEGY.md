@@ -5262,3 +5262,64 @@ the damaged-source test turns `intact source refused=true` into `false`;
 removing the un-pause in `close_panel` turns `closed -> running=true` into
 `false`. Each fails on precisely the clause that names the defect, which is the
 only property that makes an assertion worth its runtime.
+
+### What an adversarial review found in §59 before anyone played it
+
+Five independent lenses over the damage-control commit, each finding verified by
+a separate agent told to refute it. Four of the survivors falsified claims the
+commit message itself had made, which is the useful kind of finding.
+
+**The death spiral was rebuilt on the boost side.** §59 argues at length that
+deriving damage from the pool makes a spiral structurally impossible, and then
+`_scale` multiplied `shield_max` — the denominator of `shield_fraction`, which is
+the very integrity every section is derived from. Overcharging the SHIELD ARRAY
+raised `shield_max` while `_apply_fit` left current shield alone, so integrity
+fell 30% → 20% and the array crossed its own 0.22 threshold **one line after
+being sent the power**. Burning it was worse in the other direction: capacity
+fell, integrity jumped 30% → 50%, and sections healed as a reward for destroying
+one. Derivation had closed the loop on the damage side and the diversion reopened
+it on the boost side. Fixed by making the shield system scale **regeneration
+only** — capacity is fixed by the fit and nothing the player can reach moves what
+the model reads.
+
+**A system could pay itself.** Both mounts govern `dps`, so burning one into the
+other multiplied the same key by 0.50 and then 1.60: a net **0.80**, a strict
+loss, rendered as `OVERCHARGED` in gold with a toast and a logbook line. It is
+also the most obvious move on the sheet — route the broken gun's power to the
+good gun — so it could not merely be undocumented.
+
+**And the ordering comment was vacuous.** `SectionDB.apply` carried a confident
+note that burning before boosting was load-bearing. Both are multiplications on
+the same key, so the two loops cannot be told apart by any measurement. The
+comment documented away the same-system case instead of catching it. It now says
+what actually prevents it.
+
+**One boost per target was in the rendering.** `divert_power` checked three of
+the four double-spends and missed "this target already carries power", so four
+taps into the core gave `core_boost` of 1.75⁴ = 9.4 and a discharge at nine times
+its rated burst. The panel refused it by greying the row — the exact failure §59
+congratulates itself for having caught for the damaged-source rule, repeated one
+field over. `can_divert` is now the single predicate the panel *and* the mutator
+both ask.
+
+**`diverts` outlived the run.** "Not saved" was mistaken for "empty at the start
+of a run". It is only cleared by docking, so ABANDON TO TITLE → NEW SURVEY
+carried a burned-out mount into a brand-new ship — `reset_to_starter` ends in
+`_recompute()`, which folded the stale dictionary straight back in, and the new
+pilot could not open the panel to find out why because it refuses during the
+tutorial.
+
+Also fixed: the sheet could be raised mid-warp (`toggle_pause` guards on
+`warping`; this handler did not, and `create_timer` defaults to `process_always`,
+so the jump ran to completion behind a stopped scrim); `SectionDB.apply` ran
+after `compute_stats` and multiplied straight through the catalog's floors, which
+`TETHER_DRAG_CEILING` is sized against; refit deltas were rendered against a
+diverted baseline and a non-diverted preview, advertising a fabricated +100% DPS
+on every weapon; the panel dead-ended below 22% by accepting an arm with no legal
+target; and the sheet was 460px against a 450px minimum logical canvas at the
+maximum UI scale.
+
+The lesson is not that review is useful. It is that **every one of these lived
+under a comment asserting the opposite**, and the comments were written in good
+faith at the moment the code was. A confident note about an invariant is a claim,
+and a claim is exactly the thing worth testing.

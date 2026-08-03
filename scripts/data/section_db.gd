@@ -40,7 +40,7 @@ const SECTIONS := [
 const BOOST := {
 	"dps": 1.60,
 	"speed": 1.45,
-	"shield": 1.50,
+	"shield": 2.50,
 	"core": 1.75,
 }
 
@@ -49,7 +49,7 @@ const BOOST := {
 const BURN := {
 	"dps": 0.50,
 	"speed": 0.55,
-	"shield": 0.60,
+	"shield": 0.40,
 }
 
 
@@ -99,10 +99,13 @@ static func apply(stats: Dictionary, diverts: Dictionary) -> Dictionary:
 	# sheet, the balance harness -- reads one already-correct number rather than
 	# each remembering to ask about diversions.
 	#
-	# BURN FIRST, THEN BOOST, and the order is load-bearing: a player who burns
-	# a mount into the other mount must not have the boost computed against dps
-	# that the burn is about to remove. Applied the other way round the trade
-	# pays out on strength the ship no longer has.
+	# THE TWO LOOPS ARE NOT AN ORDERING GUARANTEE, and an earlier version of this
+	# comment claimed they were. Both halves are multiplications on the same
+	# keys, so 0.50 x 1.60 and 1.60 x 0.50 are the same number and no measurement
+	# could ever tell the loops apart. What actually stops a burn and a boost
+	# landing on one system is GameState.divert_power refusing a source and a
+	# target that govern the same thing -- see the note there. The split is kept
+	# only because it reads in the order the fiction happens.
 	if diverts.is_empty():
 		return stats
 	for src_v in diverts:
@@ -130,7 +133,26 @@ static func _scale(stats: Dictionary, governs: String, mult: float) -> void:
 			stats["max_speed"] = float(stats.get("max_speed", 0.0)) * mult
 			stats["accel"] = float(stats.get("accel", 0.0)) * mult
 		"shield":
-			stats["shield_max"] = float(stats.get("shield_max", 0.0)) * mult
+			# REGENERATION ONLY, NEVER CAPACITY, and this is the single most
+			# load-bearing line in the file.
+			#
+			# Integrity is `shield / shield_max` (PlayerShip.shield_fraction),
+			# and it is what every section is derived from. An earlier version
+			# scaled shield_max here, which put the denominator of the damage
+			# model under the player's control and rebuilt the exact death
+			# spiral this design claims to have made impossible:
+			#
+			#   overcharge the array -> shield_max 100 -> 150, current shield
+			#   untouched at 30 -> integrity falls 30% -> 20% -> the ARRAY ITSELF
+			#   crosses its own 0.22 threshold and reads DAMAGED, one line after
+			#   being sent the power. The mirror is worse: BURNING the array cut
+			#   shield_max to 60, so integrity JUMPED 30% -> 50% and sections
+			#   healed as a direct result of destroying one.
+			#
+			# Capacity is fixed by the fit and nothing else. Regeneration is a
+			# real survival stat, moves nothing the model reads, and cannot feed
+			# back into which sections are damaged. The multiplier is larger than
+			# the others (2.5/0.4) because it is the only lever this system has.
 			stats["shield_regen"] = float(stats.get("shield_regen", 0.0)) * mult
 		"core":
 			# The core governs the fitted ability rather than a scalar, so an

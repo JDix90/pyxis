@@ -723,6 +723,13 @@ func set_livery(hull: int, accent: int) -> void:
 
 
 func reset_to_starter() -> void:
+	# DIVERSIONS DIE WITH THE RUN, and missing this made "not saved" a false
+	# comfort. `diverts` is only ever emptied by docking, so ABANDON TO TITLE
+	# followed by NEW SURVEY carried a burned-out mount into a brand-new ship:
+	# this function ends in _recompute(), which folds the stale dictionary
+	# straight back in, and the new pilot flies at half DPS with no way to see
+	# why -- the damage panel refuses to open during the tutorial.
+	diverts = {}
 	salvage = 0
 	owned = []
 	for id in ModuleDB.STARTER_OWNED:
@@ -1951,9 +1958,45 @@ func next_reactor_price() -> int:
 
 
 func preview_stats(slot: int, id: String) -> Dictionary:
+	# DIVERSIONS ARE FOLDED IN HERE TOO, and leaving them out made every refit
+	# delta lie while one was live. UIKit.delta_line renders
+	# delta_lines(GameState.stats, after): the BEFORE has diversions in it and
+	# the AFTER did not, so with a mount burned into the drive every weapon in
+	# the list advertised a fabricated ~+100% DPS gain, and equipping one
+	# re-applied the halving the strip had just promised to undo. A delta is only
+	# meaningful between two comparable worlds.
 	var probe := fit.duplicate()
 	probe[slot] = id
-	return ModuleDB.compute_stats(probe)
+	return ModuleDB.enforce_floors(
+		SectionDB.apply(ModuleDB.compute_stats(probe), diverts))
+
+
+func can_divert(source: String, target: String, integrity: float) -> bool:
+	# THE WHOLE RULE, ASKED RATHER THAN RE-DERIVED. The panel needs to know which
+	# rows to light up and divert_power needs to know what to refuse, and those
+	# are the same question -- the moment they are answered in two places they
+	# disagree, which is how "you may only burn something broken" ended up living
+	# in a `disabled` flag. divert_power is now a thin wrapper over this.
+	if not SectionDB.is_section(source) or not SectionDB.is_section(target):
+		return false
+	if source == target:
+		return false
+	# Only a damaged section has power going spare, and a working section is
+	# never a legal source however desperate the player is.
+	if not SectionDB.is_damaged(source, integrity):
+		return false
+	if SectionDB.is_damaged(target, integrity):
+		return false
+	# Nothing is spent twice, in any of the four directions.
+	if diverts.has(source) or diverts.has(target):
+		return false
+	if diverts.values().has(source) or diverts.values().has(target):
+		return false
+	# And a system cannot pay itself -- see divert_power's note.
+	if String(SectionDB.section(source).get("governs", "")) \
+			== String(SectionDB.section(target).get("governs", "")):
+		return false
+	return true
 
 
 func divert_power(source: String, target: String, integrity: float) -> bool:
@@ -1962,27 +2005,16 @@ func divert_power(source: String, target: String, integrity: float) -> bool:
 	# claim_commission's rule, and the panel reads the return to decide whether
 	# to narrate.
 	#
-	# INTEGRITY IS AN ARGUMENT, and the first draft of this got it wrong. It let
-	# the panel decide which rows were tappable and trusted that, which puts the
-	# rule "you may only burn something already broken" in the RENDERING -- so it
-	# would hold exactly as long as nobody added a second caller, and no
-	# assertion could see it without driving a UI. GameState cannot read the
-	# ship's shields, so the caller passes what it measured and the rule lives
-	# here where it can be tested.
-	if not SectionDB.is_section(source) or not SectionDB.is_section(target):
-		return false
-	if source == target or diverts.has(source):
-		return false
-	# Only a damaged section has power going spare, and a working section is
-	# never a legal source however desperate the player is.
-	if not SectionDB.is_damaged(source, integrity):
-		return false
-	if SectionDB.is_damaged(target, integrity):
-		return false
-	# A burned section cannot be a target, and a target cannot then be burned.
-	# Without both halves a player could route power through a section they had
-	# already sold, which reads as a bug however it is scored.
-	if diverts.has(target) or diverts.values().has(source):
+	# A THIN WRAPPER OVER can_divert, deliberately. The first draft spelled the
+	# rules out here and let the panel decide which rows were tappable, which put
+	# "you may only burn something already broken" in the RENDERING -- true only
+	# until somebody added a second caller, and invisible to any assertion that
+	# did not drive a UI. The panel now asks can_divert too, so there is exactly
+	# one answer and the mutator cannot drift from what the sheet offered.
+	#
+	# INTEGRITY IS AN ARGUMENT because GameState cannot read the ship's shields:
+	# the caller passes what it measured.
+	if not can_divert(source, target, integrity):
 		return false
 	diverts[source] = target
 	_recompute()
@@ -2006,6 +2038,10 @@ func _recompute() -> void:
 	# live diversion into it would make those previews describe a ship that only
 	# exists while something is burned out.
 	stats = SectionDB.apply(stats, diverts)
+	# AND THE FLOORS GO BACK ON. compute_stats applies them and SectionDB then
+	# multiplies through them, so without this a diversion could put a legal fit
+	# under a bound the catalog guarantees to every ship.
+	stats = ModuleDB.enforce_floors(stats)
 	fit_changed.emit(stats)
 
 
@@ -2081,6 +2117,10 @@ func load_game() -> bool:
 	var f := FileAccess.open(save_path, FileAccess.READ)
 	if f == null:
 		return false
+	# The save carries no diversions by design, so loading one has to CLEAR them
+	# rather than merely not set them -- CONTINUE from the title runs through
+	# here with a live dictionary from the abandoned run still in memory.
+	diverts = {}
 	var parsed = JSON.parse_string(f.get_as_text())
 	f.close()
 	if typeof(parsed) != TYPE_DICTIONARY:

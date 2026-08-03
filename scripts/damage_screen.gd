@@ -19,7 +19,12 @@ extends CanvasLayer
 # overcharged for it, and the burned section stays dark until the ship docks.
 # That is the whole trade, and it is meant to be bad news taken on purpose.
 
-const PANEL_W := 460.0
+# 400, not 460. The logical canvas on a portrait phone is 720 / user_scale, and
+# the settings slider caps user_scale at 1.6 -- so the narrowest supported canvas
+# is 450px and a 460px sheet hung five pixels off each edge with its border
+# clipped. Every other centred sheet is already under that ceiling (pause menu
+# 340, manual 360); this one had no UILayout call and no clamp to catch it.
+const PANEL_W := 400.0
 const ROW_H := 62.0
 
 signal closed
@@ -149,6 +154,12 @@ func _refresh() -> void:
 	if _armed != "":
 		_hint.text = "%s IS ARMED. TAP A WORKING SECTION TO SEND IT THAT POWER — the armed section goes dark until you dock." \
 			% String(SectionDB.section(_armed).get("name", ""))
+	elif not damaged.is_empty() and _nothing_can_be_spent(integrity):
+		# The honest version of the dead end rather than a hint that lies. A
+		# player at 15% with the core already carrying power has damaged sections
+		# and nowhere to put them, and telling them to tap one would be an
+		# instruction the sheet cannot honour.
+		_hint.text = "NOWHERE LEFT TO SEND POWER. Every working section is already carrying some, or shares a system with what is broken. Dock to restore."
 	elif damaged.is_empty():
 		_hint.text = "ALL SECTIONS NOMINAL. Power can only be diverted OUT of a damaged section, so there is nothing to trade yet."
 	else:
@@ -200,10 +211,40 @@ func _row_actionable(id: String, damaged: bool, burned: bool, boosted: bool) -> 
 	if burned or boosted:
 		return false
 	if _armed == "":
-		return damaged          # arming a source: damaged sections only
+		# ARMING NEEDS SOMEWHERE TO SEND IT. Without the second half this panel
+		# dead-ends at exactly the integrity it exists for: below 22% every
+		# section but the core is damaged, and once the core has taken a boost
+		# there is no legal target left -- so the sheet accepted an arm, told the
+		# player to "TAP A WORKING SECTION", and offered five disabled rows and a
+		# cancel. A row that cannot lead anywhere must not light up.
+		return damaged and not _targets_for(id).is_empty()
 	if id == _armed:
 		return true             # tapping the armed row again cancels
-	return not damaged          # committing: working sections only
+	return _targets_for(_armed).has(id)
+
+
+func _nothing_can_be_spent(integrity: float) -> bool:
+	for id_v in SectionDB.damaged_ids(integrity):
+		if not _targets_for(String(id_v)).is_empty():
+			return false
+	return true
+
+
+func _targets_for(source: String) -> Array:
+	# Every section this source could legally be spent on, asked of the one
+	# function that owns the rule. The panel does NOT re-implement the test --
+	# that is what put the damaged-source rule in the rendering the first time.
+	var out: Array = []
+	if source == "":
+		return out
+	var integrity := _integrity()
+	for id_v in SectionDB.ids():
+		var id := String(id_v)
+		if id == source:
+			continue
+		if GameState.can_divert(source, id, integrity):
+			out.append(id)
+	return out
 
 
 func _on_row(id: String, damaged: bool) -> void:
