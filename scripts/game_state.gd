@@ -33,7 +33,7 @@ signal lane_opened(id: String)
 signal standing_shifted(other: String, delta: int, band: int)
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 18
+const SAVE_VERSION := 19
 const SAVE_DEBOUNCE := 1.0
 
 # v6 defaults. Kept as one dictionary each so a migration only has to merge
@@ -218,6 +218,25 @@ var smuggling_xp := 0
 # ARCHEOLOGY's salvage set nor SMUGGLING's, and the three stay honest rivals.
 var mining := 0
 var mining_xp := 0
+
+# v19. PERSUASION. Fed by ONE thing — a parley you TALKED your way out of — and
+# the two feeds that were cut here are the same two SMUGGLING cut above, for the
+# same arithmetic. A skill must never pay for paying and must never pay for
+# running, so a toll settled moves this ladder by exactly nothing.
+#
+# WHAT MADE IT POSSIBLE AT ALL is that a talk-down now carries a stake. A bluff
+# has always burned a Forged Manifest whether it worked or not, precisely so it
+# could not strictly dominate paying; a talk-down needs no manifest, so without
+# a cost of its own it would be a free roll on every demand and levelling on it
+# would be levelling on showing up. Failing one costs a step of Tithe standing —
+# they remember being lied to — which is the mirror of the step paying earns.
+#
+# It competes honestly with the other three by EVENT rather than by good-set:
+# reading salvage, fencing contraband and cutting seams are three flight plans,
+# and this one is not a flight plan at all. It is the thing you do when a fourth
+# party interrupts one.
+var persuasion := 0
+var persuasion_xp := 0
 
 # v14. Charted seams already cut, keyed "system:asteroid_index" ("pyx01:2").
 #
@@ -761,6 +780,8 @@ func reset_to_starter() -> void:
 	smuggling_xp = 0
 	mining = 0
 	mining_xp = 0
+	persuasion = 0
+	persuasion_xp = 0
 	seams_cut = {}
 	apex_intel = {}
 	intel_version += 1
@@ -1485,22 +1506,113 @@ func mark_smuggling(units: int) -> bool:
 	return gained
 
 
-func bluff_odds() -> float:
+# --- PERSUASION (v19) --------------------------------------------------------
+# Counted in PARLEYS TALKED DOWN, not in units of anything — which is why the
+# numbers are small next to the other three ladders. A raid needs RAID_MIN_HOLD
+# aboard and clears a cooldown before it can roll at all, so nine successes is a
+# long acquaintance with the Tithe rather than an afternoon.
+const PERSUASION_TIERS := [0, 2, 5, 9]
+# WHAT A TIER BUYS: better odds on the same conversation, and nothing else. Never
+# credits and never a cheaper toll — a toll discount is a stat denominated in
+# salvage, which is the exclusion SMUGGLING_TIERS states above and the reason
+# NO PRICE TIERS exists.
+#
+# THE BASE IS NON-ZERO AT TIER 0, deliberately, and it is also the fix for what
+# the playtest actually hit. bluff_odds returned 0.0 below smuggling 2, and the
+# plate was gated a second time on holding a Forged Manifest, so a new pilot met
+# a demand that named three answers with one button on the screen. Everybody can
+# try talking; being good at it is what is earned.
+const PERSUASION_BLUFF_BASE := 0.15
+const PERSUASION_BLUFF_PER_TIER := 0.10
+# What a failed talk-down costs the Tithe's opinion of you. The mirror of the +1
+# pay_toll books, and the stake without which this would be a free roll.
+const PERSUASION_FAILURE_COST := -1
+# Both ladders can raise the same plate, so their sum needs a ceiling. 0.80 keeps
+# the top of the game an honest bet rather than a formality — 12's standard is an
+# honest bad bet you can SEE, and a 100% "gamble" is a button, not a wager.
+const BLUFF_ODDS_CAP := 0.80
+
+
+func persuasion_next_at() -> int:
+	var next := persuasion + 1
+	return PERSUASION_TIERS[next] if next < PERSUASION_TIERS.size() else -1
+
+
+func mark_persuasion(wins: int) -> bool:
+	if wins <= 0 or persuasion >= PERSUASION_TIERS.size() - 1:
+		return false
+	persuasion_xp += wins
+	var gained := false
+	while persuasion < PERSUASION_TIERS.size() - 1 \
+			and persuasion_xp >= PERSUASION_TIERS[persuasion + 1]:
+		persuasion += 1
+		gained = true
+	# ONE line naming the tier the player LANDED on, like the other three.
+	if gained:
+		note_log("PERSUASION %d — THEY LISTEN TO YOU" % persuasion)
+	_queue_save()
+	return gained
+
+
+func persuasion_line() -> String:
+	var next_at := persuasion_next_at()
+	var tail := ("%d TO NEXT" % (next_at - persuasion_xp)) if next_at >= 0 \
+		else "NOTHING LEFT TO LEARN"
+	if persuasion < 1:
+		return "PERSUASION 0 — TALK A RAIDER PACK DOWN INSTEAD OF PAYING · %d%% · %s" % [
+			int(persuasion_odds() * 100.0), tail]
+	return "PERSUASION %d — TALK A PACK DOWN · %d%% · %s" % [
+		persuasion, int(persuasion_odds() * 100.0), tail]
+
+
+func persuasion_odds() -> float:
+	return PERSUASION_BLUFF_BASE + PERSUASION_BLUFF_PER_TIER * float(persuasion)
+
+
+func manifest_odds() -> float:
+	# SMUGGLING's half, unchanged in value and now named for what it is. It was
+	# always the social mechanic in this game in everything but title; what moved
+	# is only that it is no longer the ONLY way to raise the plate.
 	if smuggling < SMUGGLING_BLUFF_TIER:
 		return 0.0
 	return SMUGGLING_BLUFF_BASE + SMUGGLING_BLUFF_PER_TIER \
 		* float(smuggling - SMUGGLING_BLUFF_TIER)
 
 
+func bluff_odds() -> float:
+	# TWO LADDERS, SUMMED, CAPPED. A pilot who has never talked to anybody but
+	# carries a manifest at smuggling 2 reads exactly 40% — the number that
+	# shipped — so nothing is taken away from a save that already earned it. The
+	# manifest half is only counted when the manifest is actually aboard, because
+	# it is the stake being wagered rather than a stat.
+	var odds := persuasion_odds()
+	if hold_has("manifest_forged"):
+		odds += manifest_odds()
+	return minf(odds, BLUFF_ODDS_CAP)
+
+
 func smuggling_line() -> String:
 	var next_at := smuggling_next_at()
 	var tail := ("%d TO NEXT" % (next_at - smuggling_xp)) if next_at >= 0 \
 		else "NOTHING LEFT TO LEARN"
-	var perk := "THE LANES DO NOT KNOW YOU YET"
+	# TIER 0 NAMES THE VERB AND THE DESK, per §58's copy rule. "THE LANES DO NOT
+	# KNOW YOU YET" states an absence, and this ladder needs the opposite more
+	# than any other: XP comes ONLY from a FENCE sale (Market.fences), and in
+	# charted space exactly two counters qualify. THE GRINNING VOID is the trap —
+	# it sells contraband, calls itself the smuggler's den and has a fence tab,
+	# but contraband is absent from its fence_goods, so selling it back there
+	# completes, pays credits, and moves the ladder by nothing. A playtester
+	# reached 68 minutes at smuggling 0 while carrying stolen goods.
+	var perk := "FENCE CONTRABAND OR STOLEN — THE CANTINA TAKES BOTH"
 	if smuggling >= SMUGGLING_ACCESS_TIER:
 		perk = "DEEP FENCES DEAL IN ANYTHING YOU CARRY"
 	elif smuggling >= SMUGGLING_BLUFF_TIER:
-		perk = "YOU CAN TALK YOUR WAY PAST A PACK · %d%%" % int(bluff_odds() * 100.0)
+		# NAMES ITS OWN CONTRIBUTION, not the total. Since v19 two ladders raise
+		# the bluff plate, and printing the sum here would have SMUGGLING taking
+		# credit for what PERSUASION earned — the A10 complaint (a number moved
+		# and nothing said which of the last ten seconds moved it) reproduced in
+		# a skill readout.
+		perk = "A FORGED MANIFEST BUYS YOU +%d%% ON A BLUFF" % int(manifest_odds() * 100.0)
 	elif smuggling >= 1:
 		perk = "THE LANES WARN YOU EARLY"
 	return "SMUGGLING %d — %s · %s" % [smuggling, perk, tail]
@@ -1519,9 +1631,20 @@ const MINING_TIERS := [0, 18, 50, 110]
 # a second earner under a loop already at 97% of its ceiling. TIERS BUY NO
 # CREDITS asserts it rather than trusting the comment.
 const MINING_READ_TIER := 1     # t1: the radar marker takes the ore's colour
-const MINING_SAMPLE_TIER := 2   # t2: release past halfway and keep half the cut
+# ACCESS BEFORE CONVENIENCE, and these two were the other way round until the
+# playtest. MINING_DEEP_TIER was 3 — which is MINING_TIERS' MAX index — so
+# band-4 access, the only 4-XP rung on the board, unlocked exactly when there was
+# nothing left to earn with it. The perk bought nothing, and the tuning note
+# above (which prices the whole ladder as "three and a half sessions of working
+# the Quiet") described a rate no live ladder could ever reach: the constant and
+# the comment contradicted each other, and the comment was the honest one.
+#
+# Swapped rather than lowered, so every tier still buys something. Access is what
+# a climbing skill needs; taking a core sample and moving on is a convenience,
+# which is the right shape for the top of a ladder.
+const MINING_DEEP_TIER := 2     # t2: band-4 seams can be worked at all
+const MINING_SAMPLE_TIER := 3   # t3: release past halfway and keep half the cut
 const MINING_SAMPLE_FRACTION := 0.5
-const MINING_DEEP_TIER := 3     # t3: band-4 seams can be worked at all
 
 
 func mining_next_at() -> int:
@@ -1560,13 +1683,26 @@ func mining_line() -> String:
 	var next_at := mining_next_at()
 	var tail := ("%d TO NEXT" % (next_at - mining_xp)) if next_at >= 0 \
 		else "NOTHING LEFT TO LEARN"
+	# HIGHEST TIER FIRST, and the order follows the CONSTANTS rather than the
+	# names — the sample and the deep perk swapped tiers, and a chain that still
+	# tested DEEP first would report the tier-2 perk to a tier-3 pilot.
 	var perk := "ORE READS AS GREY ROCK"
-	if mining >= MINING_DEEP_TIER:
-		perk = "THE QUIET'S SEAMS WILL OPEN FOR YOU"
-	elif mining >= MINING_SAMPLE_TIER:
+	if mining >= MINING_SAMPLE_TIER:
 		perk = "YOU CAN TAKE A CORE SAMPLE AND MOVE ON"
+	elif mining >= MINING_DEEP_TIER:
+		perk = "THE QUIET'S SEAMS WILL OPEN FOR YOU"
 	elif mining >= MINING_READ_TIER:
 		perk = "YOU READ A SEAM'S ORE AT A DISTANCE"
+	# AND THE TIER-0 LINE NAMES THE VERB, per §58's rule that a line must either
+	# use a word the game has taught or say what to do about it. "ORE READS AS
+	# GREY ROCK" describes an absence to a pilot who has no idea the ladder
+	# exists — and mining's is the one that most needs saying, because the
+	# ELEVEN authored charted seams are worth 11 XP against a tier-1 threshold of
+	# 18. A player who never crosses the marker cannot reach tier 1 at all. That
+	# is the design (charted mining is a windfall, not an income); the silence
+	# about it was not.
+	if mining < MINING_READ_TIER:
+		perk = "CUT SEAMS PAST THE MARKER — THE DEEP ONES ARE WORTH MORE"
 	return "MINING %d — %s · %s" % [mining, perk, tail]
 
 
@@ -1674,6 +1810,13 @@ func archeology_line() -> String:
 	var next_at := archeology_next_at()
 	var tail := ("%d TO NEXT" % (next_at - archeology_xp)) if next_at >= 0 \
 		else "NOTHING LEFT TO LEARN"
+	# AND AT TIER 0 IT SAYS WHAT TO DO. Breaching hulls is the feed that carries
+	# this ladder on its own — a playtester's 48 xp was 12 breaches x 4 exactly,
+	# with ZERO from the other feed — so the verb worth naming is the one nobody
+	# uses: reading. It is also the hub, because Reaches salvage reads as the
+	# Forged Manifest that smuggling's and persuasion's bluff both want.
+	if archeology < 1:
+		return "ARCHEOLOGY 0 — BREACH HULLS, AND READ WHAT THEY HOLD AT A LAB · %s" % tail
 	return "ARCHEOLOGY %d — READS %s IN THE FIELD, %s AT A LAB · %s" % [
 		archeology, field, readable, tail]
 
@@ -2093,6 +2236,8 @@ func save_game() -> void:
 		"smuggling_xp": smuggling_xp,
 		"mining": mining,
 		"mining_xp": mining_xp,
+		"persuasion": persuasion,
+		"persuasion_xp": persuasion_xp,
 		"seams_cut": seams_cut,
 		"apex_intel": apex_intel,
 		"warehouse": warehouse,
@@ -2254,6 +2399,14 @@ func load_game() -> bool:
 	# there is no migration branch here and there never has been one.
 	mining = clampi(int(data.get("mining", 0)), 0, MINING_TIERS.size() - 1)
 	mining_xp = maxi(int(data.get("mining_xp", 0)), 0)
+	# v19. PERSUASION, and there is no migration branch here for the reason there
+	# has never been one on this path: an absent key defaults, and tier 0 with no
+	# xp is exactly what a pilot who has never talked a pack down should load as.
+	# Seeding it from smuggling_xp was considered and refused — migrate13 records
+	# why a truthy default that hands a returning player a skill they never
+	# touched is the wrong kind of generosity.
+	persuasion = clampi(int(data.get("persuasion", 0)), 0, PERSUASION_TIERS.size() - 1)
+	persuasion_xp = maxi(int(data.get("persuasion_xp", 0)), 0)
 	_load_seams_cut(data.get("seams_cut", {}))
 	_load_apex_intel(data.get("apex_intel", {}))
 	_load_warehouse(data.get("warehouse", {}))

@@ -307,10 +307,18 @@ func _build_living() -> void:
 	_body.add_child(_row("TRADE", "Buy where a good is cheap and sell where it is dear. Every port prices differently, and a big trade moves the price against you."))
 	_body.add_child(_row("CONTRACTS", "A board at every port. Two run at once, and finishing one offers another."))
 	_body.add_child(_row("MINING", "%d ores on the flanks of rocks, charted space and out. Hold to cut; the seam yields the finished good with no refining step." % CommodityDB.ore_ids().size()))
+	# THE RAIDER TOLL, WRITTEN DOWN AT LAST (v18, playtest round 4). This file had
+	# no occurrence of the word "toll" anywhere in it, and the tutorial
+	# structurally cannot teach the parley — interdiction_eligible() excludes an
+	# active tutorial, which is asserted. So the only way a player ever met a
+	# demand was mid-flight with six seconds on the clock, and a playtester
+	# reported the whole system missing. A manual page is the one place it can be
+	# read at rest.
+	_body.add_child(_row("A TOLL", "Raiders with something to take will demand a cut of your hold instead of opening fire. You get a few seconds and three plates: PAY hands over the cargo, REFUSE starts the fight, TALK THEM DOWN gambles on your mouth. Doing nothing is refusing slowly."))
 	_body.add_child(_spacer(6))
 	# Derived count, static description: the tiers are named in GameState and
 	# their number is the thing most likely to change.
-	_body.add_child(_para("Three skills, each fed by a different verb so no single run levels them all: ARCHEOLOGY reads salvage, SMUGGLING moves what a market will not touch, MINING cuts rock. Each has %d tiers, and not one of them pays you in credits — they buy information, a choice, and access." % (GameState.MINING_TIERS.size() - 1)))
+	_body.add_child(_para("Four skills, each fed by a different verb so no single run levels them all: ARCHEOLOGY reads salvage, SMUGGLING moves what a market will not touch, MINING cuts rock, PERSUASION talks a pack out of a toll. Each has %d tiers, and not one of them pays you in credits — they buy information, a choice, and access." % (GameState.MINING_TIERS.size() - 1)))
 	_body.add_child(_back())
 
 

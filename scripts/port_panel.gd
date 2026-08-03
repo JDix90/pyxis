@@ -1657,6 +1657,27 @@ func _market_row(good: String) -> Control:
 	sub.add_theme_color_override("font_color", sub_col)
 	left.add_child(sub)
 
+	# THIS DESK FENCES THIS, and until now nothing on the screen said so. A fence
+	# sale is the ONLY thing that moves SMUGGLING (port_panel._sell -> Market.
+	# fences -> mark_smuggling), and which desks qualify was knowable only by
+	# reading `fence_goods` in system_db. The trap it closes is specific: THE
+	# GRINNING VOID sells contraband, calls itself the smuggler's den and has a
+	# fence tab, but contraband is NOT in its fence_goods -- so selling it back
+	# there completes, pays credits, and moves the ladder by nothing, with no
+	# tell. A playtester finished 68 minutes at smuggling 0 while carrying goods
+	# a fence two systems away would have taken.
+	#
+	# On the ROW rather than in the tab header, because it is a fact about this
+	# good at this desk: a port can fence one of the two goods and not the other,
+	# which is exactly the Void's case.
+	if Market.fences(_port_def, good):
+		var fence_tag := Label.new()
+		fence_tag.text = "THIS DESK FENCES IT%s" % (
+			" — SMUGGLING XP" if GameState.SMUGGLING_GOODS.has(good) else "")
+		fence_tag.add_theme_font_size_override("font_size", 10)
+		fence_tag.add_theme_color_override("font_color", Palette.TEAL)
+		left.add_child(fence_tag)
+
 	var buy_price := Market.buy_price(_port_def, _port.port_id, good)
 	var sell_price := Market.sell_price(_port_def, _port.port_id, good)
 

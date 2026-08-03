@@ -79,6 +79,43 @@ const SKIRMISH_HP_FLOOR := 0.5
 # deliberate design nobody has done yet, not an emergent accident.
 const GSA_SURVEYOR_FLOOR := -3
 
+# --- the grudge (v18, playtest round 4) --------------------------------------
+# SHOOTING SOMETHING BRINGS ITS FRIENDS. The bookkeeping half of this shipped in
+# stage 1 — _die takes a standing step for killing a non-hostile — and the
+# REACTION half did not exist: the machine you hit answered, and the four
+# identical machines beside it watched.
+#
+# HOW FAR "IN THE IMMEDIATE AREA" IS, and why it is this number rather than a
+# bigger one. A fight in this game happens inside ~10u (ENGAGE_RANGE 9,
+# ATTACK_RANGE 3.6, the widest weapon 12), and a charted system is 40-48u in
+# RADIUS. So the apex numbers are the wrong scale entirely: WAKE_RANGE 60 and
+# DETECT_RANGE 90 are both wider than the whole board, and picking one would
+# mean a single stray torpedo summons every machine on the chart.
+#
+# 25 is PATROL_RELEASE's twin — the distance this codebase already calls "still
+# this machine's business", being how far a picket will chase before it gives up
+# and resumes its beat. It is also 3.6x OVERCHARGE_RADIUS (7.0), which is the
+# case this feature exists for: the whole blast fits inside it, plus the ring of
+# neighbours who watched it happen.
+const WITNESS_RANGE := 25.0
+
+# AND IT LETS GO. Finding A6 is the standing warning here: a pack that never
+# stopped caring latched _raid_active for a whole session and took every future
+# raid and muster with it. A grudge is aggro, not standing — it is per-node,
+# never written to the save, and it expires.
+#
+# 30s is long enough to be a consequence rather than a flinch (a picket 25u out
+# at PATROL_SPEED 3.2 needs ~8 seconds just to arrive, which leaves ~20 of
+# actually being shot at) and short enough that a genuine accident costs the
+# player half a minute instead of a faction. Refreshed by every new hit, so
+# sustained fire is what extends it — which means "how sorry should I be" is
+# answered by how much you kept shooting, with no invisible damage threshold
+# anywhere for the player to fail to guess.
+#
+# HERE rather than on Hostile, for SKIRMISH_TIME's reason: both hostile classes
+# need the same number and two copies would agree only by assertion.
+const GRUDGE_TIME := 30.0
+
 
 static func band_of(attitude: int) -> int:
 	# Symmetric thresholds, written out as ranges so the next reader does not
