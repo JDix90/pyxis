@@ -5455,3 +5455,52 @@ It names the four cardinals and the digits a player expects beside them now:
 That is the form that can fail when the compass is wrong, and it is the third
 assertion this round rewritten for the same reason: a check that restates its own
 staging is not measuring the thing it names.
+
+## 61. Two doors nobody had tried, found looking for a different bug
+
+A second hunt over the wake path — four lenses, every candidate handed to a
+skeptic — looking for a way a *breached* system could still leave the engine
+dormant. It did not find one. It found two other things, both reachable in two
+taps from the pause menu, and both real.
+
+The shared cause is that `rebuild_visuals` (Settings → COLOUR VISION) routes
+through `_load_system`, which frees every child of `SystemRoot` — and nothing
+gated the door. `set_panels_locked` disables only the refit and chart buttons, so
+the pause menu opens during a boss fight *and* while docked, and the colour
+cycler changes value on every press.
+
+### A colour setting ended boss fights
+
+The engine is a `SystemRoot` child. Mid-encounter the rebuild handed back a
+**dormant boss at full HP** with every probe and weld gone and `boss_active`
+cleared — a fight the player was winning, reset by a menu, with no message.
+
+Deferred rather than refused: it is a colour change and the player asked for it.
+`_set_boss_active(false)` is the one place every ending of an encounter passes
+through — kill, break off, death, leash — so that is where the retint is spent.
+Both halves are asserted, because a rebuild that was merely *refused* would drop
+the player's setting silently.
+
+### And it welded the ship to the berth
+
+The `Port` is a `SystemRoot` child too. `_load_system` cleared `live_rift` and
+`_procession` for exactly this reason and never cleared `docked_port` — and
+`undock()` opens with `if docked_port == null: return`, which **a freed
+reference satisfies**. So DEPART became a silent no-op, `player.docked` never
+cleared, and movement is gated on that flag.
+
+A ship clamped to a berth that no longer exists, with no button in the game that
+could release it. Dock, pause, cycle COLOUR VISION. The file's own comment eight
+lines above the free loop already says a freed reference compares equal to null;
+the danger was known and the one field it applied to was missed.
+
+Released before the free, so `set_docked_visual` and `dock_point` still run
+against a live node — the same order `abandon_to_title` already used.
+
+### On the bug that was actually being hunted
+
+No second path to a dormant breached engine survived refutation. The two
+candidates that looked closest — this rebuild, and BREAK OFF at the lair — both
+*re-arm* the poll, so the engine returns within seconds rather than staying dark.
+That is a real answer: on the evidence available, §57's fix accounts for the
+photographed state. Settling it beyond doubt needs the save.
