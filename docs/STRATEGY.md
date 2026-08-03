@@ -5410,3 +5410,130 @@ The general shape is worth keeping: **a conjunct that rules out the previous
 cause is not the same as one that establishes the intended cause.** The cheap
 check is to delete the rule and watch the column; anything that still passes is
 still measuring something else.
+
+## 60. The compass said 270 was north (v18, playtest round 3 follow-up)
+
+A rendered frame from §57's HUD check read `HDG 270 · NORTH`. It was internally
+consistent — fly to a quoted bearing and you arrive — but no compass any player
+has ever used puts north at 270, so the instrument read as broken whether or not
+it was.
+
+### The world convention and the displayed one are now different numbers
+
+Everything internal uses `atan2(z, x)`, where +X is 0: the lair derivation, the
+authored `bearing_deg` in every system def, Hunt's search cone, and — decisively
+— the bearings **already written into players' saves** as apex hints. Rotating
+that would have needed a save migration, and a hint that pointed 90° wrong is
+worse than no hint: it costs credits *and* sends you the wrong way.
+
+So the rotation happens at the glass. `DeepSpace.compass_deg` is the only thing
+that converts, every readout and every quoted bearing goes through it, and not
+one stored number moves. A save written last night still points where it always
+did. The offset is +90 because +X has to go from 0 to 90.
+
+`quadrant_of` is now derived from the displayed number rather than from its own
+copy of the sector maths, so the word and the digits on one line cannot
+contradict each other. They agreed before only because two tables happened to
+match.
+
+### The assertion that would have passed on the broken compass
+
+`THE READOUT FOLLOWS THE HEADING` staged a yaw *from a number* and expected the
+same number back. That is true of **any** convention — it would have passed just
+as happily on the version that printed `HDG 270 · NORTH`, which is exactly what
+it did for as long as that shipped.
+
+It names the four cardinals and the digits a player expects beside them now:
+
+| direction | reads |
+|---|---|
+| `-Z` | `HDG 000 · NORTH` |
+| `+X` | `HDG 090 · EAST` |
+| `+Z` | `HDG 180 · SOUTH` |
+| `-X` | `HDG 270 · WEST` |
+
+That is the form that can fail when the compass is wrong, and it is the third
+assertion this round rewritten for the same reason: a check that restates its own
+staging is not measuring the thing it names.
+
+## 61. Two doors nobody had tried, found looking for a different bug
+
+A second hunt over the wake path — four lenses, every candidate handed to a
+skeptic — looking for a way a *breached* system could still leave the engine
+dormant. It did not find one. It found two other things, both reachable in two
+taps from the pause menu, and both real.
+
+The shared cause is that `rebuild_visuals` (Settings → COLOUR VISION) routes
+through `_load_system`, which frees every child of `SystemRoot` — and nothing
+gated the door. `set_panels_locked` disables only the refit and chart buttons, so
+the pause menu opens during a boss fight *and* while docked, and the colour
+cycler changes value on every press.
+
+### A colour setting ended boss fights
+
+The engine is a `SystemRoot` child. Mid-encounter the rebuild handed back a
+**dormant boss at full HP** with every probe and weld gone and `boss_active`
+cleared — a fight the player was winning, reset by a menu, with no message.
+
+Deferred rather than refused: it is a colour change and the player asked for it.
+`_set_boss_active(false)` is the one place every ending of an encounter passes
+through — kill, break off, death, leash — so that is where the retint is spent.
+Both halves are asserted, because a rebuild that was merely *refused* would drop
+the player's setting silently.
+
+### And it welded the ship to the berth
+
+The `Port` is a `SystemRoot` child too. `_load_system` cleared `live_rift` and
+`_procession` for exactly this reason and never cleared `docked_port` — and
+`undock()` opens with `if docked_port == null: return`, which **a freed
+reference satisfies**. So DEPART became a silent no-op, `player.docked` never
+cleared, and movement is gated on that flag.
+
+A ship clamped to a berth that no longer exists, with no button in the game that
+could release it. Dock, pause, cycle COLOUR VISION. The file's own comment eight
+lines above the free loop already says a freed reference compares equal to null;
+the danger was known and the one field it applied to was missed.
+
+Released before the free, so `set_docked_visual` and `dock_point` still run
+against a live node — the same order `abandon_to_title` already used.
+
+### On the bug that was actually being hunted — this WAS the second path
+
+The first reading of this finding dismissed it: the rebuild re-arms the poll, so
+the engine returns in about six seconds rather than staying dark. Both halves of
+that were wrong.
+
+`Main` has no `process_mode` override, so it is PAUSABLE — `_process` does not
+tick while the pause menu is open, and the wake timer does not count down. The
+dormant window is **the whole time the settings menu stays up**, plus six seconds
+of flight after resuming, plus `WAKE_TIME` on top. And the evidence being
+explained is a *screenshot*: a single frame. Ten seconds is ample; unbounded is
+more than ample.
+
+So the photographed state — ship parked a few units off THE GNOMON, ~287u out,
+engine DORMANT, HUD panels unlocked, no boss bar — is reachable with
+`breached` containing `pyx01`, by pressing Escape mid-fight and cycling one
+accessibility setting. That is a second, independent path to the same symptom,
+and §57's fix does not touch it.
+
+It is also the path a colour-vision player is *most* likely to hit, because the
+reason they are reaching for that toggle is that they cannot read the phase tint.
+
+The fix above closes it. What is worth recording is the reasoning error: "it
+recovers in six seconds" was offered as grounds for dismissal without checking
+whether six seconds was long enough to matter, or whether the clock was even
+running.
+
+### The sweep after the compass and the two doors
+
+**56 runs | 531 PASS | 1 FAIL | 0 script errors | save intact.** Two up on 529 —
+the berth softlock and the colour-setting check. The one failure is still the
+standing HOLDTEST readout issue.
+
+Measured on a quiet machine, deliberately. An earlier run of this same tree came
+back 528/2, the extra failure being `STREAMTEST`'s frame time at a worst frame of
+50.7ms against a 40ms bound — while a review workflow was doing local file I/O
+alongside it. Three isolated runs gave 26.2 / 22.4 / 24.8ms, in line with the
+21.5 and 27.4 of the sweeps either side, and the mean never moved. A performance
+bound measured under contention is not a measurement, and the number was not
+written down until it had been taken properly.

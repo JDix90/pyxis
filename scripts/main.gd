@@ -370,6 +370,9 @@ var _apex_wake_timer := -1.0
 # Whether this visit has already been told why the engine is asleep. Per system
 # load, not per run: see _wake_apex.
 var _apex_dormant_told := false
+# A COLOUR VISION change that arrived mid-encounter and is waiting for it to end.
+# See rebuild_visuals.
+var _vision_rebuild_pending := false
 
 var _raid_timer := RAID_ROLL_INTERVAL
 var _raid_cooldown := 0.0
@@ -1090,6 +1093,26 @@ func rebuild_visuals() -> void:
 	# Visible as a sub-second hitch on a settings change, which is honest: the
 	# world really is being rebuilt, and it happens on a menu the player is
 	# already stopped on.
+	# NOT WHILE SOMETHING IS SHOOTING AT YOU. The engine is a SystemRoot child,
+	# so _load_system frees the fight: the boss comes back DORMANT at full HP,
+	# every probe and weld is gone, and boss_active is cleared -- a won fight
+	# silently reset by a colour setting.
+	#
+	# Nothing gates the door. The pause menu opens mid-encounter
+	# (set_panels_locked disables only refit and chart, never pause or Escape),
+	# COLOUR VISION is on its root page, and the cycler changes value on every
+	# press, so this is two taps from inside any boss fight in the game.
+	#
+	# Deferred rather than refused: it is a colour change, and the player asked
+	# for it. _set_boss_active(false) is the one place every ending of an
+	# encounter passes through -- kill, break off, death, leash -- so that is
+	# where the retint is spent.
+	if boss_active:
+		_vision_rebuild_pending = true
+		if hud:
+			hud.show_toast("COLOURS APPLY WHEN THE FIGHT ENDS", Palette.AMBER)
+		return
+	_vision_rebuild_pending = false
 	var player: PlayerShip = get_tree().get_first_node_in_group("player")
 	var at := player.global_position if player else PlayerShip.SPAWN_POINT
 	_load_system(system_id)
@@ -1107,6 +1130,13 @@ func _load_system(id: String) -> void:
 	system_id = id
 	system_def = SystemDB.get_system(id)
 	GameState.set_current_system(id)
+
+	# A DEFERRED RETINT IS SATISFIED BY THIS, because this IS the rebuild. Cleared
+	# BEFORE _set_boss_active(false) below, which is what spends the flag -- a
+	# fight that ends by warping or dying already comes through here, and without
+	# this the deferred call would fire a second, redundant world rebuild one
+	# frame later. See rebuild_visuals.
+	_vision_rebuild_pending = false
 
 	# Boss state never survives a system change: a DAMAGED engine resets to full on
 	# warp or reload, because retreating costs tempo and never salvage. Clearing
@@ -1131,6 +1161,27 @@ func _load_system(id: String) -> void:
 	# if this window's system is the one being loaded.
 	_procession = null
 	_raid_timer = RAID_ROLL_INTERVAL
+
+	# AND THE BERTH IS RELEASED BEFORE THE PORT IS FREED, which is the one stale
+	# reference on this path whose staleness is INVISIBLE.
+	#
+	# The Port is a direct child of system_root, so the loop below frees it while
+	# `docked_port` still points at it. undock() opens with
+	# `if docked_port == null: return`, and the comment eight lines above is
+	# explicit that a freed reference compares equal to null -- so DEPART becomes
+	# a silent no-op, `player.docked` never clears, and movement is gated on that
+	# flag. The ship is clamped to a berth that no longer exists, with no button
+	# that can release it.
+	#
+	# Reachable without warping anywhere: dock, open the pause menu (docking does
+	# not lock it -- set_panels_locked only disables refit and chart), cycle
+	# COLOUR VISION, and rebuild_visuals calls straight into here.
+	#
+	# Released HERE, before the free, so set_docked_visual and dock_point still
+	# run against a live node. abandon_to_title already does the same thing one
+	# step earlier, for the same reason.
+	if docked_port != null:
+		undock()
 
 	for child in system_root.get_children():
 		child.free()  # immediate: the rebuild happens this same frame
@@ -1854,7 +1905,7 @@ func _warn_muster() -> void:
 	_muster_point = dir * chart_edge()
 	_muster_origin = dir * (chart_edge() + MUSTER_DEPTH)
 	_muster_warn = MUSTER_WARN
-	var deg := int(round(fposmod(rad_to_deg(atan2(dir.z, dir.x)), 360.0)))
+	var deg := DeepSpace.compass_deg(dir)
 	if hud:
 		hud.show_broadcast("CORDON ADVISORY — MASS CONTACT",
 			"Massed unflagged contacts forming %du beyond the marker, bearing %03d. "
@@ -2249,9 +2300,7 @@ func rift_rumor() -> String:
 	if live_rift == null or not is_instance_valid(live_rift):
 		return ""
 	var p := live_rift.global_position
-	var bearing := int(rad_to_deg(atan2(p.z, p.x)))
-	if bearing < 0:
-		bearing += 360
+	var bearing := DeepSpace.compass_deg(p)
 	return "A shear is standing open — bearing %03d, %du out. It will not hold, and neither will the price of what falls out of it." % [
 		bearing, int(deep_space.depth_at(p)) if deep_space else 0]
 
@@ -2645,8 +2694,10 @@ func file_apex_intel(kind: String, from: Vector3, err_deg: float) -> bool:
 		line = "INTEL — %s IN %s, %s" % [engine,
 			DeepSpace.BAND_NAMES[int(hint["band"])], String(hint["quadrant"])]
 	else:
+		# The hint's stored bearing is in the world convention (and is in players'
+		# saves that way); it is turned into a compass number here, at the glass.
 		line = "INTEL — %s · BEARING %03d ±%d° · SEARCH ±%du" % [engine,
-			int(round(float(hint["bearing"]))), int(round(err_deg)),
+			DeepSpace.to_compass(float(hint["bearing"])), int(round(err_deg)),
 			int(round(float(est["radius"])))]
 	if hud:
 		hud.show_toast(line, Palette.GOLD)
@@ -2795,6 +2846,14 @@ func _set_boss_active(v: bool) -> void:
 		hud.set_panels_locked(v)
 		if not v:
 			hud.set_boss_status({"active": false})
+	# THE ONE PLACE EVERY ENDING PASSES THROUGH -- kill, break off, death, leash
+	# and the system load itself -- so a retint deferred by rebuild_visuals is
+	# spent here rather than at four call sites that would each have to remember.
+	# call_deferred because this runs from inside _load_system on some paths, and
+	# rebuild_visuals calls _load_system.
+	if not v and _vision_rebuild_pending:
+		_vision_rebuild_pending = false
+		call_deferred("rebuild_visuals")
 	if not v and refit_panel and refit_panel.is_open:
 		pass  # panels already open stay open; they simply can't be reopened
 
@@ -9313,15 +9372,25 @@ func _run_radar_test() -> void:
 	var hdg_rows := ""
 	var hdg_ok := true
 	var hdg_last := ""
-	for want_deg in [0, 90, 180, 270]:
-		# The exact inverse of hud's -basis.z read: a yaw whose forward vector
-		# points at want_deg in the atan2(z, x) convention every producer uses.
-		var rads := deg_to_rad(float(want_deg))
-		player.rotation.y = atan2(-cos(rads), -sin(rads))
+	# THE CARDINALS ARE WRITTEN OUT, NOT DERIVED, and that is the whole point of
+	# this check now. The old version staged a yaw from a number and expected the
+	# same number back, which is true of ANY convention -- it would have passed
+	# just as happily on the one that printed `HDG 270 · NORTH`. Naming the four
+	# directions and the digits a player expects beside them is the only form
+	# that can fail when the compass is wrong.
+	for spec_v in [
+		{"dir": Vector3(0, 0, -1), "deg": 0, "word": "NORTH"},
+		{"dir": Vector3(1, 0, 0), "deg": 90, "word": "EAST"},
+		{"dir": Vector3(0, 0, 1), "deg": 180, "word": "SOUTH"},
+		{"dir": Vector3(-1, 0, 0), "deg": 270, "word": "WEST"},
+	]:
+		var spec: Dictionary = spec_v
+		var d: Vector3 = spec["dir"]
+		# The inverse of hud's -basis.z read: yaw whose forward vector IS d.
+		player.rotation.y = atan2(-d.x, -d.z)
 		await get_tree().process_frame
 		await get_tree().process_frame
-		var want := "HDG %03d · %s" % [want_deg,
-			DeepSpace.quadrant_of(Vector3(cos(rads), 0.0, sin(rads)))]
+		var want := "HDG %03d · %s" % [int(spec["deg"]), String(spec["word"])]
 		var got := hud.heading_text()
 		hdg_rows += "%s|" % got
 		if got != want:
@@ -10650,6 +10719,57 @@ func _run_dock_test() -> void:
 	await get_tree().create_timer(0.6).timeout
 	print("[dock] BOSS LOCK: boss_active=%s docked=%s (must be true / false)" % [
 		str(boss_active), str(docked_port != null)])
+
+	# A REBUILD WHILE DOCKED MUST NOT WELD THE SHIP TO THE BERTH.
+	#
+	# The Port is a SystemRoot child, so _load_system frees it -- and undock()
+	# opens with `if docked_port == null: return`, which a FREED reference
+	# satisfies. DEPART became a silent no-op and `player.docked` never cleared,
+	# which gates all movement: a ship clamped to a berth that no longer exists,
+	# with no button in the game that could release it.
+	#
+	# Two taps from real play: dock, open the pause menu (docking does not lock
+	# it), cycle COLOUR VISION. Driven through rebuild_visuals for that reason,
+	# rather than by calling _load_system directly -- the door is what makes this
+	# reachable, and a test that skipped it would be testing a corridor nobody
+	# can walk down.
+	disengage_apex(false)
+	await get_tree().process_frame
+	var lock_player: PlayerShip = get_tree().get_first_node_in_group("player")
+	var lock_port := find_port()
+	# PUT THE SHIP AT THE BERTH FIRST. The boss step above leaves it ~300u out at
+	# the lair, and request_dock only sets a move order -- flown, that is minutes.
+	lock_player.teleport_to(lock_port.dock_point + Vector3(0, 0, 2.0))
+	await get_tree().physics_frame
+	request_dock(lock_port)
+	var lock_waited := 0.0
+	while docked_port == null and lock_waited < 12.0:
+		await get_tree().create_timer(0.2).timeout
+		lock_waited += 0.2
+	var lock_docked_before: bool = docked_port != null and lock_player.docked
+	rebuild_visuals()
+	await get_tree().create_timer(0.4).timeout
+	var lock_released: bool = docked_port == null and not lock_player.docked
+	# And DEPART still works afterwards, which is the thing the player reaches
+	# for. Re-dock against the REBUILT port and undock through the real path.
+	var lock_port2 := find_port()
+	lock_player.teleport_to(lock_port2.dock_point + Vector3(0, 0, 2.0))
+	await get_tree().physics_frame
+	request_dock(lock_port2)
+	lock_waited = 0.0
+	while docked_port == null and lock_waited < 12.0:
+		await get_tree().create_timer(0.2).timeout
+		lock_waited += 0.2
+	var lock_redocked: bool = docked_port != null
+	undock()
+	await get_tree().process_frame
+	var lock_departed: bool = docked_port == null and not lock_player.docked
+	print("[dock] A REBUILD DOES NOT WELD THE SHIP TO THE BERTH docked before=%s, released by the rebuild=%s, re-docked after=%s, DEPART still works=%s -> %s" % [
+		str(lock_docked_before), str(lock_released), str(lock_redocked),
+		str(lock_departed),
+		"PASS" if lock_docked_before and lock_released and lock_redocked
+			and lock_departed else "FAIL"])
+
 	get_tree().quit()
 
 
@@ -11143,6 +11263,47 @@ func _run_boss_test() -> void:
 	print("[bosstest] A CRACKED WRECK LEAVES NOTHING engine=%s wreck=%s -> %s" % [
 		str(_find_apex() != null), str(_find_apex_wreck() != null),
 		"PASS" if _find_apex() == null and _find_apex_wreck() == null else "FAIL"])
+
+	# A COLOUR SETTING MUST NOT END A FIGHT.
+	#
+	# rebuild_visuals routes through _load_system, which frees SystemRoot -- and
+	# the engine is a SystemRoot child. Mid-encounter that meant the boss came
+	# back DORMANT at full HP with every probe and weld gone and boss_active
+	# cleared: a fight the player was winning, silently reset by a menu.
+	#
+	# Nothing gated the door. The pause menu opens during a boss fight
+	# (set_panels_locked disables only refit and chart, never pause or Escape)
+	# and COLOUR VISION sits on its root page, so this was two taps from inside
+	# any encounter in the game.
+	#
+	# BOTH HALVES, because a rebuild that was merely refused would leave the
+	# player's setting silently dropped -- the retint has to actually land once
+	# the fight is over.
+	GameState.apex_down = []
+	_load_system("pyx01")
+	await get_tree().create_timer(0.4).timeout
+	var vis_player: PlayerShip = get_tree().get_first_node_in_group("player")
+	var vis_boss := _find_apex()
+	vis_player.global_position = vis_boss.global_position + Vector3(0, 0, 6.0)
+	await get_tree().physics_frame
+	_apex_wake_timer = 0.2
+	await get_tree().create_timer(ApexBoss.WAKE_TIME + 1.2).timeout
+	var vis_fighting := boss_active
+	rebuild_visuals()
+	await get_tree().create_timer(0.3).timeout
+	# The fight is untouched and the SAME node is still standing -- a rebuild
+	# would have replaced it with a fresh dormant one at full strength.
+	var vis_survived: bool = boss_active and is_instance_valid(vis_boss) \
+		and _find_apex() == vis_boss
+	var vis_deferred := _vision_rebuild_pending
+	disengage_apex(false)
+	await get_tree().create_timer(0.4).timeout
+	var vis_spent: bool = not _vision_rebuild_pending
+	print("[bosstest] A COLOUR SETTING DOES NOT END A FIGHT engaged=%s, fight survived the retint=%s, retint deferred=%s, spent once the fight ended=%s -> %s" % [
+		str(vis_fighting), str(vis_survived), str(vis_deferred), str(vis_spent),
+		"PASS" if vis_fighting and vis_survived and vis_deferred and vis_spent
+			else "FAIL"])
+
 	get_tree().quit()
 
 
