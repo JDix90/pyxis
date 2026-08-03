@@ -15133,10 +15133,27 @@ func _run_damage_test() -> void:
 	GameState.diverts = {}
 	GameState.divert_power("mount_b", "core", 0.30)
 	var twice: bool = not GameState.divert_power("mount_b", "array", 0.30)
-	# mount_b is DARK and, at 90%, no longer damaged -- so only the burned-target
-	# rule can refuse it.
-	var onto_burned: bool = not GameState.divert_power("drive", "mount_b", 0.90) \
-		and not SectionDB.is_damaged("mount_b", 0.90)
+	# THE BURNED-TARGET COLUMN, ON ITS THIRD ATTEMPT, AND THE SECOND TWO WERE THE
+	# SAME MISTAKE AS THE FIRST.
+	#
+	#   v1: drive -> mount_b @ 0.30. mount_b is damaged at 0.30, so the
+	#       damaged-TARGET rule refused it.
+	#   v2: drive -> mount_b @ 0.90. 0.78 is the highest threshold in the table,
+	#       so at 90% NOTHING is damaged -- including the source. The
+	#       damaged-SOURCE rule refused it, five guards before the one named.
+	#       The added `not is_damaged(target)` conjunct excluded v1's cause and
+	#       said nothing about the new one, so the fix moved the vacuity.
+	#
+	# The rule is only load-bearing when the source IS damaged and the target is
+	# dark but repaired, which needs two different integrities: burn mount_a at
+	# 30% (below its 0.40), then attempt at 50%, where the drive is still broken
+	# (below 0.58) and mount_a is not. Both conjuncts are asserted so the next
+	# reader can see which state this depends on.
+	GameState.diverts = {}
+	GameState.divert_power("mount_a", "core", 0.30)
+	var onto_burned: bool = not GameState.divert_power("drive", "mount_a", 0.50) \
+		and SectionDB.is_damaged("drive", 0.50) \
+		and not SectionDB.is_damaged("mount_a", 0.50)
 	# The core CARRIES power and, being un-failable, is refused as a source by
 	# the carrier rule rather than by the damaged-source rule... which cannot
 	# distinguish. So stage a carrier that IS damaged: burn into the array while

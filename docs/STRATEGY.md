@@ -5380,3 +5380,33 @@ the fourth `NOTHING IS SPENT TWICE` column, the refit-preview check that the
 earlier fix shipped without, and the legs that were rewritten to assert their own
 staging. The one failure remains the standing HOLDTEST readout issue, which
 nothing in either wave touched.
+
+### Third attempt at one column, and the first two failed the same way
+
+The verification stage of the review pass — thirty-eight agents, each survivor
+handed to a separate skeptic told to refute it — cleared almost everything and
+left exactly one finding standing at HEAD: **the fix for a vacuous assertion was
+itself vacuous.**
+
+`NOTHING IS SPENT TWICE`'s burned-target column, three times:
+
+| | staging | what actually refused it |
+|---|---|---|
+| v1 | `drive -> mount_b @ 0.30` | the damaged-**target** rule (mount_b fails at 0.78) |
+| v2 | `drive -> mount_b @ 0.90` | the damaged-**source** rule — 0.78 is the highest threshold in the table, so at 90% *nothing* is damaged, including the source |
+| v3 | burn `mount_a @ 0.30`, then `drive -> mount_a @ 0.50` | `diverts.has(target)` — the rule it names |
+
+v2 was written specifically to fix v1, with a conjunct (`not is_damaged(target)`)
+that excluded v1's cause and said nothing about the new one. The vacuity moved
+instead of dying, and the commit that shipped it described the defect correctly
+while reproducing it.
+
+The rule is only load-bearing when the source is damaged and the target is dark
+**but repaired**, which needs two different integrities — burn low, attempt
+higher. Red-verified: deleting `diverts.has(target)` from `can_divert` turns that
+column, and only that column, false.
+
+The general shape is worth keeping: **a conjunct that rules out the previous
+cause is not the same as one that establishes the intended cause.** The cheap
+check is to delete the rule and watch the column; anything that still passes is
+still measuring something else.
