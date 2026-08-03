@@ -48,6 +48,7 @@ const HARNESS_VARS := [
 	"PYXIS_CARTTEST",
 	"PYXIS_COLLISIONTEST",
 	"PYXIS_CONTRACTTEST",
+	"PYXIS_DAMAGETEST",
 	"PYXIS_DEEPSHOTS",
 	"PYXIS_DEEPTEST",
 	"PYXIS_DEMO",
@@ -335,6 +336,7 @@ var port_panel: PortPanel
 var pause_menu: PauseMenu
 var manual_screen: ManualScreen
 var hold_screen: HoldScreen
+var damage_screen: DamageScreen
 var contracts: Contracts
 
 var system_root: Node3D
@@ -447,6 +449,30 @@ func _ready() -> void:
 	hold_screen = HoldScreen.new()
 	add_child(hold_screen)
 	hud.hold_pressed.connect(hold_screen.toggle)
+
+	# Damage control, off the HULL readout. It owns its own pause (see the class
+	# note) -- the only console besides the pause menu that does.
+	damage_screen = DamageScreen.new()
+	add_child(damage_screen)
+	hud.hull_pressed.connect(func() -> void:
+		# REFUSED IN THE PLACES EVERY OTHER CONSOLE IS. The readout is on screen
+		# during the tutorial and behind the title card, and a sheet that paused
+		# the tree in either would strand a player in a state with no way out
+		# that they have been taught yet.
+		# `warping` is in this list for toggle_pause's reason, stated there: the
+		# warp is a chain of awaited timers, and SceneTree.create_timer defaults
+		# to process_always, so pausing does not stop it. Without this the sheet
+		# goes up over a warp that keeps running behind it -- the system is
+		# rebuilt, the ship is teleported and the arrival plays, all under a
+		# stopped scrim, and the player resumes somewhere else with the flash
+		# quad from before the jump still on screen.
+		if state != State.PLAYING or tutorial_active() or docked_port != null \
+				or warping:
+			return
+		if damage_screen.is_open:
+			damage_screen.close_panel()
+		else:
+			damage_screen.open())
 
 	pause_menu = PauseMenu.new()
 	add_child(pause_menu)
@@ -809,6 +835,14 @@ func _ready() -> void:
 		_load_system(GameState.current_system)
 		_enter_playing()
 		_run_mine_test()
+		return
+
+	if OS.get_environment("PYXIS_DAMAGETEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_damage_test()
 		return
 
 	if OS.get_environment("PYXIS_HUNTTEST") != "":
@@ -1489,7 +1523,11 @@ func _spawn_swarm_pack(swarm: Dictionary) -> void:
 
 func console_open() -> bool:
 	# Any full-screen console the player is reading rather than flying behind.
-	for panel in [port_panel, refit_panel, chart_panel, hold_screen]:
+	# damage_screen is in this list even though it PAUSES the tree, which already
+	# stops the raid roll dead. Belt and braces, and cheap: the pause goes up and
+	# comes down a frame either side of the sheet itself, and a rule that holds
+	# only in the frames nobody was looking at is not a rule.
+	for panel in [port_panel, refit_panel, chart_panel, hold_screen, damage_screen]:
 		if panel != null and panel.is_open:
 			return true
 	return pause_menu != null and pause_menu.is_open
@@ -1517,6 +1555,11 @@ func close_consoles_for_raid() -> void:
 	# must be: pay_toll's own guard exists because the manifest gives the player
 	# a dump button, and jettisoning down to what a toll will accept is a play
 	# the raid was designed around. _raid_active gates the ROLL, not the console.
+	# damage_screen is NOT in this list, and that is deliberate. The klaxon
+	# clearing the desk is about sheets the player was reading while the world
+	# moved; this one stopped the world to be read. Slamming it shut would also
+	# drop the pause back onto a ship that now has a pack on top of it, which is
+	# the opposite of what a raid warning is for.
 	for panel in [port_panel, refit_panel, chart_panel, hold_screen]:
 		if panel != null and panel.is_open:
 			panel.close_panel()
@@ -2476,6 +2519,14 @@ func _complete_dock(port: Port) -> void:
 	port.set_docked_visual(true)
 	player.dock_to(port.dock_point)
 	GameState.set_docked(port.port_id)
+
+	# A BERTH IS WHERE BURNED SECTIONS COME BACK. This is the entire cost side of
+	# the diversion mechanic: power traded away in a fight stays traded until the
+	# ship is somewhere with a crew and a gantry. Announced rather than silent --
+	# the trade was narrated when it was made, so its reversal has to be too, or
+	# a player cannot tell whether their guns are back.
+	if GameState.clear_diverts() and hud:
+		hud.show_toast("SECTIONS RESTORED — ALL POWER BACK ONLINE", Palette.TEAL)
 
 	# Docking a deep station IS surveying it: you demonstrably hold its
 	# coordinates. Granted here rather than via a mast because a mast within
@@ -14987,6 +15038,248 @@ func _run_faction_test() -> void:
 			and why_line.contains("FRIENDLY") else "FAIL"])
 
 	_clear_faction_matrix()
+	await get_tree().create_timer(0.2).timeout
+	get_tree().quit()
+
+
+func _run_damage_test() -> void:
+	# DAMAGE CONTROL. Sections, the diversion trade, and the one console that
+	# stops the clock.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	player.invulnerable = true
+	_wave_timer = 1.0e9
+	_apex_wake_timer = -1.0
+	GameState.diverts = {}
+	await get_tree().create_timer(0.3).timeout
+
+	# --- 1. the ladder is outside-in, and the core never goes -----------------
+	# Asserted as a TABLE rather than at one integrity, because the property is
+	# the ORDER: a section that failed before the one outboard of it would be a
+	# different ship, and a single sample cannot see order at all.
+	var ladder_bad := ""
+	var ladder_report := ""
+	for spec_v in [
+		{"at": 1.00, "want": []},
+		{"at": 0.70, "want": ["mount_b"]},
+		{"at": 0.50, "want": ["mount_b", "drive"]},
+		{"at": 0.30, "want": ["mount_b", "drive", "mount_a"]},
+		{"at": 0.05, "want": ["mount_b", "drive", "mount_a", "array"]},
+	]:
+		var spec: Dictionary = spec_v
+		var got := SectionDB.damaged_ids(float(spec["at"]))
+		ladder_report += "%d%%:%d " % [int(float(spec["at"]) * 100.0), got.size()]
+		if got != (spec["want"] as Array):
+			ladder_bad = "at %.0f%% got %s wanted %s" % [
+				float(spec["at"]) * 100.0, str(got), str(spec["want"])]
+	# The core is the thing doing the routing, so a dead core would mean a panel
+	# that goes blank exactly when it is needed. Checked at zero, not at a
+	# plausible number: the claim is "never", and never includes destroyed.
+	var core_holds: bool = not SectionDB.is_damaged("core", 0.0)
+	print("[damage] THE LADDER RUNS OUTSIDE-IN %s(%s); core alive at 0%%=%s -> %s" % [
+		ladder_report, ladder_bad if ladder_bad != "" else "ordered", str(core_holds),
+		"PASS" if ladder_bad == "" and core_holds else "FAIL"])
+
+	# --- 2. only a broken section may be spent, and only on a working one -----
+	# Driven through divert_power, which is where the rule lives. The first
+	# version of this mechanic left the test in the panel's `disabled` flag,
+	# where no assertion could reach it and a second caller would have skipped
+	# it entirely.
+	GameState.diverts = {}
+	var whole_refused: bool = not GameState.divert_power("mount_a", "drive", 1.0)
+	var onto_broken: bool = not GameState.divert_power("mount_b", "drive", 0.50)
+	var legal: bool = GameState.divert_power("mount_b", "core", 0.70)
+	print("[damage] POWER COMES ONLY FROM A BROKEN SECTION intact source refused=%s, broken target refused=%s, broken->working allowed=%s -> %s" % [
+		str(whole_refused), str(onto_broken), str(legal),
+		"PASS" if whole_refused and onto_broken and legal else "FAIL"])
+
+	# --- 3. nothing is spent twice -------------------------------------------
+	# FOUR ways to double-spend, all closed. The fourth -- two sources into one
+	# target -- was missing from both the code and this assertion, and it was the
+	# expensive one: at low integrity every non-core section is damaged and the
+	# core is the only always-legal target, so four taps multiplied its boost to
+	# 1.75^4 and the discharge hit for nine times its rated burst. The panel
+	# happened to grey the row, which is the rule living in the rendering again.
+	GameState.diverts = {}
+	GameState.divert_power("mount_b", "core", 0.30)
+	var twice: bool = not GameState.divert_power("mount_b", "array", 0.30)
+	var onto_burned: bool = not GameState.divert_power("drive", "mount_b", 0.30)
+	var from_carrier: bool = not GameState.divert_power("core", "array", 0.30)
+	var stacked: bool = not GameState.divert_power("drive", "core", 0.30)
+	print("[damage] NOTHING IS SPENT TWICE same source again=%s, onto a dark section=%s, out of a carrier=%s, second source onto one target=%s (all must be refused) -> %s" % [
+		str(twice), str(onto_burned), str(from_carrier), str(stacked),
+		"PASS" if twice and onto_burned and from_carrier and stacked else "FAIL"])
+
+	# --- 3b. a system cannot pay itself --------------------------------------
+	# Both mounts govern `dps`, so burning one into the other multiplied the same
+	# key by 0.50 and then 1.60 -- a net 0.80, a strict LOSS, rendered as
+	# OVERCHARGED in gold. It is also the most intuitive move on the sheet, so it
+	# had to be refused rather than merely documented. Asserted against the
+	# GOVERNS key rather than the pair, so a third weapon mount inherits it.
+	GameState.diverts = {}
+	var same_system: bool = not GameState.divert_power("mount_b", "mount_a", 0.50)
+	var cross_system: bool = GameState.divert_power("mount_b", "drive", 0.70)
+	GameState.diverts = {}
+	GameState._recompute()
+	print("[damage] A SYSTEM CANNOT PAY ITSELF mount->mount refused=%s (0.50x1.60 = a net loss sold as a boost), mount->drive allowed=%s -> %s" % [
+		str(same_system), str(cross_system),
+		"PASS" if same_system and cross_system else "FAIL"])
+
+	# --- 3c. the shield trade cannot move what damage is derived FROM --------
+	# THE DEATH SPIRAL, ASSERTED SHUT. Integrity is shield/shield_max, and an
+	# earlier version scaled shield_max for the "shield" system -- so
+	# overcharging the array dropped the integrity it is derived from and broke
+	# the array one line after powering it, and BURNING the array raised
+	# integrity and healed sections as a reward for destroying one. Capacity is
+	# now fixed by the fit and the trade moves regeneration only.
+	GameState.diverts = {}
+	GameState._recompute()
+	var cap_before := float(GameState.stats.get("shield_max", 0.0))
+	var regen_before := float(GameState.stats.get("shield_regen", 0.0))
+	GameState.divert_power("mount_b", "array", 0.70)
+	var cap_boost := float(GameState.stats.get("shield_max", 0.0))
+	var regen_boost := float(GameState.stats.get("shield_regen", 0.0))
+	GameState.diverts = {}
+	GameState.divert_power("array", "drive", 0.10)
+	var cap_burn := float(GameState.stats.get("shield_max", 0.0))
+	GameState.diverts = {}
+	GameState._recompute()
+	print("[damage] THE SHIELD TRADE NEVER MOVES CAPACITY shield_max %.0f -> %.0f boosted, %.0f burned (all must match); regen %.1f -> %.1f (must rise) -> %s" % [
+		cap_before, cap_boost, cap_burn, regen_before, regen_boost,
+		"PASS" if absf(cap_boost - cap_before) < 0.01 and absf(cap_burn - cap_before) < 0.01
+			and regen_boost > regen_before + 0.01 else "FAIL"])
+
+	# --- 3d. a new run does not inherit a burned-out ship --------------------
+	# `diverts` is not saved, which was mistaken for it being empty at the start
+	# of a run. It is only ever cleared by docking, so ABANDON TO TITLE then NEW
+	# SURVEY carried a burned mount into a brand-new ship -- reset_to_starter
+	# ends in _recompute(), which folded the stale dictionary straight back in,
+	# and the new pilot could not even open the panel to see why (it refuses
+	# during the tutorial).
+	GameState.diverts = {}
+	GameState.divert_power("mount_b", "core", 0.30)
+	var carried: bool = not GameState.diverts.is_empty()
+	GameState.reset_to_starter()
+	var cleared_by_reset: bool = GameState.diverts.is_empty()
+	print("[damage] A NEW RUN STARTS WHOLE diverted before reset=%s, empty after reset_to_starter=%s -> %s" % [
+		str(carried), str(cleared_by_reset),
+		"PASS" if carried and cleared_by_reset else "FAIL"])
+
+	# --- 3e. the catalog's floors survive a diversion ------------------------
+	# compute_stats floors max_speed at 1.6 and shield_max at 40, then
+	# SectionDB.apply used to multiply straight through them.
+	# PlayerShip.TETHER_DRAG_CEILING is sized against that speed floor with the
+	# note that being out-runnable by any legal fit is the promise the tether has
+	# to keep, so a burned drive must not be able to break it.
+	# STAGED AGAINST A NEAR-FLOOR BLOCK, because the starter fit is nowhere near
+	# one: burning its drive leaves max_speed at 5.09 against a floor of 1.60, so
+	# reading the live ship would print PASS whether the floor was enforced or
+	# not, and an assertion that cannot distinguish its two outcomes is not
+	# measuring. This drives the exact composition _recompute uses, on a block
+	# chosen to fall through the floor without it.
+	var floor_probe := {
+		"max_speed": 2.0, "accel": 4.0, "turn_rate": 2.0, "shield_max": 45.0,
+		"cargo_space": 10.0, "weapon_range_bonus": 0.0,
+		"dps": 100.0, "shield_regen": 5.0,
+	}
+	var unfloored: Dictionary = SectionDB.apply(floor_probe.duplicate(),
+		{"drive": "core"})
+	var would_sink := float(unfloored["max_speed"])          # 2.0 * 0.55 = 1.10
+	var held := float(ModuleDB.enforce_floors(unfloored.duplicate())["max_speed"])
+	# And the live pipeline agrees with that composition for the real fit, which
+	# is what proves _recompute actually calls it rather than the two functions
+	# merely composing correctly in a vacuum.
+	GameState.diverts = {}
+	GameState._recompute()
+	GameState.divert_power("drive", "core", 0.50)
+	var live := float(GameState.stats.get("max_speed", 0.0))
+	var expected := float(ModuleDB.enforce_floors(SectionDB.apply(
+		ModuleDB.compute_stats(GameState.fit), {"drive": "core"}))["max_speed"])
+	GameState.diverts = {}
+	GameState._recompute()
+	print("[damage] A DIVERSION CANNOT BREAK THE CATALOG FLOORS a burn would sink max_speed to %.2f, floored back to %.2f (floor 1.60); live pipeline %.2f == composed %.2f -> %s" % [
+		would_sink, held, live, expected,
+		"PASS" if would_sink < 1.6 and absf(held - 1.6) < 0.001
+			and absf(live - expected) < 0.001 else "FAIL"])
+
+	# --- 4. the trade actually moves the ship's numbers -----------------------
+	# Read off GameState.stats, which is what PlayerShip flies on -- not off
+	# SectionDB's constants, which would only prove the table agrees with itself.
+	GameState.diverts = {}
+	GameState._recompute()
+	var base_dps := float(GameState.stats.get("dps", 0.0))
+	var base_speed := float(GameState.stats.get("max_speed", 0.0))
+	GameState.divert_power("mount_b", "drive", 0.70)
+	var burn_dps := float(GameState.stats.get("dps", 0.0))
+	var boost_speed := float(GameState.stats.get("max_speed", 0.0))
+	var cost_paid: bool = burn_dps < base_dps - 0.01
+	var boost_landed: bool = boost_speed > base_speed + 0.01
+	print("[damage] THE TRADE COSTS AND PAYS dps %.0f -> %.0f (must fall), speed %.2f -> %.2f (must rise) -> %s" % [
+		base_dps, burn_dps, base_speed, boost_speed,
+		"PASS" if cost_paid and boost_landed else "FAIL"])
+
+	# --- 5. a berth is what buys it back -------------------------------------
+	# The whole cost side of the mechanic in one line. Driven through
+	# clear_diverts rather than by emptying the dictionary, because the dock is
+	# the only caller and it is the return value the dock line reads.
+	var undone: bool = GameState.clear_diverts()
+	var dps_back: bool = absf(float(GameState.stats.get("dps", 0.0)) - base_dps) < 0.01
+	var speed_back: bool = absf(float(GameState.stats.get("max_speed", 0.0)) - base_speed) < 0.01
+	var quiet_when_clean: bool = not GameState.clear_diverts()
+	print("[damage] A BERTH BUYS IT BACK restored=%s, dps back=%s, speed back=%s, silent on a clean ship=%s -> %s" % [
+		str(undone), str(dps_back), str(speed_back), str(quiet_when_clean),
+		"PASS" if undone and dps_back and speed_back and quiet_when_clean else "FAIL"])
+
+	# --- 6. the sheet stops the clock, and gives it back ---------------------
+	# BOTH HALVES. A panel that paused and could not un-pause is a hang with a
+	# tidy explanation, and it is the failure this mechanic is most likely to
+	# ship: nothing else in the game except the pause menu touches paused at all.
+	var was_paused := get_tree().paused
+	damage_screen.open()
+	await get_tree().process_frame
+	var stopped := get_tree().paused
+	var sheet_up := damage_screen.is_open
+	# And it counts as a console while it is up, so the raid roll cannot fire
+	# behind it in the frames either side of the pause.
+	var counts_as_console := console_open()
+	damage_screen.close_panel()
+	await get_tree().process_frame
+	var running := not get_tree().paused
+	print("[damage] THE SHEET STOPS THE CLOCK AND GIVES IT BACK before=%s, open -> paused=%s sheet=%s console=%s, closed -> running=%s -> %s" % [
+		str(was_paused), str(stopped), str(sheet_up), str(counts_as_console), str(running),
+		"PASS" if not was_paused and stopped and sheet_up and counts_as_console
+			and running else "FAIL"])
+
+	# --- 7. an overcharged core is worth something at the trigger ------------
+	# The core governs the fitted ABILITY rather than a scalar, so it is the one
+	# section whose boost cannot be read off a stat the ship flies on. Asserted
+	# where it is actually spent.
+	GameState.diverts = {}
+	GameState._recompute()
+	var plain_boost := float(GameState.stats.get("core_boost", 1.0))
+	GameState.divert_power("mount_b", "core", 0.70)
+	var charged_boost := float(GameState.stats.get("core_boost", 1.0))
+	GameState.clear_diverts()
+	print("[damage] AN OVERCHARGED CORE HITS HARDER core_boost %.2f -> %.2f (must rise from 1.00) -> %s" % [
+		plain_boost, charged_boost,
+		"PASS" if absf(plain_boost - 1.0) < 0.001 and charged_boost > 1.01 else "FAIL"])
+
+	# A frame of the sheet, when asked for one. No assertion can tell you whether
+	# a panel READS, and this one is a wall of state the player meets while
+	# something is shooting at them. Staged at 30% so three of the five sections
+	# are out and the trade is actually on offer.
+	var shots := OS.get_environment("PYXIS_SHOTS")
+	if shots != "":
+		GameState.diverts = {}
+		GameState._recompute()
+		player.shield = player.shield_max * 0.30
+		await get_tree().process_frame
+		damage_screen.open()
+		await get_tree().create_timer(0.4).timeout
+		await _shot(shots, "damage_control.png")
+		damage_screen.close_panel()
+
+	GameState.diverts = {}
+	GameState._recompute()
 	await get_tree().create_timer(0.2).timeout
 	get_tree().quit()
 

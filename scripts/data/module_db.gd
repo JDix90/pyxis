@@ -620,6 +620,24 @@ static func craftable_ids() -> Array:
 	return out
 
 
+static func enforce_floors(s: Dictionary) -> Dictionary:
+	# THE FLOORS, IN ONE PLACE, so anything that scales a fitted stat can put
+	# them back afterwards. They used to be inline at the end of compute_stats,
+	# which was fine while compute_stats was the last word on a stat block --
+	# SectionDB.apply now runs AFTER it, and multiplied straight through them. A
+	# legal Mk IV fit with two shield-negative rigs floors at 40 and came out of
+	# a burned array at 27; PlayerShip.TETHER_DRAG_CEILING is sized directly
+	# against the 1.6 max_speed floor with the note that being out-runnable by
+	# any legal fit is the one promise that mechanic has to keep.
+	s["max_speed"] = maxf(float(s["max_speed"]), 1.6)
+	s["accel"] = maxf(float(s["accel"]), 3.0)
+	s["turn_rate"] = maxf(float(s["turn_rate"]), 1.5)
+	s["shield_max"] = maxf(float(s["shield_max"]), 40.0)
+	s["cargo_space"] = maxf(float(s.get("cargo_space", 24.0)), 6.0)
+	s["weapon_range_bonus"] = maxf(float(s["weapon_range_bonus"]), -2.0)
+	return s
+
+
 static func compute_stats(fit: Dictionary) -> Dictionary:
 	# Single source of truth for derived stats. Additive by design: it stays
 	# legible in the console, and nothing needs stacking-penalty rules yet.
@@ -650,12 +668,7 @@ static func compute_stats(fit: Dictionary) -> Dictionary:
 	# Specialist rigs carry real negative stats and two of them can stack, so the
 	# floors below are load-bearing: a hauler plus a bulwark must be sluggish, not
 	# stationary or reversing.
-	s["max_speed"] = maxf(float(s["max_speed"]), 1.6)
-	s["accel"] = maxf(float(s["accel"]), 3.0)
-	s["turn_rate"] = maxf(float(s["turn_rate"]), 1.5)
-	s["shield_max"] = maxf(float(s["shield_max"]), 40.0)
-	s["cargo_space"] = maxf(float(s.get("cargo_space", 24.0)), 6.0)
-	s["weapon_range_bonus"] = maxf(float(s["weapon_range_bonus"]), -2.0)
+	enforce_floors(s)
 
 	# Headline numbers the console shows as deltas.
 	var dps := 0.0

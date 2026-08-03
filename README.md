@@ -36,9 +36,9 @@ behind a `PYXIS_*` environment variable and run headless:
 PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 ```
 
-Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 41 of them —
-the 40 tags in `run_harness.sh`'s `TAGS`, plus `SAVETEST`, which is one harness
-with 15 modes rather than 15 harnesses (hence 55 runs from 41 suites).
+Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 42 of them —
+the 41 tags in `run_harness.sh`'s `TAGS`, plus `SAVETEST`, which is one harness
+with 15 modes rather than 15 harnesses (hence 56 runs from 42 suites).
 The house rules, learned the hard way and enforced by review:
 
 - **Assert the rule, not the rendering.** Test the thing that must be true once,
@@ -93,8 +93,8 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **517 PASS / 1 FAIL / 0 script errors** across 55 runs, save
-format **v18** — measured on Godot 4.6.stable, headless. 518 assertion lines,
+Current baseline: **524 PASS / 1 FAIL / 0 script errors** across 56 runs, save
+format **v18** — measured on Godot 4.6.stable, headless. 525 assertion lines,
 of which the one failure is the standing HOLDTEST issue below. Horizon 4
 (factions, STRATEGY §47, §49–54) is complete: six stages, +45 assertions, all
 red-verified. Chartfolk convoys (STRATEGY §55) populate the deep 200–1000u

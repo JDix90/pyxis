@@ -5168,3 +5168,158 @@ the breach test put back into `_load_system`, and the assertion prints
 `slept=true, said …=false, woke=false` against its green
 `slept=true, said …=true, woke=true`. Both halves of what it claims move when
 the defect returns, which is the only thing that makes it worth its runtime.
+
+## 59. Damage control, and the one console that stops the clock (v18)
+
+A panel off the `HULL` readout: which parts of the ship the damage has reached,
+and the ability to burn a broken one to overcharge a working one. Requested as a
+last-ditch move, and built as one.
+
+### The readout was never hull
+
+`HULL 92%` is `PlayerShip.shield_fraction()` and always has been. There is one
+survivability pool, no second number, and no located damage anywhere in the
+game. So "which sections are damaged" was not a display problem — it was a
+model that did not exist, and the first decision was where to get it from.
+
+**Derived, not tracked.** `SectionDB` reads the one number the game already
+keeps and says which parts of the ship that number has taken with it. Nothing
+about combat changed, no save migration was needed, and — critically — no death
+spiral was created. The pool *is* the shield array, so a model where a damaged
+array cut `shield_max` would knock out more sections, which would cut it again.
+Derivation makes that structurally impossible: **being damaged costs nothing by
+itself.** The integrity it is read from has already been paid. Damage only means
+a section is a legal thing to spend.
+
+The ladder is outside-in — starboard mount, drive coil, port mount, shield array
+— because a survey hull takes hits on its mounts before its spine. The reactor
+core never fails, and that is not generosity: the core performs the diversion, so
+a ship whose core was out could not divert, and the panel would go dead in
+exactly the moment it exists for.
+
+### What makes it desperate rather than routine
+
+Diverting burns the source section out **until the ship docks**. That is the
+entire cost side, and it is what stops this being a free loadout: you are
+spending a real capability to survive the next sixty seconds. The numbers are
+deliberately large in both directions (a mount is half the guns; an overcharge
+is +45–75%), because a trade that cost a mount for +10% would never be worth
+taking and the panel would be decoration.
+
+`diverts` is deliberately **not saved**. It is a wound you are still carrying,
+and writing it to disk would mean a pilot who quit mid-fight loads back into a
+burned-out mount with no memory of trading it away — punishment for closing the
+game. Everything else is derived from live integrity, so an empty dictionary at
+load is the correct and complete state.
+
+### The rule that was living in the rendering
+
+The first draft let the panel decide which rows were tappable and had
+`divert_power` trust that. The rule *you may only burn something already broken*
+therefore lived in a `disabled` flag — it would have held exactly as long as
+nobody added a second caller, and no assertion could reach it without driving a
+UI. `GameState` cannot read the ship's shields, so integrity is now an argument
+and the rule lives where it can be tested. This is the house rule stated
+plainly, caught on its own feature.
+
+### Pausing, which nothing else does
+
+§14's rule is that a raid must not begin behind a sheet the player cannot see
+past, and `console_camping()` exists because a sheet open at speed is a shield
+rather than a document. Damage control is the exception, and it earns it: a
+decision made at 12% integrity with a swarm on you is not a decision anybody can
+make while flying.
+
+It still registers in `console_open()` even though pausing already stops the
+raid roll dead — the pause goes up and comes down a frame either side of the
+sheet, and a rule that holds only in the frames nobody was looking at is not a
+rule. It is deliberately **not** in `close_consoles_for_raid()`: the klaxon
+clearing the desk is about sheets read while the world moved, and slamming this
+one shut would drop the pause back onto a ship with a pack on top of it.
+
+`Escape` is handled by the panel itself. `CameraRig`'s ladder stops receiving
+input the instant the tree pauses — its own comment says so about the pause menu
+— so a sheet that pauses has to own its way out or the key does nothing and the
+game reads as hung.
+
+### On the word "overcharge"
+
+It was already taken: `core_overcharge` is a fitted ability and `OVERCHARGE` is
+a button in the action dock. Spending the same noun twice is the confusion §58
+had just finished undoing, so the verb here is **DIVERT** and the resulting
+state is **OVERCHARGED** — the requested word survives where it describes a
+condition, and the button keeps its meaning.
+
+### The sweep with damage control in it
+
+**56 runs | 524 PASS | 1 FAIL | 0 script errors | save intact.** Seven up on the
+517 baseline, which is exactly the seven `DAMAGETEST` assertions; the run count
+moves 55 → 56 because the tag is new. The one failure remains the standing
+HOLDTEST readout issue.
+
+Two of the seven were red-verified rather than merely observed passing. Removing
+the damaged-source test turns `intact source refused=true` into `false`;
+removing the un-pause in `close_panel` turns `closed -> running=true` into
+`false`. Each fails on precisely the clause that names the defect, which is the
+only property that makes an assertion worth its runtime.
+
+### What an adversarial review found in §59 before anyone played it
+
+Five independent lenses over the damage-control commit, each finding verified by
+a separate agent told to refute it. Four of the survivors falsified claims the
+commit message itself had made, which is the useful kind of finding.
+
+**The death spiral was rebuilt on the boost side.** §59 argues at length that
+deriving damage from the pool makes a spiral structurally impossible, and then
+`_scale` multiplied `shield_max` — the denominator of `shield_fraction`, which is
+the very integrity every section is derived from. Overcharging the SHIELD ARRAY
+raised `shield_max` while `_apply_fit` left current shield alone, so integrity
+fell 30% → 20% and the array crossed its own 0.22 threshold **one line after
+being sent the power**. Burning it was worse in the other direction: capacity
+fell, integrity jumped 30% → 50%, and sections healed as a reward for destroying
+one. Derivation had closed the loop on the damage side and the diversion reopened
+it on the boost side. Fixed by making the shield system scale **regeneration
+only** — capacity is fixed by the fit and nothing the player can reach moves what
+the model reads.
+
+**A system could pay itself.** Both mounts govern `dps`, so burning one into the
+other multiplied the same key by 0.50 and then 1.60: a net **0.80**, a strict
+loss, rendered as `OVERCHARGED` in gold with a toast and a logbook line. It is
+also the most obvious move on the sheet — route the broken gun's power to the
+good gun — so it could not merely be undocumented.
+
+**And the ordering comment was vacuous.** `SectionDB.apply` carried a confident
+note that burning before boosting was load-bearing. Both are multiplications on
+the same key, so the two loops cannot be told apart by any measurement. The
+comment documented away the same-system case instead of catching it. It now says
+what actually prevents it.
+
+**One boost per target was in the rendering.** `divert_power` checked three of
+the four double-spends and missed "this target already carries power", so four
+taps into the core gave `core_boost` of 1.75⁴ = 9.4 and a discharge at nine times
+its rated burst. The panel refused it by greying the row — the exact failure §59
+congratulates itself for having caught for the damaged-source rule, repeated one
+field over. `can_divert` is now the single predicate the panel *and* the mutator
+both ask.
+
+**`diverts` outlived the run.** "Not saved" was mistaken for "empty at the start
+of a run". It is only cleared by docking, so ABANDON TO TITLE → NEW SURVEY
+carried a burned-out mount into a brand-new ship — `reset_to_starter` ends in
+`_recompute()`, which folded the stale dictionary straight back in, and the new
+pilot could not open the panel to find out why because it refuses during the
+tutorial.
+
+Also fixed: the sheet could be raised mid-warp (`toggle_pause` guards on
+`warping`; this handler did not, and `create_timer` defaults to `process_always`,
+so the jump ran to completion behind a stopped scrim); `SectionDB.apply` ran
+after `compute_stats` and multiplied straight through the catalog's floors, which
+`TETHER_DRAG_CEILING` is sized against; refit deltas were rendered against a
+diverted baseline and a non-diverted preview, advertising a fabricated +100% DPS
+on every weapon; the panel dead-ended below 22% by accepting an arm with no legal
+target; and the sheet was 460px against a 450px minimum logical canvas at the
+maximum UI scale.
+
+The lesson is not that review is useful. It is that **every one of these lived
+under a comment asserting the opposite**, and the comments were written in good
+faith at the moment the code was. A confident note about an invariant is a claim,
+and a claim is exactly the thing worth testing.

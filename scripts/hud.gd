@@ -46,6 +46,7 @@ signal refit_pressed
 # pressed under pressure". The readout costs no dock width and is already where
 # a player looks to ask this question.
 signal hold_pressed
+signal hull_pressed
 signal chart_pressed
 signal pause_pressed
 
@@ -518,10 +519,18 @@ func _ready() -> void:
 	# Hull integrity. The ship has always carried a bar over its own hull, which
 	# is readable when you are looking AT the ship and useless when you are
 	# looking at whatever is shooting it. This is the glanceable copy.
+	# AND IT TAKES A TAP, the second readout in this stack to do so. `top` is
+	# MOUSE_FILTER_IGNORE so a glance readout never eats a tap meant for the
+	# ship; this label opts back in for itself, exactly as HOLD does above.
 	_hull_label = Label.new()
 	_hull_label.text = "HULL 100%"
 	_hull_label.add_theme_color_override("font_color", Palette.TEAL)
 	_hull_label.add_theme_font_size_override("font_size", 12)
+	_hull_label.mouse_filter = Control.MOUSE_FILTER_STOP
+	_hull_label.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed \
+				and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			hull_pressed.emit())
 	top.add_child(_hull_label)
 
 	_gain_label = Label.new()
