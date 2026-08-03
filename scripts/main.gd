@@ -1131,6 +1131,13 @@ func _load_system(id: String) -> void:
 	system_def = SystemDB.get_system(id)
 	GameState.set_current_system(id)
 
+	# A DEFERRED RETINT IS SATISFIED BY THIS, because this IS the rebuild. Cleared
+	# BEFORE _set_boss_active(false) below, which is what spends the flag -- a
+	# fight that ends by warping or dying already comes through here, and without
+	# this the deferred call would fire a second, redundant world rebuild one
+	# frame later. See rebuild_visuals.
+	_vision_rebuild_pending = false
+
 	# Boss state never survives a system change: a DAMAGED engine resets to full on
 	# warp or reload, because retreating costs tempo and never salvage. Clearing
 	# the flag here is what stops a mid-fight warp-out from permanently stalling

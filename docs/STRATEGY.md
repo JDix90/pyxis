@@ -5497,13 +5497,32 @@ the danger was known and the one field it applied to was missed.
 Released before the free, so `set_docked_visual` and `dock_point` still run
 against a live node — the same order `abandon_to_title` already used.
 
-### On the bug that was actually being hunted
+### On the bug that was actually being hunted — this WAS the second path
 
-No second path to a dormant breached engine survived refutation. The two
-candidates that looked closest — this rebuild, and BREAK OFF at the lair — both
-*re-arm* the poll, so the engine returns within seconds rather than staying dark.
-That is a real answer: on the evidence available, §57's fix accounts for the
-photographed state. Settling it beyond doubt needs the save.
+The first reading of this finding dismissed it: the rebuild re-arms the poll, so
+the engine returns in about six seconds rather than staying dark. Both halves of
+that were wrong.
+
+`Main` has no `process_mode` override, so it is PAUSABLE — `_process` does not
+tick while the pause menu is open, and the wake timer does not count down. The
+dormant window is **the whole time the settings menu stays up**, plus six seconds
+of flight after resuming, plus `WAKE_TIME` on top. And the evidence being
+explained is a *screenshot*: a single frame. Ten seconds is ample; unbounded is
+more than ample.
+
+So the photographed state — ship parked a few units off THE GNOMON, ~287u out,
+engine DORMANT, HUD panels unlocked, no boss bar — is reachable with
+`breached` containing `pyx01`, by pressing Escape mid-fight and cycling one
+accessibility setting. That is a second, independent path to the same symptom,
+and §57's fix does not touch it.
+
+It is also the path a colour-vision player is *most* likely to hit, because the
+reason they are reaching for that toggle is that they cannot read the phase tint.
+
+The fix above closes it. What is worth recording is the reasoning error: "it
+recovers in six seconds" was offered as grounds for dismissal without checking
+whether six seconds was long enough to matter, or whether the clock was even
+running.
 
 ### The sweep after the compass and the two doors
 
