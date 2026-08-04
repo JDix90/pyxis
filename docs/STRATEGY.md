@@ -5930,3 +5930,65 @@ printed a mean of 2.9225 from samples that did not exist. Caught on re-reading
 the harness output. Worth recording next to §61's dismissal-without-checking,
 because it is the same failure in miniature — the arithmetic was fine and the
 inputs were invented, which a plausible-looking answer hides perfectly.
+
+## 64. What is specced and not built
+
+Every other section in this file records something that SHIPPED. That is a
+useful document and a misleading one, because a reader who searches it for gaps
+finds none — the unbuilt work is not written down, so it cannot show up as
+unbuilt. `HORIZON-4-FACTIONS.md` says "All six are built"; the README's layout
+table said `HORIZON-3-COMMISSION.md` was "not built" **eight months after it
+shipped as §28**. The repo was wrong in both directions at once, and neither
+error was visible from inside it.
+
+This section is the inventory. **It is the only forward-looking list in the
+repo, and it is load-bearing: if you build or defer something, update it in the
+same commit.**
+
+### Outstanding
+
+**The Hunt, stages 4–6.** The horizon is specced in full in
+`~/.claude/plans/i-have-indeed-tested-fuzzy-parnas.md` — outside the repo, which
+is most of why these went unnoticed. Stages 1–3 shipped as §38, §39 and §42.
+
+| stage | what | reserved | status |
+|---|---|---|---|
+| 4 | per-PYX deep identity + deep rifts (landmark/station weights, per-system rift depth) | no save bump | **not built** — no `"deep"` block in `system_db.gd` |
+| 5 | waypoint beacons (drop/pick-up at depth, dots on the survey plot) | save v17 | **not built** — no `BEACON_STOCK`, no `TIER_BEACON` |
+| 6 | hyper-structures and **Colonies** (claim past 1500u, then in-system warp) | save v18 | **not built** — no `hyper_structure.gd`, no `hyper_positions`, no `COLONY_JUMP*`, no `colonies` key |
+
+**The save versions they reserved were spent by a different horizon**: v17
+became the `apex_down` grandfather and v18 became the faction matrix. Horizon 4
+was built instead of the Hunt's back half. That was a legitimate choice — the
+Hunt plan's own cut order ends *"defer Colonies to their own horizon"* — but
+nothing recorded it, so "v18" pointed at two different features depending on
+which document you were holding.
+
+Stage 6 is **not blocked by 4 and 5**: it needs `run_seed` (stage 1), the
+`lair_pos` salted-placement precedent (stage 2) and the deep-space streamer, all
+of which shipped. Beacons and per-PYX identity can stay unbuilt indefinitely.
+
+### Built, despite what the docs said
+
+`HORIZON-3-COMMISSION.md` — **built**, and recorded as §28. `commission_db.gd`
+exists with 28 call sites across `game_state.gd`, `main.gd` and `port_panel.gd`,
+and `GSATEST` carries a full suite for it. The README's "not built" line has been
+corrected.
+
+Audited 2026-08-04 by cross-checking every Pyxis plan file against the code for a
+sentinel symbol per feature: the hold console, mining, the expanse, the hunt, the
+commission, damage control and sections all resolve. Nothing else is outstanding.
+
+### Why this is not an assertion
+
+The instinct in this codebase is to make a claim checkable rather than trust it,
+and that instinct is right often enough that departing from it needs a reason.
+The reason is that every honest version costs more than it returns: parsing this
+table out of markdown at runtime makes the harness depend on prose, and asserting
+"symbol X does not exist" needs reflection GDScript does not offer for free.
+A brittle check here would be a fifth entry on this session's list of assertions
+that were weaker than their names.
+
+So it is a **discipline, stated once**: the inventory is part of the commit that
+changes it. The failure mode it replaces — a repo that implies completeness by
+omission — was silent and lasted months; this one is at least visible in a diff.
