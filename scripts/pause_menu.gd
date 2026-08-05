@@ -224,6 +224,12 @@ func _build_root() -> void:
 	# fourth _sub costs 26 rows of scroll rather than an overflow. SHEET FITS
 	# cannot see the difference — see STRATEGY §36 for why that is its own defect.
 	_body.add_child(_sub(GameState.mining_line()))
+	# And a FOURTH, on the same measured argument as the third: the page is
+	# already scrolling at a 1.6 UI scale, so this costs rows of scroll rather
+	# than an overflow, and _clamp_height keeps the panel inside the canvas
+	# either way. SHEET FITS still cannot tell the difference — it reads the
+	# clamped panel height, which is exactly what the clamp guarantees.
+	_body.add_child(_sub(GameState.persuasion_line()))
 	_body.add_child(_spacer(6))
 	_body.add_child(_action("RESUME", Palette.TEAL, resume))
 	_body.add_child(_action("CAPTAIN'S LOG", Palette.AMBER, func() -> void:

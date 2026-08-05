@@ -5537,3 +5537,458 @@ alongside it. Three isolated runs gave 26.2 / 22.4 / 24.8ms, in line with the
 21.5 and 27.4 of the sweeps either side, and the mean never moved. A performance
 bound measured under contention is not a measurement, and the number was not
 written down until it had been taken properly.
+
+## 62. The world does not come back, and the sentence that was never there (v19, playtest round 4)
+
+Four items from a play session. Three were asked for as live-world behaviour and
+one was reported as a missing feature; the missing feature turned out to be
+built, on screen, and invisible for a reason nobody had guessed.
+
+### What was actually removing the sentries
+
+The report was that a swarm closed in, the galactic forces killed it, and then
+the sentries were gone. All three candidates offered — dying to the swarm,
+`_give_up`, a rebuild — are wrong, and the code says so plainly.
+
+**It was the muster line, departed by `_close_muster`.** The instant the last
+column ship dies, every surviving line and column ship is put through `depart()`
+and shrinks away over 1.8 seconds. Eight GSA machines evaporating the moment
+they win reads exactly like "they were not there any more".
+
+The tell that pins it is the ambient floor. `SKIRMISH_HP_FLOOR` caps any damage
+from anything in `combatants`, so **no ordinary machine in this game can kill
+another one**; the muster's `and not muster` exemption is the only place in the
+game where NPC-versus-NPC fire is lethal. So "the galactic forces killed it"
+could only have happened inside a muster, and the swarm-kills-the-garrison
+reading is not merely unlikely, it is impossible.
+
+The standing garrison was never involved. It has no leash, no lifetime and no
+distance cull, and `_load_system` rebuilds it in the same frame it frees it — so
+a warp *restores* sentries. **The only thing that has ever removed one is the
+player**, which is §51's rule working exactly as written. What the playtest
+found is the half §51 did not cover: that rule is about depletion and says
+nothing about recovery, and a volume that only ever empties is backwards for one
+that is supposed to feel patrolled.
+
+### The Cordon re-forms, and the sentries do not
+
+The split is economic and it is not a compromise. A sentry flies the host
+engine's flag, so it is HOSTILE and killing one **pays** — `PACING_LOOP` budgets
+five sentry kills for an eight-minute loop and `MIDTIER` sits at 2.91 against a
+hard 3.00. A respawning sentry is an income source bolted to a loop at 97% of
+its ceiling. A GSA picket pays nothing, so the Cordon can come back on a clock
+and the pacing band cannot notice.
+
+It is also the half that was actually asked for. A sentry stands on a post; a
+**picket** is the thing that patrols. And the fiction was already written and
+unimplemented: `LINE BROKEN` has been promising *"expect elevated activity until
+we can re-form"* since stage 4.
+
+Three parts. A relief walks back onto an unmanned beat every 120 seconds,
+entering at the waypoint furthest from the player so relief never materialises
+in front of them. Survivors of a muster line are **kept** rather than departed,
+up to the same cap — which at full strength retains nobody, so it is a recovery
+mechanism and never an inflation one. And a standing sentry now orbits its post
+at 1.2u instead of holding still, because a post should read as crewed.
+
+**HORIZON-4 §5 said "no mid-session respawn (a respawn timer is a knob, not a
+design)" and §51 said "sentries do not respawn".** Both are reopened here
+deliberately rather than contradicted quietly: the first is now a cadence with a
+cap and a flag that pays nothing, and the second still holds for sentries, which
+is the clause that was carrying the economics.
+
+### The picket printer had a second half, open since stage 2a
+
+§52 closed it by gating **loot** on `pays`. `report_kill` was gated on
+`player_kill` alone and handed its kind straight to `contracts.on_kill`, so a
+Cordon picket dropped no crates and still advanced `cull_sentries` — 1,550
+salvage for three, 3,500 for six — bounded only by the route count and re-armed
+by every `_load_system`. The gate was written, and it was applied to one of the
+two payouts.
+
+A kill that does not pay now reports its own kind, the mechanism the muster
+already used: `kill_neutral` is a key no contract asks for.
+
+### Shooting a neutral brings its friends
+
+The bookkeeping half has been in `_die` since stage 1 — kill a non-hostile and
+its flag remembers. The reaction half did not exist: the machine you hit
+answered, and the four identical machines beside it watched.
+
+**25 units**, which is `PATROL_RELEASE`'s twin — the distance this codebase
+already calls "still this machine's business" — and 3.6x the OVERCHARGE blast,
+so the whole discharge fits inside it plus the ring of neighbours who saw it.
+The apex numbers were the wrong scale entirely: a charted system is 40–48u in
+radius, so 60 or 90 would mean one stray torpedo summoning the entire chart.
+
+**Aggro, never standing.** A kill keeps its existing −1; chip damage moves no
+band and writes nothing to the save. Any damage provokes, including one point of
+splash, because a hidden "how much is too much" threshold is a rule the player
+cannot read — and the response costs them thirty seconds of being shot at rather
+than a faction. This also leaves HORIZON-4 §2's settled GSA clamp untouched:
+nothing here moves a band, so the Cordon still cannot be farmed into HOSTILE,
+and docking safety and the tutorial are as they were.
+
+**It lapses, and lapsing has two halves.** Finding A6 is the standing warning —
+a pack that never stopped caring latched `_raid_active` for a session — and the
+grudge would have reintroduced it one layer down, because the skirmish clock
+*exempts the player* and therefore never clears an `_aggro` pointing at one.
+That was already true before this change: a picket the player clipped once
+stayed angry until it died or the player docked. The expiry clears the pointers
+as well as the clock, so the release is the fix for a latch that was already
+shipping.
+
+A provoked picket converges by having its reach widened from `PATROL_ENGAGE` to
+`WITNESS_RANGE` **inside `_worth_leaving_the_beat`** — not by a bypass one level
+up in `_walk_beat`, which would have left `THE BEAT IS THE ANCHOR` green while
+the property it names stopped holding. The anchor is still the waypoint, so no
+picket can get further from its route than it could before. And the chase now
+stops at the marker, closing a gap that predates the grudge: a waypoint 30u out
+plus a 25u release already reached past a 40u edge, and the live edge check was
+scoped to the `muster_line` group so nothing could see it.
+
+### The raider toll was built, on screen, and unreadable
+
+This is the item worth reading twice, because the answer is not the one the
+report implies. `show_parley` is called unconditionally and inline with the
+prompt; the plates render centred and unoccluded at every supported UI scale.
+Nothing was missing and nothing was off-screen.
+
+**The prompt named three answers and the UI shipped one control.** RUN was
+advertised and is not implemented inside a charted system at all — raiders
+spawned inside the marker carry no leash, so flying away never ends a raid — and
+FIGHT was an undocumented side effect of landing a shot. Refusal now has a
+plate, the prompt names what is on the screen, and the manual has a paragraph
+about tolls, which it did not: the word did not appear in that file, and the
+tutorial structurally cannot teach the parley because `interdiction_eligible`
+excludes an active tutorial.
+
+**And the sentence explaining the plates could be gone before they were read.**
+Three ways, in increasing order of how badly they explain the report:
+
+1. A fixed 3.2-second `create_timer` cleared the prompt at the halfway mark of a
+   six-second window.
+2. The prompt is one label with a dozen writers — barks, derelict range, seam
+   range, port range, traps — and every one of them writes and clears
+   unconditionally. `first_hostiles` is by definition unfired the first time a
+   player is ever interdicted, so it landed on the pilot least able to guess.
+3. **`prompt()` faded in over 0.2s and `clear_prompt()` faded out over 0.25s,
+   and neither killed the other's tween.** Two tweens on one property both keep
+   running, so a prompt raised inside a clear's fade got the right text, the
+   right visibility and **alpha 0.00**. `spawn_interdiction` calls
+   `close_consoles_for_raid` — which clears the prompt — one line before raising
+   the demand. The demand could extinguish its own explanation on arrival.
+
+The third is a playtester looking straight at a PAY button and reporting that
+there was no way to accept. The demand now **holds** the prompt line for its
+window, released through `hide_parley` so the lock cannot outlive the plates,
+and a suppressed bark is deferred rather than spent — a line that fires once
+ever must not be consumed by being silenced.
+
+The plates also grew from 40px to 44 against this project's own 42px tap floor,
+and the stack was re-laid at 8px gaps. `_bluff_button` had never been in
+`band_controls()`, so the layout probe had never measured the plate that sits
+directly above the toll button: it was four design px away against a rule of
+six, and at the maximum UI scale on a wide window it landed on `BROADCAST_TOP`,
+which a rift advisory can occupy at the same moment.
+
+**Why 531 assertions could not see any of it.** Every parley check tested the
+rendering — rect position, centre offset, button *text*. `pay_toll()` is
+exercised as a function in twelve places and the button was never pressed, its
+`visible` flag never read. The new line asserts the rule instead: for every verb
+the prompt names there is a visible, enabled, thumb-sized control whose press
+resolves the standoff, driven off the prompt text itself so the copy and the
+controls cannot drift apart.
+
+### Persuasion, and the feed that was already forbidden
+
+A fourth ladder beside archeology, smuggling and mining. The obvious feed —
+XP for settling a toll — is **already ruled out in writing**: this project cut
+two of smuggling's three feeds by arithmetic, and both cuts apply unchanged.
+Paying is the losing move, and escaping is a free loop between two systems. A
+skill must never pay for either.
+
+So the single feed is a parley **talked down**, and making that legal required
+giving it a stake. A Forged Manifest is consumed whether the bluff works or not
+precisely so a bluff cannot strictly dominate paying; a talk-down needs no
+manifest, so without a cost of its own it would be a free roll on every demand
+and levelling on it would be levelling on showing up. **A failed talk-down costs
+a step of Tithe standing** — the mirror of the step paying earns, denominated in
+something other than salvage.
+
+`bluff_odds` is now two ladders summed and capped: a persuasion component every
+pilot has, plus the manifest-gated smuggling component, which is byte-identical
+to what it always was. A smuggling-2 save holding a manifest still reads 40%, so
+**no existing save loses anything**, and `manifest_odds` is smuggling naming its
+own contribution rather than taking credit for the total.
+
+The non-zero base at tier 0 is also the fix for what the playtest hit: the bluff
+plate used to require smuggling 2 *and* an item, so a new pilot met a three-verb
+demand with one button. Everybody can try talking; being good at it is what is
+earned.
+
+`BLUFF GATED` had to be re-aimed rather than deleted, and it is worth recording
+why it was weak: it computed a `no_manifest` term and never used it, so the only
+clause deciding PASS was "odds are zero at smuggling 1" — a fact about the old
+gate rather than about the rule it was named for. The surviving property is that
+**the manifest half is worth nothing without both the tier and the item**, which
+is now four readings that each fail on their own, plus the cap.
+
+### Two harness defects found by adding one assertion
+
+A Cordon-strength check went red on a count nobody had questioned, and the cause
+was three probe pickets in `FACTIONTEST` that were **never freed** — each
+carrying a route, and therefore counted as a picket by every counter in the file
+for the rest of the run. That is the "inherits state from the one above it"
+shape the README warns about, sitting in the suite that warns about it.
+
+And a new assertion printed its own format string. Nine placeholders, nine
+arguments, two of them transposed — so GDScript returned the unsubstituted
+template, the line contained no `-> PASS` or `-> FAIL`, and the sweep counted it
+as neither. It was caught by the run count being one short of what had been
+added, not by anything going red. **A malformed assertion is a silent absence,
+and the PASS counter cannot tell it from a check that was never written.**
+
+### The sweep after round 4
+
+**57 runs | 546 PASS | 0 FAIL | 0 script errors | save intact.** Fourteen lines
+up, and the run count moves 56 → 57 because `SAVETEST=migrate18` is new. Every
+one of the fourteen was red-verified: 24 defect injections across two rounds,
+each confirming the naming assertion — and, where the injection was narrow
+enough to expect it, only that assertion — went red.
+
+`MIDTIER` read **2.95 / 2.94 / 2.91 / 2.90**, mean **2.925**, against a
+pre-round-4 pooled mean of 2.918 and a recorded maximum of 2.95. No new maximum
+and no movement in the mean, which is what "the Cordon pays nothing" was
+supposed to buy. Four samples, on an idle machine, because the README's own note
+says a single reading of 2.95 is the top of the distribution rather than a
+regression.
+
+### And the "1 FAIL" was stale
+
+The baseline this round started from was recorded as 531 PASS / 1 FAIL, the one
+failure being `HOLDTEST`'s `THE READOUT FOLLOWS THE HOLD`. It passed in the
+round-4 sweep — and it also passes on a checkout of **unmodified `3843b43`**,
+run in a throwaway worktree for no other purpose than to settle the question. So
+the true starting point was 532 / 0, and nothing in this round touched it.
+
+Two explanations were written down before that control was run. The first was
+"round 4 fixed it". The second, offered after the first was doubted, was that
+round 4's change to what a non-hostile kill *reports* had freed a contract slot
+— and `_run_hold_test` contains no kills at all, so that one was impossible on
+its face rather than merely unproven.
+
+The lesson is not "check before claiming", which this file already says four
+times. It is narrower and worth having: **a baseline is a measurement with an
+age on it.** This one was accurate when it was taken and had quietly stopped
+being true, and because a stale baseline is indistinguishable from a live one in
+the file that records it, two plausible causal stories arrived to fill the gap
+before anybody thought to re-measure the thing itself.
+
+## 63. The ladder that levelled in silence (v19, playtest round 5)
+
+Two questions after round 4: is "Colonies" implemented, and why is archeology
+the only skill that levels?
+
+### Colonies is specced, and it is not in the game
+
+Not half-built — absent. There is no `hyper_structure.gd`, no `hyper_positions`,
+no `COLONY_JUMP*`, no `colonies` key. The design is real and it is the user's
+own, but it lives in a plan file rather than in `docs/`: Stage 6 of "Pyxis —
+Horizon: The Hunt". That horizon shipped stages 1–3 (§38, §39, §42) and stopped;
+stage 4 (per-PYX deep identity) and stage 5 (waypoint beacons) are unbuilt too,
+and the save versions the plan reserved were spent elsewhere — v17 became the
+`apex_down` grandfather and **v18 became the faction matrix.** Horizon 4 was
+built instead of the Hunt's back half, and the plan's own cut order had already
+nominated Colonies as the first thing to defer.
+
+The two things that get mistaken for it are both cosmetic: CINDERWORKS carries
+`"kind": "colony"`, which selects a silhouette — domes on a rock instead of a
+ring station — and THE DRIFT's landmark is "the frame of a colony", which §32
+states is scenery with no loot and no collision.
+
+### The skills answer was a save file, not a code read
+
+Reading the code would have produced a plausible essay about tuning. The real
+save produced arithmetic:
+
+- **archeology 48 xp = 12 hulks × 4 per breach, exactly.** The other feed —
+  reading salvage at +1 — had contributed **zero** in 68 minutes.
+- **mining 22 xp with `seams_cut` empty.** Every point came from the deep, and
+  no charted seam had ever been cut.
+- **smuggling 0, while carrying two `stolen`.**
+- `tolls_paid: 0`.
+
+**The headline is that mining had already reached tier 1 and never said so.**
+Archeology toasts a tier-up in `derelict.gd`, smuggling in `port_panel.gd`,
+persuasion in `main.gd` — and `mineable_seam.gd` called `mark_mining(band)` and
+**discarded the bool**, leaving a captain's-log line the player had to go and
+read. Four stages of a ladder levelling in silence, reported from the cockpit as
+"only archeology progresses". That is what an unannounced ladder looks like, and
+it is not a tuning problem.
+
+### Three reachability defects behind it
+
+**Charted mining cannot reach tier 1, and that is the design.** There are eleven
+authored seams in the whole game, every one band 0, worth `maxi(band, 1)` = 1 xp,
+each a save-persisted one-shot: **11 lifetime xp against a threshold of 18.**
+`_build_charted_seam` already calls charted mining "a WINDFALL rather than an
+income", so the numbers are right and the silence was the defect. The tier-0 line
+now names the marker.
+
+**The top mining perk unlocked only once the ladder was finished.**
+`MINING_DEEP_TIER` was 3 — which *is* `MINING_TIERS`' max index — so band-4
+access, the only 4-xp rung on the board, arrived when there was nothing left to
+earn with it. The tuning note prices the ladder in "sessions of working the
+Quiet", a rate no live ladder could reach: **the constant and the comment
+contradicted each other, and the comment was the honest one.** Access and the
+core sample swapped tiers, so every rung still buys something.
+
+**And paying a toll permanently deleted the interdiction.**
+`interdiction_eligible` required the Tithe to be *exactly* HOSTILE. Baseline −6,
+HOSTILE spans −6..−4, `pay_toll` grants +1 — so **three paid tolls walked the
+banner to WARY and no raid ever spawned again**, taking the parley and
+PERSUASION's only feed with it, for the rest of the save. The most reasonable
+answer to a demand switched the encounter off, and a closed tap is
+indistinguishable from a run of quiet dice.
+
+Round 4 made the parley discoverable and added a ladder fed by winning it. **The
+feature and the trap shipped in the same session** — which is the argument for
+playing a build rather than sweeping it.
+
+The gate is a gradient now: WARY-or-worse is eligible, and `TITHE_WARY_ODDS`
+(0.4) prices the difference. Paying still buys real peace; peace is a rate rather
+than a switch, and no sequence of legal play can end the encounter for good.
+
+### On assertions written over sets
+
+Three of the four new checks assert over a *set* rather than an instance, which
+is this file's "assert the invariant, not the pair" rule applied to a case that
+kept producing instances: every ladder names a verb at tier 0 **and the count is
+asserted too**, because "every line in this list says what to do" is satisfied
+perfectly by a list somebody forgot to add to; and every mining perk must sit on
+a reachable tier **with the top rung still buying something**, so a future
+reshuffle that strands any perk fails, not just the one that was wrong.
+
+`A MINING TIER SAYS SO` carries its own negative control: a cut that does *not*
+tier must still print the haul, or a build that toasts the skill line after every
+single cut would satisfy the headline clause while destroying the readout the
+player is actually cutting for.
+
+### The copy check accepted a noun, and GSATEST had already written the fix
+
+`EVERY LADDER NAMES ITS VERB AT TIER 0` first searched each line for verb
+vocabulary anywhere in it. Red-verify put the old mining line back — `ORE READS
+AS GREY ROCK` — and the assertion **stayed green**, because "READS" contains
+"READ". A line that instructs nobody satisfied a check named for instructions.
+
+`GSATEST`'s `NO IMPERATIVE` had already solved this, in the opposite direction
+and with the reasoning written out: *"Checked on the FIRST word, not on
+vocabulary anywhere in the line. English imperatives lead with their verb …
+a contains-check would ban the noun too, and the rule is about mood."* The
+Commission's rule is that a stage must **not** open on a verb; a skill line
+**must**. Same test, opposite sign — and the second one was written from scratch,
+badly, next door to a working precedent.
+
+It now checks the first word of the perk clause and prints what each line opens
+on (`archeology:breach smuggling:fence mining:cut persuasion:talk`), so the
+reading is legible rather than a bare boolean. Re-verified: restoring mining's
+line reports `mining:ore` and goes red; restoring archeology's reports
+`archeology:reads` and goes red.
+
+**One injection stayed green and should have.** Persuasion's pre-existing line
+already opened on `TALK`, so the tier-0 variant added for it is better copy and
+was never a fix. The check reporting no defect where there is none is the check
+working; recorded because "all three verified" would have been the easy sentence
+and the false one.
+
+### And a literal wearing a derivation's comment
+
+The mining-tier probe first staged from `const MINING_TIER_PROBE_XP := 15` under
+a note claiming it was "derived rather than a literal, so re-tuning the ladder
+cannot leave the probe on the wrong side of the rung". It was a literal 15. That
+is this project's most-repeated failure — a comment asserting the opposite of the
+code — authored **into a check written to catch that class of thing**. It reads
+`MINING_TIERS[1] - 3` now.
+
+### The sweep after round 5
+
+**57 runs | 550 PASS | 0 FAIL | 0 script errors | save intact.** Four up, which
+is exactly the four assertions this round added. Nine defect injections
+red-verified them, and **two of the nine found faults in the new assertions
+rather than in the code** — the contains-check above, and a probe staged from a
+literal wearing a derivation's comment.
+
+`MIDTIER` read **2.92 / 2.90 / 2.89 / 2.90**, mean **2.9025**, against round 4's
+2.925 and a hard 3.00. No new maximum, and the mean moved down rather than up —
+which is what "Part A changes no rate" was supposed to look like. Four samples on
+an idle machine, per this file's own rule that one reading is not evidence.
+
+One number was briefly written down wrong before being taken properly: a summary
+was computed from placeholder values typed in place of the measured ones, and
+printed a mean of 2.9225 from samples that did not exist. Caught on re-reading
+the harness output. Worth recording next to §61's dismissal-without-checking,
+because it is the same failure in miniature — the arithmetic was fine and the
+inputs were invented, which a plausible-looking answer hides perfectly.
+
+## 64. What is specced and not built
+
+Every other section in this file records something that SHIPPED. That is a
+useful document and a misleading one, because a reader who searches it for gaps
+finds none — the unbuilt work is not written down, so it cannot show up as
+unbuilt. `HORIZON-4-FACTIONS.md` says "All six are built"; the README's layout
+table said `HORIZON-3-COMMISSION.md` was "not built" **eight months after it
+shipped as §28**. The repo was wrong in both directions at once, and neither
+error was visible from inside it.
+
+This section is the inventory. **It is the only forward-looking list in the
+repo, and it is load-bearing: if you build or defer something, update it in the
+same commit.**
+
+### Outstanding
+
+**The Hunt, stages 4–6.** The horizon is specced in full in
+`~/.claude/plans/i-have-indeed-tested-fuzzy-parnas.md` — outside the repo, which
+is most of why these went unnoticed. Stages 1–3 shipped as §38, §39 and §42.
+
+| stage | what | reserved | status |
+|---|---|---|---|
+| 4 | per-PYX deep identity + deep rifts (landmark/station weights, per-system rift depth) | no save bump | **not built** — no `"deep"` block in `system_db.gd` |
+| 5 | waypoint beacons (drop/pick-up at depth, dots on the survey plot) | save v17 | **not built** — no `BEACON_STOCK`, no `TIER_BEACON` |
+| 6 | hyper-structures and **Colonies** (claim past 1500u, then in-system warp) | save v18 | **not built** — no `hyper_structure.gd`, no `hyper_positions`, no `COLONY_JUMP*`, no `colonies` key |
+
+**The save versions they reserved were spent by a different horizon**: v17
+became the `apex_down` grandfather and v18 became the faction matrix. Horizon 4
+was built instead of the Hunt's back half. That was a legitimate choice — the
+Hunt plan's own cut order ends *"defer Colonies to their own horizon"* — but
+nothing recorded it, so "v18" pointed at two different features depending on
+which document you were holding.
+
+Stage 6 is **not blocked by 4 and 5**: it needs `run_seed` (stage 1), the
+`lair_pos` salted-placement precedent (stage 2) and the deep-space streamer, all
+of which shipped. Beacons and per-PYX identity can stay unbuilt indefinitely.
+
+### Built, despite what the docs said
+
+`HORIZON-3-COMMISSION.md` — **built**, and recorded as §28. `commission_db.gd`
+exists with 28 call sites across `game_state.gd`, `main.gd` and `port_panel.gd`,
+and `GSATEST` carries a full suite for it. The README's "not built" line has been
+corrected.
+
+Audited 2026-08-04 by cross-checking every Pyxis plan file against the code for a
+sentinel symbol per feature: the hold console, mining, the expanse, the hunt, the
+commission, damage control and sections all resolve. Nothing else is outstanding.
+
+### Why this is not an assertion
+
+The instinct in this codebase is to make a claim checkable rather than trust it,
+and that instinct is right often enough that departing from it needs a reason.
+The reason is that every honest version costs more than it returns: parsing this
+table out of markdown at runtime makes the harness depend on prose, and asserting
+"symbol X does not exist" needs reflection GDScript does not offer for free.
+A brittle check here would be a fifth entry on this session's list of assertions
+that were weaker than their names.
+
+So it is a **discipline, stated once**: the inventory is part of the commit that
+changes it. The failure mode it replaces — a repo that implies completeness by
+omission — was silent and lasted months; this one is at least visible in a diff.

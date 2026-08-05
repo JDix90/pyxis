@@ -81,6 +81,20 @@ const PATROL_RELEASE := 25.0
 
 var _patrol_i := 0
 
+# --- the beat a STANDING machine walks (v18, playtest round 4) ----------------
+# How far a station-keeping sentry orbits its post. 0 means "hold exactly", which
+# is every machine in the game except the authored garrison — see the opt-in
+# argument in _process. Set by the spawner before add_child, like `patrol`.
+var beat_radius := 0.0
+# The radius the sentry spawner uses, as a const so SENTRY POSTS can compute the
+# tolerance it checks instead of restating a literal that would drift the moment
+# this number moved. 1.2u is visible on a 720-wide phone (~36px of travel at the
+# usual framing) and small enough that a post is still unmistakably a post.
+const SENTRY_BEAT_RADIUS := 1.2
+# Radians per second. 0.26 is a full circle in ~24s: at 1.2u that is 0.31 u/s,
+# an order under PATROL_SPEED, because this is breathing rather than patrolling.
+const BEAT_RATE := 0.26
+
 # Whether this machine belongs to a muster (v18, stage 4). Set by the event
 # spawner; false on everything else, which is every machine that shipped.
 var muster := false
@@ -103,6 +117,21 @@ var _enemies_version := -1
 var _aggro: Node3D = null
 var _target: Node3D = null
 var _retarget_t := 0.0
+# THE GRUDGE (v18, playtest round 4). Seconds of "this machine is angry at the
+# player because the player shot one of us". Zero on everything by construction,
+# so nothing that has not been provoked carries any of this.
+#
+# WHY IT NEEDS ITS OWN CLOCK when _aggro already exists: the skirmish clock in
+# _combat_target exempts the player deliberately, so an _aggro pointing at the
+# player is never cleared by it. Before this, a picket the player clipped once
+# stayed angry until it died or the player docked — unbounded in the field, and
+# nothing said so. This is the release that was missing.
+var _grudge := 0.0
+# The system's chart edge, resolved on first use and never again — a picket dies
+# with SystemRoot, so it cannot outlive the number it cached. -1 means "not
+# asked yet"; 0 means "asked, and there was no main to ask", which disables the
+# clamp rather than clamping every target to the origin.
+var _edge := -1.0
 # How often the sentry re-asks "who is nearest that I hate". Between scans it
 # keeps its answer, which bounds the group walk the same way the drift bounds
 # its wander.
@@ -230,12 +259,32 @@ func _process(delta: float) -> void:
 		if who != null and global_position.distance_to(who.global_position) > despawn_radius:
 			_give_up()
 			return
+	# THE GRUDGE RUNS DOWN BEFORE THE GUN IS ASKED, so the frame a grudge expires
+	# is a frame this machine does not fire on the player.
+	if _grudge > 0.0:
+		_grudge = maxf(_grudge - delta, 0.0)
+		if _grudge <= 0.0:
+			_release_grudge()
 	rotation.y += delta * 0.8
 	var t := Time.get_ticks_msec() / 1000.0
 	var wander := Vector3(sin(t * 0.5 + _drift_phase), 0, cos(t * 0.4 + _drift_phase)) * 0.4
 	if patrol.is_empty():
-		# Station-keeping: the shipped behaviour, unchanged.
-		global_position = _home + wander
+		# Station-keeping. A POST IS A PLACE YOU STAND, NOT A PLACE YOU FREEZE
+		# (v18, playtest round 4): an authored sentry walks a slow ring around
+		# its post so a held lane reads as crewed rather than as scenery.
+		#
+		# OPT-IN PER NODE, never a change to this branch's shape, and that is
+		# load-bearing rather than fussy. Deep guards are this same class
+		# station-keeping at _home, and GUARD POSTS requires each within 0.6u of
+		# its PLANNED post and outside Derelict.CRACK_RANGE of the breach point
+		# — a guard that had picked up a wander would drift inside crack range
+		# and make a guarded hulk unbreachable. `beat_radius` is 0 on every
+		# machine the sentry spawner does not set it on.
+		var beat := Vector3.ZERO
+		if beat_radius > 0.0:
+			var a := t * BEAT_RATE + _drift_phase
+			beat = Vector3(cos(a), 0.0, sin(a)) * beat_radius
+		global_position = _home + beat + wander
 	else:
 		# THE TWO BRANCHES CANNOT BE UNIFIED, and the difference is the bug that
 		# would otherwise ship. Station-keeping ASSIGNS `_home + wander`; a
@@ -271,6 +320,51 @@ func fights_the_player() -> bool:
 		return true
 	var p := get_tree().get_first_node_in_group("player")
 	return p != null and (_target == p or _aggro == p)
+
+func enter_beat(i: int) -> void:
+	# Join the route at waypoint `i` and walk ON from there rather than turning
+	# round to reach waypoint 0. The re-form enters at the waypoint furthest from
+	# the player so relief never materialises in front of them, and a picket that
+	# then immediately walked back past them would undo exactly that.
+	if patrol.is_empty():
+		return
+	_patrol_i = (i + 1) % patrol.size()
+
+
+func provoke(who: Node3D) -> void:
+	# THE REACTION HALF of "shooting something that was not shooting at you is
+	# noticed". The bookkeeping half has been in _die since stage 1; this is what
+	# the ships beside the one you hit actually do about it. Called on the victim
+	# AND on its neighbours, from Main.witness_attack.
+	#
+	# AGGRO, NOT STANDING, and the separation is the whole design. The matrix is
+	# persisted, clamped and symmetric, and it moves on KILLS (_die's -1). A
+	# grudge is a session-only pointer with an expiry that is never written to a
+	# save. One stray splash must not be able to author a permanent faction state
+	# in the player's file, and the GSA floor (HORIZON-4 §2) has to keep meaning
+	# exactly what it says — which it does, because nothing here touches a band.
+	if _dying or who == null or not is_instance_valid(who):
+		return
+	_aggro = who
+	_grudge = FactionDB.GRUDGE_TIME
+
+
+func _release_grudge() -> void:
+	# A GRUDGE THAT LAPSES HAS TO LET THE SHIP GO, and this is the half that is
+	# easy to leave out. _tick_interdiction paid for learning it: a pack whose
+	# flag had stopped wanting the player kept its target, drifted forever, and
+	# latched _raid_active for the session — taking every later raid and muster
+	# with it. Zeroing the timer without clearing the pointers reproduces that
+	# one layer down, because fights_the_player() reads _aggro and _target, not
+	# the clock. The machine would stay a live enemy with nothing left saying why.
+	var p := get_tree().get_first_node_in_group("player")
+	if p == null:
+		return
+	if _aggro == p:
+		_aggro = null
+	if _target == p:
+		_target = null
+
 
 func _refresh_enemies() -> void:
 	if _enemies_version == GameState.faction_version:
@@ -330,8 +424,41 @@ func _worth_leaving_the_beat(target: Node3D) -> bool:
 	# quietly went unguarded. The waypoint it is walking to is the anchor, so a
 	# contact the ROUTE never comes near is a contact the Cordon never chases,
 	# however close the picket happens to drift mid-leg.
+	# AND THE CHASE STOPS AT THE MARKER. The band-1 beacon has promised since v13
+	# that security patrols do not operate past it, THE CORDON STOPS AT THE
+	# MARKER makes that true of the authored ROUTES, and THE LINE IS THE EDGE
+	# makes it true of a muster line — but nothing has ever made it true of a
+	# picket in PURSUIT, and a waypoint 30u out plus PATROL_RELEASE 25 already
+	# reaches past a 40u edge. The grudge below makes that trivially reachable on
+	# purpose, so it is closed here rather than left as a gap the new feature
+	# happens to widen. It also hands the player the out the fiction already
+	# advertises: cross the line and the Cordon does not follow you over it.
+	if _edge < 0.0:
+		var m := get_tree().get_first_node_in_group("main")
+		# Resolved once. A picket is a child of SystemRoot and dies with it on
+		# every _load_system, so it can never outlive the edge it cached.
+		_edge = float(m.chart_edge()) if m != null and m.has_method("chart_edge") else 0.0
+	if _edge > 0.0 and Vector2(target.global_position.x,
+			target.global_position.z).length() > _edge:
+		return false
 	var post: Vector3 = patrol[_patrol_i]
+	# A GRUDGE WIDENS THE REACH AND NEVER MOVES THE ANCHOR. Measuring from the
+	# picket instead of from the route is the defect this whole function exists
+	# to prevent, so a provoked picket asks the same question about the same
+	# waypoint — it is only willing to answer yes from further out.
+	#
+	# PATROL_ENGAGE (12) is the price of picking up a fight it was not in. A
+	# machine that has just watched the player shoot one of its own is already in
+	# the fight, so it gets WITNESS_RANGE — the same 25 that provoked it, and the
+	# same 25 PATROL_RELEASE already lets it chase to. No picket ends up further
+	# from its route than it could before this existed.
+	#
+	# NOT a bypass in _walk_beat, deliberately: THE BEAT IS THE ANCHOR calls this
+	# function directly, so a grudge implemented one level up would leave that
+	# assertion green while the property it names quietly stopped holding.
 	var reach := PATROL_RELEASE if _target == target else PATROL_ENGAGE
+	if _grudge > 0.0 and target.is_in_group("player"):
+		reach = maxf(reach, FactionDB.WITNESS_RANGE)
 	return post.distance_to(target.global_position) <= reach
 
 
@@ -515,6 +642,25 @@ func take_damage(amount: float, attacker: Node3D) -> void:
 	if attacker != null and attacker != self \
 			and (not ("faction" in attacker) or String(attacker.faction) != faction):
 		_aggro = attacker
+	# AND ITS FRIENDS SAW IT (v18, playtest round 4). Asked on the BAND rather
+	# than through hostile_to_player(), and the difference is not cosmetic: the
+	# line above has already pointed this machine at the player, so
+	# fights_the_player() answers true and the question would be self-fulfilling.
+	# The band is the same test _die uses to decide whether a kill pays, so
+	# "was this a neutral" has one definition in this file rather than two.
+	#
+	# EVERY player damage path arrives here, which is why this is the only hook
+	# needed: _damage_target passes the ship itself and the arc chain routes
+	# through it, a torpedo carries `shooter`, and the OVERCHARGE discharge
+	# passes `self`. Splash and chain are covered by construction, and splash is
+	# the case this was asked for.
+	if attacker != null and is_instance_valid(attacker) \
+			and attacker.is_in_group("player") \
+			and GameState.faction_band(faction, FactionDB.SURVEYOR) \
+				!= FactionDB.Band.HOSTILE:
+		var witness := get_tree().get_first_node_in_group("main")
+		if witness != null and witness.has_method("witness_attack"):
+			witness.witness_attack(self, faction, attacker)
 	hp -= amount
 	# THE AMBIENT FLOOR. Fire from another machine wears this one down but can
 	# never finish it — see FactionDB.SKIRMISH_HP_FLOOR. Applied to the RESULT
@@ -610,10 +756,29 @@ func _die(attacker: Node3D) -> void:
 	var rig := tree.get_first_node_in_group("camera_rig")
 	var main := tree.get_first_node_in_group("main")
 	if player_kill and main and main.has_method("report_kill"):
-		# A muster kill reports its OWN kind, so no contract can match it —
-		# "kill_muster" is a key nothing in contract_db asks for. The column is
-		# the fastest kill_swarm filler in the game and must not count.
-		main.report_kill("muster" if muster else "sentry")
+		# A kill THAT DOES NOT PAY REPORTS ITS OWN KIND, so no contract can match
+		# it — "kill_muster" and "kill_neutral" are keys nothing in contract_db
+		# asks for. The column is the fastest kill_swarm filler in the game and
+		# must not count.
+		#
+		# THE NEUTRAL CASE IS THE HALF §52 LEFT OPEN, and it was live until now.
+		# That section closed the picket printer by gating LOOT on `pays` — but
+		# report_kill was gated on `player_kill` alone, and contracts.on_kill
+		# does not ask a second question. So a Cordon picket dropped no crates
+		# and still ticked `cull_sentries` (1,550 for three) and
+		# `cull_sentries_big` (3,500 for six), bounded only by the route count
+		# and re-armed by every _load_system. Warp out and back and the contract
+		# half of the piñata row was still there.
+		#
+		# Derived from `pays` rather than from a fourth hand-written condition, so
+		# the question "is this kill worth anything" has exactly one answer in
+		# this function and a later payout cannot disagree with the contract tick.
+		var kind := "sentry"
+		if muster:
+			kind = "muster"
+		elif not pays:
+			kind = "neutral"
+		main.report_kill(kind)
 	# AND WHOEVER THIS WAS SHOOTING AT MAY OWE THE PLAYER FOR IT. Read here
 	# because _aggro and _target are still valid -- the group removals above
 	# touch neither -- and gone a frame later.

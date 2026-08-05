@@ -52,10 +52,24 @@ static func begin(tree_node: Node) -> void:
 static func fire(key: String) -> void:
 	if not LINES.has(key) or GameState.has_seen_bark(key):
 		return
-	GameState.mark_bark(key)
 	var tree := Engine.get_main_loop() as SceneTree
 	if tree == null:
 		return
+	# NOT OVER A LIVE DEMAND (v18, playtest round 4). A bark writes straight to
+	# the same prompt label the parley uses, so `first_hostiles` firing on the
+	# raiders that just arrived replaced the sentence explaining the plates —
+	# with the plates still on the screen and nothing left saying what they were.
+	# The first raid a player ever meets is exactly when that bark is still
+	# unfired, so this landed on the pilot least able to guess.
+	#
+	# BEFORE mark_bark, which is the whole reason this is not one line higher.
+	# Marking and then declining to show it would spend an onboarding line the
+	# player never saw — a bark that fires once ever must not be consumed by
+	# being suppressed. Deferred, not cancelled: the next hostiles get it.
+	var m := tree.get_first_node_in_group("main")
+	if m != null and m.has_method("parley_live") and m.parley_live():
+		return
+	GameState.mark_bark(key)
 	var hud := tree.get_first_node_in_group("hud")
 	if hud == null or not hud.has_method("prompt"):
 		return

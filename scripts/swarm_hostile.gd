@@ -65,6 +65,11 @@ const RETARGET_INTERVAL := 0.4
 # was posted to stop.
 var _skirmish := 0.0
 var _skirmish_rest := 0.0
+# The grudge, same contract and same constant as Hostile's — FactionDB.GRUDGE_TIME
+# carries the reasoning. A dart needs it for the case a sentry does not: a convoy
+# hauler is a SwarmHostile, and a convoy is the commonest thing an OVERCHARGE
+# discharge catches by accident.
+var _grudge := 0.0
 
 # --- the march (v18, stage 4) ------------------------------------------------
 # WHERE THIS SHIP IS GOING, if it is going anywhere. Vector3.ZERO means "not
@@ -199,6 +204,12 @@ func _physics_process(delta: float) -> void:
 	var player: Node3D = get_tree().get_first_node_in_group("player")
 	if not player:
 		return
+	# THE GRUDGE RUNS DOWN BEFORE THE TARGET IS PICKED, so the frame it expires
+	# is a frame this ship is already not hunting the player. See Hostile.
+	if _grudge > 0.0:
+		_grudge = maxf(_grudge - delta, 0.0)
+		if _grudge <= 0.0:
+			_release_grudge()
 	var target := _combat_target(delta)
 
 	# THE MARCH. Held until something is actually in reach: a column crossing
@@ -363,6 +374,29 @@ func fights_the_player() -> bool:
 	var p := get_tree().get_first_node_in_group("player")
 	return p != null and (_target == p or _aggro == p)
 
+func provoke(who: Node3D) -> void:
+	# Same contract as Hostile.provoke, which carries the reasoning: aggro with
+	# an expiry, never a band. A provoked dart needs no beat exception — its
+	# whole movement model is "orbit whatever _target holds", so pointing it at
+	# the player IS the convergence.
+	if _dying or who == null or not is_instance_valid(who):
+		return
+	_aggro = who
+	_grudge = FactionDB.GRUDGE_TIME
+
+
+func _release_grudge() -> void:
+	# The pointers, not just the clock — see Hostile._release_grudge for what
+	# clearing one without the other reproduces.
+	var p := get_tree().get_first_node_in_group("player")
+	if p == null:
+		return
+	if _aggro == p:
+		_aggro = null
+	if _target == p:
+		_target = null
+
+
 func _refresh_enemies() -> void:
 	if _enemies_version == GameState.faction_version:
 		return
@@ -464,6 +498,15 @@ func take_damage(amount: float, attacker: Node3D) -> void:
 	if attacker != null and attacker != self \
 			and (not ("faction" in attacker) or String(attacker.faction) != faction):
 		_aggro = attacker
+	# AND ITS FRIENDS SAW IT — see Hostile.take_damage for the whole argument,
+	# including why this asks the BAND rather than hostile_to_player().
+	if attacker != null and is_instance_valid(attacker) \
+			and attacker.is_in_group("player") \
+			and GameState.faction_band(faction, FactionDB.SURVEYOR) \
+				!= FactionDB.Band.HOSTILE:
+		var witness := get_tree().get_first_node_in_group("main")
+		if witness != null and witness.has_method("witness_attack"):
+			witness.witness_attack(self, faction, attacker)
 	hp -= amount
 	# THE AMBIENT FLOOR. Fire from another machine wears this one down but can
 	# never finish it — see FactionDB.SKIRMISH_HP_FLOOR. Applied to the RESULT
@@ -569,7 +612,16 @@ func _die(attacker: Node3D) -> void:
 
 	var main := get_tree().get_first_node_in_group("main")
 	if player_kill and main and main.has_method("report_kill"):
-		main.report_kill("muster" if muster else "swarm")
+		# A kill that does not pay reports its own kind — see Hostile._die for
+		# the whole argument. "kill_muster" and "kill_neutral" are keys nothing
+		# in contract_db asks for, so a convoy hauler or a muster column ship
+		# cannot fill `sweep_swarm` (840 for six) the way a hostile swarm does.
+		var kind := "swarm"
+		if muster:
+			kind = "muster"
+		elif not pays:
+			kind = "neutral"
+		main.report_kill(kind)
 	# AND WHOEVER THIS WAS SHOOTING AT MAY OWE THE PLAYER FOR IT. Read here
 	# because _aggro and _target are still valid -- the group removals above
 	# touch neither -- and gone a frame later.

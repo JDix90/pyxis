@@ -434,18 +434,45 @@ func _build_idle() -> void:
 	# The pilot's three skill lines, beside the read buttons they explain --
 	# which is the reason they were worth moving with the manifest rather than
 	# leaving in a console about modules.
+	# BOTH HALVES, and only one of them was here. This counted salvage the pilot
+	# can read RIGHT NOW and said nothing otherwise — so a hold full of Quiet
+	# salvage, which is what a deep run comes home with, printed no line at all.
+	# The pilot sees blocks they cannot open, no explanation, and no reason to
+	# believe reading is a verb the game has. A playtester finished 68 minutes
+	# with archeology fed ENTIRELY by breaching and precisely zero by reading.
+	#
+	# A thing you can see and cannot have is a goal; a thing that is simply
+	# absent is nothing at all — mineable_seam.gd's locked-seam prompt already
+	# makes that argument, and this is the same case one console over.
 	var readable := 0
+	var locked := 0
+	var locked_need := 0
 	for gid in GameState.cargo:
 		var g := String(gid)
-		if CommodityDB.is_salvage(g) and GameState.can_read(g, false):
+		if not CommodityDB.is_salvage(g):
+			continue
+		if GameState.can_read(g, false):
 			readable += GameState.cargo_count(g)
+		else:
+			locked += GameState.cargo_count(g)
+			# What tier WOULD open it in the field. can_read is
+			# `band <= archeology + (1 if at_lab else 0)`, so the field
+			# requirement is the band itself — derived rather than restated, so
+			# a change to the rule cannot leave this line quietly lying.
+			locked_need = maxi(locked_need, CommodityDB.band_of(g))
 	if readable > 0:
 		_strip.add_child(UIKit.label(
 			"%d UNIT%s READABLE ABOARD — TAP ONE TO OPEN IT." % [
 				readable, "" if readable == 1 else "S"],
 			UIKit.SIZE_FINE, Palette.TEAL, HORIZONTAL_ALIGNMENT_LEFT))
-	var pilot := UIKit.label("%s\n%s\n%s" % [GameState.archeology_line(),
-		GameState.smuggling_line(), GameState.mining_line()],
+	if locked > 0:
+		_strip.add_child(UIKit.label(
+			"%d UNIT%s TOO DEEP TO READ HERE — ARCHEOLOGY %d, OR A LAB AT A PORT." % [
+				locked, "" if locked == 1 else "S", locked_need],
+			UIKit.SIZE_FINE, Palette.AMBER_DIM, HORIZONTAL_ALIGNMENT_LEFT))
+	var pilot := UIKit.label("%s\n%s\n%s\n%s" % [GameState.archeology_line(),
+		GameState.smuggling_line(), GameState.mining_line(),
+		GameState.persuasion_line()],
 		UIKit.SIZE_FINE, Palette.AMBER_DIM, HORIZONTAL_ALIGNMENT_LEFT)
 	pilot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	# THE WIDTH FLOOR IS NOT COSMETIC. An autowrapping Label with no minimum

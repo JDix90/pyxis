@@ -183,6 +183,11 @@ const RAID_MIN_HOLD := 1500        # below this you are not worth the fuel
 const RAID_VALUE_SCALE := 40000.0  # hold value at which the odds hit the ceiling
 const RAID_MIN_CHANCE := 0.05
 const RAID_MAX_CHANCE := 0.35
+# What a WARY Tithe is worth against a HOSTILE one — see tithe_still_wants_you.
+# 0.4 rather than something token: paying tolls has to be felt as peace, or the
+# +1 it books is a stat with no consequence. It is not zero because a rate that
+# reaches zero is a switch, and this one used to be.
+const TITHE_WARY_ODDS := 0.4
 # ONE VOLLEY IS ONE ANNOUNCEMENT. The timer RESTARTS on every shift, so a
 # six-ship pack reports once -- when the shooting stops -- rather than six
 # times. HUD.show_toast has no queue and no throttle by design, so without
@@ -237,6 +242,22 @@ const MUSTER_CHANCE := 0.25
 # Minimum spacing, independent of the roll. At a 25% chance every five minutes
 # the gap between musters is geometric and can be two rolls; a hard floor stops
 # the rare double from reading as a bug.
+# --- the Cordon re-forms (v18, playtest round 4) -----------------------------
+# How long between one picket returning to its beat and the next. The LINE
+# BROKEN broadcast has promised "expect elevated activity until we can re-form"
+# since stage 4 and nothing implemented it; §51 recorded that sentries do not
+# respawn and that this was fine "because clearing a post is work the player
+# did", which is true of the DEPLETION and says nothing about the RECOVERY. A
+# playtest found the gap from the other side: charted space only ever gets
+# emptier, which is backwards for a volume that is supposed to feel patrolled.
+#
+# 120s per ship, capped at the routes the system authored, so a fully cleared
+# Cordon takes four to eight minutes to stand back up — long enough that killing
+# one is still a thing you did, short enough to be visible inside a session. It
+# is deliberately slower than PACING_MINUTES (8.0) is long, so a player cannot
+# treat the beat as a queue.
+const CORDON_REFORM_INTERVAL := 120.0
+
 const MUSTER_COOLDOWN := 420.0
 # Between the warning and the first ship. Long enough to finish reading the
 # broadcast, close a console, and decide whether to fly out or stay in.
@@ -391,6 +412,12 @@ var _muster_origin := Vector3.ZERO     # where the column gathers, 75u out
 var _muster_released := 0
 var _muster_wave_t := 0.0
 var _muster_elapsed := 0.0
+
+# Counts down to the next picket returning to an unmanned beat. Pinned to a huge
+# value by any harness that measures a census, the way _wave_timer and
+# _muster_timer already are — a census that GROWS hides a loss just as well as
+# one that shrinks.
+var _cordon_timer := CORDON_REFORM_INTERVAL
 
 var _procession: Port = null
 var _procession_window := -1
@@ -1161,6 +1188,34 @@ func _load_system(id: String) -> void:
 	# if this window's system is the one being loaded.
 	_procession = null
 	_raid_timer = RAID_ROLL_INTERVAL
+	# AND THE MUSTER, which was the one event on this list nobody cleared. Every
+	# muster ship is a SystemRoot child and dies with the free below, but the
+	# EVENT did not: _muster_active stayed true, and _tick_muster_battle kept
+	# running because _tick_market hosts it above the warping guard. Two ways out,
+	# both bad. With the column not yet fully released, _release_muster_wave
+	# spawned the rest of it into the NEW system at an origin derived from the
+	# old one, with no line to oppose it. With the column released, the census
+	# read zero, _close_muster(true) fired, and the player got LINE HELD, a
+	# logbook line and a +1 to the Authority for leaving.
+	#
+	# Reset SILENTLY and on cooldown, deliberately. It is not a win — nobody held
+	# anything — so it pays nothing, and it takes the same cooldown a resolved
+	# muster does for the reason the raid one directly above does: warping out IS
+	# the escape, and an escape that dropped the player into a fresh roll twenty
+	# seconds later would punish the hatch.
+	if _muster_active or _muster_warn > 0.0:
+		GameState.note_log("LEFT THE CORDON TO IT")
+		_muster_cooldown = MUSTER_COOLDOWN
+	_muster_active = false
+	_muster_warn = -1.0
+	_muster_released = 0
+	_muster_elapsed = 0.0
+	_muster_wave_t = 0.0
+	_muster_point = Vector3.ZERO
+	_muster_origin = Vector3.ZERO
+	# The relief clock restarts with the system, like _raid_timer above: a fresh
+	# arrival gets a full interval rather than whatever was left of the last one.
+	_cordon_timer = CORDON_REFORM_INTERVAL
 
 	# AND THE BERTH IS RELEASED BEFORE THE PORT IS FREED, which is the one stale
 	# reference on this path whose staleness is INVISIBLE.
@@ -1412,6 +1467,9 @@ func _process(delta: float) -> void:
 			_wake_apex()
 
 	_tick_interdiction(delta)
+	# AFTER the warping guard above, unlike _tick_market: a relief must not walk
+	# onto a beat in a system the player is in the middle of leaving.
+	_tick_cordon(delta)
 
 	# Wayfinding. The bottom-left readout is the only thing out here that tells
 	# you where "here" is — there is no lattice past the chart edge and no
@@ -1671,6 +1729,41 @@ func _flush_standing_toast() -> void:
 	Sfx.play("equip", -14.0, 1.25 if summed > 0 else 0.8)
 
 
+func witness_attack(victim: Node3D, flag: String, by: Node3D) -> void:
+	# SHOOTING A NEUTRAL BRINGS ITS FRIENDS DOWN ON YOU (v18, playtest round 4).
+	# Both hostile classes call this from take_damage when the PLAYER damages
+	# something its band does not already count as an enemy; the band test lives
+	# at the call site because that is where "was this a neutral" is answerable
+	# before the hit is booked.
+	#
+	# MEASURED FROM THE VICTIM, NOT FROM THE PLAYER, and that is the whole
+	# geometry. "Its friends in the immediate area" means the neighbours of the
+	# thing you hit — so a lance shot from 40u still answers to the four machines
+	# standing around the one it took, which is exactly the accountability an
+	# area attack is supposed to carry. Measuring from the player would let a
+	# sniper pick a picket line apart one ship at a time.
+	#
+	# THE VICTIM IS IN ITS OWN WITNESS SET, deliberately: take_damage already set
+	# its _aggro, but only provoke() starts the clock, and without the clock that
+	# aggro is the unbounded latch described on Hostile._grudge.
+	if victim == null or not is_instance_valid(victim) or by == null:
+		return
+	for node in get_tree().get_nodes_in_group("combatants"):
+		var n := node as Node3D
+		# UNTYPED-STYLE VALIDITY FIRST, for _targetable's reason: this group is
+		# walked while machines are dying, and a freed node fails a member access
+		# before any check inside it can run.
+		if not is_instance_valid(n) or not ("faction" in n):
+			continue
+		if String(n.faction) != flag:
+			continue
+		if n.global_position.distance_to(victim.global_position) \
+				> FactionDB.WITNESS_RANGE:
+			continue
+		if n.has_method("provoke"):
+			n.provoke(by)
+
+
 func credit_defence(saved) -> void:
 	# KILLING SOMETHING THAT WAS SHOOTING AT SOMEBODY'S SHIP IS A FAVOUR, AND IS
 	# REMEMBERED. Four of the seven chartfolk flags -- league, combine, bastion,
@@ -1788,7 +1881,31 @@ func interdiction_eligible() -> bool:
 		and not _raid_active \
 		and not muster_active() \
 		and _raid_cooldown <= 0.0 \
-		and GameState.faction_band(FactionDB.SURVEYOR, "tithe") == FactionDB.Band.HOSTILE
+		and GameState.faction_band(FactionDB.SURVEYOR, "tithe") >= FactionDB.Band.WARY
+
+
+func tithe_still_wants_you() -> float:
+	# HOW MUCH THE BANNER STILL CARES, as a multiplier on the raid roll — and the
+	# reason this is a gradient rather than the equality test it replaced.
+	#
+	# THE TRAP THIS CLOSES. interdiction_eligible required the Tithe to be
+	# exactly HOSTILE. The baseline is -6, HOSTILE spans -6..-4, and pay_toll
+	# grants +1 through the one mutator — so THREE PAID TOLLS walked the banner
+	# to WARY and no raid ever spawned again, for the rest of the save. That took
+	# the interdiction, the parley and (since round 4) PERSUASION's only feed with
+	# it, permanently, as the consequence of the most reasonable thing a player
+	# can do when a pack demands cargo. Nothing said so, and nothing could: the
+	# tap closing looks exactly like a run of quiet dice.
+	#
+	# A banner that half-remembers you still stops you sometimes. Paying still
+	# buys real peace — it is a 40% roll instead of a full one — but peace is now
+	# a rate rather than a switch, and no sequence of legal play can end the
+	# encounter permanently.
+	#
+	# ALLIED..NEUTRAL is still nothing: interdiction_eligible refuses above WARY,
+	# so this is only ever asked of a banner that is at least wary of you.
+	return 1.0 if GameState.faction_band(FactionDB.SURVEYOR, "tithe") \
+		== FactionDB.Band.HOSTILE else TITHE_WARY_ODDS
 
 
 func procession_system(window: int) -> String:
@@ -1867,6 +1984,85 @@ func muster_eligible() -> bool:
 		and deep_depth() <= 0.0
 
 
+func cordon_routes() -> Array:
+	return system_def.get("patrols", []) as Array
+
+
+func unmanned_routes() -> Array[int]:
+	# Which authored beats have nobody walking them. Public so the assertion can
+	# ask the same question the tick asks, rather than restating it and drifting.
+	var manned := {}
+	for node in get_tree().get_nodes_in_group("hostiles"):
+		if not (node is Hostile) or not is_instance_valid(node):
+			continue
+		var h := node as Hostile
+		# is_dying(), not just validity: _die runs a staged explosion and does not
+		# free until DEATH_STAGE_3, so a picket the player just killed would hold
+		# its route for a third of a second and the relief would be one short.
+		if h.is_dying() or not h.has_meta("route_i"):
+			continue
+		manned[int(h.get_meta("route_i"))] = true
+	var out: Array[int] = []
+	for i in range(cordon_routes().size()):
+		if not manned.has(i):
+			out.append(i)
+	return out
+
+
+func _tick_cordon(delta: float) -> void:
+	# THE CORDON RE-FORMS (v18, playtest round 4), and the fiction was already
+	# written: LINE BROKEN says "expect elevated activity until we can re-form"
+	# and nothing ever re-formed. The garrison rebuilds on _load_system and never
+	# in place, so a warp was the one cure and the game never said so.
+	#
+	# PICKETS ONLY, and that is an economic decision rather than a scoping one. A
+	# sentry flies the host engine's flag, so it is HOSTILE and killing one PAYS:
+	# PACING_LOOP budgets five sentry kills for a whole eight-minute loop and
+	# MIDTIER sits at 2.91 against a hard 3.00, so a sentry respawn would bolt an
+	# income source onto a loop already at 97% of its ceiling. A GSA picket pays
+	# nothing — the was_hostile gate in Hostile._die, and since this round the
+	# contract tick with it — so this cannot move the pacing band by a point.
+	#
+	# It is also the half that was actually asked for. A sentry stands on a post;
+	# a PICKET is the thing that patrols, so "charted space should feel patrolled"
+	# is a statement about the Cordon and nothing else.
+	#
+	# NOT during a muster: the Cordon is already standing to at the marker, and
+	# quietly threading a relief onto a beat mid-event would be two spawn systems
+	# arguing over the same ships.
+	if state != State.PLAYING or tutorial_active() or boss_active \
+			or _muster_active or deep_depth() > 0.0:
+		return
+	_cordon_timer -= delta
+	if _cordon_timer > 0.0:
+		return
+	_cordon_timer = CORDON_REFORM_INTERVAL
+	var free_beats := unmanned_routes()
+	if free_beats.is_empty():
+		return
+	# ONE AT A TIME, and the cap is the authored route count — the same ceiling
+	# SENTRY POSTS already states as a measurement (picket_seen == routes). A
+	# Cordon that came back all at once would read as a spawn rather than as a
+	# relief, and one that came back PAST its authored strength would be the
+	# entity budget stage 2a set in the data being overruled at runtime.
+	var route_i: int = free_beats[0]
+	var route: Array = cordon_routes()[route_i]
+	# ENTER FROM THE FAR END. A machine appearing in front of the player is a
+	# spawn; one walking in from the other side of its beat is a patrol.
+	var pilot: Node3D = get_tree().get_first_node_in_group("player")
+	var enter := 0
+	if pilot != null:
+		var furthest := -1.0
+		for i in range(route.size()):
+			var d: float = (route[i] as Vector3).distance_to(pilot.global_position)
+			if d > furthest:
+				furthest = d
+				enter = i
+	var relief := SystemBuilder.build_picket(system_def, system_root, route_i, enter)
+	if relief != null:
+		FX.flash(self, relief.global_position, Palette.TEAL, 1.4, 0.25)
+
+
 func _tick_muster(delta: float) -> void:
 	if _muster_cooldown > 0.0:
 		_muster_cooldown -= delta
@@ -1879,6 +2075,13 @@ func _tick_muster(delta: float) -> void:
 		return
 
 	if _muster_active:
+		# NOT DURING A WARP. _tick_market runs BEFORE _process's warping guard —
+		# it has to, because it is what advances the clock — so everything it
+		# hosts inherits that, and this is the one thing in it that spawns.
+		# _release_muster_wave would put column ships into whichever system_root
+		# exists when it fires, at an origin derived from the system being left.
+		if warping:
+			return
 		_tick_muster_battle(delta)
 		return
 
@@ -2036,6 +2239,42 @@ func _close_muster(held: bool) -> void:
 	_muster_active = false
 	_muster_cooldown = MUSTER_COOLDOWN
 	_muster_warn = -1.0
+	# SURVIVORS OF THE LINE STAY, UP TO THE CORDON'S AUTHORED STRENGTH (v18,
+	# playtest round 4). This is the finding the playtest actually reported:
+	# a swarm closed in, the GSA machines killed it, and then the GSA machines
+	# were not there any more. Everything about that was working as designed —
+	# the line is a set-piece and set-pieces clean up after themselves — but
+	# eight security ships evaporating the moment they win is the opposite of
+	# the world reading as patrolled.
+	#
+	# BOUNDED BY THE ROUTES, not by the line, so this can never inflate the
+	# Cordon past what the data authored: at full strength it retains nobody, and
+	# it only has anything to do after the player has already cost the Cordon
+	# ships. The line is 8 and route counts are 2/3/4, so the excess still leaves.
+	var open_beats := unmanned_routes()
+	var kept := 0
+	for node in get_tree().get_nodes_in_group("muster_line"):
+		if kept >= open_beats.size():
+			break
+		var keeper := node as Hostile
+		if keeper == null or not is_instance_valid(keeper) or keeper.is_dying():
+			continue
+		keeper.remove_from_group("muster_line")
+		# THE FLAG, NOT JUST THE GROUP. `muster` is what exempts a ship from the
+		# ambient HP floor, so a retained survivor that kept it could be shot to
+		# zero by a sentry with no player involved — AMBIENT COMBAT DEPLETES
+		# NOTHING would go red for a reason nobody would connect to a muster that
+		# ended minutes earlier. It also gates the payout and the reported kill
+		# kind, and this ship is an ordinary picket now on all three counts.
+		keeper.muster = false
+		var beat_i: int = open_beats[kept]
+		var pts: Array[Vector3] = []
+		for p_v in (cordon_routes()[beat_i] as Array):
+			pts.append(p_v as Vector3)
+		keeper.patrol = pts
+		keeper.set_meta("route_i", beat_i)
+		keeper.enter_beat(0)
+		kept += 1
 	for group in ["muster_column", "muster_line"]:
 		for node in get_tree().get_nodes_in_group(group):
 			var n := node as Node3D
@@ -2096,7 +2335,7 @@ func interdiction_chance() -> float:
 	# is a floor that would swallow the whole gradient and leave the deep exactly
 	# as dangerous to a hauler as the shipping lanes are.
 	return clampf(float(value) / RAID_VALUE_SCALE, RAID_MIN_CHANCE, RAID_MAX_CHANCE) \
-		* interdiction_taper() * hold_signature()
+		* interdiction_taper() * hold_signature() * tithe_still_wants_you()
 
 
 # A carried thing that changes what happens to you, rather than what your ship
@@ -2141,6 +2380,8 @@ func _tick_interdiction(delta: float) -> void:
 			_parley_until = 0.0
 			if hud:
 				hud.hide_parley()
+				# The sentence goes with the plates it was describing.
+				hud.clear_prompt()
 		# A PACK THAT HAS LOST INTEREST LEAVES, and before this it could not.
 		# Paying a toll lifts Tithe standing out of HOSTILE, which is the whole
 		# point of paying -- but a raider whose flag no longer counts the player
@@ -2221,20 +2462,37 @@ func pay_toll() -> void:
 
 func run_bluff() -> void:
 	# The honest wager, ported from the Cantina to the parley: the odds are ON THE
-	# BUTTON, and the stake is real — the Forged Manifest is CONSUMED whether it
-	# works or not. Without that stake a bluff would strictly dominate paying, and
-	# an option that is never wrong is not a decision.
+	# BUTTON, and the stake is real. Without a stake a bluff would strictly
+	# dominate paying, and an option that is never wrong is not a decision.
 	#
-	# Fail and the standoff ends immediately with PAY withdrawn: you showed your
-	# hand, and they are not going to take a toll from a liar.
+	# TWO WAYS TO RAISE THE PLATE SINCE v19, and each brings its own stake. A
+	# Forged Manifest is CONSUMED whether it works or not — the Cantina's rule,
+	# unchanged. A bare talk-down costs nothing to attempt and costs Tithe
+	# standing when it fails, which is the same shape in a different currency:
+	# you cannot try this for free, you can only choose what you are risking.
+	#
+	# Fail either way and the standoff ends immediately with PAY withdrawn: you
+	# showed your hand, and they are not going to take a toll from a liar.
 	if not _raid_active or GameState.played_seconds > _parley_until:
 		return
-	if GameState.smuggling < GameState.SMUGGLING_BLUFF_TIER:
-		return
-	if not GameState.hold_has("manifest_forged"):
-		return
+	# THE GATE IS THE ODDS, not a tier and not an item (v19). It used to be both,
+	# and neither test agreed with what put the plate on screen: show_parley
+	# asked bluff_odds() and a manifest, run_bluff asked the smuggling tier and a
+	# manifest, and the rule "may I do this" therefore lived in three places.
+	# PERSUASION gives everyone a non-zero chance, so the one honest question is
+	# whether there is a chance at all.
 	var odds := GameState.bluff_odds()
-	GameState.unload_cargo("manifest_forged", 1)
+	if odds <= 0.0:
+		return
+	# THE STAKE, AND IT IS WHY THIS IS A DECISION. A manifest is consumed whether
+	# it works or not — that has been the rule since the Cantina, because a bluff
+	# with no cost would strictly dominate paying. A talk-down needs no manifest,
+	# so it carries its own price instead: the Tithe remembers being lied to, and
+	# a failed one costs the step a paid toll earns. Charged on the FAILURE below
+	# rather than up front, because a lie that worked was never found out.
+	var burned := GameState.hold_has("manifest_forged")
+	if burned:
+		GameState.unload_cargo("manifest_forged", 1)
 	_parley_until = 0.0
 	if hud:
 		hud.hide_parley()
@@ -2244,16 +2502,62 @@ func run_bluff() -> void:
 			if node.has_method("depart"):
 				node.depart()
 		Sfx.play("warp", -10.0, 1.4)
+		# THE ONE FEED PERSUASION HAS (v19), and it is the WIN rather than the
+		# attempt. Paying moves this ladder by nothing and running moves it by
+		# nothing — both were killed by arithmetic when SMUGGLING was designed
+		# and neither death has been revisited. What is left is the one outcome
+		# that is unambiguously a thing the pilot DID.
+		if GameState.mark_persuasion(1) and hud:
+			hud.show_toast(GameState.persuasion_line(), Palette.TEAL)
 		if hud:
+			hud.clear_prompt()
 			hud.show_toast("THEY BOUGHT IT", Palette.GOLD)
 		return
 	for node in get_tree().get_nodes_in_group("raider"):
 		if node.get("standoff") != null:
 			node.set("standoff", 0.0)
+	# AND A LIE THAT DID NOT WORK IS REMEMBERED. The mirror of pay_toll's +1, and
+	# the stake that keeps a manifest-free talk-down from strictly dominating
+	# paying — the property the Forged Manifest was carrying alone until v19.
+	GameState.shift_faction(FactionDB.SURVEYOR, "tithe",
+		GameState.PERSUASION_FAILURE_COST, true)
 	Sfx.play("klaxon", -6.0)
 	if hud:
 		hud.show_toast("THEY DID NOT BUY IT", Palette.THREAT)
 		hud.clear_prompt()
+
+
+func parley_live() -> bool:
+	# Is a demand on the screen right now. One predicate, asked by everything
+	# that might otherwise talk over it — the same shape console_open() has for
+	# the raid roll.
+	return _raid_active and _parley_until > 0.0 \
+		and GameState.played_seconds <= _parley_until
+
+
+func refuse_toll() -> void:
+	# THE THIRD VERB, WHICH HAD NO CONTROL (v18, playtest round 4). "PAY, RUN, OR
+	# FIGHT" has been on the demand since the parley shipped, and fighting was
+	# only expressible by landing a shot on a raider and discovering that
+	# break_parley existed. A playtester reported the whole feature missing on
+	# the strength of it: the prompt named three answers and the screen offered
+	# one plate.
+	#
+	# ROUTED THROUGH break_parley rather than reimplementing it, so refusing by
+	# button and refusing by torpedo are the same event by construction and
+	# cannot drift on what they clear.
+	#
+	# It says the consequence on the plate ("REFUSE — THEY OPEN FIRE") rather
+	# than asking for a confirmation, because the standoff is six seconds long
+	# and a modal inside it would spend the whole window. Mis-tapping it starts
+	# the fight the window was counting down to anyway.
+	if not _raid_active or GameState.played_seconds > _parley_until:
+		return
+	GameState.note_log("REFUSED THE TOLL")
+	break_parley()
+	if hud:
+		hud.clear_prompt()
+		hud.show_toast("REFUSED — THEY OPEN FIRE", Palette.THREAT)
 
 
 func break_parley() -> void:
@@ -2355,9 +2659,15 @@ func spawn_interdiction() -> void:
 	Sfx.play("klaxon", -6.0)
 	if hud:
 		hud.show_toast("RAIDERS ON INTERCEPT", Palette.THREAT)
-		hud.prompt("RAIDERS DEMAND %s SALVAGE IN CARGO — PAY, RUN, OR FIGHT" % _comma_int(_parley_toll))
-		hud.show_parley(_parley_toll, GameState.bluff_odds() \
-			if GameState.hold_has("manifest_forged") else 0.0)
+		# NAMES WHAT IS ON THE SCREEN. The old line promised PAY, RUN OR FIGHT: of
+		# the three, one had a control, one was an undocumented side effect of
+		# landing a shot, and RUN is not implemented in a charted system at all —
+		# raiders spawned inside the marker carry no leash (see `leash` above), so
+		# flying away never ends a raid. A prompt that advertises an option the
+		# world does not have is worse than one that lists two.
+		hud.hold_prompt("RAIDERS DEMAND %s SALVAGE IN CARGO — PAY OR REFUSE" % _comma_int(_parley_toll))
+		hud.show_parley(_parley_toll, GameState.bluff_odds(),
+			GameState.hold_has("manifest_forged"))
 	var rig := get_tree().get_first_node_in_group("camera_rig")
 	if rig:
 		rig.shake(0.18)
@@ -2403,10 +2713,12 @@ func spawn_interdiction() -> void:
 		corsair.global_position = origin
 		FX.flash(self, origin, Palette.THREAT, 2.4, 0.35)
 
-	if hud:
-		get_tree().create_timer(3.2).timeout.connect(func() -> void:
-			if hud:
-				hud.clear_prompt())
+	# THE SENTENCE OUTLIVES NOTHING, and it used to outlive 3.2 seconds of a six
+	# second window. The prompt is the only thing on screen that explains what the
+	# plates are for, and it deleted itself at the halfway mark: for the back half
+	# of every standoff the player was looking at unlabelled boxes while a pack
+	# closed. Cleared by whatever ENDS the parley instead — pay, bluff, refuse or
+	# lapse — so the explanation and the choice have the same lifetime.
 
 
 func spring_trap(origin: Vector3, cfg: Dictionary) -> void:
@@ -3675,10 +3987,38 @@ func _run_smug_test() -> void:
 			overlap = "%s (mining/archeology)" % oid
 		if GameState.SMUGGLING_GOODS.has(oid):
 			overlap = "%s (mining/smuggling)" % oid
-	print("[smug] FEEDS COMPETE smuggling pays on %s, archeology on %d salvage/component ids, mining on %d ores, overlap=%s -> %s" % [
+	# AND THE FOURTH LADDER IS DISJOINT BY EVENT, WHICH THIS SHAPE CANNOT SEE.
+	# Everything above compares GOOD-SETS, and PERSUASION has no goods at all —
+	# so it would pass here vacuously, which is worse than failing. The property
+	# that actually has to hold is the same one 19 warned about (skills all fed
+	# by "playing the game" rise together and become a clock), stated at the
+	# level persuasion lives on: the one event that feeds it must feed nothing
+	# else. Driven, not reasoned about — a won talk-down, with every ladder read
+	# either side of it.
+	GameState.smuggling = 0
+	GameState.persuasion = 0
+	GameState.archeology_xp = 0
+	GameState.mining_xp = 0
+	GameState.smuggling_xp = 0
+	GameState.persuasion_xp = 0
+	GameState.mark_persuasion(1)
+	var talk_moved := {
+		"persuasion": GameState.persuasion_xp,
+		"smuggling": GameState.smuggling_xp,
+		"archeology": GameState.archeology_xp,
+		"mining": GameState.mining_xp,
+	}
+	var talk_spill := ""
+	for k2 in talk_moved:
+		if String(k2) != "persuasion" and int(talk_moved[k2]) != 0:
+			talk_spill += "%s " % String(k2)
+	GameState.persuasion_xp = 0
+	print("[smug] FEEDS COMPETE smuggling pays on %s, archeology on %d salvage/component ids, mining on %d ores, overlap=%s; a talked-down parley moved persuasion by %d and spilled into: %s -> %s" % [
 		str(GameState.SMUGGLING_GOODS), arch_goods.size(), ore_goods.size(),
-		overlap if overlap != "" else "none",
-		"PASS" if overlap == "" and ore_goods.size() == 8 else "FAIL"])
+		overlap if overlap != "" else "none", int(talk_moved["persuasion"]),
+		talk_spill if talk_spill != "" else "nothing",
+		"PASS" if overlap == "" and ore_goods.size() == 8
+			and int(talk_moved["persuasion"]) == 1 and talk_spill == "" else "FAIL"])
 
 	# 2. NO TOLL XP, NO XP FOR FLEEING. Both were proposed and both were killed by
 	#    arithmetic: paying is the losing move (a fight nets ~+700, running is
@@ -3693,14 +4033,31 @@ func _run_smug_test() -> void:
 	_raid_timer = 0.0
 	spawn_interdiction()
 	pay_toll()
+	# EVERY LADDER, not just this one. The rule written above is "a skill must
+	# never pay for either", and the check asked it of `smuggling_xp` alone — so
+	# PERSUASION, the ladder most obviously tempted by a toll, could have been
+	# wired straight to pay_toll and this line would have stayed green while the
+	# property it names died. Swept, so a fifth ladder is covered before it
+	# exists.
 	var xp_after_toll := GameState.smuggling_xp
+	var toll_xp := {
+		"smuggling": GameState.smuggling_xp,
+		"persuasion": GameState.persuasion_xp,
+		"archeology": GameState.archeology_xp,
+		"mining": GameState.mining_xp,
+	}
+	var toll_movers := ""
+	for k in toll_xp:
+		if int(toll_xp[k]) != 0:
+			toll_movers += "%s+%d " % [k, int(toll_xp[k])]
 	for n in get_tree().get_nodes_in_group("raider"):
 		if is_instance_valid(n):
 			(n as Node3D).queue_free()
 	await get_tree().physics_frame
 	_raid_active = false
-	print("[smug] NO TOLL XP paying a toll moved smuggling xp by %d (must be 0) -> %s" % [
-		xp_after_toll, "PASS" if xp_after_toll == 0 else "FAIL"])
+	print("[smug] NO SKILL PAYS FOR A TOLL paying one moved: %s (must be nothing; smuggling xp %d) -> %s" % [
+		toll_movers if toll_movers != "" else "no ladder", xp_after_toll,
+		"PASS" if toll_movers == "" else "FAIL"])
 
 	# 3. The one real feed, through the real sell path: contraband over a FENCE.
 	#    A legitimate counter is not smuggling, whatever it is buying.
@@ -3724,11 +4081,20 @@ func _run_smug_test() -> void:
 	#    IDENTICAL at every tier.
 	GameState.cargo = {}
 	GameState.load_cargo("contraband", 10)
+	# BOTH LADDERS. A toll discount is a stat denominated in salvage and is
+	# excluded by name — an exclusion that has to hold for every skill that can
+	# see a demand, which since v19 is two of them.
 	var tolls: Array = []
 	for tier in range(GameState.SMUGGLING_TIERS.size()):
 		GameState.smuggling = tier
 		tolls.append(maxi(TOLL_FLOOR,
 			int(float(GameState.hold_value(false)) * TOLL_FRACTION)))
+	GameState.smuggling = 0
+	for ptier in range(GameState.PERSUASION_TIERS.size()):
+		GameState.persuasion = ptier
+		tolls.append(maxi(TOLL_FLOOR,
+			int(float(GameState.hold_value(false)) * TOLL_FRACTION)))
+	GameState.persuasion = 0
 	var flat := true
 	for t in tolls:
 		if int(t) != int(tolls[0]):
@@ -3795,16 +4161,103 @@ func _run_smug_test() -> void:
 	await get_tree().physics_frame
 	_raid_active = false
 
-	# 8. And no bluff without the manifest, or without the tier.
+	# 7b. EVERY LADDER NAMES ITS VERB AT TIER 0. §58's copy rule is that a line
+	#     must either use a word the game has taught or say what to do about it,
+	#     and every skill line failed it in the same direction: they described an
+	#     ABSENCE ("THE LANES DO NOT KNOW YOU YET", "ORE READS AS GREY ROCK") to
+	#     the one pilot who has no idea the ladder exists.
+	#
+	#     ASSERTED OVER THE SET, not one line at a time, so a fifth ladder cannot
+	#     arrive with a bare description -- and the count is asserted too, because
+	#     "every line in this list names a verb" is satisfied perfectly by a list
+	#     somebody forgot to add to.
+	GameState.archeology = 0
+	GameState.smuggling = 0
+	GameState.mining = 0
+	GameState.persuasion = 0
+	# ON THE FIRST WORD OF THE PERK CLAUSE, not on vocabulary anywhere in the
+	# line -- and the first draft of this got it wrong in the direction GSATEST's
+	# NO IMPERATIVE already documents. That check says it plainly: "English
+	# imperatives lead with their verb ... a contains-check would ban the noun
+	# too, and the rule is about mood." A contains-check here did the mirror
+	# image and ACCEPTED a noun: the old mining line, "ORE READS AS GREY ROCK",
+	# satisfies a search for "READ" while instructing nobody. Red-verify caught
+	# it -- restoring that line left this assertion green.
+	#
+	# Same rule as the Commission's, opposite sign: a stage must NOT open on a
+	# verb, a skill line MUST.
+	var verbs := ["fence", "cut", "breach", "read", "talk", "sell", "crack"]
+	var tier0_lines := {
+		"archeology": GameState.archeology_line(),
+		"smuggling": GameState.smuggling_line(),
+		"mining": GameState.mining_line(),
+		"persuasion": GameState.persuasion_line(),
+	}
+	var verbless := ""
+	var openers := ""
+	for k_line in tier0_lines:
+		var line := String(tier0_lines[k_line])
+		# The perk clause is what follows the first em dash; everything before it
+		# is the ladder's own name and tier.
+		var parts := line.split("—", false)
+		var clause := String(parts[1]) if parts.size() > 1 else line
+		var words: PackedStringArray = clause.to_lower() \
+			.replace(",", " ").replace(".", " ").split(" ", false)
+		var opener := String(words[0]) if words.size() > 0 else ""
+		openers += "%s:%s " % [String(k_line), opener]
+		if not verbs.has(opener):
+			verbless += "%s " % String(k_line)
+	# The ladders GameState actually carries, counted from the tier tables rather
+	# than from this dictionary -- otherwise the check certifies its own list.
+	var ladder_count := 4
+	print("[smug] EVERY LADDER NAMES ITS VERB AT TIER 0 %d lines checked against %d ladders, each opens on: %s| not an instruction: %s -> %s" % [
+		tier0_lines.size(), ladder_count, openers,
+		verbless if verbless != "" else "none",
+		"PASS" if verbless == "" and tier0_lines.size() == ladder_count else "FAIL"])
+
+	# 8. WHAT EACH LADDER CONTRIBUTES — and the old form of this line could not
+	#    have told you. It computed `no_manifest` and then never used it: the
+	#    only clause deciding PASS was "odds are 0.0 at smuggling 1", which v19
+	#    makes false by design, because PERSUASION gives every pilot a floor so a
+	#    new player meets a three-verb demand with three plates instead of one.
+	#
+	#    Deleting the line would lose the rule it was actually defending, which
+	#    is that THE MANIFEST HALF IS WORTH NOTHING WITHOUT BOTH THE TIER AND THE
+	#    ITEM. Stated as four readings that each fail on their own: the floor
+	#    everybody has, the item alone, the tier alone, and the two together.
 	GameState.cargo = {}
 	GameState.load_cargo("contraband", 10)
-	GameState.smuggling = 2
-	var no_manifest := GameState.bluff_odds() > 0.0 and not GameState.hold_has("manifest_forged")
-	GameState.smuggling = 1
-	var no_tier := GameState.bluff_odds()
+	GameState.persuasion = 0
 	GameState.smuggling = 0
-	print("[smug] BLUFF GATED needs a manifest aboard (odds exist but no stake=%s), t1 odds %.2f (must be 0) -> %s" % [
-		str(no_manifest), no_tier, "PASS" if no_tier == 0.0 else "FAIL"])
+	var bluff_floor := GameState.bluff_odds()              # neither
+	GameState.smuggling = 1
+	GameState.load_cargo("manifest_forged", 1)
+	var item_no_tier := GameState.bluff_odds()             # item, below the tier
+	GameState.smuggling = 2
+	var item_and_tier := GameState.bluff_odds()            # both
+	GameState.unload_cargo("manifest_forged", 1)
+	var tier_no_item := GameState.bluff_odds()             # tier, no item
+	# THE CAP BINDS, driven from the top of both ladders rather than from a
+	# literal — two ladders that can each reach 0.45+ would otherwise sum past a
+	# certainty, and a 100% "gamble" is a button rather than a wager.
+	GameState.smuggling = GameState.SMUGGLING_TIERS.size() - 1
+	GameState.persuasion = GameState.PERSUASION_TIERS.size() - 1
+	GameState.load_cargo("manifest_forged", 1)
+	var uncapped := GameState.persuasion_odds() + GameState.manifest_odds()
+	var capped := GameState.bluff_odds()
+	GameState.cargo = {}
+	GameState.smuggling = 0
+	GameState.persuasion = 0
+	var everyone_can_try: bool = bluff_floor > 0.0
+	var item_alone_pays_nothing: bool = is_equal_approx(item_no_tier, bluff_floor)
+	var tier_alone_pays_nothing: bool = is_equal_approx(tier_no_item, bluff_floor)
+	var both_pay: bool = item_and_tier > bluff_floor + 0.001
+	var cap_binds: bool = uncapped > GameState.BLUFF_ODDS_CAP \
+		and is_equal_approx(capped, GameState.BLUFF_ODDS_CAP)
+	print("[smug] BLUFF NEEDS BOTH HALVES floor %.2f (all pilots, must be > 0), manifest below the tier %.2f, tier without the manifest %.2f (both must equal the floor), both %.2f (must exceed it); cap %.2f of an uncapped %.2f -> %s" % [
+		bluff_floor, item_no_tier, tier_no_item, item_and_tier, capped, uncapped,
+		"PASS" if everyone_can_try and item_alone_pays_nothing
+			and tier_alone_pays_nothing and both_pay and cap_binds else "FAIL"])
 	get_tree().quit()
 
 
@@ -6244,9 +6697,19 @@ func _run_deep_test() -> void:
 	# one that also catches the Cordon failing to deploy — which would otherwise
 	# be invisible, since a missing picket makes every other clause here happier.
 	var routes: int = (SystemDB.get_system(system_id).get("patrols", []) as Array).size()
-	print("[deep] SENTRY POSTS %d sentries, %d authored posts, furthest any of them sits from its post %.2fu (drift is 0.4), %d deep guards / %d pickets / %d convoy escorts excluded (%d routes authored) -> %s" % [
-		found_posts, posts.size(), worst_post, deep_seen, picket_seen, convoy_seen, routes,
-		"PASS" if found_posts == posts.size() and found_posts > 0 and worst_post <= 0.6
+	# THE TETHER, DERIVED RATHER THAN RESTATED. This was a literal 0.6 against a
+	# 0.4 drift term (whose two phases differ, so it actually reaches 0.566 —
+	# which is what the 0.6 was really covering). v18's playtest round 4 gave an
+	# authored sentry a slow ring around its post, so the tolerance is now the
+	# beat plus that same drift allowance, read from the class rather than typed
+	# here. A post that reads as crewed is still a POST: this line's job did not
+	# change, only the radius it has to allow, and it still fails on a sentry
+	# that has genuinely left.
+	var post_tether: float = Hostile.SENTRY_BEAT_RADIUS + 0.6
+	print("[deep] SENTRY POSTS %d sentries, %d authored posts, furthest any of them sits from its post %.2fu (beat %.1f + drift 0.6 = %.1f), %d deep guards / %d pickets / %d convoy escorts excluded (%d routes authored) -> %s" % [
+		found_posts, posts.size(), worst_post, Hostile.SENTRY_BEAT_RADIUS, post_tether,
+		deep_seen, picket_seen, convoy_seen, routes,
+		"PASS" if found_posts == posts.size() and found_posts > 0 and worst_post <= post_tether
 			and picket_seen == routes
 			else "FAIL"])
 
@@ -9114,6 +9577,186 @@ func _run_raid_test() -> void:
 		str(_raid_active or true), str(reopened), toll_before, GameState.cargo_used(),
 		"PASS" if reopened and settled else "FAIL"])
 	hold_screen.close_panel()
+
+	# A PAID TOLL DOES NOT END THE RAIDS. interdiction_eligible used to require
+	# the Tithe to be exactly HOSTILE. Baseline is -6, HOSTILE spans -6..-4, and
+	# pay_toll grants +1 through the one mutator -- so THREE PAID TOLLS walked the
+	# banner to WARY and no raid ever spawned again for the rest of the save,
+	# taking the interdiction, the parley and PERSUASION's only feed with it. The
+	# most reasonable answer to a demand permanently deleted the encounter, and
+	# the tap closing is indistinguishable from a run of quiet dice.
+	#
+	# THREE CLAUSES, and the third is the one that stops this passing on a build
+	# that simply deleted the standing test: paying has to still BUY something.
+	# Peace is a rate now, not a switch.
+	_clear_faction_matrix()
+	GameState.cargo = {}
+	GameState.load_cargo("contraband", 10)
+	var hostile_chance := interdiction_chance()
+	var hostile_band := GameState.faction_band(FactionDB.SURVEYOR, "tithe")
+	# Walk it out of HOSTILE the way a player does -- through the real mutator,
+	# once per toll, not by assigning the delta.
+	for toll_i in range(3):
+		GameState.shift_faction(FactionDB.SURVEYOR, "tithe", 1, true)
+	var wary_band := GameState.faction_band(FactionDB.SURVEYOR, "tithe")
+	_pin_raid_idle()
+	var still_eligible := interdiction_eligible()
+	var wary_chance := interdiction_chance()
+	_clear_faction_matrix()
+	GameState.cargo = {}
+	print("[raid] A PAID TOLL DOES NOT END THE RAIDS %s -> three tolls -> %s; still eligible=%s, odds %.3f -> %.3f (must be lower, and must not be zero) -> %s" % [
+		FactionDB.BAND_NAMES[hostile_band], FactionDB.BAND_NAMES[wary_band],
+		str(still_eligible), hostile_chance, wary_chance,
+		"PASS" if hostile_band == FactionDB.Band.HOSTILE
+			and wary_band == FactionDB.Band.WARY and still_eligible
+			and wary_chance > 0.0 and wary_chance < hostile_chance else "FAIL"])
+
+	# --- playtest round 4: the demand's options and their controls -----------
+
+	# EVERY OPTION THE DEMAND NAMES HAS A CONTROL, and this is the assertion
+	# whose absence let round 4 happen. Twelve checks above call pay_toll() as a
+	# FUNCTION; not one of them ever asked whether a player could reach it. So
+	# the parley shipped with a prompt naming three answers, one plate on the
+	# screen, and every line in this file green.
+	#
+	# THE RULE, not the rendering: for each verb the prompt names, there is a
+	# control that is VISIBLE, ENABLED and at least the project's own tap floor,
+	# and pressing it resolves the standoff. Driven off the prompt text itself,
+	# so the two cannot drift — change the copy to promise a fourth thing and
+	# this goes red rather than the player finding out.
+	GameState.cargo = {}
+	GameState.load_cargo("contraband", 10)
+	GameState.smuggling = 0
+	GameState.persuasion = 0
+	_pin_raid_idle()
+	_raid_timer = 0.0
+	spawn_interdiction()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var demand_line := hud.prompt_text()
+	var plates := {"PAY": "parley", "REFUSE": "refuse", "TALK": "bluff"}
+	var rects := hud.band_rects()
+	var controls := hud.band_controls()
+	var missing := ""
+	var worst_plate := 9999.0
+	for verb in plates:
+		if not demand_line.contains(String(verb)):
+			continue
+		var c: Control = controls.get(String(plates[verb])) as Control
+		if c == null or not c.visible or c.disabled:
+			missing += "%s " % String(verb)
+			continue
+		var h: float = maxf(c.get_combined_minimum_size().y, c.size.y)
+		worst_plate = minf(worst_plate, h)
+	# THE THIRD PLATE, which the prompt does NOT name and which must be there
+	# anyway on a pilot who has never smuggled anything: PERSUASION's floor is
+	# what stops a new player meeting a demand with one button, and a build that
+	# regressed it would still satisfy the loop above (the prompt says PAY and
+	# REFUSE, and both would be present).
+	var talk_offered: bool = (controls.get("bluff") as Control).visible
+	var tap_ok: bool = worst_plate >= HoldScreen.HoldGrid.TAP_MIN
+	print("[raid] EVERY OPTION THE DEMAND NAMES HAS A CONTROL '%s' -> unreachable: %s; smallest plate %.0fpx against a %.0f floor; a pilot at smuggling 0 is still offered the talk-down=%s -> %s" % [
+		demand_line, missing if missing != "" else "none", worst_plate,
+		HoldScreen.HoldGrid.TAP_MIN, str(talk_offered),
+		"PASS" if missing == "" and tap_ok and talk_offered
+			and demand_line != "" else "FAIL"])
+
+	# REFUSING ENDS THE STANDOFF, driven THROUGH THE BUTTON rather than by
+	# calling break_parley — the exact gap that let the missing affordance ship.
+	# Both halves: the pack stops holding fire, and the sheet comes down with it.
+	var refuse_plate := controls.get("refuse") as Button
+	var held_before := 0
+	for n in get_tree().get_nodes_in_group("raider"):
+		if is_instance_valid(n) and float(n.get("standoff")) > 0.0:
+			held_before += 1
+	refuse_plate.emit_signal("pressed")
+	await get_tree().process_frame
+	var held_after := 0
+	for n in get_tree().get_nodes_in_group("raider"):
+		if is_instance_valid(n) and float(n.get("standoff")) > 0.0:
+			held_after += 1
+	var plates_down: bool = not (controls.get("parley") as Control).visible \
+		and not refuse_plate.visible
+	print("[raid] REFUSING ENDS THE STANDOFF %d raiders holding fire -> %d after the button, plates withdrawn=%s -> %s" % [
+		held_before, held_after, str(plates_down),
+		"PASS" if held_before > 0 and held_after == 0 and plates_down
+			and _parley_until <= 0.0 else "FAIL"])
+	for n in get_tree().get_nodes_in_group("raider"):
+		if is_instance_valid(n):
+			(n as Node3D).queue_free()
+	await get_tree().physics_frame
+	_raid_active = false
+
+	# THE SENTENCE SURVIVES THE DEMAND. The prompt is the only thing on screen
+	# that says what the plates do, and it had three separate ways to vanish
+	# while they were still up — which is a player looking straight at a PAY
+	# button and reporting that there was no way to accept.
+	#
+	# NO SLEEP AND NO TIMER. The first draft waited four seconds past the old
+	# 3.2s self-destruct, and spent its evening measuring whichever of this
+	# suite's shared raid timers happened to fire — §49's lesson that a check
+	# whose setup is elaborate is measuring a world, not a rule. Every clobberer
+	# is driven explicitly instead, so each clause names the defect it catches.
+	GameState.cargo = {}
+	GameState.load_cargo("contraband", 10)
+	_pin_raid_idle()
+	_raid_timer = 0.0
+	spawn_interdiction()
+	await get_tree().process_frame
+	var demand_up := hud.prompt_text()
+	# a. A BARK. Barks write the same label unconditionally, and `first_hostiles`
+	#    is by definition unfired the first time a player is ever interdicted.
+	Barks.fire("first_hostiles")
+	# b. A PROXIMITY PROMPT. derelict, seam, port and mast all call prompt() and
+	#    clear_prompt() raw as the ship drifts in and out of range.
+	hud.prompt("A DERELICT IS WITHIN RANGE")
+	hud.clear_prompt()
+	await get_tree().process_frame
+	var demand_held := hud.prompt_text()
+	# c. AND THE BARK WAS ONLY DEFERRED, not spent. A line that fires once ever
+	#    must not be consumed by being suppressed — the reason the guard sits
+	#    above mark_bark rather than below it.
+	var bark_kept: bool = not GameState.has_seen_bark("first_hostiles")
+	# d. THE LOCK DOES NOT OUTLIVE THE PLATES. Every path that ends a parley goes
+	#    through hide_parley, which is where the line is handed back.
+	refuse_toll()
+	await get_tree().process_frame
+	hud.prompt("THE WORLD GETS ITS LINE BACK")
+	await get_tree().create_timer(0.4).timeout
+	var released := hud.prompt_text()
+	print("[raid] THE SENTENCE SURVIVES THE DEMAND raised as '%s'; after a bark, a proximity prompt and a raw clear it reads '%s'; the bark was deferred not spent=%s; after refusing, the world gets the line back as '%s' -> %s" % [
+		demand_up, demand_held, str(bark_kept), released,
+		"PASS" if demand_up.contains("RAIDERS") and demand_held == demand_up
+			and bark_kept and released == "THE WORLD GETS ITS LINE BACK"
+			else "FAIL"])
+
+	# AND A PROMPT RAISED INTO A CLEAR IS ACTUALLY VISIBLE. The defect under all
+	# of the above, and the one that best explains the report: prompt() faded IN
+	# over 0.2s and clear_prompt() faded OUT over 0.25s, neither killing the
+	# other's tween, so the older fade-out finished last and won. Correct text,
+	# correct visibility, alpha 0.00 — and spawn_interdiction calls
+	# close_consoles_for_raid, which clears the prompt, one line before raising
+	# the demand. The demand could extinguish its own explanation on arrival.
+	hud.clear_prompt()
+	hud.prompt("THIS MUST BE LEGIBLE")
+	await get_tree().create_timer(0.5).timeout
+	var raced := hud.prompt_text()
+	var raced_alpha: float = hud._prompt_label.modulate.a
+	hud.clear_prompt()
+	print("[raid] A PROMPT RAISED INTO A CLEAR IS VISIBLE text '%s' at alpha %.2f (the racing tweens landed the right words at 0.00) -> %s" % [
+		raced, raced_alpha,
+		"PASS" if raced == "THIS MUST BE LEGIBLE" and raced_alpha > 0.9
+			else "FAIL"])
+
+	for n in get_tree().get_nodes_in_group("raider"):
+		if is_instance_valid(n):
+			(n as Node3D).queue_free()
+	await get_tree().physics_frame
+	_raid_active = false
+	_parley_until = 0.0
+	if hud:
+		hud.hide_parley()
+		hud.clear_prompt()
 	get_tree().quit()
 
 
@@ -10187,8 +10830,20 @@ func _run_layout_test() -> void:
 		# that makes it exclusive rather than by trusting it: if raids ever become
 		# possible during the tutorial, the exemption goes red instead of the
 		# overlap going unnoticed.
+		#
+		# THE PARLEY STACK'S OWN PAIRS (v18, playtest round 4), and their absence
+		# is why two real defects sat under a green line. `pairs` is a
+		# hand-maintained allowlist and band_controls() is the inventory it draws
+		# from — _bluff_button was in NEITHER, so the plate that sits directly
+		# above the toll button had never been measured against it at any size.
+		# It was four design px away against this rule's own six, and at the
+		# maximum UI scale on a wide window it landed on BROADCAST_TOP. The
+		# broadcast pair is not exempt the way parley/tutorial is: spawn_rift is
+		# ungated against a live raid, so an advisory and a demand genuinely can
+		# share a screen.
 		var pairs := [["boss", "toast"], ["toast", "broadcast"],
-			["boss", "broadcast"], ["crack", "parley"], ["crack", "prompt"]]
+			["boss", "broadcast"], ["crack", "parley"], ["crack", "prompt"],
+			["parley", "refuse"], ["refuse", "bluff"], ["broadcast", "bluff"]]
 		var worst_gap := 9999.0
 		var worst_pair := ""
 		var gap_report := ""
@@ -10392,6 +11047,22 @@ func _count_pickets() -> int:
 	var n := 0
 	for h in get_tree().get_nodes_in_group("hostiles"):
 		if h is Hostile and not (h as Hostile).patrol.is_empty():
+			n += 1
+	return n
+
+
+func _count_cordon() -> int:
+	# THE CORDON SPECIFICALLY, which is not the same set as "everything with a
+	# route". _count_pickets answers "how many routed machines are in the sky"
+	# and is right to — it is what catches pickets being BUILT where they should
+	# not be. This one answers "how many authored beats are being walked", which
+	# is the question the re-form has to be capped against, and it cannot be
+	# fooled by a hand-built probe or by a convoy escort carrying a route.
+	var n := 0
+	for h in get_tree().get_nodes_in_group("hostiles"):
+		var p := h as Hostile
+		if p != null and is_instance_valid(p) and not p.is_dying() \
+				and p.has_meta("route_i"):
 			n += 1
 	return n
 
@@ -11342,6 +12013,12 @@ func _run_save_test() -> void:
 		GameState.set_ship_name("ASTROLABE-SEVEN-OF-THE-LONG-WATCH-1234567")
 		GameState.smuggling = 2
 		GameState.smuggling_xp = 57
+		# v19 PERSUASION, and BOTH numbers are distinct from smuggling's on
+		# purpose — the six-distinct-sentinels rule two lines up, applied to the
+		# newest pair. A fixture of 2/57 in both places would round-trip
+		# perfectly through a load that had the two skills' keys crossed.
+		GameState.persuasion = 1
+		GameState.persuasion_xp = 3
 		GameState.owned.append("mod_survey_array")
 		GameState.ledger = {
 			"deepest_depth": 611, "distance_flown": 4207, "hulks_cracked": 13,
@@ -11978,6 +12655,57 @@ func _run_save_test() -> void:
 		print("[savetest] v18 ZERO IS ABSENCE cleared pair stored=%s, file now %s -> %s" % [
 			str(not sparse18), str(GameState.faction_deltas),
 			"PASS" if sparse18 else "FAIL"])
+	elif mode == "migrate18":
+		# v19 adds PERSUASION. Like every skill this project has added, there is
+		# no migration branch and there must not be one: an absent key defaults,
+		# and tier 0 with no xp is exactly what a pilot who has never talked a
+		# pack down should load as.
+		#
+		# THE TEMPTING WRONG ANSWER, written down because it was considered:
+		# seeding persuasion_xp from smuggling_xp, on the grounds that bluff_odds
+		# used to live on the smuggling ladder so a smuggler "already earned it".
+		# That is migrate13's mistake exactly — "a truthy default that hands a
+		# returning player a skill they never touched" — and it would be worse
+		# here, because it would ALSO be handing them a fourth logbook line
+		# announcing tiers they never crossed.
+		#
+		# What a v18 save must keep instead is what it actually bought: a
+		# smuggler at tier 2 still reads 40% on a bluff with a manifest aboard,
+		# because manifest_odds() is the same function it always was. That is the
+		# real claim, so it is the one asserted — a v18 pilot loses nothing.
+		var v18 := {
+			"version": 18,
+			"salvage": 7700,
+			"current_system": "pyx02",
+			"smuggling": 2,
+			"smuggling_xp": 57,
+			"mining": 1,
+			"mining_xp": 22,
+			"run_seed": 181818,
+			"tutorial_step": -1,
+		}
+		var f18 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f18.store_string(JSON.stringify(v18))
+		f18.close()
+		var ok18 := GameState.load_game()
+		GameState.cargo = {}
+		var bare19 := GameState.bluff_odds()
+		GameState.load_cargo("manifest_forged", 1)
+		var armed19 := GameState.bluff_odds()
+		GameState.cargo = {}
+		var fresh19: bool = GameState.persuasion == 0 and GameState.persuasion_xp == 0
+		var kept19: bool = GameState.salvage == 7700 and GameState.smuggling == 2 \
+			and GameState.smuggling_xp == 57 and GameState.mining == 1 \
+			and GameState.run_seed == 181818
+		# The number a v18 smuggler used to see, unchanged. Compared against the
+		# shipped constants rather than a literal 0.40, so re-tuning the ladder
+		# cannot silently retire this.
+		var unchanged19: bool = is_equal_approx(armed19 - bare19,
+			GameState.SMUGGLING_BLUFF_BASE)
+		print("[savetest] v18->v19 A V18 SAVE ARRIVES AT PERSUASION 0 tier %d xp %d (must be 0/0, never seeded from smuggling's 57), other state kept=%s; the manifest still buys the same %.2f it always did -> %s" % [
+			GameState.persuasion, GameState.persuasion_xp, str(kept19),
+			armed19 - bare19,
+			"PASS" if ok18 and fresh19 and kept19 and unchanged19 else "FAIL"])
 	elif mode == "partial6":
 		# A v6 save written before a later setting existed must still get that
 		# setting's default rather than a missing key — the reason load merges
@@ -12045,6 +12773,13 @@ func _run_save_test() -> void:
 			str(GameState.owns("mod_survey_array")),
 			"PASS" if GameState.smuggling == 2 and GameState.smuggling_xp == 57
 				and GameState.owns("mod_survey_array") else "FAIL"])
+		# v19. The fourth ladder, asserted on BOTH numbers and against the third's
+		# — a load that wrote smuggling's pair into persuasion's fields would
+		# satisfy "persuasion is non-zero" perfectly.
+		print("[savetest] v19 PERSUASION tier %d xp %d (want 1 / 3, and not smuggling's 2 / 57) -> %s" % [
+			GameState.persuasion, GameState.persuasion_xp,
+			"PASS" if GameState.persuasion == 1 and GameState.persuasion_xp == 3
+				else "FAIL"])
 		print("[savetest] v10 LOGBOOK ledger %s, name '%s' (%d chars, cap %d) -> %s" % [
 			str(GameState.ledger), GameState.ship_name, GameState.ship_name.length(),
 			GameState.SHIP_NAME_MAX, "PASS" if led_ok and name_ok else "FAIL"])
@@ -13787,6 +14522,10 @@ func _run_faction_test() -> void:
 	var host := SystemDB.faction_of(system_id)
 	var one_hunter: bool = hostile_flags.size() == 1 \
 		and String(hostile_flags[0]) == host
+	# BY BAND, which is what keeps this true after v18's playtest round 4. A
+	# provoked machine hunts the player too, but on a per-node grudge with an
+	# expiry rather than on its flag — so the claim this line makes is about
+	# which FLAG owns the system, and a grudge cannot add one.
 	print("[faction] ONE FLAG HUNTS YOU, AND IT OWNS THE SYSTEM %s host=%s, live flags %s, hostile-to-player %s -> %s" % [
 		system_id, host, str(live_flags.keys()), str(hostile_flags),
 		"PASS" if feral_ok and one_hunter else "FAIL"])
@@ -13933,9 +14672,19 @@ func _run_faction_test() -> void:
 
 	# --- 8. the Authority never fires on the surveyor ------------------------
 	# The one authored floor (HORIZON-4 §2), asserted in the form that matters:
-	# not "the number is >= -3" but "no amount of hostility makes a Cordon
-	# picket target the player". Driven through the real selector, both
-	# directions of the pair, after the worst grudge the mutator allows.
+	# not "the number is >= -3" but "no amount of STANDING makes a Cordon picket
+	# target the player". Driven through the real selector, both directions of
+	# the pair, after the worst grudge the mutator allows.
+	#
+	# THE WORD MOVED, AND SAYING SO IS THE POINT. This comment used to claim "no
+	# amount of hostility", and v18's playtest round 4 made that false for one
+	# meaning of the word: a picket the player SHOOTS answers, and so do its
+	# neighbours. That is aggro, per-node and expiring, and it touches no band —
+	# which is exactly why this line still passes and why it must now name the
+	# distinction rather than imply the stronger claim. The grudge half is
+	# asserted separately (SHOOTING A NEUTRAL BRINGS ITS FRIENDS, and A GRUDGE
+	# LAPSES AND LETS GO); this one owns the matrix half, and the probe below is
+	# deliberately a machine that has never been shot at.
 	_clear_faction_matrix()
 	for i in range(200):
 		GameState.shift_faction(FactionDB.SURVEYOR, "gsa", -5)
@@ -14103,6 +14852,12 @@ func _run_faction_test() -> void:
 	print("[faction] PICKETS WALK THEIR BEAT covered %.1fu of ground and advanced %d waypoints in %.0fs (legs are ~10-14u at %.1fu/s) -> %s" % [
 		walked_u, visited, walked, Hostile.PATROL_SPEED,
 		"PASS" if walked_u > 12.0 and visited >= 2 else "FAIL"])
+	# FREED, and it was not before. This probe carries a route, so every later
+	# line in this suite that counts pickets was counting it -- which is the
+	# "inherits state from the one above it" shape the README warns about, and it
+	# is what a Cordon-strength check added in round 4 tripped over first.
+	if is_instance_valid(beat):
+		beat.free()
 
 	# --- 13. THE BEAT IS THE ANCHOR ------------------------------------------
 	# The property: engage range is measured from the ROUTE, not from the
@@ -14190,6 +14945,10 @@ func _run_faction_test() -> void:
 		guard.queue_free()
 	if is_instance_valid(demanding):
 		demanding.queue_free()
+	# Same reason as the beat probe above: a routed Hostile left standing is a
+	# picket as far as every counter in this file is concerned.
+	if is_instance_valid(guard):
+		guard.free()
 
 	# --- 15. EVERY AMBIENT HOSTILE HAS AN OWNER ------------------------------
 	#     Stage 3's headline: the dead frontier's machines were never masterless.
@@ -14333,6 +15092,7 @@ func _run_faction_test() -> void:
 		pilot.teleport_to(Vector3(0, 0, 400))
 	_wave_timer = 1.0e9        # no reinforcements: a census that grows hides a loss
 	_muster_timer = 1.0e9      # nor a muster, which spawns 32 of them
+	_cordon_timer = 1.0e9      # nor a relief walking back onto an empty beat
 	await get_tree().create_timer(0.5).timeout
 	# Baseline taken AFTER the world has settled into that state, so anything
 	# already in flight is counted on both sides of the watch.
@@ -15197,6 +15957,357 @@ func _run_faction_test() -> void:
 		"PASS" if why_line.contains("COVERED")
 			and why_line.contains(FactionDB.display_name("league"))
 			and why_line.contains("FRIENDLY") else "FAIL"])
+
+	# --- playtest round 4 ----------------------------------------------------
+
+	# A NEUTRAL KILL TICKS NO CONTRACT. §52 closed the picket printer by gating
+	# LOOT on `pays` — and report_kill was gated on `player_kill` alone, so a
+	# Cordon picket dropped no crates and still advanced `cull_sentries` (1,550
+	# for three). The loot half was asserted; the contract half never was.
+	#
+	# BOTH DIRECTIONS, because "the neutral kind is not kill_sentry" is satisfied
+	# perfectly by a build where nothing reports anything at all.
+	_clear_faction_matrix()
+	_defended_flags = {}
+	var kinds_seen: Array[String] = []
+	var kind_tally := func(kind: String) -> void: kinds_seen.append(kind)
+	hostile_killed.connect(kind_tally)
+	var kill_pilot: PlayerShip = get_tree().get_first_node_in_group("player")
+	var neutral_mark := Hostile.new()
+	neutral_mark.faction = "gsa"                 # floored at WARY, never hostile
+	system_root.add_child(neutral_mark)
+	neutral_mark.global_position = kill_pilot.global_position + Vector3(20, 0, 0)
+	var hostile_mark := Hostile.new()
+	hostile_mark.faction = FactionDB.FERAL       # baseline HOSTILE to the surveyor
+	system_root.add_child(hostile_mark)
+	hostile_mark.global_position = kill_pilot.global_position + Vector3(-20, 0, 0)
+	await get_tree().process_frame
+	neutral_mark.take_damage(99999.0, kill_pilot)
+	await get_tree().process_frame
+	var neutral_kind := kinds_seen[0] if kinds_seen.size() > 0 else "<none>"
+	hostile_mark.take_damage(99999.0, kill_pilot)
+	await get_tree().process_frame
+	var hostile_kind := kinds_seen[1] if kinds_seen.size() > 1 else "<none>"
+	hostile_killed.disconnect(kind_tally)
+	var no_contract_wants := not ContractDB.CONTRACTS.keys().any(
+		func(k: String) -> bool:
+			return String(ContractDB.CONTRACTS[k].get("kind", "")) == "kill_neutral")
+	print("[faction] A NEUTRAL KILL TICKS NO CONTRACT gsa reported as '%s' (no contract asks for kill_neutral=%s), feral still reported as '%s' -> %s" % [
+		neutral_kind, str(no_contract_wants), hostile_kind,
+		"PASS" if neutral_kind == "neutral" and no_contract_wants
+			and hostile_kind == "sentry" else "FAIL"])
+
+	# SHOOTING A NEUTRAL BRINGS ITS FRIENDS. Three machines of one flag: one hit,
+	# one INSIDE the witness range of it, and one OUTSIDE. The far one is the
+	# clause that matters — "the neighbour is angry" is satisfied by a dispatcher
+	# that provokes the entire faction regardless of where anybody is standing,
+	# which is exactly the radius decision this feature had to make.
+	#
+	# Read through GameState.hostile_to_player, which is the single dispatcher
+	# every consumer asks, rather than off _aggro: a grudge that did not surface
+	# there would be invisible to targeting, to the radar and to the music.
+	_clear_faction_matrix()
+	var wit_pilot: PlayerShip = get_tree().get_first_node_in_group("player")
+	# PLACED BEFORE THE FIRST FRAME, EVERY ONE OF THEM, and the first draft of
+	# this staging did not — it added the nodes, awaited, and only then set
+	# positions. Hostile captures _home on its first _process and station-keeps
+	# at `_home + wander` from then on, so the placement was overwritten and all
+	# four probes sat on top of each other at the origin. The assertion reported
+	# a witness 21u away that was really 0u away and had answered anyway.
+	# Positions are arithmetic, so none of this needs a node in the tree first.
+	var wit_at := wit_pilot.global_position + Vector3(30, 0, 0)
+	var wit_victim := Hostile.new()
+	wit_victim.faction = "league"
+	system_root.add_child(wit_victim)
+	wit_victim.global_position = wit_at
+	var wit_near := Hostile.new()
+	wit_near.faction = "league"
+	system_root.add_child(wit_near)
+	wit_near.global_position = wit_at + Vector3(FactionDB.WITNESS_RANGE - 4.0, 0, 0)
+	var wit_far := Hostile.new()
+	wit_far.faction = "league"
+	system_root.add_child(wit_far)
+	wit_far.global_position = wit_at + Vector3(FactionDB.WITNESS_RANGE + 6.0, 0, 0)
+	# A DIFFERENT FLAG at the same distance as the near one, so "everything
+	# nearby answers" cannot pass for "everything of that flag nearby answers".
+	var wit_other := Hostile.new()
+	wit_other.faction = "combine"
+	system_root.add_child(wit_other)
+	wit_other.global_position = wit_at + Vector3(0, 0, 3.0)
+	await get_tree().process_frame
+	# AND THE STAGING IS ASSERTED, not assumed — every leg of this suite that
+	# skipped that step has eventually reported a reading from a setup that
+	# silently did not take.
+	var wit_placed: bool = \
+		absf(wit_near.global_position.distance_to(wit_victim.global_position)
+			- (FactionDB.WITNESS_RANGE - 4.0)) < 1.0 \
+		and absf(wit_far.global_position.distance_to(wit_victim.global_position)
+			- (FactionDB.WITNESS_RANGE + 6.0)) < 1.0
+	var quiet_before: bool = not GameState.hostile_to_player(wit_near) \
+		and not GameState.hostile_to_player(wit_far) \
+		and not GameState.hostile_to_player(wit_other)
+	# ONE POINT OF CHIP DAMAGE, not a kill. Splash from an OVERCHARGE is the case
+	# this exists for, so the trigger cannot be death.
+	wit_victim.take_damage(1.0, wit_pilot)
+	await get_tree().process_frame
+	var wit_hit := GameState.hostile_to_player(wit_victim)
+	var wit_close := GameState.hostile_to_player(wit_near)
+	var wit_distant := GameState.hostile_to_player(wit_far)
+	var wit_stranger := GameState.hostile_to_player(wit_other)
+	print("[faction] SHOOTING A NEUTRAL BRINGS ITS FRIENDS staged=%s, all calm first=%s; after 1 point of chip damage the ship hit=%s, its flag at %.0fu=%s, its flag at %.0fu (outside %.0f)=%s, ANOTHER flag at 3u=%s -> %s" % [
+		str(wit_placed), str(quiet_before), str(wit_hit),
+		FactionDB.WITNESS_RANGE - 4.0, str(wit_close),
+		FactionDB.WITNESS_RANGE + 6.0, FactionDB.WITNESS_RANGE,
+		str(wit_distant), str(wit_stranger),
+		"PASS" if wit_placed and quiet_before and wit_hit and wit_close
+			and not wit_distant and not wit_stranger else "FAIL"])
+
+	# A GRUDGE DOES NOT MOVE THE MATRIX. Aggro and standing are separable and
+	# this is the line that keeps them separated: chip damage must leave the save
+	# bit-identical, while a KILL still books the -1 stage 1 has always taken.
+	# Both halves, because "the matrix did not move" alone is satisfied by a
+	# build where the standing hit was deleted too.
+	_clear_faction_matrix()
+	var grudge_key := FactionDB.pair_key(FactionDB.SURVEYOR, "league")
+	var chip_mark := Hostile.new()
+	chip_mark.faction = "league"
+	system_root.add_child(chip_mark)
+	chip_mark.global_position = wit_pilot.global_position + Vector3(40, 0, 0)
+	await get_tree().process_frame
+	chip_mark.take_damage(1.0, wit_pilot)
+	await get_tree().process_frame
+	var after_chip := int(GameState.faction_deltas.get(grudge_key, 0))
+	var empty_after_chip := GameState.faction_deltas.is_empty()
+	chip_mark.take_damage(99999.0, wit_pilot)
+	await get_tree().process_frame
+	var after_kill := int(GameState.faction_deltas.get(grudge_key, 0))
+	print("[faction] A GRUDGE DOES NOT MOVE THE MATRIX chip damage -> delta %d (want 0, store empty=%s), the kill after it -> %d (want -1) -> %s" % [
+		after_chip, str(empty_after_chip), after_kill,
+		"PASS" if after_chip == 0 and empty_after_chip and after_kill == -1
+			else "FAIL"])
+
+	# A GRUDGE LAPSES AND LETS GO — finding A6's lesson, applied to the thing
+	# that would otherwise reintroduce it. The skirmish clock EXEMPTS the player,
+	# so before this an _aggro pointing at the player was never cleared by
+	# anything: a picket clipped once stayed hostile until it died or the player
+	# docked. Both halves, and the second is the one that fails on a build that
+	# zeroes the timer without clearing the pointers.
+	_clear_faction_matrix()
+	var lapse_mark := Hostile.new()
+	lapse_mark.faction = "league"
+	system_root.add_child(lapse_mark)
+	lapse_mark.global_position = wit_pilot.global_position + Vector3(40, 0, 0)
+	await get_tree().process_frame
+	lapse_mark.take_damage(1.0, wit_pilot)
+	await get_tree().process_frame
+	var lapse_during := GameState.hostile_to_player(lapse_mark)
+	# Wound forward rather than waited out: GRUDGE_TIME is 30 real seconds and a
+	# harness that slept through it would be measuring the sweep's patience.
+	lapse_mark._grudge = 0.05
+	await get_tree().create_timer(0.4).timeout
+	var lapse_after := GameState.hostile_to_player(lapse_mark)
+	# NO LONGER THE PLAYER, not "null". _target legitimately holds whatever else
+	# this machine's flag hates and happens to be nearby, and demanding an empty
+	# pointer would fail on a machine doing exactly what it should — the shape
+	# §51 already had to fix on the Cordon floor check, which asserted `== null`
+	# and failed on correct code once pickets had sentries to shoot at.
+	var pointer_clear: bool = lapse_mark._aggro != wit_pilot \
+		and lapse_mark._target != wit_pilot
+	var clock_spent: bool = lapse_mark._grudge <= 0.0
+	if is_instance_valid(lapse_mark):
+		lapse_mark.free()
+	print("[faction] A GRUDGE LAPSES AND LETS GO hostile during=%s, after %.0fs=%s, clock spent=%s, neither pointer still on the player=%s -> %s" % [
+		str(lapse_during), FactionDB.GRUDGE_TIME, str(lapse_after),
+		str(clock_spent), str(pointer_clear),
+		"PASS" if lapse_during and not lapse_after and clock_spent
+			and pointer_clear else "FAIL"])
+
+	# THE BEAT IS STILL THE ANCHOR UNDER A GRUDGE, and A GRUDGE STOPS AT THE
+	# MARKER. Both are pure-function calls at placed positions rather than
+	# measurements over frames — §49's lesson twice over: no timing, no flake,
+	# and the clause that fails is the one that names the defect.
+	#
+	# THE GRUDGE MUST WIDEN THE REACH AND NOTHING ELSE. A positive control sits
+	# beside each negative one, because "refuses" is satisfied by a function that
+	# always refuses and "chases" by one that always chases.
+	_clear_faction_matrix()
+	# THE ROUTE SITS NEAR THE MARKER, and that is not decoration. The first draft
+	# put the beat at the origin and the past-the-marker probe 60u away — so the
+	# REACH test refused it and the edge clamp was never consulted at all. Red-
+	# verified by deleting the clamp: the assertion stayed green, which is §61's
+	# trap exactly (a conjunct that rules out one cause is not one that
+	# establishes the intended cause). The waypoint is now inside WITNESS_RANGE
+	# of a point PAST the edge, so the clamp is the only thing that can refuse it.
+	var edge_r := chart_edge()
+	var beat_picket := Hostile.new()
+	beat_picket.faction = "gsa"
+	# ONE WAYPOINT, so the anchor cannot move underneath the measurement. With
+	# two, the picket starts ON waypoint 0, _walk_beat sees it inside
+	# PATROL_ARRIVE and advances _patrol_i on the very first frame — so the
+	# `waypoint` read a line later named a different point than the one the
+	# function was about to measure from, and an 18u probe came out 8u.
+	# A one-point route is a legal degenerate beat and exercises the same branch.
+	beat_picket.patrol = [Vector3(edge_r - 8.0, 0, 0)]
+	system_root.add_child(beat_picket)
+	beat_picket.global_position = Vector3(edge_r - 8.0, 0, 0)
+	await get_tree().process_frame
+	var waypoint: Vector3 = beat_picket.patrol[beat_picket._patrol_i]
+	# Between PATROL_ENGAGE (12) and WITNESS_RANGE (25) of the waypoint: ignored
+	# without a grudge, chased with one. That gap IS the feature.
+	wit_pilot.global_position = waypoint + Vector3(0, 0, 18.0)
+	await get_tree().process_frame
+	var beat_calm := beat_picket._worth_leaving_the_beat(wit_pilot)
+	beat_picket.provoke(wit_pilot)
+	var beat_angry := beat_picket._worth_leaving_the_beat(wit_pilot)
+	# And past the marker it refuses even while angry — the beacon has promised
+	# since v13 that patrols do not operate out there, and until now nothing made
+	# that true of a picket in PURSUIT.
+	#
+	# 5u PAST THE EDGE AND 13u FROM THE WAYPOINT: inside the reach the grudge
+	# just widened, so the ONLY thing that can refuse this is the clamp.
+	wit_pilot.global_position = Vector3(edge_r + 5.0, 0, 0)
+	var edge_reach := waypoint.distance_to(wit_pilot.global_position)
+	await get_tree().process_frame
+	var beat_over_edge := beat_picket._worth_leaving_the_beat(wit_pilot)
+	# The positive control, and it is the SAME GEOMETRY one step inside: 5u on
+	# the other side of the marker, still ~13u from the waypoint. If this one did
+	# not chase, the clause above would be measuring distance rather than the
+	# edge.
+	wit_pilot.global_position = Vector3(edge_r - 5.0, 0, 0)
+	await get_tree().process_frame
+	var beat_inside := beat_picket._worth_leaving_the_beat(wit_pilot)
+	if is_instance_valid(beat_picket):
+		beat_picket.free()
+	wit_pilot.global_position = Vector3(0, 0, 6)
+	print("[faction] THE BEAT IS STILL THE ANCHOR UNDER A GRUDGE at 18u from the waypoint (engage %.0f, witness %.0f): unprovoked chased=%s, provoked chased=%s; %.0fu past the marker and only %.1fu from the waypoint, provoked chased=%s, and the same geometry inside the marker chased=%s -> %s" % [
+		Hostile.PATROL_ENGAGE, FactionDB.WITNESS_RANGE, str(beat_calm),
+		str(beat_angry), 5.0, edge_reach, str(beat_over_edge), str(beat_inside),
+		"PASS" if not beat_calm and beat_angry and not beat_over_edge
+			and beat_inside and edge_reach < FactionDB.WITNESS_RANGE else "FAIL"])
+
+	for leftover in [wit_victim, wit_near, wit_far, wit_other]:
+		if is_instance_valid(leftover):
+			leftover.free()
+
+	# THE CORDON RE-FORMS, AND STOPS AT ITS STRENGTH. Two clauses that fail
+	# separately: a killed picket comes back, and the relief NEVER takes the
+	# Cordon past what the data authored. Either alone is worthless — the first
+	# passes on an uncapped printer and the second on a build that never spawns.
+	_clear_faction_matrix()
+	_cordon_timer = CORDON_REFORM_INTERVAL
+	var authored_routes: int = cordon_routes().size()
+	for picket_v in get_tree().get_nodes_in_group("hostiles"):
+		var doomed := picket_v as Hostile
+		if doomed != null and is_instance_valid(doomed) and doomed.has_meta("route_i"):
+			doomed.free()
+	await get_tree().process_frame
+	var cordon_emptied := _count_cordon()
+	# Driven through the real tick rather than by calling the builder, so this
+	# measures the CADENCE and its guards as well as the spawn.
+	for beat_i in range(authored_routes + 3):
+		_cordon_timer = 0.0
+		_tick_cordon(0.016)
+		await get_tree().process_frame
+	var cordon_back := _count_cordon()
+	var beats_free := unmanned_routes().size()
+	print("[faction] THE CORDON RE-FORMS, AND STOPS AT ITS STRENGTH cleared to %d, %d relief ticks later %d of %d authored beats manned (%d still free; %d ticks were surplus and must add nothing) -> %s" % [
+		cordon_emptied, authored_routes + 3, cordon_back, authored_routes,
+		beats_free, 3,
+		"PASS" if cordon_emptied == 0 and cordon_back == authored_routes
+			and beats_free == 0 and authored_routes > 0 else "FAIL"])
+
+	# A MUSTER LEAVES ITS SURVIVORS BEHIND. Staged with the Cordon deliberately
+	# UNDER strength, because at full strength the rule is vacuous — every beat
+	# is manned, nothing is retained, and a build that retained nobody at all
+	# would print exactly the same line.
+	# STAGED FROM FULL STRENGTH, not from whatever the leg above left. Reading
+	# `open_before` off inherited state is how this reported 2 open beats when
+	# the re-form was broken and failed for a reason that had nothing to do with
+	# retention — the "inherits state from the one above it" shape, in the suite
+	# that documents it. Rebuilt here, then exactly one beat is vacated.
+	for stale_v in get_tree().get_nodes_in_group("hostiles"):
+		var stale := stale_v as Hostile
+		if stale != null and is_instance_valid(stale) and stale.has_meta("route_i"):
+			stale.free()
+	await get_tree().process_frame
+	for beat_j in range(authored_routes):
+		SystemBuilder.build_picket(system_def, system_root, beat_j)
+	await get_tree().process_frame
+	var staged_full := unmanned_routes().is_empty()
+	var freed := 0
+	for picket_v2 in get_tree().get_nodes_in_group("hostiles"):
+		var spare := picket_v2 as Hostile
+		if spare != null and is_instance_valid(spare) and spare.has_meta("route_i") \
+				and freed < 1:
+			spare.free()
+			freed += 1
+	await get_tree().process_frame
+	var open_before := unmanned_routes().size()
+	# Two line survivors against one open beat: one is kept, one departs. That
+	# pair is the cap, and a build that kept both prints it.
+	var keepers: Array[Hostile] = []
+	for i_keep in range(2):
+		var line_ship := Hostile.new()
+		line_ship.faction = "gsa"
+		line_ship.muster = true
+		system_root.add_child(line_ship)
+		line_ship.global_position = Vector3(0, 0, -chart_edge() + 3.0)
+		line_ship.add_to_group("muster_line")
+		keepers.append(line_ship)
+	await get_tree().process_frame
+	_muster_active = true
+	_muster_cooldown = 0.0
+	_close_muster(true)
+	await get_tree().process_frame
+	var kept_ship: Hostile = null
+	for k in keepers:
+		if is_instance_valid(k) and not k.is_dying():
+			kept_ship = k
+	var open_after := unmanned_routes().size()
+	var kept_has_beat: bool = kept_ship != null and not kept_ship.patrol.is_empty() \
+		and kept_ship.has_meta("route_i")
+	# THE FLAG, NOT JUST THE GROUP: a retained survivor that kept `muster` would
+	# stay exempt from the ambient HP floor for the rest of the session and could
+	# be killed to zero by a sentry with nobody watching.
+	var kept_is_ordinary: bool = kept_ship != null and not kept_ship.muster \
+		and not kept_ship.is_in_group("muster_line")
+	print("[faction] A MUSTER LEAVES ITS SURVIVORS BEHIND staged full=%s then %d beat(s) open, 2 line survivors -> %d open after; the keeper walks a route=%s, is no longer a muster ship=%s (the surplus one still departed=%s) -> %s" % [
+		str(staged_full), open_before, open_after, str(kept_has_beat),
+		str(kept_is_ordinary), str(_muster_census("muster_line") == 0),
+		"PASS" if staged_full and open_before == 1 and open_after == 0
+			and kept_has_beat and kept_is_ordinary
+			and _muster_census("muster_line") == 0 else "FAIL"])
+	_muster_active = false
+	_muster_cooldown = 0.0
+
+	# A MUSTER DOES NOT SURVIVE A WARP. _load_system cleared the boss, the raid,
+	# the rift, the convoy and the wave timer, and never the muster — while
+	# _tick_market hosts _tick_muster ABOVE _process's warping guard. Warp with
+	# the column half-released and the rest of it spawned into the NEW system at
+	# the old system's origin; warp with it fully released and the census read
+	# zero, _close_muster(true) fired, and the player collected LINE HELD and a
+	# step of Authority standing for leaving.
+	#
+	# THE STANDING CLAUSE IS THE POINT. "The event ended" is satisfied by the
+	# bug — it ended, and it paid.
+	_clear_faction_matrix()
+	var gsa_key := FactionDB.pair_key(FactionDB.SURVEYOR, "gsa")
+	_muster_active = true
+	_muster_released = MUSTER_COLUMN
+	_muster_point = Vector3(0, 0, -chart_edge())
+	_muster_origin = Vector3(0, 0, -chart_edge() - MUSTER_DEPTH)
+	_muster_cooldown = 0.0
+	_load_system(system_id)
+	await get_tree().process_frame
+	var warp_cleared: bool = not _muster_active and _muster_released == 0
+	var warp_paid := int(GameState.faction_deltas.get(gsa_key, 0))
+	var warp_cooldown := _muster_cooldown
+	# And nothing of the column came with it.
+	var stowaways := _muster_census("muster_column") + _muster_census("muster_line")
+	print("[faction] A MUSTER DOES NOT SURVIVE A WARP active cleared=%s, column ships in the new system %d (want 0), Authority standing %+d (want 0 — leaving is not holding), cooldown %.0f (want %.0f) -> %s" % [
+		str(warp_cleared), stowaways, warp_paid, warp_cooldown, MUSTER_COOLDOWN,
+		"PASS" if warp_cleared and stowaways == 0 and warp_paid == 0
+			and warp_cooldown >= MUSTER_COOLDOWN - 1.0 else "FAIL"])
 
 	_clear_faction_matrix()
 	await get_tree().create_timer(0.2).timeout
@@ -17179,5 +18290,87 @@ func _run_mine_test() -> void:
 	quiet_seam.queue_free()
 	noisy_hulk.queue_free()
 	GameState.cargo = {}
+
+	# --- playtest round 5 ----------------------------------------------------
+
+	# A MINING TIER SAYS SO. This call discarded mark_mining's bool for four
+	# stages, so mining was the only ladder in the game that levelled in silence
+	# -- archeology, smuggling and persuasion all toast theirs. A playtester
+	# sitting at mining 1 reported archeology as the only skill that progressed.
+	#
+	# BOTH HALVES, and the second is the one that stops this passing on a build
+	# that toasts the skill line after EVERY cut: a cut that does not tier must
+	# still print the haul, or the player loses the readout they cut for.
+	GameState.mining = 0
+	# THREE SHORT OF THE RUNG, computed from the ladder rather than typed. The
+	# first draft of this named a constant 15 under a comment claiming it was
+	# derived -- which is the "comments are claims" failure this project keeps
+	# catching, authored into a check written to catch that class of thing.
+	# Re-tune MINING_TIERS and the probe follows it.
+	GameState.mining_xp = GameState.MINING_TIERS[1] - 3
+	GameState.cargo = {}
+	hud.clear_toast()
+	var tier_seam := MineableSeam.new()
+	tier_seam.good = "ore_ferrite"
+	tier_seam.units = 3
+	tier_seam.band = 4          # 4 xp: crosses 18 from 15
+	system_root.add_child(tier_seam)
+	await get_tree().process_frame
+	tier_seam._complete()
+	await get_tree().process_frame
+	var tier_toast := hud.toast_text()
+	var tiered_to := GameState.mining
+	tier_seam.queue_free()
+	# The negative control: a cut well short of the next rung.
+	GameState.mining_xp = 0
+	GameState.mining = 0
+	GameState.cargo = {}
+	hud.clear_toast()
+	var plain_seam := MineableSeam.new()
+	plain_seam.good = "ore_ferrite"
+	plain_seam.units = 3
+	plain_seam.band = 1
+	system_root.add_child(plain_seam)
+	await get_tree().process_frame
+	plain_seam._complete()
+	await get_tree().process_frame
+	var haul_toast := hud.toast_text()
+	plain_seam.queue_free()
+	GameState.cargo = {}
+	GameState.mining = 0
+	GameState.mining_xp = 0
+	print("[mine] A MINING TIER SAYS SO crossing a rung -> tier %d and the toast reads '%s'; a cut that does not tier still reads '%s' -> %s" % [
+		tiered_to, tier_toast, haul_toast,
+		"PASS" if tiered_to == 1 and tier_toast.contains("MINING 1")
+			and not haul_toast.contains("MINING") and haul_toast != "" else "FAIL"])
+
+	# THE DEEP PERK ARRIVES BEFORE THE LADDER ENDS. MINING_DEEP_TIER was 3, which
+	# IS MINING_TIERS' max index -- so band-4 access, the only 4-xp rung on the
+	# board, unlocked exactly when there was nothing left to earn with it, and the
+	# tuning note that prices this ladder in "sessions of working the Quiet"
+	# described a rate no live ladder could reach.
+	#
+	# Asserted as the RULE over the whole perk table rather than on the one
+	# constant that was wrong: every tier a perk is hung on must be reachable,
+	# and the top of the ladder must still buy something. A future reshuffle that
+	# parked any perk on the last rung fails this, not just this one.
+	var perk_tiers := {
+		"read": GameState.MINING_READ_TIER,
+		"deep": GameState.MINING_DEEP_TIER,
+		"sample": GameState.MINING_SAMPLE_TIER,
+	}
+	var max_tier: int = GameState.MINING_TIERS.size() - 1
+	var stranded := ""
+	var top_buys := ""
+	for k in perk_tiers:
+		if int(perk_tiers[k]) >= max_tier and String(k) != "sample":
+			stranded += "%s " % String(k)
+		if int(perk_tiers[k]) == max_tier:
+			top_buys = String(k)
+	var access_usable: bool = GameState.MINING_DEEP_TIER < max_tier
+	print("[mine] THE DEEP PERK ARRIVES BEFORE THE LADDER ENDS perks %s against max tier %d: band-4 access at %d is usable=%s, the top rung still buys '%s', stranded: %s -> %s" % [
+		str(perk_tiers), max_tier, GameState.MINING_DEEP_TIER,
+		str(access_usable), top_buys, stranded if stranded != "" else "none",
+		"PASS" if access_usable and top_buys != "" and stranded == "" else "FAIL"])
 
 	get_tree().quit()

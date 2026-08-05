@@ -509,6 +509,13 @@ static func _build_sentries(def: Dictionary, container: Node3D, system_id := "")
 		var h := Hostile.new()
 		h.difficulty = mult
 		h.faction = flag
+		# A POST IS A PLACE YOU STAND, NOT A PLACE YOU FREEZE (v18, playtest
+		# round 4). Set HERE and nowhere else: the same class station-keeps every
+		# deep guard and every station guard, and those are asserted to sit
+		# within 0.6u of a planned post and outside crack range of a breach
+		# point, so the orbit is opt-in per node rather than a change to
+		# Hostile's station-keeping branch.
+		h.beat_radius = Hostile.SENTRY_BEAT_RADIUS
 		container.add_child(h)
 		h.position = pos
 
@@ -524,20 +531,43 @@ static func _build_patrols(def: Dictionary, container: Node3D) -> void:
 	# table, before anything is built — which is strictly earlier than a runtime
 	# clamp (it would drag a picket home and hide the mistake) or an assert
 	# (stripped from release builds, and this codebase uses none).
-	var mult := float(def.get("difficulty", 1.0))
-	for route_v in def.get("patrols", []):
-		var route: Array = route_v
-		if route.is_empty():
-			continue
-		var h := Hostile.new()
-		h.difficulty = mult
-		h.faction = "gsa"
-		var pts: Array[Vector3] = []
-		for p_v in route:
-			pts.append(p_v as Vector3)
-		h.patrol = pts
-		container.add_child(h)
-		# After add_child, like every other spawner in this file: a node has to
-		# be in the tree before global_position means anything, and Hostile._home
-		# is captured on the first frame precisely because of it.
-		h.position = pts[0]
+	for i in range((def.get("patrols", []) as Array).size()):
+		build_picket(def, container, i)
+
+
+static func build_picket(def: Dictionary, container: Node3D, route_i: int,
+		enter_at := 0) -> Hostile:
+	# ONE PLACE THAT KNOWS WHAT A PICKET IS, so the Cordon's first deployment and
+	# its re-form (Main._tick_cordon, v18 playtest round 4) cannot drift apart.
+	# This is build_garrison's own argument applied one level down: there, the
+	# suppress list and the restore list are the same list by construction rather
+	# than by agreement, because being two lists is exactly how stage 2a shipped
+	# a first session with sentries and no Cordon in it at all.
+	var routes: Array = def.get("patrols", [])
+	if route_i < 0 or route_i >= routes.size():
+		return null
+	var route: Array = routes[route_i]
+	if route.is_empty():
+		return null
+	var h := Hostile.new()
+	h.difficulty = float(def.get("difficulty", 1.0))
+	h.faction = "gsa"
+	var pts: Array[Vector3] = []
+	for p_v in route:
+		pts.append(p_v as Vector3)
+	h.patrol = pts
+	# WHICH BEAT THIS IS. "Which routes are unmanned" has to be a lookup rather
+	# than a geometry guess: two routes can pass within a few units of each other
+	# (PYX-03 authors four), so asking "is anything standing near waypoint 0"
+	# would call a route manned because a NEIGHBOURING picket happened to be
+	# walking past it, and the Cordon would re-form one ship short forever. Set
+	# before add_child, like every other field here.
+	h.set_meta("route_i", route_i)
+	container.add_child(h)
+	# After add_child, like every other spawner in this file: a node has to
+	# be in the tree before global_position means anything, and Hostile._home
+	# is captured on the first frame precisely because of it.
+	var at := enter_at if enter_at >= 0 and enter_at < pts.size() else 0
+	h.position = pts[at]
+	h.enter_beat(at)
+	return h

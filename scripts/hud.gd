@@ -29,9 +29,33 @@ const TOAST_HOLD := 2.2         # the longest shipped toast is ~47 chars; at a
                                 # covered it. Only safe with the tween kill above.
 const BROADCAST_TOP := 176.0    # clears a 25px toast at 142 by 9
 const PARLEY_WIDTH := 240.0
-const PARLEY_HEIGHT := 40.0
+# 44, not 40. UIKit.button floors every button in the game at 42 and HoldGrid
+# has a TAP_MIN of 42, and these three were the controls that quietly sat under
+# both — 28 design px at the minimum UI scale, on the one sheet in the game with
+# a six-second fuse.
+const PARLEY_HEIGHT := 44.0
+# THE STACK. Three plates now, bottom-up: PAY nearest the thumb because it is
+# the commonest answer, REFUSE above it, and the conditional TALK/BLUFF plate on
+# top. BANDS CLEAR requires 6px between any two bands that can share a screen;
+# these sit at 8, for the reason at the end of this note.
+#
+# The old numbers were -252 and -296 at a height of 40, which is a gap of FOUR
+# against a rule of six — invisible because _bluff_button was never in
+# band_controls(), so the layout probe had never measured it at any size. At the
+# maximum UI scale on a wide window the logical canvas is ~512 tall and the
+# bluff plate resolved to y 176-216 against BROADCAST_TOP 176, which a rift
+# advisory (ungated against a live raid) can occupy at the same moment. Both
+# are fixed by the re-lay rather than by a tolerance.
+#
+# EIGHT px of gap, not the six BANDS CLEAR demands. A stack laid out exactly on
+# a bound passes by zero, and the first thing that nudges a plate's minimum
+# height — a font override, a stylebox margin — turns a green line red with no
+# design change behind it. This file has three separate notes about flaky
+# assertions; laying the geometry on the edge of its own rule would author a
+# fourth.
 const PARLEY_BOTTOM := -252.0
-const BLUFF_BOTTOM := -296.0   # was -216, which overlapped the crack gauge.
+const REFUSE_BOTTOM := -304.0
+const BLUFF_BOTTOM := -356.0    # was -296, four px off PARLEY at the old height.
                                 # -252 is the tutorial card's slot, and the two
                                 # are provably exclusive: interdiction_eligible()
                                 # excludes tutorial_active(). BANDS CLEAR asserts
@@ -439,7 +463,13 @@ var _crack_releasing := false
 var _crack_label: Label
 var _toast_tween: Tween = null
 var _toast_count := 0
+# True while a raider demand owns the prompt line. See hold_prompt.
+var _prompt_held := false
+# The one live tween on the prompt's alpha. Two of them racing is how a prompt
+# ends up with the right text at alpha zero — see prompt().
+var _prompt_tween: Tween = null
 var _parley_button: Button
+var _refuse_button: Button
 var _bluff_button: Button
 var _broadcast_box: PanelContainer
 var _broadcast_tween: Tween = null
@@ -730,6 +760,14 @@ func band_controls() -> Dictionary:
 		"broadcast": _broadcast_box,
 		"arrival": _arrival_label,
 		"parley": _parley_button,
+		# THE OTHER TWO PLATES, which the probe has never seen. _bluff_button has
+		# existed since the parley shipped and was absent from this dictionary, so
+		# BANDS CLEAR and BAND CENTRED measured a two-plate stack as if it were
+		# one — which is why a four-pixel gap and an overlap with the broadcast
+		# plate at maximum UI scale were both invisible to a green sweep. An
+		# inventory that omits a control is an inventory that certifies it.
+		"refuse": _refuse_button,
+		"bluff": _bluff_button,
 		"prompt": _prompt_label,
 	}
 
@@ -852,15 +890,23 @@ func set_boss_status(status: Dictionary) -> void:
 		pip.color = Palette.GOLD if i < open else Color(1.0, 0.13, 0.45, 0.55)
 
 
-func _build_parley_button() -> void:
-	# One transient action, not a console. 14 excludes consoles from raid
-	# starts, so a raid that opened a sheet would deadlock its own eligibility
-	# rule — and a demand with a six-second fuse belongs on the screen, not
-	# behind a tab.
-	_parley_button = Button.new()
-	_parley_button.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_parley_button.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_parley_button.grow_vertical = Control.GROW_DIRECTION_BEGIN
+func _parley_plate(bottom: float, colour: Color, font_size: int,
+		verb: String) -> Button:
+	# ONE BUILDER FOR ALL THREE PLATES. They differ in bottom edge, paint and
+	# which verb they call, and in nothing else — so a geometry rule proved for
+	# one holds for the others by construction instead of by three copies of it
+	# agreeing, which is how the bluff plate ended up four pixels from the toll
+	# plate with no line able to see it.
+	#
+	# STYLED THROUGH UIKit, which nothing in this file used to do. These were the
+	# only actionable controls in the HUD rendered in Godot's stock grey: the
+	# player has been reading amber and teal outline boxes all game, and the one
+	# sheet with a six-second fuse looked like a debug widget. style_button gives
+	# all four states their own box, so a press has feedback.
+	var b := UIKit.style_button(Button.new(), colour)
+	b.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	b.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	b.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	# SYMMETRIC OFFSETS, not position.x = 0. A container with grow BOTH recentres
 	# itself around its anchor when you set position.x to zero — which is why the
 	# dock and the tutorial card do exactly that and land dead centre. A Button
@@ -870,61 +916,76 @@ func _build_parley_button() -> void:
 	# Stating both offsets leaves nothing to infer. Note this is NOT the
 	# double-compensation bug the probe exists for — that was a manual offset ON
 	# TOP of grow-BOTH's own centring; this replaces it.
-	_parley_button.custom_minimum_size = Vector2(PARLEY_WIDTH, PARLEY_HEIGHT)
-	_parley_button.offset_left = -PARLEY_WIDTH * 0.5
-	_parley_button.offset_right = PARLEY_WIDTH * 0.5
+	b.custom_minimum_size = Vector2(PARLEY_WIDTH, PARLEY_HEIGHT)
+	b.offset_left = -PARLEY_WIDTH * 0.5
+	b.offset_right = PARLEY_WIDTH * 0.5
 	# Y IS THE BOTTOM EDGE, matching every other element in this band ("all
 	# bottom-centre elements use grow_vertical = BEGIN, so each y is its bottom
-	# edge"). Writing offset_top = PARLEY_BOTTOM instead made -252 the TOP edge,
-	# so the button grew DOWNWARD into the crack gauge — the exact 9px overlap
-	# the reflow was supposed to remove, reintroduced by the fix for a different
-	# bug. BANDS CLEAR caught it.
-	_parley_button.offset_top = PARLEY_BOTTOM - PARLEY_HEIGHT
-	_parley_button.offset_bottom = PARLEY_BOTTOM
-	_parley_button.add_theme_font_size_override("font_size", 14)
-	_parley_button.add_theme_color_override("font_color", Palette.GOLD)
-	_parley_button.visible = false
-	_parley_button.pressed.connect(func() -> void:
+	# edge"). Writing offset_top = <bottom> instead made it the TOP edge, so the
+	# button grew DOWNWARD into the crack gauge — the exact 9px overlap the
+	# reflow was supposed to remove, reintroduced by the fix for a different bug.
+	# BANDS CLEAR caught it.
+	b.offset_top = bottom - PARLEY_HEIGHT
+	b.offset_bottom = bottom
+	b.add_theme_font_size_override("font_size", font_size)
+	b.visible = false
+	b.pressed.connect(func() -> void:
 		var m := get_tree().get_first_node_in_group("main")
-		if m and m.has_method("pay_toll"):
-			m.pay_toll())
-	_root.add_child(_parley_button)
-
-	_bluff_button = Button.new()
-	_bluff_button.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_bluff_button.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_bluff_button.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_bluff_button.custom_minimum_size = Vector2(PARLEY_WIDTH, PARLEY_HEIGHT)
-	_bluff_button.offset_left = -PARLEY_WIDTH * 0.5
-	_bluff_button.offset_right = PARLEY_WIDTH * 0.5
-	# Directly above the toll button, in the band the tutorial card owns — which
-	# is free during a raid for the same reason parley may sit there at all.
-	_bluff_button.offset_top = BLUFF_BOTTOM - PARLEY_HEIGHT
-	_bluff_button.offset_bottom = BLUFF_BOTTOM
-	_bluff_button.add_theme_font_size_override("font_size", 13)
-	_bluff_button.add_theme_color_override("font_color", Palette.TEAL)
-	_bluff_button.visible = false
-	_bluff_button.pressed.connect(func() -> void:
-		var m := get_tree().get_first_node_in_group("main")
-		if m and m.has_method("run_bluff"):
-			m.run_bluff())
-	_root.add_child(_bluff_button)
+		if m and m.has_method(verb):
+			m.call(verb))
+	_root.add_child(b)
+	return b
 
 
-func show_parley(toll: int, bluff_odds := 0.0) -> void:
+func _build_parley_button() -> void:
+	# One transient action, not a console. 14 excludes consoles from raid
+	# starts, so a raid that opened a sheet would deadlock its own eligibility
+	# rule — and a demand with a six-second fuse belongs on the screen, not
+	# behind a tab.
+	#
+	# THREE VERBS, THREE PLATES (v18, playtest round 4). The demand has named
+	# three options since the parley shipped and offered one control, so a
+	# playtester reported the whole system missing when every part of it was
+	# built and on screen. RUN is the one that does not get a plate, because
+	# inside a charted system it is not implemented at all — raiders carry no
+	# leash there — and a button that did nothing would be worse than the prompt
+	# that promised it. The prompt says what the buttons say instead.
+	_parley_button = _parley_plate(PARLEY_BOTTOM, Palette.GOLD, 14, "pay_toll")
+	_refuse_button = _parley_plate(REFUSE_BOTTOM, Palette.THREAT, 13, "refuse_toll")
+	_bluff_button = _parley_plate(BLUFF_BOTTOM, Palette.TEAL, 13, "run_bluff")
+	_refuse_button.text = "REFUSE — THEY OPEN FIRE"
+
+
+func show_parley(toll: int, bluff_odds := 0.0, burns_manifest := false) -> void:
 	_parley_button.text = "PAY THE TOLL — %d IN CARGO" % toll
 	_parley_button.visible = true
+	# REFUSAL IS ALWAYS AVAILABLE, so it is never conditional. Fighting was
+	# always a legal answer to a demand — it just had no control, and the only
+	# way to express it was to land a shot on a raider and discover that
+	# break_parley existed.
+	_refuse_button.visible = true
 	# The odds go ON the button. 12's standard: an honest bad bet you can see is a
 	# thing to do; a hidden one is a con — and a bluff whose chance the player
 	# cannot read would be exactly the paid random reveal the lab refused.
+	#
+	# AND THE LABEL NAMES WHAT IT SPENDS. Two ladders can raise this plate now —
+	# a Forged Manifest through SMUGGLING, or PERSUASION through nothing but
+	# talking — and "BURNS THE MANIFEST" on a run that has no manifest aboard
+	# would be a stake the player was told about and never charged.
 	_bluff_button.visible = bluff_odds > 0.0
 	if bluff_odds > 0.0:
-		_bluff_button.text = "BLUFF — %d%%  (BURNS THE MANIFEST)" % int(bluff_odds * 100.0)
+		_bluff_button.text = ("BLUFF — %d%%  (BURNS THE MANIFEST)" if burns_manifest
+			else "TALK THEM DOWN — %d%%") % int(bluff_odds * 100.0)
 
 
 func hide_parley() -> void:
 	_parley_button.visible = false
+	_refuse_button.visible = false
 	_bluff_button.visible = false
+	# AND THE LINE GOES BACK TO THE WORLD. Released here rather than at each of
+	# the five call sites that end a parley, so the lock cannot outlive the
+	# plates: whatever ends the standoff, it ends through this function.
+	_prompt_held = false
 
 
 func bluff_text() -> String:
@@ -1116,6 +1177,15 @@ func toast_busy() -> bool:
 	# show_toast), so a caller with something to say that can WAIT asks first
 	# rather than clipping the sentence already on screen.
 	return _toast_tween != null and _toast_tween.is_valid()
+
+
+func prompt_text() -> String:
+	# Gated on visibility for toast_text's reason: a label still holding its last
+	# string while invisible is not a thing the player was told. EVERY OPTION THE
+	# DEMAND NAMES HAS A CONTROL drives itself off this, so a prompt that had
+	# been cleared must read as empty rather than as its own history.
+	return _prompt_label.text if _prompt_label != null \
+		and _prompt_label.visible and _prompt_label.modulate.a > 0.01 else ""
 
 
 func toast_text() -> String:
@@ -1434,16 +1504,58 @@ func _flush_gain() -> void:
 
 
 func prompt(text: String) -> void:
+	# Refused while a demand holds the line — see hold_prompt.
+	if _prompt_held:
+		return
 	if _prompt_label.text == text and _prompt_label.modulate.a > 0.5:
 		return
 	_prompt_label.text = text
-	var tw := create_tween()
-	tw.tween_property(_prompt_label, "modulate:a", 1.0, 0.2)
+	# THE FADE-OUT HAS TO DIE FIRST, and not doing so is a defect this line
+	# carried for a long time. Two tweens on one property both keep running, so a
+	# prompt raised within clear_prompt's 0.25s fade landed a 0.2s fade-IN and
+	# then the older fade-OUT finished on top of it: correct text, correct
+	# visibility, alpha 0.00, and nothing on the screen.
+	#
+	# The parley is where it bites. spawn_interdiction calls
+	# close_consoles_for_raid, and a console closing clears the prompt — so the
+	# demand's own arrival sequence could extinguish the sentence explaining it,
+	# leaving the plates up beside an empty line. That is a playtester reporting
+	# a toll with "no way to accept it" while looking straight at the button.
+	if _prompt_tween != null and _prompt_tween.is_valid():
+		_prompt_tween.kill()
+	_prompt_tween = create_tween()
+	_prompt_tween.tween_property(_prompt_label, "modulate:a", 1.0, 0.2)
+
+
+func hold_prompt(text: String) -> void:
+	# THE DEMAND OWNS THE PROMPT LINE FOR ITS WINDOW (v18, playtest round 4).
+	#
+	# The prompt is one label with a dozen writers — barks, derelict range, seam
+	# range, port range, the apex wreck, traps — and every one of them writes and
+	# clears unconditionally. So the sentence explaining the parley plates was
+	# being wiped by whatever the player happened to be drifting near, with the
+	# plates still on screen and nothing left saying what they were. The 3.2s
+	# self-destruct timer was only the most reliable of the clobberers.
+	#
+	# A LOCK RATHER THAN A PRIORITY NUMBER, because there is exactly one thing in
+	# this game that gets six seconds to be read while something closes on you.
+	# Held for the length of the standoff and released by hide_parley, so the
+	# lock cannot outlive the plates it is describing — every path that ends a
+	# parley already goes through there.
+	_prompt_held = false
+	prompt(text)
+	_prompt_held = true
 
 
 func clear_prompt() -> void:
-	var tw := create_tween()
-	tw.tween_property(_prompt_label, "modulate:a", 0.0, 0.25)
+	if _prompt_held:
+		return
+	# Same rule in the other direction: a clear that raced a fade-in would leave
+	# a stale sentence at full alpha.
+	if _prompt_tween != null and _prompt_tween.is_valid():
+		_prompt_tween.kill()
+	_prompt_tween = create_tween()
+	_prompt_tween.tween_property(_prompt_label, "modulate:a", 0.0, 0.25)
 
 
 func clear_prompt_if(text: String) -> void:

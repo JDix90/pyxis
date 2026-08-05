@@ -288,7 +288,16 @@ func _yield_cut(take: int, label: String) -> void:
 	# cutting rock level a reading skill and turn FEEDS COMPETE red.
 	_record_cut()
 	# Fed by the CUT, weighted by BAND. Never by the sale.
-	GameState.mark_mining(band)
+	#
+	# AND THE TIER-UP IS ANNOUNCED, which it was not. This call discarded
+	# mark_mining's bool for four stages while archeology (derelict.gd),
+	# smuggling (port_panel.gd) and persuasion (main.gd) all raised a gold toast
+	# on theirs — so mining was the one ladder in the game that levelled in
+	# silence, with nothing but a captain's-log line the player had to go and
+	# read. A playtester at mining 1 reported that archeology was the only skill
+	# that progressed at all, which is what an unannounced ladder looks like from
+	# the cockpit.
+	var mining_tiered := GameState.mark_mining(band)
 
 	Sfx.play("crack", -4.0, 0.75)
 	Sfx.haptic("medium")
@@ -299,8 +308,14 @@ func _yield_cut(take: int, label: String) -> void:
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud:
 		hud.crack_progress(-1.0)
-		hud.show_toast("%s — %s x%d" % [label, CommodityDB.short_name(good), take],
-			CommodityDB.color_of(good))
+		# THE TIER LINE WINS THE SLOT when both would fire. A haul toast prints
+		# every single cut; a tier-up prints three times in a save, and it is the
+		# one the player has been waiting to see.
+		if mining_tiered:
+			hud.show_toast(GameState.mining_line(), Palette.GOLD)
+		else:
+			hud.show_toast("%s — %s x%d" % [label, CommodityDB.short_name(good), take],
+				CommodityDB.color_of(good))
 		hud.refresh_cargo()
 	_spend_visual()
 
