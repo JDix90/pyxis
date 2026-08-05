@@ -15,9 +15,16 @@ extends Object
 # errand. What these buy is the answer to "have I been here before" and "how far
 # out am I" without reading a number.
 #
-# Read the four together and they are one story told outward: something the
-# authority built, something people lived in, something that grew, and something
-# that is just a marker with nobody left to read it.
+# Read the six together and they are one story told outward: something the
+# authority built, something people lived in, something that grew, something
+# that is just a marker with nobody left to read it -- and then, past the last
+# marker, something somebody started and abandoned, and something somebody left
+# to say a person got this far.
+#
+# The frontier's two are the only landmarks NOBODY OFFICIAL made. Everything
+# inside the Quiet was built by the GSA or by settlers working off its charts;
+# the gate and the cairn are the work of whoever came out here after the maps
+# stopped, which is the same person the player currently is.
 
 
 static func build(kind: String, band: int) -> Node3D:
@@ -30,6 +37,10 @@ static func build(kind: String, band: int) -> Node3D:
 			return _monolith(band)
 		"marker":
 			return _marker(band)
+		"gate":
+			return _gate(band)
+		"cairn":
+			return _cairn(band)
 	return null
 
 
@@ -178,4 +189,100 @@ static func _marker(band: int) -> Node3D:
 		stub.material_override = cold
 		stub.position = Vector3(-2.1 + float(i) * 1.4, 14.4, 0.0)
 		root.add_child(stub)
+	return root
+
+
+static func _gate(band: int) -> Node3D:
+	# THE FATHOMS: an arch somebody stopped building.
+	#
+	# The frame's sibling and its opposite. A frame is a structure that was
+	# finished and then failed; this was never finished -- two piers rising to
+	# meet and stopping short, with the span between them missing. It is the
+	# first landmark in the game that is passable, and flying THROUGH the gap
+	# where the span should be is the whole read: you are crossing into
+	# something, and whoever meant to mark the crossing properly did not get to.
+	#
+	# It emits, unlike the marker one band in. That is deliberate and it is the
+	# band's argument in one object: the Quiet is where the authority's lights go
+	# out, and the Fathoms is where somebody else's come on.
+	var root := Node3D.new()
+	var tint := Palette.band_color(band)
+	var stone := Palette.matte(Color(0.15, 0.16, 0.19))
+
+	for side in [-1.0, 1.0]:
+		# A pier that leans inward, so the two read as reaching for each other.
+		var pier := MeshInstance3D.new()
+		var pb := BoxMesh.new()
+		pb.size = Vector3(2.4, 34.0, 2.4)
+		pier.mesh = pb
+		pier.material_override = stone
+		pier.rotation_degrees.z = -7.0 * side
+		pier.position = Vector3(15.0 * side, 15.0, 0.0)
+		root.add_child(pier)
+
+		# The span, started from each side and stopping in mid-air. The gap is
+		# 12u across at 30u up: wide enough to fly through at speed.
+		var stub := MeshInstance3D.new()
+		var sb := BoxMesh.new()
+		sb.size = Vector3(7.0, 2.0, 2.0)
+		stub.mesh = sb
+		stub.material_override = stone
+		stub.position = Vector3(9.5 * side, 30.0, 0.0)
+		root.add_child(stub)
+
+		# One lamp per pier, still lit. Two lights facing each other across a gap
+		# that was never closed is the whole object in one detail.
+		var lamp := MeshInstance3D.new()
+		var lm := SphereMesh.new()
+		lm.radius = 0.7
+		lm.height = 1.4
+		lamp.mesh = lm
+		lamp.material_override = Palette.emissive(tint, 2.2)
+		lamp.position = Vector3(6.6 * side, 30.0, 0.0)
+		root.add_child(lamp)
+	return root
+
+
+static func _cairn(band: int) -> Node3D:
+	# THE UNSOUNDED: a pile of hull plate, stacked by hand.
+	#
+	# The oldest thing a person does when they reach somewhere nobody has been
+	# and there is nothing to build with: stack what you have so the next one
+	# knows somebody got here. It is made of SHIP, not of stone -- slabs cut off
+	# a hull, which means whoever stacked it was not leaving in that ship.
+	#
+	# It does not emit, and that is the callback the band's arc needs: the Quiet's
+	# marker was unlit because the authority stopped paying for the light. This
+	# one is unlit because nobody is coming back to change it. You see it because
+	# it occludes stars, standing where the surveyor's own vocabulary runs out.
+	var root := Node3D.new()
+	var plate := Palette.matte(Color(0.19, 0.19, 0.21))
+
+	# Seven slabs, narrowing as they go up, each turned a little off the last so
+	# the stack reads as placed rather than dropped.
+	var n := 7
+	for i in range(n):
+		var t := float(i) / float(n - 1)
+		var slab := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		var w := 9.0 - 6.6 * t
+		bm.size = Vector3(w, 1.6, w * 0.72)
+		slab.mesh = bm
+		slab.material_override = plate
+		slab.position.y = 1.0 + float(i) * 1.75
+		slab.rotation_degrees.y = 23.0 * float(i) + 9.0 * sin(float(i) * 2.1)
+		slab.rotation_degrees.x = 2.4 * sin(float(i) * 1.7)
+		root.add_child(slab)
+
+	# The last piece, stood on its edge on top: the one deliberate line in an
+	# otherwise horizontal object, and the reason it reads as a mark rather than
+	# as debris that happened to settle.
+	var top := MeshInstance3D.new()
+	var tb := BoxMesh.new()
+	tb.size = Vector3(0.5, 5.2, 2.6)
+	top.mesh = tb
+	top.material_override = plate
+	top.position.y = 1.0 + float(n) * 1.75 + 2.0
+	top.rotation_degrees.y = 31.0
+	root.add_child(top)
 	return root

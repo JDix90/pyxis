@@ -5987,10 +5987,26 @@ same commit.**
 
 ### Outstanding
 
-**Nothing.** The Hunt's stages 4–6 shipped as §65, §66 and §67 (2026-08-04), and
-no other specced-but-unbuilt work is known. The table below is kept as the
-record of what was outstanding and how it resolved; **the discipline stands** —
-if you defer something, it goes here in the same commit.
+**The frontier, stages 2–4** (owner-commissioned 2026-08-05 after the 8000u
+playtest; stage 1 shipped as §68). The full plan is in
+`~/.claude/plans/you-are-continuing-work-kind-lemur.md`.
+
+| stage | what | save | status |
+|---|---|---|---|
+| 1 | bands 5/6 (THE FATHOMS, THE UNSOUNDED): edges, every band table, threats, commodities, landmarks, palette, `PYXIS_FRONTIERTEST` | none | **BUILT** — §68 |
+| 2 | the Mk III line: 4 Mk III weapons, 3 Mk III utilities, Breaching Torch / Surge Capacitors / Expedition Frame, **Reactor Mk V** (24 power), `reactor_cap` port-def gating | none | **not built** |
+| 3 | **THE BREAKWATER** (band 5, military) and **THE FAR LANTERN** (band 6, cantina): the first deep ports that sell what the chart cannot, plus `station_weights` rows for pyx02/pyx03 | none | **not built** |
+| 4 | deep weather (optional): band-6 grave-fields on a `"\|hulk2"` salted stream, pyx03 rift depth extension, `LANDMARK_KINDS` growth **with every authored row widened in the same commit** | none | **not built** |
+
+Stage 2 is what makes the frontier survivable and stage 3 is what makes it a
+loop; until they land, bands 5 and 6 are harder and richer with chart-bought gear
+as the only counter — coherent, and deliberately a stretch. **No save bump is
+expected anywhere in this horizon**: deep space persists nothing, and module and
+commodity ids flow through the existing generic `owned`/`fit`/cargo paths.
+
+The Hunt's stages 4–6 shipped as §65, §66 and §67 (2026-08-04). The table below
+is kept as the record of what was outstanding and how it resolved; **the
+discipline stands** — if you defer something, it goes here in the same commit.
 
 **The Hunt, stages 4–6.** The horizon is specced in full in
 `~/.claude/plans/i-have-indeed-tested-fuzzy-parnas.md` — outside the repo, which
@@ -6370,3 +6386,138 @@ deliberately has no "does this agree with `run_seed`" filter, because
 recomputing and discarding disagreements would delete a founded colony the day
 the depth band was retuned. `_load_apex_intel` makes the same choice for the
 same reason.
+
+---
+
+## 68. THE QUIET had no far edge (the frontier, stage 1)
+
+A playtest flew to **~8000u** past the chart. The report was that it was brutal
+and fight-heavy, and that the ports out there were identical to ones at 500u.
+The code said something sharper, and it is worth stating exactly:
+
+- **`BAND_EDGES` ended at 1100.** Every generator table in the game is a
+  five-element array indexed by band, so a player at 8000u was reading *the same
+  row* as one at 1100u — the same pack HP, the same guard curve, the same five
+  shopfronts, the same trap odds.
+- **And past 4244u the deep is strictly poorer.** Convoys stop at depth 1000 by
+  design (§17). Rifts cap at pyx03's authored 1200. The instruments (§67) end at
+  4200. `bounds_of("pyx03") + HYPER_DEPTH_MAX` = **4244u is the deepest authored
+  thing in the game**, and the player was at nearly twice that. The reward for
+  the second half of that trip was less content than the first half, at
+  identical difficulty.
+
+So the complaint was not "the ports don't scale". It was that **distance stopped
+meaning anything at 1100u**, and the ports were where that became visible.
+
+### Two bands, appended rather than inserted
+
+`BAND_EDGES` gains 2600 and 5200; `BAND_NAMES` gains **THE FATHOMS** and **THE
+UNSOUNDED**. The edges are chosen, not spaced:
+
+- **2600** sits inside the instruments' span (1600–4200), so the Fathoms
+  inherits them as authored landmarks in its lower half rather than starting on
+  empty ground.
+- **5200** is past 4244 — past *everything* authored. That is what the Unsounded
+  is: the band where the only thing out there is what the generator makes.
+
+**The fingerprint is safe by construction, not by luck.** `band_of` walks
+`BAND_EDGES` from the top down, so every depth under 2600 skips the new entries
+and takes a byte-identical path. `WORLD_FINGERPRINT_BEFORE_SEAMS` cannot move,
+and the existing assertions check it for free. The interesting risk was the
+other one.
+
+### The outer bays, recorded before the change
+
+Cells past 2600u exist *today* as band-4 cells, and after this they re-plan as
+band 5/6 — different chance rolls, different content. Nothing out there persists
+**except deep bays**, which are keyed by cell and saved. So the argument was:
+the bay-relevant draws (station chance, archetype, position, storage) come first
+in `plan_cell` and their *count* does not change, because `weighted_index`
+derives its index from a returned uint32 and only the modulo can move.
+
+That is an argument. `OUTER_BAYS_BEFORE_FRONTIER` is the measurement: the
+station position and storage flag of every bay along four radial lanes through
+the 2600–5200 shell in all three systems, **hashed on the commit before the
+edges grew** — 23, 22 and 21 bays. The bay count is asserted beside the hash,
+because `hash("") == hash("")` is how a probe that stopped finding anything
+reports success.
+
+### The palette had to be re-searched, not appended to
+
+§53's band sets were chosen by a 60,000-candidate grid search scored on
+*simulated* dichromat separation, with a floor of 0.20. The obvious move was to
+append two colours per set. Measured, the best appendable pair scores **0.214 /
+0.216 / 0.215** — over the threshold, with **one seventh** of the headroom the
+shipped sets have (0.307 / 0.317 / 0.333).
+
+Clearing a floor by 0.014 is how a palette that "meets the standard" ships
+unreadable. Each set was re-run whole by the same method — farthest-point seed
+then swap refinement, same luminance and peak floors, **near-white pinned at
+index 4** because THE QUIET is the band about having no colour left. Seven
+colours in a space that comfortably held five costs a little separation:
+**0.283 / 0.304 / 0.317**. That is the honest price, and it is recorded rather
+than smoothed over.
+
+The default palette is untouched — mode 0 is still byte-identical, which
+ACCESSTEST asserts. The new bands come back **wrong** rather than whiter: there
+is nowhere whiter to go than the Quiet, and a band that got paler would make the
+band about absence stop being the end of anything.
+
+### The bug this stage nearly shipped, found by reading a clamp
+
+`Rift.rich_band()` clamped to `BAND_NAMES.size() - 1`. Appending two bands would
+have moved that ceiling from 4 to 6 — and since rifts stop at depth 1200, the
+*only* effect would have been a band-4 shear at 1200u paying **Fathom Salvage
+(480) instead of Quiet Salvage (340)**. A 41% raise, in content the player
+already reaches, delivered by a change whose entire purpose was to add content
+1400u further out.
+
+That is §50's stealth pay rise exactly, caught this time by reading the clamp
+rather than by measuring the loop afterwards. The ceiling is now a pinned
+`GRADE_CEILING` with the reasoning written above it, and `THE WEATHER DID NOT
+GET RICHER` asserts the **rule** — a shear pays a grade a rift can actually be
+found in — rather than the number 4, so authoring weather further out moves it
+deliberately instead of silently.
+
+**The general lesson, and it is new:** a derived bound is safer than a literal
+right up until the thing it derives from grows. `BAND_NAMES.size() - 1` was
+correct for four years and became a pay rise the moment the array changed. Every
+`.size() - 1` in this codebase is a clamp *and* a policy, and the two only look
+identical while the array is fixed.
+
+### What makes 5 feel unlike 4, and 6 unlike 5
+
+Not just larger numbers — the tables continue their own tapers (`GUARD_DIFFICULTY`
+steps +0.20 where the earlier step was +0.30, keeping an Unsounded guard's shot
+at 28.7 against PYX-03's authored sentries at 30.8, still under the chart's
+hardest gun on purpose). What changes in kind:
+
+- **THE FATHOMS** — `PACK_ESCORTS` goes to **2**. One escort is a fight with an
+  anchor in it; two is a fight with a *formation*, and arc-kiting the swarm stops
+  being the whole answer. Its landmark is a **gate**: an arch somebody started
+  and stopped, the first landmark in the game you can fly *through*. Its
+  broadcast is the first voice out there that is not the GSA.
+- **THE UNSOUNDED** — `FAR_LEASH` **260** against the shipped 140. Breaking off
+  costs real distance for the first time. Traps run at 0.68 with 3.5s of EMP,
+  which finally gives the carried Thermal Sink and the crafted Sink Lattice a
+  job. Its landmark is a **cairn** — hull plate stacked by hand, made of *ship*,
+  so whoever stacked it was not leaving in that ship. Its broadcast inverts band
+  4's closing line one word at a time.
+
+**The Tally's tell stays the Tally's.** `FAR_LEASH` is a *longer* chase, never
+an unending one; a zero leash belongs to `unknown_a` alone, and a second faction
+owning it would spend the one thing that makes being followed home mean
+something. Asserted both directions. For the same reason `flag_for_band` is
+unchanged: the frontier deliberately does **not** introduce a fourth unknown —
+the Stillness is neutral to the surveyor, and its neutrality is what keeps the
+Last Watch's fence open.
+
+### And `LANDMARK_KINDS` deliberately did not grow
+
+Appending "gate" and "cairn" to it would silently widen the target of every
+authored 4-wide weights row in `system_db`, because `weighted_index` falls back
+to the uniform pick on a size mismatch — turning pyx02's and pyx03's landmark
+accents off and rolling frontier kinds into the Shoals. The new bands take their
+kind from the unweighted `LANDMARKS` path, which needs no row. Growing the list
+and every authored row **in one commit** is its own change, and it is deferred to
+§64 rather than done carelessly here.

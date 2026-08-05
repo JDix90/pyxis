@@ -12,8 +12,27 @@ extends Node3D
 # so a bigger system pushes its own expanse out with it: PYX-03's Reaches begin
 # where PYX-03 ends, not at some absolute number that happens to suit PYX-01.
 
-const BAND_EDGES := [0.0, 160.0, 440.0, 1100.0]
-const BAND_NAMES := ["CHARTED", "THE SHOALS", "THE DRIFT", "THE REACHES", "THE QUIET"]
+# v20 THE FRONTIER. THE QUIET used to start at 1100 and never end, so a player
+# 8000u out read the same row of every table below as one 1100u out — same packs,
+# same guards, same five shopfronts — while the authored content (convoys stop at
+# 1000, rifts at 1200, the instruments at 4200) had run out behind them. Past
+# 4244u the deep was strictly POORER than halfway there, which is the opposite of
+# what distance is supposed to buy.
+#
+# Two more bands, and the edges are appended rather than inserted: band_of walks
+# this list from the top down, so every depth under 2600 skips the new entries
+# and takes a byte-identical path. That is what makes the world fingerprint safe
+# BY CONSTRUCTION rather than by luck — the same argument the salted sub-streams
+# below rest on, applied to a table instead of a roll.
+#
+# 2600 sits inside the instruments' span (1600-4200), so THE FATHOMS inherits
+# them as authored landmarks in its lower half. 5200 is past the deepest authored
+# thing in the game (pyx03's bounds 44 + HYPER_DEPTH_MAX 4200 = 4244), which is
+# exactly what THE UNSOUNDED is: the band past even the instruments, where the
+# only thing out there is what the generator makes.
+const BAND_EDGES := [0.0, 160.0, 440.0, 1100.0, 2600.0, 5200.0]
+const BAND_NAMES := ["CHARTED", "THE SHOALS", "THE DRIFT", "THE REACHES", "THE QUIET",
+	"THE FATHOMS", "THE UNSOUNDED"]
 
 # Depth at which the deep dressing is fully faded in.
 const DEEP_FULL := 260.0
@@ -48,18 +67,31 @@ const CONTENT_MIN_DEPTH := 24.0
 #
 # Indexed by band, so the row for CHARTED is the identity row and every existing
 # encounter in the game is untouched by construction.
-#                        charted shoals drift reaches quiet
-const PACK_CHANCE := [0.0, 0.0, 0.30, 0.42, 0.50]
-const PACK_HP := [1.0, 1.0, 1.6, 2.4, 3.2]
-const PACK_DIFFICULTY := [1.0, 1.0, 1.4, 2.0, 2.6]
-const PACK_MIN := [0, 0, 3, 5, 6]
-const PACK_MAX := [0, 0, 5, 7, 9]
+#                        charted shoals drift reaches quiet fathoms unsounded
+const PACK_CHANCE := [0.0, 0.0, 0.30, 0.42, 0.50, 0.56, 0.60]
+const PACK_HP := [1.0, 1.0, 1.6, 2.4, 3.2, 4.0, 4.9]
+const PACK_DIFFICULTY := [1.0, 1.0, 1.4, 2.0, 2.6, 3.2, 3.8]
+const PACK_MIN := [0, 0, 3, 5, 6, 7, 8]
+const PACK_MAX := [0, 0, 5, 7, 9, 11, 13]
 # What they are carrying. The reward for going out is not a bigger number on the
 # same crate, it is a better crate.
-const PACK_DROP := ["", "", "isotopes", "cores", "relics"]
+#
+# And past the Quiet the crate stops being a good at all: the deepest packs carry
+# the UNREAD SALVAGE of their own band, which is worth more than relics and worth
+# nothing until the archeology ladder can read it. That is the frontier's answer
+# to "what does another 4000u buy" — not a bigger pile, a thing you cannot spend
+# yet.
+const PACK_DROP := ["", "", "isotopes", "cores", "relics",
+	"salvage_fathom", "salvage_unsounded"]
 # A sentry rides along from the Reaches out: something that does not die to one
 # Arc hop, which is the same lever the corsair pulls on a rich interdiction.
 const PACK_ESCORT_FROM := 3
+# HOW MANY sentries, and this is the first thing that makes the Fathoms feel
+# unlike the Quiet rather than merely cost more. One escort is a fight with an
+# anchor in it; two is a fight with a FORMATION, and arc-kiting the swarm stops
+# being the whole answer. Indexed by band so the rows the game already shipped
+# are the identity row — 1 wherever PACK_ESCORT_FROM used to say "yes".
+const PACK_ESCORTS := [0, 0, 0, 1, 1, 2, 2]
 
 # --- chartfolk convoys -------------------------------------------------------
 # TERRITORY VERSUS TRAFFIC. The deep's GROUND stays the unknowns' — the band
@@ -122,7 +154,7 @@ const CONVOY_WEIGHTS := {
 # there is somewhere out there. At these odds a 5x5 window holds a station about
 # one visit in eight in the Drift, so finding one is an event rather than a
 # feature of the landscape.
-const STATION_CHANCE := [0.0, 0.035, 0.055, 0.075, 0.095]
+const STATION_CHANCE := [0.0, 0.035, 0.055, 0.075, 0.095, 0.115, 0.135]
 # Debris and wrecks stay this far off a station; a nest stays much further, since
 # it is the difference between a hard approach and an unreachable dock.
 const STATION_CLEARANCE := 14.0
@@ -241,6 +273,23 @@ const BROADCASTS := [
 		"from": "· · · —— · · ·",
 		"body": "The beacon net does not reach this far. Nothing is transmitting. Nothing is listening.",
 	},
+	# Band 5. The first voice out here that is not the GSA, and the first one in
+	# the whole arc that offers something. The register's arc ENDED at the Quiet,
+	# so this carries no commissioned keys either — being known by the authority
+	# is not what gets you spoken to out here. Arriving is.
+	#
+	# It also teaches the thing the band needs taught before it is discovered:
+	# there are lights past the Quiet, and one of them will let you dock.
+	{
+		"from": "A KEPT LIGHT",
+		"body": "There is a light ahead of you. It is kept. It has been kept a long time, and by somebody. If you need it, it is there.",
+	},
+	# Band 6, and it inverts band 4's closing line one word at a time. "Nothing
+	# is transmitting" stays true; "nothing is listening" stops being.
+	{
+		"from": "· · ·",
+		"body": "Nothing is transmitting. Something is listening.",
+	},
 ]
 
 
@@ -274,12 +323,18 @@ static func broadcast_for(band: int, commissioned := false) -> Dictionary:
 #   * a rigged hulk carries MORE. You are not being punished for salvaging, you
 #     are being offered a worse-odds bet with a bigger pot — and the tell below
 #     is what lets you take it knowingly.
-const TRAP_CHANCE := [0.0, 0.12, 0.26, 0.38, 0.50]
-const TRAP_EMP := [0.0, 1.4, 1.9, 2.4, 2.8]
-const TRAP_PACK_MIN := [0, 3, 4, 6, 7]
-const TRAP_PACK_MAX := [0, 4, 6, 8, 10]
+const TRAP_CHANCE := [0.0, 0.12, 0.26, 0.38, 0.50, 0.60, 0.68]
+const TRAP_EMP := [0.0, 1.4, 1.9, 2.4, 2.8, 3.2, 3.5]
+const TRAP_PACK_MIN := [0, 3, 4, 6, 7, 8, 9]
+const TRAP_PACK_MAX := [0, 4, 6, 8, 10, 12, 13]
 const TRAP_LOOT_BONUS := 1.6          # what the bet pays if you take it and live
 const TRAP_ESCORT_FROM := 3
+# The trap's own escort count, PACK_ESCORTS' sibling. At 3.5s of EMP with three
+# sentries already firing, the Thermal Sink in the hold and the Sink Lattice in
+# a utility slot stop being nice-to-have and become the reason the Unsounded is
+# survivable at all — a mitigation the game has shipped since v16 and never
+# needed. This is what gives it a job.
+const TRAP_ESCORTS := [0, 0, 0, 1, 1, 2, 3]
 
 # How many deep stations keep a bonded store. Deliberately a minority: stations
 # out here are already scarce, and one that will hold your cargo has to be a
@@ -317,9 +372,15 @@ const GUARD_WEIGHTS := [0.20, 0.25, 0.30, 0.25]
 # What falls out is a band-gated decision with its answer already in the fitting
 # console: you can tank a guarded crack in the Shoals and the Drift, and from the
 # Reaches out you clear the post first or you fit Bulwark.
-#                         charted shoals drift reaches quiet
-const GUARD_DIFFICULTY := [1.0, 0.90, 1.10, 1.40, 1.65]
-const GUARD_HP_SCALE := [1.0, 1.20, 1.45, 1.50, 1.60]
+#                         charted shoals drift reaches quiet fathoms unsounded
+# The frontier rows continue the TAPER, not the early slope: alpha steps +0.20
+# where the Drift-to-Reaches step was +0.30, because the paragraph above is a
+# standing decision and not a curve to extrapolate. A guard past the Quiet is
+# scary through count, HP and standing — PACK_ESCORTS and GUARD_BEARINGS — and
+# an Unsounded guard hitting for 14.0 x 2.05 is 28.7 against PYX-03's authored
+# sentries at 30.8. Still under the chart's hardest gun, on purpose.
+const GUARD_DIFFICULTY := [1.0, 0.90, 1.10, 1.40, 1.65, 1.85, 2.05]
+const GUARD_HP_SCALE := [1.0, 1.20, 1.45, 1.50, 1.60, 1.70, 1.80]
 
 # Posts ring the BREACH POINT, not the hull: what they are guarding is the way in.
 #
@@ -351,10 +412,38 @@ const GUARD_DESIGNATION := [
 	"PICKET — REGISTRY LAPSED",
 	"UNFLAGGED — NO PATTERN ON FILE",
 	"UNREADABLE — IT DOES NOT ANSWER",
+	# The arc's last two rungs. Silence was the Quiet's; what is past it is worse
+	# than silence — first the things out there answer EACH OTHER (you are not
+	# being talked to, you are being discussed), and then the scan comes back
+	# with your own signature on it. Both say what they are without a word the
+	# game has not taught: "answer" and "scan" are already in the vocabulary.
+	"UNREADABLE — THEY ANSWER EACH OTHER",
+	"NO READING — THE SCAN COMES BACK YOURS",
 ]
 const GUARD_COUNT_WORD := ["NOTHING", "ONE", "TWO", "THREE", "FOUR"]
 
 const HOSTILE_LEASH := 140.0
+# How far the frontier follows. A LONGER chase, never an unending one: the
+# no-leash tell belongs to the Tally alone (unknown_a, band 3) and giving a
+# second faction the same behaviour would spend the one thing that makes being
+# followed home mean something. 0 here means "use HOSTILE_LEASH" — the identity
+# row, the way every table in this file does it — so bands 0-4 are untouched by
+# construction and only the two new rows say anything.
+#
+# 220 and 260 against a 140 baseline is the first time breaking off costs real
+# distance rather than a moment's patience, which is the whole of what THE
+# UNSOUNDED is for.
+const FAR_LEASH := [0.0, 0.0, 0.0, 0.0, 0.0, 220.0, 260.0]
+
+
+static func leash_for(band: int, flag: String) -> float:
+	# One place, because the pack loop and its escorts have to agree: a swarm
+	# that gave up at 140 while its sentry chased to 260 would read as the sentry
+	# being special rather than the band being deep.
+	if flag == "unknown_a":
+		return 0.0
+	var i := clampi(band, 0, FAR_LEASH.size() - 1)
+	return FAR_LEASH[i] if FAR_LEASH[i] > 0.0 else HOSTILE_LEASH
 # How close the player gets before a seeded nest actually becomes ships. Comfortably
 # outside the ~34u visible half-extent at maximum zoom, so a pack is never seen
 # popping into existence, and comfortably inside HOSTILE_LEASH, so it is never
@@ -763,7 +852,7 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 
 	# Debris. Thin in the Shoals and thickening outward, so the expanse reads as
 	# emptier near home and more cluttered where nobody has ever swept it.
-	if rng.randf() < [0.0, 0.34, 0.46, 0.58, 0.66][band]:
+	if rng.randf() < [0.0, 0.34, 0.46, 0.58, 0.66, 0.72, 0.78][band]:
 		for i in range(rng.randi_range(2, 2 + band)):
 			var pos := base + Vector3(rng.randf_range(ROCK_INSET, CELL - ROCK_INSET), -3.0,
 				rng.randf_range(ROCK_INSET, CELL - ROCK_INSET))
@@ -778,7 +867,7 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 	# A drifting wreck: the reason to go out at all. Loot climbs with the band,
 	# so the trip pays for itself further out — and NOT a survey, so cracking one
 	# charts nothing and wakes nothing (see Derelict.counts_as_survey).
-	if rng.randf() < [0.0, 0.10, 0.15, 0.19, 0.24][band]:
+	if rng.randf() < [0.0, 0.10, 0.15, 0.19, 0.24, 0.28, 0.32][band]:
 		var hp := base + Vector3(rng.randf_range(HULK_INSET, CELL - HULK_INSET), 0.0,
 			rng.randf_range(HULK_INSET, CELL - HULK_INSET))
 		if depth_at(hp) >= CONTENT_MIN_DEPTH and hp.distance_to(keep_out) >= STATION_CLEARANCE:
@@ -790,7 +879,7 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 			out["hulk"] = {
 				"pos": hp,
 				"rot_y": rng_rot,
-				"loot": int(round(70.0 * [1.0, 1.15, 1.6, 2.2, 2.9][band]
+				"loot": int(round(70.0 * [1.0, 1.15, 1.6, 2.2, 2.9, 3.7, 4.6][band]
 					* (TRAP_LOOT_BONUS if rigged else 1.0))),
 				"crack_time": 1.8 + 0.2 * float(band),
 				"trap": {
@@ -801,6 +890,7 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 					"tint": Palette.band_color(band),
 					"drop": PACK_DROP[band],
 					"escort": band >= TRAP_ESCORT_FROM,
+					"escort_count": TRAP_ESCORTS[band],
 					"band": band,
 				} if rigged else {},
 			}
@@ -854,6 +944,13 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 				"tint": Palette.band_color(band),
 				"drop": PACK_DROP[band],
 				"escort": band >= PACK_ESCORT_FROM,
+				# HOW MANY of them, added BESIDE the bool rather than replacing it:
+				# `escort` is read elsewhere, and a key that quietly changed meaning
+				# would be the `band` bug below wearing a different hat. Both stay
+				# true together — the bool says whether this nest brings a fighter,
+				# the count says how many. Takes no roll, so the stream does not
+				# move.
+				"escort_count": PACK_ESCORTS[band],
 				# THE KEY _spring HAS BEEN READING SINCE STAGE 6, and it was
 				# never written. `pack.get("band", 0)` therefore always said 0,
 				# so every nest in the Reaches and the Quiet flew the HOST
@@ -1012,10 +1109,15 @@ func built_plan(cx: int, cz: int) -> Dictionary:
 # transcribed into one sentence.)
 # SEAM_CHANCE[0] stays 0.0 forever: charted seams are AUTHORED by SystemBuilder,
 # one per asteroid, never rolled. seams_for() early-returns on band <= 0 to match.
-const SEAM_CHANCE := [0.0, 0.22, 0.30, 0.38, 0.45]
+const SEAM_CHANCE := [0.0, 0.22, 0.30, 0.38, 0.45, 0.51, 0.56]
 # Index 0 became a real entry in stage 4 (it was unread padding before). Nothing
 # indexes it except the charted placement and the RICHER OUTWARD assertion.
-const SEAM_UNITS := [2, 3, 4, 4, 5]
+#
+# The frontier rows stay at 6 rather than climbing: a seam's value gradient is
+# carried by WHAT it yields (CommodityDB.SEAM_YIELDS' new osmium and vitrite
+# rows), not by how many times you hold the button. Six units already takes
+# longer than any fight out there lasts.
+const SEAM_UNITS := [2, 3, 4, 4, 5, 6, 6]
 # How far outside the rock's own collision sphere the seam node sits. A seam
 # measured from the ROCK's centre would be unreachable on a big one: a QUIET
 # boulder's obstacle radius reaches 6.56 and MineableSeam.MINE_RANGE is 6.0, so
@@ -1083,10 +1185,18 @@ const SUPERCELL := 4
 # What stands in each band. Band 0 is charted space and gets nothing -- a
 # landmark inside the survey volume would be a landmark on a map that already
 # has one.
-const LANDMARKS := ["", "pylon", "frame", "monolith", "marker"]
+const LANDMARKS := ["", "pylon", "frame", "monolith", "marker", "gate", "cairn"]
 # The four real kinds, index-stable, for the weighted per-system pick. A weights
 # row is authored against THIS list, not against LANDMARKS — the empty band-0
 # entry would put every row off by one.
+#
+# AND IT STAYS FOUR while the frontier ships. weighted_index falls back to the
+# uniform pick when a row's width does not match the list's, so appending "gate"
+# and "cairn" here would silently widen the target of every authored 4-wide row
+# in system_db — turning pyx02's and pyx03's landmark accents off, and rolling
+# frontier kinds into the Shoals. The new bands take their kind from LANDMARKS
+# above (the unweighted path), which needs no row. Growing this list and every
+# authored row in the same commit is its own change.
 const LANDMARK_KINDS := ["pylon", "frame", "monolith", "marker"]
 
 
@@ -1491,7 +1601,9 @@ func _spring(key: Vector2i, pack: Dictionary) -> void:
 
 	# The band is already in the plan; re-deriving it from the position would be
 	# a second source for a number the generator has already decided.
-	var flag := flag_for_band(int(pack.get("band", 0)))
+	var pack_band := int(pack.get("band", 0))
+	var flag := flag_for_band(pack_band)
+	var leash := leash_for(pack_band, flag)
 	for i in range(count):
 		var s := SwarmHostile.new()
 		s.difficulty = float(pack["difficulty"])
@@ -1506,18 +1618,24 @@ func _spring(key: Vector2i, pack: Dictionary) -> void:
 		s.tint = pack["tint"]
 		# One crate of the good thing, the same way a raider carries what it took.
 		s.drop_good = drop if i == 0 else ""
-		s.despawn_radius = 0.0 if flag == "unknown_a" else HOSTILE_LEASH
+		s.despawn_radius = leash
 		root.add_child(s)
 		s.global_position = origin + Vector3(rng.randf_range(-2.5, 2.5), 0.0,
 			rng.randf_range(-2.5, 2.5))
 
-	if bool(pack["escort"]):
+	# The escort, and past the Quiet there is more than one of it. Ringed rather
+	# than stacked on the origin: two machines at the same point read as one
+	# sprite with a health bar that will not go down.
+	var escorts := int(pack.get("escort_count", 1 if bool(pack["escort"]) else 0))
+	for i in range(escorts):
 		var h := Hostile.new()
 		h.difficulty = float(pack["difficulty"])
 		h.faction = flag
-		h.despawn_radius = 0.0 if flag == "unknown_a" else HOSTILE_LEASH
+		h.despawn_radius = leash
 		root.add_child(h)
-		h.global_position = origin
+		var a := TAU * float(i) / float(maxi(escorts, 1))
+		h.global_position = origin + (Vector3.ZERO if escorts <= 1
+			else Vector3(cos(a) * 3.4, 0.0, sin(a) * 3.4))
 
 	FX.ring_pulse(root, origin, pack["tint"], 3.0, 0.9)
 	Sfx.play("klaxon", -12.0, 1.15)

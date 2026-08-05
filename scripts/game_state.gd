@@ -1645,7 +1645,17 @@ func stash_to_fit_now(key: String) -> int:
 #
 # so the lab is always exactly one band ahead of you. There is always a reason to
 # carry something home, and always a reason to raise the skill, at every tier.
-const ARCHEOLOGY_TIERS := [0, 12, 34, 78]
+# v20 THE FRONTIER: two more rungs, because the frontier's salvage grades are
+# band 5 and band 6 and the rule above is `band <= archeology (+1 at a lab)`.
+# Without them Fathom Salvage is unreadable forever by anybody and the deepest
+# loot in the game is a crate you can only sell. Ratios continue at ~1.9x and
+# ~1.7x, against the 1.9/2.3/2.3 above.
+#
+# THE UNSOUNDED STAYS LAB-ONLY FOREVER, which is not an oversight: tier 5 is the
+# last rung, so band 6 is only ever readable at `archeology + 1`. That is exactly
+# the note band 4 used to end on, moved outward — there is still always a reason
+# to carry something home.
+const ARCHEOLOGY_TIERS := [0, 12, 34, 78, 150, 260]
 const ARCHEOLOGY_PER_READ := 1
 const ARCHEOLOGY_PER_BREACH := 4
 

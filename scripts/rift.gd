@@ -76,10 +76,27 @@ func _build() -> void:
 var rich_mult := 1.0
 
 
+# The best grade a shear may ever pay, and it is PINNED rather than derived.
+#
+# v20 THE FRONTIER caught this: rich_band clamped to BAND_NAMES.size() - 1, so
+# adding two bands quietly moved the ceiling from 4 to 6 — and since rifts stop
+# at depth_max 1200 (pyx03's, the deepest authored), the only thing that would
+# have changed is that a band-4 shear at 1200u started paying Fathom Salvage at
+# 480 instead of Quiet Salvage at 340. A 41% raise, in content the player already
+# reaches, delivered by a change that was supposed to add content 1400u further
+# out. That is exactly the shape of the relocation's stealth pay rise (50), found
+# this time by reading the clamp instead of by measuring the loop afterwards.
+#
+# Rifts occur at band 4 and inward, so the frontier has nothing to say about what
+# they pay. If a later stage puts weather out past the Quiet, it moves this
+# number ON PURPOSE and re-measures.
+const GRADE_CEILING := 4
+
+
 func rich_band() -> int:
 	# Rich means ONE BAND BETTER than the depth deserves, using goods that
 	# already exist — no new grade, no new table.
-	return clampi(band + 1, 1, DeepSpace.BAND_NAMES.size() - 1)
+	return clampi(band + 1, 1, GRADE_CEILING)
 
 
 func _spill_pot() -> void:
@@ -87,9 +104,9 @@ func _spill_pot() -> void:
 	if good == "":
 		return
 	var script := load("res://scripts/loot_cube.gd") as GDScript
-	# rich_mult scales the CRATE COUNT, not the grade — rich_band is already
-	# clamped at band 4, so in the Quiet a richer shear pays in volume, which is
-	# the only richer it has left.
+	# rich_mult scales the CRATE COUNT, not the grade — rich_band is clamped at
+	# GRADE_CEILING, so in the Quiet a richer shear pays in volume, which is the
+	# only richer it has left.
 	var count := int(round(float(randi_range(CRATE_MIN, CRATE_MAX)) * rich_mult))
 	for i in range(count):
 		var cube: Node3D = script.new()

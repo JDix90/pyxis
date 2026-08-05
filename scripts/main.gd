@@ -58,6 +58,7 @@ const HARNESS_VARS := [
 	"PYXIS_ECONDEMO",
 	"PYXIS_ENVTEST",
 	"PYXIS_FACTIONTEST",
+	"PYXIS_FRONTIERTEST",
 	"PYXIS_MANUALTEST",
 	"PYXIS_FEELTEST",
 	"PYXIS_FORGETEST",
@@ -366,8 +367,8 @@ const RIFT_DEPTH_MAX := 260.0
 # How much of the charted interdiction rate survives at each distance band.
 # Never zero: there is no range at which a full hold is safe, only ranges at
 # which it is unlikely to be noticed.
-#                          charted shoals drift reaches quiet
-const DEEP_RAID_TAPER := [1.0, 0.6, 0.3, 0.1, 0.05]
+#                          charted shoals drift reaches quiet fathoms unsounded
+const DEEP_RAID_TAPER := [1.0, 0.6, 0.3, 0.1, 0.05, 0.03, 0.02]
 
 var hud: HUD
 var refit_panel: RefitPanel
@@ -957,6 +958,14 @@ func _ready() -> void:
 		_load_system(GameState.current_system)
 		_enter_playing()
 		_run_access_test()
+		return
+
+	if OS.get_environment("PYXIS_FRONTIERTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_frontier_test()
 		return
 
 	if OS.get_environment("PYXIS_GSATEST") != "":
@@ -2970,26 +2979,35 @@ func spring_trap(origin: Vector3, cfg: Dictionary) -> void:
 	var bearing := randf() * TAU
 	var from := origin + Vector3(cos(bearing), 0, sin(bearing)) * 15.0
 	var count := int(cfg.get("count", 4))
+	# The band the trap was rigged in, which is what decides how far it follows.
+	# Flag is deliberately left empty rather than derived: a trap pack has never
+	# flown a faction, and giving it one here would be a second change hiding
+	# inside a leash change. leash_for("" ) returns HOSTILE_LEASH for every band
+	# the game already shipped, so this line moves nothing under the Fathoms.
+	var trap_leash := DeepSpace.leash_for(int(cfg.get("band", 0)), "")
 	for i in range(count):
 		var s := SwarmHostile.new()
 		s.difficulty = float(cfg.get("difficulty", 1.0))
 		s.hp_scale = float(cfg.get("hp_scale", 1.0))
 		s.tint = cfg.get("tint", Palette.THREAT)
 		s.drop_good = String(cfg.get("drop", "")) if i == 0 else ""
-		s.despawn_radius = DeepSpace.HOSTILE_LEASH
+		s.despawn_radius = trap_leash
 		# system_root, never the cell that owns the hulk: this fight will move,
 		# and a pack that belonged to a cell would evaporate mid-chase.
 		system_root.add_child(s)
 		s.global_position = from + Vector3(randf_range(-2.5, 2.5), 0, randf_range(-2.5, 2.5))
 		FX.flash(self, s.global_position, cfg.get("tint", Palette.THREAT), 1.4, 0.25)
 
-	if bool(cfg.get("escort", false)):
+	var heavies := int(cfg.get("escort_count", 1 if bool(cfg.get("escort", false)) else 0))
+	for i in range(heavies):
 		var heavy := Hostile.new()
 		heavy.difficulty = float(cfg.get("difficulty", 1.0))
-		heavy.despawn_radius = DeepSpace.HOSTILE_LEASH
+		heavy.despawn_radius = trap_leash
 		system_root.add_child(heavy)
-		heavy.global_position = from
-		FX.flash(self, from, Palette.THREAT, 2.4, 0.35)
+		var ha := TAU * float(i) / float(maxi(heavies, 1))
+		heavy.global_position = from + (Vector3.ZERO if heavies <= 1
+			else Vector3(cos(ha) * 3.4, 0.0, sin(ha) * 3.4))
+		FX.flash(self, heavy.global_position, Palette.THREAT, 2.4, 0.35)
 
 	Sfx.play("klaxon", -8.0)
 	if hud:
@@ -19398,5 +19416,335 @@ func _run_mine_test() -> void:
 		str(perk_tiers), max_tier, GameState.MINING_DEEP_TIER,
 		str(access_usable), top_buys, stranded if stranded != "" else "none",
 		"PASS" if access_usable and top_buys != "" and stranded == "" else "FAIL"])
+
+	get_tree().quit()
+
+
+# --- the frontier (bands 5 and 6) --------------------------------------------
+
+# THE OUTER BAYS, RECORDED BEFORE THE BANDS GREW. A deep bay is the one thing
+# past the chart that IS saved, keyed by cell, so it is the one thing the
+# frontier could destroy: a bay whose station moved is a stored key pointing at
+# empty space.
+#
+# WHAT THIS IS NOT IS AN EQUALITY. The first version of this constant was a hash
+# of the whole bay list and it went red on the first run, correctly, because the
+# bay list is SUPPOSED to change — the station roll is `randf() < STATION_CHANCE
+# [band]`, and a band-4 cell re-planned as band 5 rolls the same number against
+# 0.115 instead of 0.095. Cells that had no station acquire one. Measured: 23 ->
+# 25, 22 -> 29, 21 -> 24.
+#
+# The argument written here first ("the bay-relevant draws come first and their
+# COUNT does not move") was true and did not say enough. The draw count does not
+# move, so nothing SHIFTS; but the first draw's OUTCOME moves, so things are
+# ADDED. Equality was the wrong property and the probe caught it — which is the
+# whole reason the recording is taken from the previous commit rather than from
+# the reasoning.
+#
+# So the property that actually protects a save is a SUBSET: every station that
+# existed under the five-band tables still exists, at the same position, with the
+# same storage flag. New neighbours are the feature. It holds because
+# STATION_CHANCE is non-decreasing across bands (asserted separately), so
+# `r < 0.095` implies `r < 0.115`, and every draw after the branch is taken is
+# the same draw against the same seed.
+#
+# The archetype is deliberately NOT in this record. It is a shopfront, and stage
+# 3 changes it on purpose: adding a band-5 archetype widens `for_band`'s list and
+# moves the modulo. The bay stays; what is standing on it gets a new sign.
+#
+# Recorded by running the same lanes on 27ce3ee with the five-band tables in
+# place, in a throwaway worktree, because a recording taken afterwards would
+# agree with whatever it was given (the WORLD_FINGERPRINT_BEFORE_SEAMS lesson).
+const OUTER_BAYS_BEFORE_FRONTIER := {
+	"pyx01": "41,0:2665.218,41.113,0|41,41:2650.261,2652.135,0|42,0:2718.585,33.686,0|0,42:24.490,2714.686,1|0,43:23.372,2789.586,0|44,0:2842.437,29.655,0|44,44:2839.058,2854.812,0|51,51:3297.497,3301.293,0|54,54:3478.574,3479.442,0|55,0:3545.973,35.863,0|58,0:3737.024,24.604,0|60,0:3862.276,33.338,1|61,0:3932.947,26.201,0|0,63:25.349,4073.834,0|64,0:4126.067,27.937,0|-64,0:-4061.508,24.160,0|66,0:4261.977,36.272,0|0,66:40.133,4265.470,0|-72,0:-4567.928,38.831,0|72,72:4634.703,4637.629,0|77,0:4957.443,32.974,0|82,0:5278.803,29.492,0|-82,0:-5213.526,26.109,0|",
+	"pyx02": "41,0:2665.748,35.417,0|42,0:2715.777,28.902,1|0,42:41.687,2710.403,0|-43,0:-2722.661,32.310,0|0,45:41.814,2905.244,0|45,45:2904.826,2910.337,0|0,50:41.416,3226.662,0|-52,0:-3295.922,25.355,0|-53,0:-3368.555,34.508,1|56,56:3625.015,3621.495,0|57,57:3675.920,3683.567,1|0,62:22.765,4002.083,0|64,64:4132.193,4126.134,0|66,0:4257.188,33.820,1|-67,0:-4249.667,37.245,0|71,71:4573.357,4585.724,1|72,72:4643.272,4635.844,0|73,73:4700.914,4696.239,0|0,74:34.952,4774.565,0|75,75:4822.577,4831.495,0|81,0:5222.354,25.203,0|-82,0:-5224.438,24.350,0|",
+	"pyx03": "46,46:2982.438,2981.519,0|-47,0:-2982.718,39.981,0|49,0:3162.708,26.911,0|0,51:27.561,3296.793,1|51,51:3296.570,3294.506,0|0,52:28.496,3357.844,0|53,0:3432.935,23.065,0|54,54:3494.748,3478.047,0|56,0:3616.944,28.046,0|0,60:29.455,3872.622,0|0,64:28.866,4119.249,0|64,64:4128.254,4131.651,1|67,67:4317.482,4323.632,0|0,70:29.275,4506.317,0|70,70:4517.799,4513.423,0|0,71:23.852,4567.728,0|74,74:4764.601,4761.212,0|75,0:4822.504,29.216,0|0,75:36.828,4829.937,0|0,76:23.253,4900.678,0|-79,0:-5021.566,24.183,0|",
+}
+
+
+func _outer_bays(sid: String) -> Array:
+	# Every station the generator plans along four radial lanes through the
+	# band-5/6 shell, as "cell:x,z,storage" entries. Lanes rather than a square
+	# block because the shell starts 40 cells out: a -5..5 window like the world
+	# fingerprint's would never reach it.
+	var probe := DeepSpace.new()
+	probe.generating = false
+	add_child(probe)
+	probe.configure(SystemDB.get_system(sid), sid)
+	var out: Array = []
+	for c in range(40, 84):
+		for cell in [Vector2i(c, 0), Vector2i(-c, 0), Vector2i(0, c), Vector2i(c, c)]:
+			var st: Dictionary = probe.plan_cell(cell.x, cell.y)["station"]
+			if st.is_empty():
+				continue
+			var pos: Vector3 = st["pos"]
+			out.append("%d,%d:%.3f,%.3f,%s" % [cell.x, cell.y, pos.x, pos.z,
+				"1" if bool(st.get("storage", false)) else "0"])
+	probe.queue_free()
+	return out
+
+
+func _run_frontier_test() -> void:
+	await get_tree().create_timer(0.3).timeout
+
+	# --- 0. the outer bays did not move --------------------------------------
+	for sid in ["pyx01", "pyx02", "pyx03"]:
+		var now_list := _outer_bays(String(sid))
+		var live := {}
+		for e_v in now_list:
+			live[String(e_v)] = true
+		var before: Array = String(OUTER_BAYS_BEFORE_FRONTIER[sid]).split("|", false)
+		var orphaned := ""
+		for e_v in before:
+			if not live.has(String(e_v)):
+				orphaned += "%s " % String(e_v)
+		# The subset must be PROPER-or-equal in the growing direction and the
+		# recorded side must be non-empty — an empty record is a subset of
+		# anything, which is how this assertion would pass while measuring
+		# nothing at all.
+		var ok: bool = orphaned == "" and before.size() > 0 \
+			and now_list.size() >= before.size()
+		print("[frontier] NO BAY IS ORPHANED %s %d recorded bays all still stand at the same position and storage, now %d out there -> %s %s" % [
+			String(sid), before.size(), now_list.size(),
+			"PASS" if ok else "FAIL", orphaned])
+
+	# --- 1. the ladder has seven rungs ---------------------------------------
+	# Both sides of each new edge, because an off-by-one in band_of's loop is
+	# exactly the defect that reads fine at 3000u and wrong at 2600.
+	var edges_ok: bool = DeepSpace.band_of(2599.75) == 4 and DeepSpace.band_of(2600.0) == 5 \
+		and DeepSpace.band_of(5199.75) == 5 and DeepSpace.band_of(5200.0) == 6 \
+		and DeepSpace.band_of(9000.0) == 6
+	var names_ok: bool = DeepSpace.BAND_NAMES.size() == 7 \
+		and DeepSpace.BAND_EDGES.size() == 6
+	print("[frontier] THE LADDER HAS SEVEN RUNGS 2599.75->%d 2600->%d 5199.75->%d 5200->%d 9000->%d, %d names over %d edges -> %s" % [
+		DeepSpace.band_of(2599.75), DeepSpace.band_of(2600.0), DeepSpace.band_of(5199.75),
+		DeepSpace.band_of(5200.0), DeepSpace.band_of(9000.0),
+		DeepSpace.BAND_NAMES.size(), DeepSpace.BAND_EDGES.size(),
+		"PASS" if edges_ok and names_ok else "FAIL"])
+
+	# --- 2. the tables grew together -----------------------------------------
+	# THE ANTI-CRASH ASSERTION, and the reason it names every table rather than
+	# sampling: a band-indexed array one entry short does not misbehave, it reads
+	# out of bounds the first time a player crosses into the band it is missing —
+	# 5200u from home, in the one place in the game where dying costs the most.
+	#
+	# The COUNT is asserted with the set (63's rule), because "every table in this
+	# list is the right size" is satisfied perfectly by a list somebody forgot to
+	# add their new table to.
+	var sized := {
+		"STATION_CHANCE": DeepSpace.STATION_CHANCE.size(),
+		"PACK_CHANCE": DeepSpace.PACK_CHANCE.size(),
+		"PACK_HP": DeepSpace.PACK_HP.size(),
+		"PACK_DIFFICULTY": DeepSpace.PACK_DIFFICULTY.size(),
+		"PACK_MIN": DeepSpace.PACK_MIN.size(),
+		"PACK_MAX": DeepSpace.PACK_MAX.size(),
+		"PACK_DROP": DeepSpace.PACK_DROP.size(),
+		"PACK_ESCORTS": DeepSpace.PACK_ESCORTS.size(),
+		"TRAP_CHANCE": DeepSpace.TRAP_CHANCE.size(),
+		"TRAP_EMP": DeepSpace.TRAP_EMP.size(),
+		"TRAP_PACK_MIN": DeepSpace.TRAP_PACK_MIN.size(),
+		"TRAP_PACK_MAX": DeepSpace.TRAP_PACK_MAX.size(),
+		"TRAP_ESCORTS": DeepSpace.TRAP_ESCORTS.size(),
+		"GUARD_DIFFICULTY": DeepSpace.GUARD_DIFFICULTY.size(),
+		"GUARD_HP_SCALE": DeepSpace.GUARD_HP_SCALE.size(),
+		"GUARD_DESIGNATION": DeepSpace.GUARD_DESIGNATION.size(),
+		"SEAM_CHANCE": DeepSpace.SEAM_CHANCE.size(),
+		"SEAM_UNITS": DeepSpace.SEAM_UNITS.size(),
+		"LANDMARKS": DeepSpace.LANDMARKS.size(),
+		"FAR_LEASH": DeepSpace.FAR_LEASH.size(),
+		"BROADCASTS": DeepSpace.BROADCASTS.size(),
+		"DEEP_BANDS": Palette.DEEP_BANDS.size(),
+		"BAND_GLYPHS": Palette.BAND_GLYPHS.size(),
+		"ALPHA_SPAN_BY_BAND": HUD.RadarLayer.ALPHA_SPAN_BY_BAND.size(),
+		"DEEP_RAID_TAPER": DEEP_RAID_TAPER.size(),
+	}
+	var want := DeepSpace.BAND_NAMES.size()
+	var wrong := ""
+	for k in sized:
+		if int(sized[k]) != want:
+			wrong += "%s=%d " % [String(k), int(sized[k])]
+	# Every remap set too — a mode whose row stopped one short would send the
+	# colour-blind player, and only them, out of bounds.
+	for mode_v in Palette.BAND_SETS:
+		var row: Array = Palette.BAND_SETS[mode_v]
+		if row.size() != want:
+			wrong += "BAND_SETS[%d]=%d " % [int(mode_v), row.size()]
+	print("[frontier] THE TABLES GREW TOGETHER %d band tables + %d remap sets all %d wide -> %s %s" % [
+		sized.size(), Palette.BAND_SETS.size(), want,
+		"PASS" if wrong == "" and sized.size() == 25 else "FAIL", wrong])
+
+	# --- 3. the curves still only go one way ---------------------------------
+	# The rule is monotonicity, not the numbers: values get retuned and a test
+	# that pinned them would be rewritten every time rather than consulted. What
+	# may never happen is a band that is SAFER or POORER than the one inside it,
+	# which is the whole premise of measuring distance as depth.
+	var mono := ""
+	for b in range(2, DeepSpace.BAND_NAMES.size()):
+		if DeepSpace.PACK_HP[b] < DeepSpace.PACK_HP[b - 1]: mono += "PACK_HP@%d " % b
+		if DeepSpace.PACK_DIFFICULTY[b] < DeepSpace.PACK_DIFFICULTY[b - 1]: mono += "PACK_DIFF@%d " % b
+		if DeepSpace.PACK_MAX[b] < DeepSpace.PACK_MAX[b - 1]: mono += "PACK_MAX@%d " % b
+		if DeepSpace.PACK_ESCORTS[b] < DeepSpace.PACK_ESCORTS[b - 1]: mono += "ESCORTS@%d " % b
+		if DeepSpace.TRAP_CHANCE[b] < DeepSpace.TRAP_CHANCE[b - 1]: mono += "TRAP@%d " % b
+		if DeepSpace.TRAP_EMP[b] < DeepSpace.TRAP_EMP[b - 1]: mono += "EMP@%d " % b
+		if DeepSpace.GUARD_DIFFICULTY[b] < DeepSpace.GUARD_DIFFICULTY[b - 1]: mono += "GUARD@%d " % b
+		if DeepSpace.GUARD_HP_SCALE[b] < DeepSpace.GUARD_HP_SCALE[b - 1]: mono += "GUARDHP@%d " % b
+		if DeepSpace.STATION_CHANCE[b] < DeepSpace.STATION_CHANCE[b - 1]: mono += "STATION@%d " % b
+		if DeepSpace.SEAM_CHANCE[b] < DeepSpace.SEAM_CHANCE[b - 1]: mono += "SEAM@%d " % b
+	# And the raid taper is the one curve that runs the OTHER way and must never
+	# reach zero — 17's "there is no range at which a full hold is safe".
+	var taper_ok := true
+	for b in range(1, DEEP_RAID_TAPER.size()):
+		if DEEP_RAID_TAPER[b] > DEEP_RAID_TAPER[b - 1] or DEEP_RAID_TAPER[b] <= 0.0:
+			taper_ok = false
+	print("[frontier] THE CURVES ONLY GO ONE WAY threat rises through band 6, taper falls and stays above zero (%.2f at the edge) -> %s %s" % [
+		DEEP_RAID_TAPER[DEEP_RAID_TAPER.size() - 1],
+		"PASS" if mono == "" and taper_ok else "FAIL", mono])
+
+	# --- 4. the deep still belongs to the unknowns ---------------------------
+	# Pins the decision rather than discovering it: the frontier deliberately does
+	# NOT introduce a fourth unknown. The Stillness (unknown_c) is neutral to the
+	# surveyor and its neutrality is what keeps the Last Watch's fence open, so
+	# hostile packs under its flag would break a shipped station.
+	var f5 := deep_space.flag_for_band(5)
+	var f6 := deep_space.flag_for_band(6)
+	print("[frontier] THE DEEP STILL BELONGS TO THE UNKNOWNS band 5 flies '%s', band 6 flies '%s' -> %s" % [
+		f5, f6, "PASS" if f5 == "unknown_b" and f6 == "unknown_b" else "FAIL"])
+
+	# --- 5. the Tally's tell is still the Tally's ----------------------------
+	# Both directions, because "the frontier chases further" and "the frontier
+	# chases forever" are one number apart and only one of them is the design.
+	# A finite leash that grows is a longer chase; a zero leash is the Tally's
+	# alone, and a second faction owning it would spend the one thing that makes
+	# being followed home mean anything.
+	var l3 := DeepSpace.leash_for(3, "unknown_a")
+	var l2 := DeepSpace.leash_for(2, "unknown_b")
+	var l4 := DeepSpace.leash_for(4, "unknown_b")
+	var l5 := DeepSpace.leash_for(5, "unknown_b")
+	var l6 := DeepSpace.leash_for(6, "unknown_b")
+	var tell_ok: bool = l3 == 0.0 and l2 == DeepSpace.HOSTILE_LEASH \
+		and l4 == DeepSpace.HOSTILE_LEASH and l5 > l4 and l6 > l5 \
+		and l5 > 0.0 and l6 > 0.0
+	# And the Tally keeps it at every band it can appear in.
+	var tally_ok: bool = DeepSpace.leash_for(5, "unknown_a") == 0.0
+	print("[frontier] THE TALLY'S TELL IS STILL THE TALLY'S leashes b2 %.0f b3 %.0f b4 %.0f b5 %.0f b6 %.0f; the Tally's stays 0 at every band -> %s" % [
+		l2, l3, l4, l5, l6, "PASS" if tell_ok and tally_ok else "FAIL"])
+
+	# --- 6. every band has a grade, a chart and a seam -----------------------
+	# The ordering guard. BAND_NAMES growing without CommodityDB growing would
+	# leave the deepest loot in the game ungradeable, and the failure would be a
+	# silent empty string at 5200u rather than an error anywhere near the change.
+	var missing := ""
+	for b in range(1, DeepSpace.BAND_NAMES.size()):
+		if CommodityDB.salvage_for_band(b) == "": missing += "salvage@%d " % b
+		if CommodityDB.chart_for_band(b) == "": missing += "chart@%d " % b
+		if (CommodityDB.SEAM_YIELDS.get(b, []) as Array).is_empty(): missing += "seam@%d " % b
+	print("[frontier] EVERY BAND HAS A GRADE, A CHART AND A SEAM bands 1-%d -> %s %s" % [
+		DeepSpace.BAND_NAMES.size() - 1, "PASS" if missing == "" else "FAIL", missing])
+
+	# --- 7. richer outward, all the way out ----------------------------------
+	# Computed from the live tables, so a retune of either the ore prices or
+	# SEAM_UNITS is checked rather than a transcription of today's numbers.
+	var per_seam: Array = []
+	var rises := true
+	for b in range(0, DeepSpace.BAND_NAMES.size()):
+		var row: Array = CommodityDB.SEAM_YIELDS.get(b, [])
+		var total := 0.0
+		for o_v in row:
+			total += float(CommodityDB.get_good(String(o_v)).get("base", 0))
+		var mean := total / maxf(float(row.size()), 1.0)
+		var value := mean * float(DeepSpace.SEAM_UNITS[b])
+		per_seam.append(roundf(value))
+		if b > 0 and value <= float(per_seam[b - 1]):
+			rises = false
+	print("[frontier] RICHER OUTWARD, ALL THE WAY OUT per-seam value by band %s strictly rising -> %s" % [
+		str(per_seam), "PASS" if rises else "FAIL"])
+
+	# --- 8. the frontier is not a raise --------------------------------------
+	# COLONYTEST's template. The pacing loop is measured at depth 0 and the
+	# regrade funnel grades by the band you are standing in, so a frontier grade
+	# cannot reach the measured loop — but "cannot" is an argument until the
+	# funnel's own input is checked, so band_of(0.0) is asserted here beside the
+	# absence of any frontier term.
+	var no_term: bool = not PACING_LOOP.has("frontier") and not PACING_LOOP.has("band") \
+		and not PACING_PROSPECT.has("frontier") and not PACING_PROSPECT.has("band")
+	var depth0: bool = DeepSpace.band_of(0.0) == 0 \
+		and CommodityDB.salvage_for_band(0) == "salvage_charted"
+	print("[frontier] THE FRONTIER IS NOT A RAISE no frontier term in either pacing profile=%s, the measured loop still grades at band 0 as '%s' -> %s" % [
+		str(no_term), CommodityDB.salvage_for_band(0),
+		"PASS" if no_term and depth0 else "FAIL"])
+
+	# --- 8b. and the weather did not get richer ------------------------------
+	# THE ONE THING THE BAND GROWTH NEARLY RAISED BY ACCIDENT, kept here rather
+	# than in RIFTTEST because it is a frontier defect, not a rift defect: Rift's
+	# grade clamp used to read BAND_NAMES.size() - 1, so appending two bands moved
+	# a band-4 shear from Quiet Salvage (340) to Fathom Salvage (480) — a 41%
+	# raise 1400u INSIDE the content this stage adds. Rifts stop at depth_max
+	# 1200, so the frontier has nothing to say about what they pay.
+	#
+	# Asserted as the RULE (a shear pays a grade a rift can actually be found in)
+	# rather than as the number 4, so authoring weather further out moves the
+	# ceiling deliberately instead of silently.
+	var deepest_rift_depth := 0.0
+	for sid_v in ["pyx01", "pyx02", "pyx03"]:
+		deepest_rift_depth = maxf(deepest_rift_depth,
+			SystemDB.rift_depth_max(String(sid_v), RIFT_DEPTH_MAX))
+	var deepest_rift_band := DeepSpace.band_of(deepest_rift_depth)
+	var ceiling_ok: bool = Rift.GRADE_CEILING <= deepest_rift_band \
+		and CommodityDB.salvage_for_band(Rift.GRADE_CEILING) == "salvage_quiet"
+	print("[frontier] THE WEATHER DID NOT GET RICHER deepest rift is depth %.0f (band %d); the grade ceiling is band %d = '%s' -> %s" % [
+		deepest_rift_depth, deepest_rift_band, Rift.GRADE_CEILING,
+		CommodityDB.salvage_for_band(Rift.GRADE_CEILING),
+		"PASS" if ceiling_ok else "FAIL"])
+
+	# --- 9. the frontier reads without colour --------------------------------
+	# The glyph half of the colour rule, extended: the two new marks must be
+	# non-empty, distinct from every other band's, and distinct from every cargo
+	# family's — the manual teaches these shapes and one shape may not mean two
+	# things.
+	var marks := {}
+	var clash := ""
+	for b in range(1, Palette.BAND_GLYPHS.size()):
+		var g := Palette.band_glyph(b)
+		if g == "" or marks.has(g):
+			clash += "band %d '%s' " % [b, g]
+		marks[g] = true
+		for fam in Palette.FAMILY_GLYPHS:
+			if String(Palette.FAMILY_GLYPHS[fam]) == g:
+				clash += "band %d collides with family %s " % [b, String(fam)]
+	print("[frontier] THE FRONTIER READS WITHOUT COLOUR %d band marks, distinct and clear of the %d family marks -> %s %s" % [
+		marks.size(), Palette.FAMILY_GLYPHS.size(),
+		"PASS" if clash == "" and marks.size() == Palette.BAND_GLYPHS.size() - 1 else "FAIL",
+		clash])
+
+	# --- 10. the frontier speaks, and its landmarks exist --------------------
+	# Every band the generator can place must be buildable and must have
+	# something to say. A LANDMARKS entry with no branch in Landmarks.build
+	# returns null and the supercell is silently empty — the emptiness the
+	# landmark feature exists to fix, reintroduced at the far end of the map.
+	var voiceless := ""
+	for b in range(1, DeepSpace.BAND_NAMES.size()):
+		if String(DeepSpace.broadcast_for(b).get("body", "")) == "":
+			voiceless += "broadcast@%d " % b
+		var kind := String(DeepSpace.LANDMARKS[b])
+		if kind == "":
+			voiceless += "landmark@%d " % b
+			continue
+		var node := Landmarks.build(kind, b)
+		if node == null:
+			voiceless += "unbuildable '%s'@%d " % [kind, b]
+		else:
+			node.queue_free()
+	# And the register's arc still ends at the Quiet: the frontier is reached,
+	# never acknowledged. A commissioned key on a frontier entry would undo the
+	# note band 4 exists to land.
+	var late_register := ""
+	for b in range(4, DeepSpace.BROADCASTS.size()):
+		var e: Dictionary = DeepSpace.BROADCASTS[b]
+		if e.has("from_commissioned") or e.has("body_commissioned"):
+			late_register += "band %d " % b
+	print("[frontier] THE FRONTIER SPEAKS AND STANDS every band 1-%d has a voice and a buildable landmark; the register still stops at the Quiet -> %s %s%s" % [
+		DeepSpace.BAND_NAMES.size() - 1,
+		"PASS" if voiceless == "" and late_register == "" else "FAIL",
+		voiceless, late_register])
 
 	get_tree().quit()

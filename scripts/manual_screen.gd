@@ -299,6 +299,12 @@ func _band_note(band: int) -> String:
 		2: return "Nobody has swept this lane in a long time."
 		3: return "Past where the beacons reliably answer."
 		4: return "Nothing is transmitting. Nothing is listening."
+		# The frontier's two say what is DIFFERENT out there, not merely that it
+		# is worse -- a note reading "even more dangerous" teaches nothing a
+		# bigger number would not. One names the thing you can dock at; the other
+		# names the thing you cannot outrun.
+		5: return "There are lights out here, and somebody keeps them. Their guns are for sale."
+		6: return "Nothing is transmitting. Something is listening. It follows further than anything closer in."
 	return ""
 
 

@@ -119,6 +119,22 @@ const GOODS := {
 		"desc": "Unreadable. Something was built out here.",
 		"band": 4, "no_retail": true, "interdiction_weight": 1.7,
 	},
+	# v20 THE FRONTIER. The ratios were 1.58 / 1.58 / 1.53 / 1.48 -- a curve
+	# already tapering -- so 1.41 and 1.375 continue it rather than restarting it.
+	# Both stay no_retail like every grade above them: unread salvage has never
+	# been something a counter will sell you, and the deepest of it least of all.
+	"salvage_fathom": {
+		"name": "Fathom Salvage", "short": "SLV-F",
+		"base": 480, "space": 3, "color": Color(0.62, 0.80, 0.96),
+		"desc": "Crushed by depth, not by impact.",
+		"band": 5, "no_retail": true, "interdiction_weight": 2.0,
+	},
+	"salvage_unsounded": {
+		"name": "Unsounded Salvage", "short": "SLV-U",
+		"base": 660, "space": 3, "color": Color(0.60, 0.92, 0.66),
+		"desc": "It was not built. It grew.",
+		"band": 6, "no_retail": true, "interdiction_weight": 2.4,
+	},
 
 	# --- phase 4: components -------------------------------------------------
 	# What salvage becomes once it can be read. Each names its `parent`, which is
@@ -252,6 +268,21 @@ const GOODS := {
 		"desc": "A place with a shape, and no name, and no record of anyone else.",
 		"chart_band": 4, "no_retail": true, "interdiction_weight": 0.5,
 	},
+	# The frontier's two, on `chart_band` for the reason written above -- a `band`
+	# key here would let spawn_loot's regrade mint survey data out of combat
+	# crates. Steps of +110 and +130 continue +60/+70/+90.
+	"chart_fathom": {
+		"name": "Fathom Survey", "short": "CHT-F",
+		"base": 410, "space": 1, "color": Color(0.60, 0.84, 0.98),
+		"desc": "Depths, taken by a ship that was there. Nobody has these.",
+		"chart_band": 5, "no_retail": true, "interdiction_weight": 0.5,
+	},
+	"chart_unsounded": {
+		"name": "Unsounded Survey", "short": "CHT-U",
+		"base": 540, "space": 1, "color": Color(0.62, 0.94, 0.68),
+		"desc": "A sounding where the line never found bottom. It is still a reading.",
+		"chart_band": 6, "no_retail": true, "interdiction_weight": 0.5,
+	},
 
 	# --- v14 ore: metals and minerals ----------------------------------------
 	# THE MARKER KEY IS `ore`, NEVER `band`, for exactly the reason written above
@@ -332,6 +363,24 @@ const GOODS := {
 		"ore": "metal", "interdiction_weight": 1.3,
 		"trade_only_at": ["anchor", "cinderworks", "depot", "bastion"],
 	},
+	# v20 THE FRONTIER: one metal and one mineral, because a seam row has to be
+	# able to hold both. Same four industrial buyers as every ore above them --
+	# the deep hatch in trades_at already lets every deep port take them, which is
+	# the point of carrying ore outward instead of home.
+	"ore_osmium": {
+		"name": "Osmium Grit", "short": "OSMIUM",
+		"base": 290, "space": 1, "color": Color(0.62, 0.68, 0.78),
+		"desc": "Heavier than it has any business being. The hold notices.",
+		"ore": "metal", "interdiction_weight": 1.5,
+		"trade_only_at": ["anchor", "cinderworks", "depot", "bastion"],
+	},
+	"ore_vitrite": {
+		"name": "Vitrite Shards", "short": "VITRITE",
+		"base": 330, "space": 1, "color": Color(0.56, 0.86, 0.80),
+		"desc": "Glass that formed under pressure nobody has measured.",
+		"ore": "mineral", "interdiction_weight": 1.5,
+		"trade_only_at": ["anchor", "cinderworks", "depot", "bastion"],
+	},
 }
 
 # What a seam of each band can hold. The depth axis lives in a TABLE, mirroring
@@ -361,6 +410,12 @@ const SEAM_YIELDS := {
 	2: ["ore_ferrite", "ore_tungsten", "ore_hydrate", "ore_phosphor"],
 	3: ["ore_tungsten", "ore_hydrate", "ore_platinum", "ore_phosphor"],
 	4: ["ore_platinum", "ore_iridium", "ore_phosphor", "ore_corundum"],
+	# The frontier's rows. Means of 231.25 and 270 against band 4's 163.75, which
+	# is what keeps RICHER OUTWARD strictly rising once SEAM_UNITS is folded in:
+	# 981 -> 1387.5 -> 1620 per seam. Each row carries at least one metal and one
+	# mineral, the contract every row above holds to.
+	5: ["ore_iridium", "ore_osmium", "ore_corundum", "ore_platinum"],
+	6: ["ore_osmium", "ore_vitrite", "ore_iridium", "ore_corundum"],
 }
 
 # What each grade of salvage can be READ AS. The player picks from this list —
@@ -375,6 +430,13 @@ const READS_AS := {
 	"salvage_drift": ["rod_decay", "sink_thermal", "lattice_data", "servo_prewar"],
 	"salvage_reaches": ["lattice_data", "servo_prewar", "index_cartographic", "manifest_forged"],
 	"salvage_quiet": ["index_cartographic", "heart_reliquary", "charge_unstable", "servo_prewar"],
+	# The frontier reads as MORE OF THE BEST rather than as new components. At 480
+	# and 660 a crate is already worth carrying home unread; inventing two more
+	# component tiers would push the forge's craft table out of reach in the same
+	# breath, and this stage does not touch the forge. What the depth buys is the
+	# rate, not a new noun.
+	"salvage_fathom": ["heart_reliquary", "charge_unstable", "index_cartographic", "servo_prewar"],
+	"salvage_unsounded": ["heart_reliquary", "index_cartographic", "charge_unstable"],
 }
 
 # How often a crate that would have held a good holds unidentified salvage

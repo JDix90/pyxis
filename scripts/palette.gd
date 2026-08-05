@@ -20,7 +20,17 @@ const WHITE_HOT := Color(1.0, 0.97, 0.9)
 const DEEP_DRIFT := Color(0.62, 0.42, 1.00)     # violet — not from around here
 const DEEP_REACHES := Color(0.40, 1.00, 0.62)   # bile — actively wrong
 const DEEP_QUIET := Color(0.92, 0.96, 1.00)     # no colour left at all
-const DEEP_BANDS := [AMBER, THREAT, DEEP_DRIFT, DEEP_REACHES, DEEP_QUIET]
+# v20 THE FRONTIER. THE QUIET is "no colour left", so the two bands past it
+# cannot go on getting whiter — there is nowhere whiter to go, and the band whose
+# whole idea is absence would stop being the end of anything. They come back
+# WRONG instead: a cold deep blue that reads as pressure rather than distance,
+# and a phosphor green that is the colour of a readout rather than of a place —
+# the scan coming back at you, which is exactly what the Unsounded's guard
+# designation says in words.
+const DEEP_FATHOMS := Color(0.00, 0.50, 0.75)   # pressure, not distance
+const DEEP_UNSOUNDED := Color(0.00, 0.70, 0.00) # a readout, not a place
+const DEEP_BANDS := [AMBER, THREAT, DEEP_DRIFT, DEEP_REACHES, DEEP_QUIET,
+	DEEP_FATHOMS, DEEP_UNSOUNDED]
 const DEEP_COLD := Color(0.10, 0.12, 0.22)      # replaces the system's haze
 
 
@@ -50,32 +60,52 @@ const BAND_SETS := {
 	# channel of at least 0.68, because these glow against a near-black sky and a
 	# dark "safe" colour is a colour nobody can see at all.
 	#
-	# The last entry stays near-white in every mode. THE QUIET is the band with
-	# "no colour left at all", and recolouring it would win a number and lose the
-	# thing the band is about.
+	# THE QUIET's entry (index 4) stays near-white in every mode. It is the band
+	# with "no colour left at all", and recolouring it would win a number and lose
+	# the thing the band is about. It is index 4 rather than the last entry now
+	# that the frontier sits past it -- the pin is on the BAND, not on the end of
+	# the array.
 	#
 	# Scores against PYXIS_ACCESSTEST's threshold of 0.20, with the shipped set
 	# measuring 0.173 under deuteranopia -- which is the whole reason for this.
-	Vision.DEUTAN: [                    # closest pair 0.307
-		Color(0.85, 0.32, 0.15),
-		Color(0.15, 0.85, 0.98),
-		Color(0.85, 0.98, 0.15),
-		Color(0.15, 0.32, 0.68),
+	#
+	# v20 THE FRONTIER: RE-SEARCHED AT SEVEN, not appended to at five. Appending
+	# was tried first and it is what the plan called for; the grid says the best
+	# two colours that can be ADDED to each shipped five score 0.214 / 0.216 /
+	# 0.215 -- over the 0.20 threshold, and with a seventh of the headroom these
+	# sets have today. Passing a threshold by 0.014 is how a palette that "meets
+	# the standard" ships unreadable, so each set was re-run whole by the same
+	# method (farthest-point seed, then swap refinement, same luminance floor of
+	# 0.30, same peak floor of 0.68, near-white pinned at index 4). Two more
+	# colours in a space that comfortably held five costs a little separation --
+	# 0.307 -> 0.283 under deuteranopia -- and that is the honest price. The
+	# alternative was 0.214.
+	Vision.DEUTAN: [                    # closest pair 0.283 (was 0.307 at five)
+		Color(1.00, 0.30, 0.00),
+		Color(0.00, 0.95, 1.00),
+		Color(1.00, 1.00, 0.00),
+		Color(0.00, 0.35, 1.00),
 		Color(0.95, 0.97, 1.00),
+		Color(0.00, 0.70, 0.10),
+		Color(0.45, 1.00, 0.45),
 	],
-	Vision.PROTAN: [                    # closest pair 0.317
-		Color(0.98, 0.85, 0.15),
-		Color(0.15, 0.85, 0.15),
-		Color(0.32, 0.98, 0.85),
-		Color(0.15, 0.32, 0.98),
+	Vision.PROTAN: [                    # closest pair 0.304 (was 0.317 at five)
+		Color(1.00, 1.00, 0.00),
+		Color(0.00, 0.70, 0.05),
+		Color(0.05, 0.95, 1.00),
+		Color(0.00, 0.35, 0.90),
 		Color(0.95, 0.97, 1.00),
+		Color(1.00, 0.15, 0.00),
+		Color(0.90, 0.50, 0.65),
 	],
-	Vision.TRITAN: [                    # closest pair 0.333
-		Color(0.15, 0.85, 0.15),
-		Color(0.15, 0.85, 0.85),
-		Color(0.85, 0.85, 0.32),
-		Color(0.85, 0.15, 0.15),
+	Vision.TRITAN: [                    # closest pair 0.317 (was 0.333 at five)
+		Color(0.55, 0.90, 0.60),
+		Color(0.00, 1.00, 1.00),
+		Color(1.00, 0.80, 0.10),
+		Color(1.00, 0.05, 0.00),
 		Color(0.95, 0.97, 1.00),
+		Color(0.00, 0.55, 0.70),
+		Color(0.45, 0.70, 0.00),
 	],
 }
 
@@ -84,7 +114,14 @@ const BAND_SETS := {
 # label and on every broadcast header, so the bands are legible in greyscale, to
 # a player who has turned the saturation down, and on a phone in sunlight.
 # Redundancy beats remapping -- remapping only helps the modes it was tuned for.
-const BAND_GLYPHS := ["", "◈", "▲", "●", "◆"]
+#
+# The frontier's two continue the shape rather than inventing one: ◇ is ◆ with
+# the fill gone, and ∙ is what is left when even the outline goes. The arc the
+# names walk (measured, then unmeasurable) is the arc the marks walk too. Both
+# are checked against FAMILY_GLYPHS -- one shape must not mean two things in the
+# same game -- and both are plain BMP characters, not emoji or dingbats, so the
+# UI font has them.
+const BAND_GLYPHS := ["", "◈", "▲", "●", "◆", "◇", "∙"]
 
 static var vision := Vision.NORMAL
 
