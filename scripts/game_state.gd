@@ -281,6 +281,25 @@ var apex_intel := {}
 # save cannot disagree with itself about how many beacons exist). Validated on
 # load by _load_beacons, entry by entry, the apex_intel loader's shape.
 var beacons := {}
+
+# v20 HUNT STAGE 6. Founded colonies, keyed "system:index" — the seams_cut key
+# shape, with a sharper hazard: seams_cut's index names an AUTHORED array, and
+# reordering it rekeys a player's cuts. A colony's index names a SEED-DERIVED
+# position, which is strictly weaker — so the value carries the POSITION rather
+# than a bare flag, and the jump reads the stored coordinates. A change to the
+# seed policy, the depth band or the candidate count can then never strand a
+# founded colony or point a jump row at empty space.
+#
+# A DICT PER INSTANCE rather than a set of keys, deliberately: §5's base-building
+# exclusion was lifted this horizon, and a claimed colony is exactly where a
+# construction layer would hang. Fields cost nothing to add to a dict and a save
+# migration to add to a set.
+var colonies := {}
+# When the last colony jump was taken, on played_seconds. ONE stamp for all of
+# them — never one per colony — so founding five never multiplies how often the
+# player can be outbound. THE COOLDOWN IS THE MECHANISM here, not the fee: see
+# Main.COLONY_JUMP_COOLDOWN.
+var last_colony_jump := -1.0e9
 # Eight is where the plot stops teaching. Past it the cones overlap so heavily
 # that another one moves the estimate by less than the marker is wide, and the
 # widest-error hint is dropped first — buying a ±5° reading should never be
@@ -792,6 +811,8 @@ func reset_to_starter() -> void:
 	seams_cut = {}
 	apex_intel = {}
 	beacons = {}
+	colonies = {}
+	last_colony_jump = -1.0e9
 	intel_version += 1
 	# A new survey is a new political slate: the deltas are RUN STATE, cleared
 	# with the ledger. The baseline needs no reset — it is a const table.
@@ -1230,6 +1251,73 @@ func _load_beacons(saved: Dictionary) -> void:
 			kept += 1
 		if not row.is_empty():
 			beacons[sid] = row
+
+
+# --- colonies (v20, Hunt stage 6) --------------------------------------------
+
+func colony_key(system_id: String, index: int) -> String:
+	return "%s:%d" % [system_id, index]
+
+
+func is_colony_claimed(key: String) -> bool:
+	return colonies.has(key)
+
+
+func claim_colony(key: String, x: float, z: float) -> bool:
+	if colonies.has(key):
+		return false
+	colonies[key] = {"x": x, "z": z, "founded_at": played_seconds}
+	note_log("COLONY FOUNDED — %s" % key)
+	_queue_save()
+	return true
+
+
+func colonies_in(system_id: String) -> Array:
+	# [{key, x, z}] for one system, in key order so a UI built from it is
+	# stable between frames.
+	var out: Array = []
+	var prefix := system_id + ":"
+	var keys: Array = colonies.keys()
+	keys.sort()
+	for k_v in keys:
+		var k := String(k_v)
+		if not k.begins_with(prefix):
+			continue
+		var e: Dictionary = colonies[k]
+		out.append({"key": k, "x": float(e["x"]), "z": float(e["z"])})
+	return out
+
+
+func _load_colonies(saved: Dictionary) -> void:
+	# A file is input, not truth. Key shape, system existence, a non-negative
+	# index and finite coordinates — each checked, each failure dropping only
+	# its own entry.
+	#
+	# THERE IS DELIBERATELY NO "DOES THIS AGREE WITH run_seed" FILTER. The
+	# stored position IS the colony; recomputing hyper_positions and discarding
+	# disagreements would delete a founded colony the day the depth band was
+	# retuned. _load_apex_intel makes the same choice for the same reason.
+	colonies = {}
+	for k_v in saved:
+		var k := String(k_v)
+		var parts := k.split(":")
+		if parts.size() != 2:
+			continue
+		if not SystemDB.exists(String(parts[0])):
+			continue
+		if not String(parts[1]).is_valid_int() or int(String(parts[1])) < 0:
+			continue
+		if not (saved[k_v] is Dictionary):
+			continue
+		var e: Dictionary = saved[k_v]
+		if not e.has("x") or not e.has("z"):
+			continue
+		var ex := float(e["x"])
+		var ez := float(e["z"])
+		if not (is_finite(ex) and is_finite(ez)):
+			continue
+		colonies[k] = {"x": ex, "z": ez,
+			"founded_at": float(e.get("founded_at", 0.0))}
 
 
 func _load_apex_intel(saved: Dictionary) -> void:
@@ -2342,6 +2430,8 @@ func save_game() -> void:
 		"seams_cut": seams_cut,
 		"apex_intel": apex_intel,
 		"beacons": beacons,
+		"colonies": colonies,
+		"last_colony_jump": last_colony_jump,
 		"warehouse": warehouse,
 		"ledger": ledger,
 		"ship_name": ship_name,
@@ -2515,6 +2605,10 @@ func load_game() -> bool:
 	# absent key is an empty store and a full stock, which is exactly what a
 	# pilot who has never dropped one should load as.
 	_load_beacons(data.get("beacons", {}))
+	# v20 stage 6, riding the same version as beacons — one bump for both stores,
+	# since neither needs a grandfather and an absent key is the correct empty.
+	_load_colonies(data.get("colonies", {}))
+	last_colony_jump = float(data.get("last_colony_jump", -1.0e9))
 	_load_warehouse(data.get("warehouse", {}))
 	# v18. A v17 save has no key and arrives at the authored baseline — which by
 	# construction IS the world that save was written in, so the migration can

@@ -5987,15 +5987,20 @@ same commit.**
 
 ### Outstanding
 
+**Nothing.** The Hunt's stages 4–6 shipped as §65, §66 and §67 (2026-08-04), and
+no other specced-but-unbuilt work is known. The table below is kept as the
+record of what was outstanding and how it resolved; **the discipline stands** —
+if you defer something, it goes here in the same commit.
+
 **The Hunt, stages 4–6.** The horizon is specced in full in
 `~/.claude/plans/i-have-indeed-tested-fuzzy-parnas.md` — outside the repo, which
 is most of why these went unnoticed. Stages 1–3 shipped as §38, §39 and §42.
 
 | stage | what | reserved | status |
 |---|---|---|---|
-| 4 | per-PYX deep identity + deep rifts (landmark/station weights, per-system rift depth) | no save bump | **not built** — no `"deep"` block in `system_db.gd` |
-| 5 | waypoint beacons (drop/pick-up at depth, dots on the survey plot) | save v17 | **not built** — no `BEACON_STOCK`, no `TIER_BEACON` |
-| 6 | hyper-structures and **Colonies** (claim past 1500u, then in-system warp) | save v18 | **not built** — no `hyper_structure.gd`, no `hyper_positions`, no `COLONY_JUMP*`, no `colonies` key |
+| 4 | per-PYX deep identity + deep rifts (landmark/station weights, per-system rift depth) | no save bump | **BUILT** — §65 |
+| 5 | waypoint beacons (drop/pick-up at depth, dots on the survey plot) | save v17 | **BUILT** — §66, at v20 |
+| 6 | hyper-structures and **Colonies** (claim past 1600u, then in-system warp) | save v18 | **BUILT** — §67, at v20 |
 
 **The save versions they reserved were spent by a different horizon**: v17
 became the `apex_down` grandfather and v18 became the faction matrix. Horizon 4
@@ -6271,3 +6276,97 @@ which eight survive a corrupt file is deterministic rather than
 dictionary-order luck. `migrate19` proves a v19 save arrives with an empty
 store and a full rack, and its rubbish pass feeds the loader five broken
 shapes and keeps exactly the one valid entry.
+
+## 67. Instruments the size of moons (v20, Hunt stage 6)
+
+The Hunt's back half ends where it was always going to: three to five
+hyper-structures per system, past 1,600u, each an instance of the system's own
+architectural family — THE ORRERY, THE CLEPSYDRA, THE ASTROLABE, the same
+vocabulary as the engines one scale up, because this frontier measured things.
+Clear the wardens and it is a Colony: a place you own, and a place the chart can
+put you back at.
+
+### The spec's discovery number did not survive its own arithmetic
+
+It said "findable visually at ~150u", with no intel and no radar. Measured:
+3–5 objects at 150u cover **0.73%** of the annulus, and a systematic sweep is
+~161,000u of flying — **the better part of eight hours**. It also re-created
+precisely the problem §42's intel dossier was built to solve: the apex, *with*
+six intel channels narrowing a cone, sits in a search space about **80× smaller**
+than this, and even §39 could not ship without "an interim bridge: the
+hunt-start broadcast includes a free coarse ring".
+
+**The pillar was right and one number was wrong.** A *hyper*-structure visible
+only from 150u is the contradiction. `SILHOUETTE_SPAN` is 140u and the thing
+reads at ~1,000u, which makes the same sweep about seventy minutes — an
+expedition rather than a lottery — and lets "no intel, found with your eyes"
+be true instead of aspirational. The camera needed no change: it never sets
+`far`, so Godot's 4,000u default already renders it.
+
+### The floor is derived, not chosen
+
+1,500u is 6u past pyx03's worst-case lair *depth* and only **50u** clear of its
+lair *radius* (bounds 44 + depth 1450 = 1494) — inside `LAIR_KEEPOUT` 120, so a
+structure could roll into the apex arena. 1,600 clears every authored system's
+ceiling by at least 150u, and `OUTSIDE THE ARENA` derives that from the two
+**authored bands** rather than from this run's lucky roll — the shape
+`main.gd`'s survey-hull clearance check already uses.
+
+### A fixed oversample, because a rejection sampler's shape is its own luck
+
+`lair_pos` takes exactly two draws and is auditable at a glance. A
+separation-enforcing sampler loops, which makes the stream's shape a function of
+its outcome. `hyper_positions` draws a **fixed 16 candidate pairs** regardless
+of the count it rolled and selects the first N that clear
+`MIN_HYPER_SEPARATION` — invariant shape, deterministic given the salt. Depths
+are drawn **independently per candidate**: one shared depth would put every
+instance on one ring, and finding one would give you the radius of all the
+others, which is the exact inference this pillar exists to deny. Measured over
+600 draws: worst pairwise gap **709u** against a 700 floor, worst depth spread
+**121u**.
+
+### Where the anti-farm actually lives
+
+The obvious reading is backwards. **Recall home is free and uncapped**
+(`_recall_sequence` says why), so a colony jump does not save a one-way trip —
+it halves a round one. And 500 credits amortised over five minutes is 100
+cr/min, a rounding error against the loop. **Only the cooldown bounds anything**,
+and it is one shared stamp, never one per colony: per-colony stamps would make
+founding five colonies mean five times the outbound frequency, and that is the
+one defect a single-colony test cannot see. `ONE CLOCK FOR ALL OF THEM` stages
+two instruments and jumps between them.
+
+`A FOOTHOLD, NOT A FARM` states the number rather than hiding behind a verdict:
+the deepest instrument is 4,244u ≈ **738s of flying**, against a 300s cooldown —
+**2.46 saved-seconds per cooldown-second**. That ratio exceeding 1.0 is the
+*point* of an earned foothold, not a defect, and the deep does not regenerate
+within a session anyway. The bound of 3.0 is a guard on the *clock*: it pins the
+cooldown above ~245s, so "someone tuned it to 30s" cannot ship.
+
+### Two tautologies this stage's own battery caught
+
+- `NOTHING POINTS AT THEM`'s radar clause was literally `board_clean =
+  board_clean` inside a conditional — an assignment that cannot fail, written
+  into the check whose whole job is proving an absence. It reads marker instance
+  ids against the live structures now.
+- `A V19 SAVE ARRIVES WITH A FULL RACK` could not see the colony loader at all.
+  Gutting `_load_colonies` entirely left it **green**, because an *absent* key
+  and a *rejected* one are indistinguishable from an empty store. The fixture
+  now feeds seven broken colony shapes — no colon, unknown system, non-numeric
+  index, negative index, non-dict value, missing coordinate — and asserts
+  exactly the one valid entry survives.
+
+Both were found by injection, not by reading, and both are the same species as
+§65's and §66's: **the assertions are where the defects hide, because nobody
+red-verifies the thing they just wrote to catch defects.**
+
+### And the position is persisted at claim
+
+Per instance, in a **dict** rather than a flag — because §5's base-building
+exclusion was lifted this horizon and a claimed colony is exactly where a
+construction layer would hang; fields cost nothing to add to a dict and a save
+migration to add to a set. The stored coordinates *are* the colony: the loader
+deliberately has no "does this agree with `run_seed`" filter, because
+recomputing and discarding disagreements would delete a founded colony the day
+the depth band was retuned. `_load_apex_intel` makes the same choice for the
+same reason.

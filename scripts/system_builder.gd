@@ -21,6 +21,7 @@ static func build(def: Dictionary, container: Node3D, opts := {}) -> void:
 	_build_derelict(def, container, String(opts.get("system_id", "")))
 	_build_training_hull(def, container)
 	_build_apex(def, container, String(opts.get("system_id", "")))
+	_build_hyper(def, container, String(opts.get("system_id", "")))
 	_build_port(def, container)
 	_build_deep_space(def, container, String(opts.get("system_id", "")))
 	# Attract mode and the guided first run want the place without the ambush.
@@ -30,6 +31,26 @@ static func build(def: Dictionary, container: Node3D, opts := {}) -> void:
 	# sentries.
 	if not bool(opts.get("skip_sentries", false)):
 		build_garrison(def, container, String(opts.get("system_id", "")))
+
+
+static func _build_hyper(def: Dictionary, container: Node3D, system_id: String) -> void:
+	# v20 HUNT STAGE 6. Three to five instruments, always present, on the boss's
+	# precedent — a thing whose job is to be seen from a thousand units away
+	# must not wait for the cell streamer to reach it.
+	#
+	# POSITION AFTER add_child, like every spawner in this file: inside the
+	# node's own _ready the position is still the origin, and _build_mesh reads
+	# nothing positional, but the ordering rule holds so the next field added
+	# here cannot break it quietly.
+	if system_id == "":
+		return
+	var spots := SystemDB.hyper_positions(system_id, GameState.run_seed)
+	for i in range(spots.size()):
+		var h := HyperStructure.new()
+		h.system_id = system_id
+		h.index = i
+		container.add_child(h)
+		h.global_position = spots[i] as Vector3
 
 
 static func _build_deep_space(def: Dictionary, container: Node3D, system_id: String) -> void:
