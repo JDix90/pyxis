@@ -483,6 +483,23 @@ func _build_idle() -> void:
 	# pin wrapped labels to 300 for exactly this reason. THE CLAMP HOLDS is what
 	# caught it, by recomputing rather than reading back.
 	pilot.custom_minimum_size = Vector2(300, 0)
+	# v20. THE DROP VERB LIVES ON THIS SHEET, because this is the one console
+	# that opens in flight by design (§43's whole premise) and dropping a
+	# beacon is a flight decision. Shown only where the verb is legal — in the
+	# deep — so the button never has to explain a refusal the world already
+	# makes visible; the STOCK is printed on it, 12's odds-on-the-button rule.
+	var main_node := get_tree().get_first_node_in_group("main")
+	if main_node != null and main_node.deep_depth() > 0.0:
+		var stock := GameState.beacon_stock_left()
+		var drop_btn := UIKit.button(
+			"DROP A BEACON HERE — %d IN STOCK" % stock,
+			Palette.GOLD if stock > 0 else Palette.AMBER_DIM)
+		drop_btn.pressed.connect(func() -> void:
+			if main_node.drop_beacon_here():
+				# Close rather than refresh: the decision is made, and the
+				# thing to look at now is the beacon standing off the bow.
+				close_panel())
+		_strip.add_child(drop_btn)
 	_strip.add_child(pilot)
 
 

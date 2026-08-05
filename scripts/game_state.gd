@@ -33,7 +33,7 @@ signal lane_opened(id: String)
 signal standing_shifted(other: String, delta: int, band: int)
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 19
+const SAVE_VERSION := 20
 const SAVE_DEBOUNCE := 1.0
 
 # v6 defaults. Kept as one dictionary each so a migration only has to merge
@@ -274,6 +274,13 @@ var seams_cut := {}
 # hints are worthless, and a dossier that outlives its quarry is just clutter
 # that would redraw a survey plot for a system with nothing left to find.
 var apex_intel := {}
+
+# v20 HUNT STAGE 5. Dropped waypoint beacons, keyed by system id, each entry
+# {"x": float, "z": float}. The STOCK is derived, never stored — BEACON_STOCK
+# minus every entry across every system (§59's derived-not-tracked rule, so the
+# save cannot disagree with itself about how many beacons exist). Validated on
+# load by _load_beacons, entry by entry, the apex_intel loader's shape.
+var beacons := {}
 # Eight is where the plot stops teaching. Past it the cones overlap so heavily
 # that another one moves the estimate by less than the marker is wide, and the
 # widest-error hint is dropped first — buying a ±5° reading should never be
@@ -784,6 +791,7 @@ func reset_to_starter() -> void:
 	persuasion_xp = 0
 	seams_cut = {}
 	apex_intel = {}
+	beacons = {}
 	intel_version += 1
 	# A new survey is a new political slate: the deltas are RUN STATE, cleared
 	# with the ledger. The baseline needs no reset — it is a const table.
@@ -1129,6 +1137,99 @@ func _load_seams_cut(saved: Dictionary) -> void:
 			continue                       # 4. and must still name a real rock
 		if bool(saved[key_v]):
 			seams_cut[key] = true          # 5. falsey values dropped, not kept
+
+
+# --- waypoint beacons (v20, Hunt stage 5) ------------------------------------
+
+const BEACON_STOCK := 8
+
+
+func beacon_stock_left() -> int:
+	# DERIVED. Eight minus every dropped entry across every system — the one
+	# arithmetic, computed where it is asked, so a save edited by hand cannot
+	# carry "stock: 9" beside eight standing beacons.
+	var dropped := 0
+	for sid_v in beacons:
+		dropped += (beacons[sid_v] as Array).size()
+	return BEACON_STOCK - dropped
+
+
+func beacons_in(system_id: String) -> Array:
+	return beacons.get(system_id, [])
+
+
+func drop_beacon(system_id: String, x: float, z: float, depth: float) -> bool:
+	# THE RULE LIVES HERE, not in the button that calls it — §59's lesson about
+	# rules that live in a disabled flag. Depth is an ARGUMENT for the same
+	# reason integrity is one in divert_power: GameState cannot read the world,
+	# and a rule it cannot be handed is a rule it cannot enforce.
+	#
+	# Refused inside the chart because the chart already remembers every place
+	# in it — a beacon there would be a second bookmark on a page that has one.
+	if depth <= 0.0:
+		return false
+	if beacon_stock_left() <= 0:
+		return false
+	if not SystemDB.exists(system_id):
+		return false
+	var row: Array = beacons.get(system_id, [])
+	row.append({"x": x, "z": z})
+	beacons[system_id] = row
+	note_log("BEACON DROPPED — %d IN STOCK" % beacon_stock_left())
+	_queue_save()
+	return true
+
+
+func recover_beacon(system_id: String, x: float, z: float) -> bool:
+	# Keyed by POSITION, never by index: an index held on a live node goes stale
+	# the moment a sibling is recovered first, and a position cannot. 0.5u of
+	# tolerance is generous against float drift and far under the 34u any two
+	# beacons the drop verb places can plausibly sit apart.
+	var row: Array = beacons.get(system_id, [])
+	for i in range(row.size()):
+		var e: Dictionary = row[i]
+		if absf(float(e["x"]) - x) < 0.5 and absf(float(e["z"]) - z) < 0.5:
+			row.remove_at(i)
+			if row.is_empty():
+				beacons.erase(system_id)   # sparse, the faction-delta rule
+			else:
+				beacons[system_id] = row
+			_queue_save()
+			return true
+	return false
+
+
+func _load_beacons(saved: Dictionary) -> void:
+	# Entry-by-entry validation, the apex_intel loader's shape: a file is input,
+	# not truth. Unknown systems are dropped, malformed entries are dropped,
+	# non-finite coordinates are dropped, and anything past BEACON_STOCK in
+	# total is dropped — in file order, so which eight survive a corrupt file is
+	# deterministic rather than dictionary-order luck.
+	beacons = {}
+	var kept := 0
+	for sid_v in saved:
+		var sid := String(sid_v)
+		if not SystemDB.exists(sid):
+			continue
+		if not (saved[sid_v] is Array):
+			continue
+		var row: Array = []
+		for e_v in saved[sid_v]:
+			if kept >= BEACON_STOCK:
+				break
+			if not (e_v is Dictionary):
+				continue
+			var e: Dictionary = e_v
+			if not e.has("x") or not e.has("z"):
+				continue
+			var ex := float(e["x"])
+			var ez := float(e["z"])
+			if not (is_finite(ex) and is_finite(ez)):
+				continue
+			row.append({"x": ex, "z": ez})
+			kept += 1
+		if not row.is_empty():
+			beacons[sid] = row
 
 
 func _load_apex_intel(saved: Dictionary) -> void:
@@ -2240,6 +2341,7 @@ func save_game() -> void:
 		"persuasion_xp": persuasion_xp,
 		"seams_cut": seams_cut,
 		"apex_intel": apex_intel,
+		"beacons": beacons,
 		"warehouse": warehouse,
 		"ledger": ledger,
 		"ship_name": ship_name,
@@ -2409,6 +2511,10 @@ func load_game() -> bool:
 	persuasion_xp = maxi(int(data.get("persuasion_xp", 0)), 0)
 	_load_seams_cut(data.get("seams_cut", {}))
 	_load_apex_intel(data.get("apex_intel", {}))
+	# v20. Beacons: no migration branch, per this file's standing rule — an
+	# absent key is an empty store and a full stock, which is exactly what a
+	# pilot who has never dropped one should load as.
+	_load_beacons(data.get("beacons", {}))
 	_load_warehouse(data.get("warehouse", {}))
 	# v18. A v17 save has no key and arrives at the authored baseline — which by
 	# construction IS the world that save was written in, so the migration can

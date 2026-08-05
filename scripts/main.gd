@@ -44,6 +44,7 @@ const HARNESS_VARS := [
 	"PYXIS_ACCESSTEST",
 	"PYXIS_APEXTEST",
 	"PYXIS_BALANCE",
+	"PYXIS_BEACONTEST",
 	"PYXIS_BOSSTEST",
 	"PYXIS_CARTTEST",
 	"PYXIS_COLLISIONTEST",
@@ -859,6 +860,14 @@ func _ready() -> void:
 		_run_feel_test()
 		return
 
+	if OS.get_environment("PYXIS_BEACONTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_beacon_test()
+		return
+
 	if OS.get_environment("PYXIS_MINETEST") != "":
 		GameState.lock_saving()
 		state = State.PLAYING
@@ -1015,6 +1024,51 @@ func _enter_playing() -> void:
 	Sfx.loop_start("ambient", -16.0)
 	Music.set_system_tint(SystemDB.music_lp_of(system_id))
 	Music.play()
+
+
+func _build_beacons() -> void:
+	# v20 HUNT STAGE 5. One node per store entry, children of system_root so a
+	# warp frees them with everything else and this rebuild is the whole
+	# lifecycle. At most BEACON_STOCK nodes exist across the WHOLE save, so
+	# there is no streaming question — a beacon is always present, like the
+	# apex, and for the same reason: a thing whose job is to be found must not
+	# depend on the finder's distance.
+	for e_v in GameState.beacons_in(system_id):
+		var e: Dictionary = e_v
+		var b := Beacon.new()
+		b.system_id = system_id
+		system_root.add_child(b)
+		b.global_position = Vector3(float(e["x"]), 0.0, float(e["z"]))
+
+
+func drop_beacon_here() -> bool:
+	# The world half of the verb: gather what GameState cannot know (where the
+	# ship is, how deep that is) and hand it to the rule. §59's argument shape.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	if player == null or state != State.PLAYING or warping or tutorial_active():
+		return false
+	var pos := player.global_position
+	var depth := deep_depth()
+	if not GameState.drop_beacon(system_id, pos.x, pos.z, depth):
+		if hud:
+			# WHICH refusal, per §58's copy rule — "it didn't work" teaches
+			# nothing. Inside the chart the chart is the reason; otherwise it
+			# can only have been stock.
+			if depth <= 0.0:
+				hud.show_toast("THE CHART ALREADY REMEMBERS THIS PLACE — BEACONS ARE FOR THE DEEP",
+					Palette.AMBER_DIM)
+			else:
+				hud.show_toast("NO BEACONS LEFT — RECOVER ONE TO REUSE IT", Palette.THREAT)
+		return false
+	var b := Beacon.new()
+	b.system_id = system_id
+	system_root.add_child(b)
+	b.global_position = Vector3(pos.x, 0.0, pos.z)
+	Sfx.play("equip", -10.0, 0.9)
+	if hud:
+		hud.show_toast("BEACON DROPPED — %d IN STOCK" % GameState.beacon_stock_left(),
+			Palette.GOLD)
+	return true
 
 
 func spawn_sentries() -> void:
@@ -1244,6 +1298,9 @@ func _load_system(id: String) -> void:
 	# which key moves the ship.
 	var quiet := state == State.ATTRACT or tutorial_active()
 	SystemBuilder.build(system_def, system_root, {"skip_sentries": quiet, "system_id": id})
+	# v20. The player's beacons, rebuilt from the save the way every persistent
+	# thing is: the store is authoritative and the nodes are its projection.
+	_build_beacons()
 	deep_space = system_root.get_node_or_null("DeepSpace") as DeepSpace
 	# DeepSpace is rebuilt with the system, so a harness that switched generation
 	# off has to have that re-applied here or a mid-test _load_system would
@@ -12219,6 +12276,13 @@ func _run_save_test() -> void:
 		# perfectly through a load that had the two skills' keys crossed.
 		GameState.persuasion = 1
 		GameState.persuasion_xp = 3
+		# v20 BEACONS. Two systems, three beacons, every coordinate distinct —
+		# the six-distinct-sentinels rule again: identical values would let a
+		# loader that crossed x with z, or pyx01 with pyx02, round-trip clean.
+		GameState.beacons = {
+			"pyx01": [{"x": 111.0, "z": 222.0}, {"x": -333.0, "z": 444.0}],
+			"pyx02": [{"x": 555.0, "z": -666.0}],
+		}
 		GameState.owned.append("mod_survey_array")
 		GameState.ledger = {
 			"deepest_depth": 611, "distance_flown": 4207, "hulks_cracked": 13,
@@ -12906,6 +12970,57 @@ func _run_save_test() -> void:
 			GameState.persuasion, GameState.persuasion_xp, str(kept19),
 			armed19 - bare19,
 			"PASS" if ok18 and fresh19 and kept19 and unchanged19 else "FAIL"])
+	elif mode == "migrate19":
+		# v20 adds beacons. No migration branch, ever: an absent key is an empty
+		# store and a full stock of 8, which is exactly what a pilot who has
+		# never dropped one should load as. The fixture also carries a MALFORMED
+		# beacons key of the wrong type, because the validating loader's first
+		# duty is refusing rubbish without taking the rest of the save with it.
+		var v19 := {
+			"version": 19,
+			"salvage": 6200,
+			"current_system": "pyx02",
+			"persuasion": 1,
+			"persuasion_xp": 3,
+			"run_seed": 191919,
+			"tutorial_step": -1,
+		}
+		var f19 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f19.store_string(JSON.stringify(v19))
+		f19.close()
+		var ok19 := GameState.load_game()
+		var fresh20: bool = GameState.beacons.is_empty() \
+			and GameState.beacon_stock_left() == GameState.BEACON_STOCK
+		var kept20: bool = GameState.salvage == 6200 and GameState.persuasion == 1 \
+			and GameState.run_seed == 191919
+		# And the rubbish pass: beacons of the wrong type, entries missing keys,
+		# an unknown system, and a non-finite coordinate — each dropped, the
+		# valid remainder kept.
+		var dirty := {
+			"version": 20,
+			"salvage": 6200,
+			"run_seed": 191919,
+			"tutorial_step": -1,
+			"beacons": {
+				"pyx01": [{"x": 10.0, "z": 20.0}, {"x": "rubbish"}, "not a dict"],
+				"pyx99": [{"x": 1.0, "z": 2.0}],
+				"pyx02": "not an array",
+			},
+		}
+		var fd := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fd.store_string(JSON.stringify(dirty))
+		fd.close()
+		GameState.load_game()
+		var b19: Array = GameState.beacons_in("pyx01")
+		var cleaned: bool = b19.size() == 1 \
+			and float((b19[0] as Dictionary)["x"]) == 10.0 \
+			and GameState.beacons_in("pyx99").is_empty() \
+			and GameState.beacons_in("pyx02").is_empty() \
+			and GameState.beacon_stock_left() == GameState.BEACON_STOCK - 1
+		print("[savetest] v19->v20 A V19 SAVE ARRIVES WITH A FULL RACK empty store=%s stock %d, other state kept=%s; the rubbish pass kept 1 of 5 and the stock still derives=%s -> %s" % [
+			str(fresh20),
+			GameState.BEACON_STOCK, str(kept20), str(cleaned),
+			"PASS" if ok19 and fresh20 and kept20 and cleaned else "FAIL"])
 	elif mode == "partial6":
 		# A v6 save written before a later setting existed must still get that
 		# setting's default rather than a missing key — the reason load merges
@@ -12980,6 +13095,20 @@ func _run_save_test() -> void:
 			GameState.persuasion, GameState.persuasion_xp,
 			"PASS" if GameState.persuasion == 1 and GameState.persuasion_xp == 3
 				else "FAIL"])
+		# v20. Beacons: every coordinate, both systems, and the DERIVED stock —
+		# which is the line that catches a loader quietly duplicating or
+		# dropping an entry, whatever the entries themselves say.
+		var b1: Array = GameState.beacons_in("pyx01")
+		var b2: Array = GameState.beacons_in("pyx02")
+		var beacons_ok: bool = b1.size() == 2 and b2.size() == 1 \
+			and float((b1[0] as Dictionary)["x"]) == 111.0 \
+			and float((b1[0] as Dictionary)["z"]) == 222.0 \
+			and float((b1[1] as Dictionary)["x"]) == -333.0 \
+			and float((b2[0] as Dictionary)["z"]) == -666.0 \
+			and GameState.beacon_stock_left() == GameState.BEACON_STOCK - 3
+		print("[savetest] v20 BEACONS %d + %d entries round-tripped with every coordinate=%s, derived stock %d (want %d) -> %s" % [
+			b1.size(), b2.size(), str(beacons_ok), GameState.beacon_stock_left(),
+			GameState.BEACON_STOCK - 3, "PASS" if beacons_ok else "FAIL"])
 		print("[savetest] v10 LOGBOOK ledger %s, name '%s' (%d chars, cap %d) -> %s" % [
 			str(GameState.ledger), GameState.ship_name, GameState.ship_name.length(),
 			GameState.SHIP_NAME_MAX, "PASS" if led_ok and name_ok else "FAIL"])
@@ -17884,6 +18013,140 @@ func _run_hunt_test() -> void:
 		str(sleeper_slept), sleeper_deg, sleeper_depth, str(sleeper_spoke), str(sleeper_woke),
 		"PASS" if sleeper_slept and sleeper_spoke and sleeper_woke else "FAIL"])
 
+	get_tree().quit()
+
+
+func _run_beacon_test() -> void:
+	# v20 HUNT STAGE 5. Waypoint beacons: the stock, the chart refusal, the
+	# warp round-trip, position-keyed recovery, and the radar tier.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	player.invulnerable = true
+	_wave_timer = 1.0e9
+	_rift_timer = 1.0e9
+	_apex_wake_timer = -1.0
+	set_deep_generation(false)
+	GameState.beacons = {}
+	await get_tree().create_timer(0.4).timeout
+
+	# 1. THE STOCK IS THE LEDGER, and it is derived. Eight drops succeed, the
+	#    ninth is refused, and the stock read back at every step is BEACON_STOCK
+	#    minus the entries — asked of the derivation, never of a counter, so a
+	#    second bookkeeping cannot exist to disagree with it.
+	var stock_walk_ok := true
+	for i in range(GameState.BEACON_STOCK):
+		if not GameState.drop_beacon("pyx01", 100.0 + float(i) * 40.0, 200.0, 50.0):
+			stock_walk_ok = false
+		if GameState.beacon_stock_left() != GameState.BEACON_STOCK - i - 1:
+			stock_walk_ok = false
+	var ninth := GameState.drop_beacon("pyx01", 900.0, 900.0, 50.0)
+	print("[beacon] THE STOCK IS THE LEDGER 8 drops accepted with the derivation tracking each=%s, the ninth refused=%s -> %s" % [
+		str(stock_walk_ok), str(not ninth),
+		"PASS" if stock_walk_ok and not ninth else "FAIL"])
+
+	# 2. THE CHART REFUSES A BEACON. Depth is an argument, so the rule is a
+	#    pure call — at depth 0 and inside the chart it refuses with stock in
+	#    hand; the same call at depth accepts. Both directions, or "refuses"
+	#    is satisfied by a function that always refuses.
+	GameState.beacons = {}
+	var in_chart := GameState.drop_beacon("pyx01", 5.0, 5.0, 0.0)
+	var at_depth := GameState.drop_beacon("pyx01", 5.0, 5.0, 1.0)
+	print("[beacon] THE CHART REFUSES A BEACON depth 0 accepted=%s (must not be), depth 1 accepted=%s -> %s" % [
+		str(in_chart), str(at_depth),
+		"PASS" if not in_chart and at_depth else "FAIL"])
+
+	# 3. A BEACON SURVIVES THE WARP. Drop through the real verb, warp away and
+	#    back, and count NODES — the store is asserted by leg 1; this leg is
+	#    about the projection, which is what the player actually sees.
+	GameState.beacons = {}
+	player.teleport_to(Vector3(0, 0, chart_edge() + 60.0))
+	await get_tree().physics_frame
+	var dropped := drop_beacon_here()
+	var here := get_tree().get_nodes_in_group("beacon").size()
+	_load_system("pyx02")
+	await get_tree().physics_frame
+	var away := get_tree().get_nodes_in_group("beacon").size()
+	_load_system("pyx01")
+	await get_tree().physics_frame
+	var back := get_tree().get_nodes_in_group("beacon").size()
+	print("[beacon] A BEACON SURVIVES THE WARP dropped=%s, nodes here %d, in the next system %d (its own store: none), home again %d -> %s" % [
+		str(dropped), here, away, back,
+		"PASS" if dropped and here == 1 and away == 0 and back == 1 else "FAIL"])
+
+	# 4. RECOVERY IS KEYED BY POSITION — the stale-index defect, ruled out by
+	#    construction and asserted anyway. Two beacons; recover the FIRST; the
+	#    second must still be recoverable at its own position. An index-keyed
+	#    store shifts the survivor into slot 0 and the second recovery misses.
+	GameState.beacons = {}
+	GameState.drop_beacon("pyx01", 300.0, 300.0, 50.0)
+	GameState.drop_beacon("pyx01", 500.0, 500.0, 50.0)
+	# THE SECOND ONE FIRST, and then look at WHICH entry survived — the
+	# discriminating clause. The first draft recovered in storage order and
+	# checked only return values, which an implementation that removes the
+	# first entry regardless satisfies perfectly: every call returns true,
+	# the stock comes home, and the wrong beacon died every time. Red-verify
+	# caught it green and the leg was rewritten around the survivor's
+	# coordinates, which no remove-something implementation can fake.
+	var rec_b := GameState.recover_beacon("pyx01", 500.0, 500.0)
+	var left: Array = GameState.beacons_in("pyx01")
+	var survivor_is_a: bool = left.size() == 1 \
+		and float((left[0] as Dictionary)["x"]) == 300.0 \
+		and float((left[0] as Dictionary)["z"]) == 300.0
+	var rec_a := GameState.recover_beacon("pyx01", 300.0, 300.0)
+	var all_home := GameState.beacon_stock_left() == GameState.BEACON_STOCK
+	print("[beacon] RECOVERY IS KEYED BY POSITION recovered the SECOND drop=%s, the survivor is the first (%s), then it too=%s, stock whole=%s -> %s" % [
+		str(rec_b), str(survivor_is_a), str(rec_a), str(all_home),
+		"PASS" if rec_b and survivor_is_a and rec_a and all_home else "FAIL"])
+
+	# 5. THE BOARD CARRIES IT, AND SHEDS IT FIRST — both directions, observed.
+	#    The first draft asserted only "the beacon reaches the board" and FAILED
+	#    on a full board: a populated system holds 12+ markers, the cap bit, and
+	#    the beacon was evicted first — which is the DESIGN (TIER_BEACON is the
+	#    last tier; the one marker whose position the player already knows is
+	#    the cheapest to shed) colliding with a one-sided probe. So both halves
+	#    are staged: on the full board the beacon is absent while 12 others
+	#    stand; with the hostiles freed the board thins and the beacon appears.
+	#    Either half alone is satisfiable by a beacon that never reaches the
+	#    collection at all — only the PAIR proves collection and eviction.
+	GameState.beacons = {}
+	_load_system("pyx01")
+	set_deep_generation(false)
+	await get_tree().physics_frame
+	player.teleport_to(Vector3(0, 0, chart_edge() + 60.0))
+	await get_tree().physics_frame
+	drop_beacon_here()
+	# Fly away, and MOVE THE RIG: the radar is an edge-arrow instrument (a
+	# marker exists only for what is off screen), and teleport_to moves the
+	# ship, not the camera — start_new_game moves the rig by hand for exactly
+	# this reason.
+	player.teleport_to(Vector3(0, 0, chart_edge() + 400.0))
+	var probe_rig := get_tree().get_first_node_in_group("camera_rig")
+	if probe_rig:
+		probe_rig.global_position = player.global_position + Vector3(0, 0, 2)
+	await get_tree().create_timer(0.6).timeout
+	var full_count := hud.radar_markers().size()
+	var beacon_on_full := false
+	for m_v in hud.radar_markers():
+		if int((m_v as Dictionary).get("tier", -99)) == hud._radar.TIER_BEACON:
+			beacon_on_full = true
+	# Thin the board: the garrison and every drifting contact go, the beacon
+	# and the fixed sites stay.
+	for h_v in get_tree().get_nodes_in_group("hostiles"):
+		if is_instance_valid(h_v):
+			(h_v as Node).free()
+	await get_tree().create_timer(0.4).timeout
+	var beacon_on_thin := false
+	var thin_count := hud.radar_markers().size()
+	for m_v2 in hud.radar_markers():
+		if int((m_v2 as Dictionary).get("tier", -99)) == hud._radar.TIER_BEACON:
+			beacon_on_thin = true
+	var tier_last: bool = hud._radar.TIER_BEACON == hud._radar.TIER_NAMES.size() - 2
+	print("[beacon] THE BOARD CARRIES IT, AND SHEDS IT FIRST full board %d markers with the beacon shed=%s; thinned to %d the beacon stands=%s; TIER_BEACON is the last tier=%s -> %s" % [
+		full_count, str(not beacon_on_full), thin_count, str(beacon_on_thin),
+		str(tier_last),
+		"PASS" if full_count >= 12 and not beacon_on_full and beacon_on_thin
+			and tier_last else "FAIL"])
+
+	GameState.beacons = {}
 	get_tree().quit()
 
 

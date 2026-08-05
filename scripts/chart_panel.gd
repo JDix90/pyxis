@@ -280,6 +280,18 @@ func _draw_plot() -> void:
 		_plot.draw_arc(c, rad, 0.0, TAU, 40, Palette.TEAL, 1.5, true)
 		_plot.draw_circle(c, 2.5, Palette.TEAL)
 
+	# v20. The player's beacons, as dots in the livery accent — the plot's one
+	# player-authored layer. Drawn last so a beacon dropped inside the estimate
+	# ring stays visible on top of its shading. (The plot itself only renders
+	# during a live hunt — its early return above — so beacons share that
+	# window; a post-kill beacon map is stage-6 territory if it is anything.)
+	var accent := Palette.livery_accent(int(GameState.livery.get("accent", 0)))
+	for be_v in GameState.beacons_in(_selected):
+		var be: Dictionary = be_v
+		var bp := to_plot.call(Vector3(float(be["x"]), 0.0, float(be["z"]))) as Vector2
+		_plot.draw_circle(bp, 3.0, accent)
+		_plot.draw_arc(bp, 5.0, 0.0, TAU, 12, Color(accent.r, accent.g, accent.b, 0.5), 1.0, true)
+
 
 func _draw_map() -> void:
 	var current := GameState.current_system

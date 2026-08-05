@@ -106,12 +106,17 @@ class RadarLayer:
 	# certain thing on the board -- it is not a contact, it is a guess -- and
 	# when the 12-marker cap bites it should be the first thing to go.
 	const TIER_HUNT := 5
+	# v20. Appended at the BOTTOM for the third time, same argument as both
+	# above: nothing renumbered. Below even the ghost, deliberately — a beacon
+	# is the one marker whose position the player ALREADY KNOWS (they put it
+	# there), so when the 12-marker cap bites it is the cheapest thing to shed.
+	const TIER_BEACON := 6
 	# Every tier, in tier order, by the NAME THE MANUAL PRINTS. The manual's
 	# rows stay hand-written -- each carries a colour and a sentence, which is
 	# copy, not data -- but COVERAGE becomes assertable: a tier added here
 	# without a legend row turns THE MANUAL IS TRUE TO THE DEVICE AND TO THE
 	# HUD red, naming the tier nobody documented.
-	const TIER_NAMES := ["HOME", "APEX", "PORT", "SITE", "HOSTILE", "SEAM", "GHOST"]
+	const TIER_NAMES := ["HOME", "APEX", "PORT", "SITE", "HOSTILE", "SEAM", "GHOST", "BEACON"]
 	# What the dossier has to be worth before the ghost appears at all. Three
 	# agreeing hints and a search circle under 200u is the point where an arrow
 	# is honest guidance rather than a confident lie: below that the estimate
@@ -297,6 +302,9 @@ class RadarLayer:
 		# first -- which is correct, and free. TIER_SEAM is appended at the
 		# bottom of the tier list so nothing above it was renumbered.
 		["mineable", TIER_SEAM, Palette.HULL, SIZE_NORMAL],
+		# v20. The player's own waypoints. GOLD like nothing hostile, sized
+		# normal, and last in line for the cap — see TIER_BEACON's comment.
+		["beacon", TIER_BEACON, Palette.GOLD, SIZE_NORMAL],
 		]:
 			for node in get_tree().get_nodes_in_group(String(spec[0])):
 				var n := node as Node3D

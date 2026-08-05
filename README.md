@@ -100,12 +100,16 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **556 PASS / 0 FAIL / 0 script errors** across 57 runs, save
-format **v19** — measured on Godot 4.6.stable, headless. The six lines over 550
-are Hunt stage 4's (STRATEGY §65): per-PYX deep identity and deep rifts, +6
-assertions across MINETEST/ENVTEST/RIFTTEST, all red-verified (ten injections,
-two of which turned out not to be defects — §65 records why that distinction
-is worth writing down).
+Current baseline: **563 PASS / 0 FAIL / 0 script errors** across 59 runs, save
+format **v20** — measured on Godot 4.6.stable, headless. Stage 4 (STRATEGY
+§65) added per-PYX deep identity and deep rifts (+6 assertions); stage 5
+(§66) added waypoint beacons at v20 (+5 BEACONTEST, +2 SAVETEST, and the run
+count moves 57 → 59 for the new tag and `migrate19`). Every addition
+red-verified; §65 and §66 both record probe defects and one assertion vacuity
+their own batteries caught, which is the reason the batteries exist.
+
+`Beacon` is a new `class_name` — a fresh checkout, and the play checkout at
+`/Users/jefe/Downloads/Pyxis`, need the import pass before the project loads.
 Fourteen lines up on playtest round 4's true starting point (STRATEGY §62), and
 the run count moves 56 -> 57 because `SAVETEST=migrate18` is new.
 

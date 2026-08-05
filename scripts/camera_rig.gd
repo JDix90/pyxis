@@ -371,6 +371,11 @@ func _try_begin_hold(screen_pos: Vector2) -> void:
 	var target := _pick(screen_pos, "crackable")
 	if target == null:
 		target = _pick(screen_pos, "mineable")
+	if target == null:
+		# v20. Beacons LAST: they stand alone in empty deep by construction (the
+		# player chose the spot), so a contested tap is nearly impossible — but
+		# the ladder order is stated here rather than left to accident.
+		target = _pick(screen_pos, "beacon")
 	if target and target.has_method("hold_begin"):
 		_hold_target = target
 		target.hold_begin()
