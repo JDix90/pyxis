@@ -48,6 +48,7 @@ const HARNESS_VARS := [
 	"PYXIS_BOSSTEST",
 	"PYXIS_CARTTEST",
 	"PYXIS_COLLISIONTEST",
+	"PYXIS_COLONYTEST",
 	"PYXIS_CONTRACTTEST",
 	"PYXIS_DAMAGETEST",
 	"PYXIS_DEEPSHOTS",
@@ -258,6 +259,23 @@ const MUSTER_CHANCE := 0.25
 # is deliberately slower than PACING_MINUTES (8.0) is long, so a player cannot
 # treat the beat as a queue.
 const CORDON_REFORM_INTERVAL := 120.0
+
+# --- colony jumps (v20, Hunt stage 6) ----------------------------------------
+# THE COOLDOWN IS THE MECHANISM, AND THE FEE IS NOT. Worth stating plainly
+# because the obvious reading is backwards: recall home is FREE and uncapped
+# (_recall_sequence says why), so a colony jump does not save a one-way trip,
+# it halves a round one. The deepest instrument sits ~4,200u out, which is
+# ~730s of flying at the hull's 5.75 u/s — and 500 credits amortised over a
+# five-minute cooldown is 100 cr/min, a rounding error against the loop. Only
+# the cooldown bounds how often the deep can be re-entered.
+#
+# ONE STAMP FOR ALL OF THEM, on GameState.last_colony_jump. Per-colony stamps
+# would make founding five colonies mean five times the outbound frequency,
+# which is the farm this whole clause exists to prevent — and it is the one
+# defect a single-colony test cannot see, so ONE CLOCK FOR ALL OF THEM stages
+# two instruments and jumps between them.
+const COLONY_JUMP_FEE := 500
+const COLONY_JUMP_COOLDOWN := 300.0
 
 const MUSTER_COOLDOWN := 420.0
 # Between the warning and the first ship. Long enough to finish reading the
@@ -470,6 +488,7 @@ func _ready() -> void:
 	hud.chart_pressed.connect(chart_panel.open)
 	chart_panel.travel_requested.connect(travel_to)
 	chart_panel.recall_requested.connect(recall_to_system)
+	chart_panel.colony_jump_requested.connect(colony_jump_to)
 
 	port_panel = PortPanel.new()
 	add_child(port_panel)
@@ -858,6 +877,14 @@ func _ready() -> void:
 		_load_system(GameState.current_system)
 		_enter_playing()
 		_run_feel_test()
+		return
+
+	if OS.get_environment("PYXIS_COLONYTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_colony_test()
 		return
 
 	if OS.get_environment("PYXIS_BEACONTEST") != "":
@@ -1481,6 +1508,97 @@ func _recall_sequence() -> void:
 	FX.shockwave(self, PlayerShip.SPAWN_POINT, Palette.TEAL, 9.0, 0.9)
 	if hud:
 		hud.show_arrival(SystemDB.display_name(system_id))
+	await get_tree().create_timer(WARP_ARRIVE).timeout
+	warping = false
+
+
+func colony_jump_ready_in() -> float:
+	# Seconds left on the shared clock, floored at zero. Public so the chart row
+	# can print it — 12's rule that a refusal states its own terms.
+	return maxf(0.0, COLONY_JUMP_COOLDOWN
+		- (GameState.played_seconds - GameState.last_colony_jump))
+
+
+func can_colony_jump(key: String) -> bool:
+	# can_recall's guard set, plus the three this verb adds. Refused mid-fight
+	# and mid-warp for recall's reason: leaving an apex by tapping a console is
+	# an exit rather than a decision.
+	return state == State.PLAYING and not warping and not boss_active \
+		and docked_port == null \
+		and GameState.is_colony_claimed(key) \
+		and GameState.salvage >= COLONY_JUMP_FEE \
+		and colony_jump_ready_in() <= 0.0
+
+
+func colony_jump_to(key: String) -> void:
+	if not can_colony_jump(key):
+		if hud:
+			# WHICH refusal, per §58. "Unavailable" teaches nothing, and this
+			# verb has five distinct ways to be unavailable.
+			var why := "COLONY JUMP UNAVAILABLE"
+			if not GameState.is_colony_claimed(key):
+				why = "NOT A FOUNDED COLONY"
+			elif GameState.salvage < COLONY_JUMP_FEE:
+				why = "JUMP COSTS %d — NOT ENOUGH BANKED" % COLONY_JUMP_FEE
+			elif colony_jump_ready_in() > 0.0:
+				why = "DRIVES STILL COOLING — %ds" % int(ceil(colony_jump_ready_in()))
+			elif boss_active:
+				why = "NOT WITH AN ENGINE AWAKE"
+			hud.prompt(why)
+			Sfx.play("hit", -10.0, 0.7)
+		return
+	var e: Dictionary = GameState.colonies.get(key, {})
+	if e.is_empty():
+		return
+	if not GameState.spend_salvage(COLONY_JUMP_FEE):
+		return
+	GameState.last_colony_jump = GameState.played_seconds
+	warping = true
+	_colony_jump_sequence(Vector3(float(e["x"]), 0.0, float(e["z"])), key)
+
+
+func _colony_jump_sequence(at: Vector3, key: String) -> void:
+	# _recall_sequence's beats, outbound. EMPHATICALLY NO _load_system, for that
+	# function's own stated reason: it frees SystemRoot wholesale, which would
+	# reset the apex, respawn the garrison, delete loot still drifting toward the
+	# player and reroll every deep sector — all for a move that never leaves the
+	# system. The world is untouched; only the ship moves.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	var rig := get_tree().get_first_node_in_group("camera_rig")
+
+	if player:
+		player.begin_warp_charge()
+	Sfx.play("warp", -3.0, 0.75)
+	if rig:
+		rig.punch_zoom(1.6)
+	await get_tree().create_timer(WARP_CHARGE).timeout
+
+	if player:
+		player.warp_streak_out()
+	if rig:
+		rig.shake(0.12)
+	_star_streaks()
+	await get_tree().create_timer(WARP_STREAK * 0.55).timeout
+	FX.flash(self, Vector3(0, 0, 4), Palette.WHITE_HOT, 26.0, 0.5)
+	await get_tree().create_timer(WARP_STREAK * 0.45).timeout
+
+	# ARRIVE BESIDE IT, not inside it. The silhouette spans 140u; landing on the
+	# centre would put the ship inside the mesh.
+	var arrive := at + Vector3(HyperStructure.SILHOUETTE_SPAN * 0.55, 0.0, 0.0)
+	if player:
+		player.teleport_to(arrive)
+		player.velocity = Vector3.ZERO
+		player.clear_target()
+		player.warp_streak_in()
+	if rig:
+		rig.global_position = arrive + Vector3(0, 0, 2)
+
+	Sfx.play("breach", -12.0, 1.3)
+	FX.shockwave(self, arrive, Palette.GOLD, 9.0, 0.9)
+	if hud:
+		var parts := key.split(":")
+		var idx: int = int(String(parts[1])) if parts.size() == 2 else 0
+		hud.show_arrival(SystemDB.hyper_designation(system_id, idx))
 	await get_tree().create_timer(WARP_ARRIVE).timeout
 	warping = false
 
@@ -12283,6 +12401,13 @@ func _run_save_test() -> void:
 			"pyx01": [{"x": 111.0, "z": 222.0}, {"x": -333.0, "z": 444.0}],
 			"pyx02": [{"x": 555.0, "z": -666.0}],
 		}
+		# v20 COLONIES. Distinct again, and distinct from the beacon numbers —
+		# a loader that crossed the two stores would round-trip clean otherwise.
+		GameState.colonies = {
+			"pyx01:2": {"x": 1777.0, "z": -1888.0, "founded_at": 42.0},
+			"pyx03:0": {"x": -2999.0, "z": 3111.0, "founded_at": 77.0},
+		}
+		GameState.last_colony_jump = 1234.5
 		GameState.owned.append("mod_survey_array")
 		GameState.ledger = {
 			"deepest_depth": 611, "distance_flown": 4207, "hulks_cracked": 13,
@@ -12990,7 +13115,8 @@ func _run_save_test() -> void:
 		f19.close()
 		var ok19 := GameState.load_game()
 		var fresh20: bool = GameState.beacons.is_empty() \
-			and GameState.beacon_stock_left() == GameState.BEACON_STOCK
+			and GameState.beacon_stock_left() == GameState.BEACON_STOCK \
+			and GameState.colonies.is_empty()
 		var kept20: bool = GameState.salvage == 6200 and GameState.persuasion == 1 \
 			and GameState.run_seed == 191919
 		# And the rubbish pass: beacons of the wrong type, entries missing keys,
@@ -13006,6 +13132,19 @@ func _run_save_test() -> void:
 				"pyx99": [{"x": 1.0, "z": 2.0}],
 				"pyx02": "not an array",
 			},
+			# And the colony store's own rubbish. Without this the loader could
+			# be gutted entirely and the fresh-default clause above would still
+			# pass, because an ABSENT key and a REJECTED one look identical from
+			# an empty store — which is exactly what red-verify found.
+			"colonies": {
+				"pyx01:3": {"x": 30.0, "z": 40.0},        # the one good entry
+				"nocolon": {"x": 1.0, "z": 2.0},           # no ":" in the key
+				"pyx99:0": {"x": 1.0, "z": 2.0},           # unknown system
+				"pyx01:abc": {"x": 1.0, "z": 2.0},         # index is not a number
+				"pyx01:-2": {"x": 1.0, "z": 2.0},          # negative index
+				"pyx02:1": "not a dictionary",             # value is not a dict
+				"pyx03:1": {"z": 9.0},                     # missing a coordinate
+			},
 		}
 		var fd := FileAccess.open(GameState.save_path, FileAccess.WRITE)
 		fd.store_string(JSON.stringify(dirty))
@@ -13017,10 +13156,16 @@ func _run_save_test() -> void:
 			and GameState.beacons_in("pyx99").is_empty() \
 			and GameState.beacons_in("pyx02").is_empty() \
 			and GameState.beacon_stock_left() == GameState.BEACON_STOCK - 1
-		print("[savetest] v19->v20 A V19 SAVE ARRIVES WITH A FULL RACK empty store=%s stock %d, other state kept=%s; the rubbish pass kept 1 of 5 and the stock still derives=%s -> %s" % [
-			str(fresh20),
-			GameState.BEACON_STOCK, str(kept20), str(cleaned),
-			"PASS" if ok19 and fresh20 and kept20 and cleaned else "FAIL"])
+		var col_kept: Array = GameState.colonies_in("pyx01")
+		var col_cleaned: bool = GameState.colonies.size() == 1 \
+			and col_kept.size() == 1 \
+			and String((col_kept[0] as Dictionary)["key"]) == "pyx01:3" \
+			and float((col_kept[0] as Dictionary)["x"]) == 30.0
+		print("[savetest] v19->v20 A V19 SAVE ARRIVES WITH A FULL RACK AND NO COLONIES empty stores=%s stock %d, other state kept=%s; rubbish pass kept 1 of 5 beacons=%s and 1 of 7 colonies=%s -> %s" % [
+			str(fresh20), GameState.BEACON_STOCK, str(kept20), str(cleaned),
+			str(col_cleaned),
+			"PASS" if ok19 and fresh20 and kept20 and cleaned and col_cleaned
+				else "FAIL"])
 	elif mode == "partial6":
 		# A v6 save written before a later setting existed must still get that
 		# setting's default rather than a missing key — the reason load merges
@@ -13106,6 +13251,16 @@ func _run_save_test() -> void:
 			and float((b1[1] as Dictionary)["x"]) == -333.0 \
 			and float((b2[0] as Dictionary)["z"]) == -666.0 \
 			and GameState.beacon_stock_left() == GameState.BEACON_STOCK - 3
+		var c1: Array = GameState.colonies_in("pyx01")
+		var c3: Array = GameState.colonies_in("pyx03")
+		var colonies_ok: bool = c1.size() == 1 and c3.size() == 1 \
+			and String((c1[0] as Dictionary)["key"]) == "pyx01:2" \
+			and float((c1[0] as Dictionary)["x"]) == 1777.0 \
+			and float((c3[0] as Dictionary)["z"]) == 3111.0 \
+			and is_equal_approx(GameState.last_colony_jump, 1234.5)
+		print("[savetest] v20 COLONIES %d + %d founded round-tripped with key, position and the SHARED jump stamp=%s (stamp %.1f) -> %s" % [
+			c1.size(), c3.size(), str(colonies_ok), GameState.last_colony_jump,
+			"PASS" if colonies_ok else "FAIL"])
 		print("[savetest] v20 BEACONS %d + %d entries round-tripped with every coordinate=%s, derived stock %d (want %d) -> %s" % [
 			b1.size(), b2.size(), str(beacons_ok), GameState.beacon_stock_left(),
 			GameState.BEACON_STOCK - 3, "PASS" if beacons_ok else "FAIL"])
@@ -18013,6 +18168,258 @@ func _run_hunt_test() -> void:
 		str(sleeper_slept), sleeper_deg, sleeper_depth, str(sleeper_spoke), str(sleeper_woke),
 		"PASS" if sleeper_slept and sleeper_spoke and sleeper_woke else "FAIL"])
 
+	get_tree().quit()
+
+
+func _run_colony_test() -> void:
+	# v20 HUNT STAGE 6. The instruments: where they stand, that nothing points
+	# at them, that the wardens gate the claim, that a claim outlives both
+	# wipes, and that the jump is a foothold rather than a farm.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	player.invulnerable = true
+	_wave_timer = 1.0e9
+	_rift_timer = 1.0e9
+	_muster_timer = 1.0e9
+	_cordon_timer = 1.0e9
+	_apex_wake_timer = -1.0
+	set_deep_generation(false)
+	GameState.colonies = {}
+	await get_tree().create_timer(0.4).timeout
+
+	# --- A. determinism, over many seeds rather than one ---------------------
+	# A single-seed check passes on luck. This project has the receipt: a
+	# separation assertion "passed twice at 317u and 337u" before anyone swept.
+	var seeds := 200
+	var counts := {}
+	var worst_sep := 1.0e9
+	var worst_spread := 1.0e9
+	var stable := true
+	var floors_ok := true
+	for sd in range(seeds):
+		for sid_v in SystemDB.ids():
+			var sid := String(sid_v)
+			var ps := SystemDB.hyper_positions(sid, sd)
+			counts[ps.size()] = int(counts.get(ps.size(), 0)) + 1
+			var b := SystemDB.bounds_of(sid)
+			var dmin := 1.0e9
+			var dmax := -1.0e9
+			for i in range(ps.size()):
+				var d: float = (ps[i] as Vector3).length() - b
+				dmin = minf(dmin, d)
+				dmax = maxf(dmax, d)
+				if d < SystemDB.HYPER_DEPTH_MIN - 0.5 or d > SystemDB.HYPER_DEPTH_MAX + 0.5:
+					floors_ok = false
+				for j in range(i + 1, ps.size()):
+					worst_sep = minf(worst_sep,
+						(ps[i] as Vector3).distance_to(ps[j] as Vector3))
+			if ps.size() > 1:
+				worst_spread = minf(worst_spread, dmax - dmin)
+	var twice_a := SystemDB.hyper_positions("pyx02", 7)
+	var twice_b := SystemDB.hyper_positions("pyx02", 7)
+	stable = str(twice_a) == str(twice_b)
+	var counts_ok := true
+	for k_v in counts:
+		if int(k_v) < SystemDB.HYPER_MIN or int(k_v) > SystemDB.HYPER_MAX:
+			counts_ok = false
+	print("[colony] THE INSTRUMENTS ARE WHERE THE SALT PUT THEM %d seeds x %d systems, counts %s all in [%d,%d]=%s, same seed twice identical=%s, every depth inside [%.0f,%.0f]=%s -> %s" % [
+		seeds, SystemDB.ids().size(), str(counts), SystemDB.HYPER_MIN,
+		SystemDB.HYPER_MAX, str(counts_ok), str(stable),
+		SystemDB.HYPER_DEPTH_MIN, SystemDB.HYPER_DEPTH_MAX, str(floors_ok),
+		"PASS" if counts_ok and stable and floors_ok else "FAIL"])
+
+	# --- B. none near another, and none at one ring --------------------------
+	print("[colony] NONE NEAR ANOTHER, AND NONE AT ONE RING worst pairwise gap over %d draws %.0fu vs %.0f; worst depth spread %.0fu (0 = one shared depth roll) -> %s" % [
+		seeds * SystemDB.ids().size(), worst_sep, SystemDB.MIN_HYPER_SEPARATION,
+		worst_spread,
+		"PASS" if worst_sep >= SystemDB.MIN_HYPER_SEPARATION
+			and worst_spread > 50.0 else "FAIL"])
+
+	# --- C. outside the arena, from the AUTHORED bands -----------------------
+	# Not from this run's rolled positions: the claim is about every seed that
+	# could ever be rolled, so it is derived from the two authored ceilings.
+	var worst_gap := 1.0e9
+	var gap_report := ""
+	for sid_v2 in SystemDB.ids():
+		var sid2 := String(sid_v2)
+		if SystemDB.hyper_family(sid2) == "":
+			continue
+		var lair: Dictionary = (SystemDB.get_system(sid2).get("apex", {}) as Dictionary).get("lair", {})
+		if lair.is_empty():
+			continue
+		var band: Array = lair.get("depth", [200.0, 300.0])
+		var b2 := SystemDB.bounds_of(sid2)
+		var lair_ceiling := b2 + float(band[1])
+		var hyper_floor := b2 + SystemDB.HYPER_DEPTH_MIN
+		var gap := hyper_floor - lair_ceiling
+		worst_gap = minf(worst_gap, gap)
+		gap_report += "%s %.0f " % [sid2, gap]
+	print("[colony] OUTSIDE THE ARENA worst instrument-floor to lair-ceiling gap: %svs LAIR_KEEPOUT %.0f -> %s" % [
+		gap_report, DeepSpace.LAIR_KEEPOUT,
+		"PASS" if worst_gap >= DeepSpace.LAIR_KEEPOUT else "FAIL"])
+
+	# --- D. nothing points at them -------------------------------------------
+	# The discovery pillar, asserted as an EMPTINESS over every scanned group,
+	# plus the hunt estimate, plus the radar board itself.
+	_load_system("pyx01")
+	set_deep_generation(false)
+	await get_tree().physics_frame
+	var built := get_tree().get_nodes_in_group("hyper").size()
+	var leak := ""
+	for g in ["apex", "dockable", "crackable", "hostiles", "mineable", "beacon"]:
+		for n_v in get_tree().get_nodes_in_group(g):
+			if n_v is HyperStructure:
+				leak += "%s " % g
+	var pilot := get_tree().get_first_node_in_group("player")
+	var spots := SystemDB.hyper_positions("pyx01", GameState.run_seed)
+	var board_clean := true
+	if not spots.is_empty() and pilot != null:
+		# Stand off one and look at the board. The FIRST draft of this clause was
+		# `board_clean = board_clean` inside a conditional — a tautology that
+		# could not fail, which is precisely the shape this project keeps
+		# catching. Markers carry the collected node's instance id, so the real
+		# question is answerable: does any marker id belong to a HyperStructure?
+		pilot.teleport_to((spots[0] as Vector3) + Vector3(300.0, 0.0, 0.0))
+		var rig0 := get_tree().get_first_node_in_group("camera_rig")
+		if rig0:
+			rig0.global_position = pilot.global_position + Vector3(0, 0, 2)
+		await get_tree().create_timer(0.6).timeout
+		var hyper_ids := {}
+		for h3_v in get_tree().get_nodes_in_group("hyper"):
+			hyper_ids[(h3_v as Node).get_instance_id()] = true
+		for m_v in hud.radar_markers():
+			var m: Dictionary = m_v
+			if hyper_ids.has(int(m.get("id", 0))):
+				board_clean = false
+	print("[colony] NOTHING POINTS AT THEM %d instruments built, leaked into scanned groups: %s, radar clean beside one=%s -> %s" % [
+		built, leak if leak != "" else "none", str(board_clean),
+		"PASS" if built >= SystemDB.HYPER_MIN and leak == "" and board_clean
+			else "FAIL"])
+
+	# --- E. the wardens gate the claim ---------------------------------------
+	var inst: HyperStructure = null
+	for h_v in get_tree().get_nodes_in_group("hyper"):
+		inst = h_v as HyperStructure
+		break
+	var gate_ok := false
+	var freed_ok := false
+	var prompt_named := false
+	if inst != null and pilot != null:
+		pilot.teleport_to(inst.global_position + Vector3(8.0, 0.0, 0.0))
+		await get_tree().create_timer(0.4).timeout
+		var standing := inst.wardens_standing()
+		hud.clear_prompt()
+		inst.hold_begin()
+		inst.hold_tick(0.5)
+		gate_ok = standing > 0 and not inst.is_claimed()
+		# THE PROMPT FADES IN over 0.2s, so it cannot be read on the same frame
+		# it is set — the alpha-zero trap this session already paid for once in
+		# the parley. Wait for the tween before asking what the player can see.
+		await get_tree().create_timer(0.4).timeout
+		prompt_named = hud.prompt_text().contains(str(standing))
+		for w_v in get_tree().get_nodes_in_group("hostiles"):
+			if is_instance_valid(w_v) and (w_v as Node).has_meta("warden_key"):
+				(w_v as Node).free()
+		await get_tree().physics_frame
+		inst.hold_begin()
+		for i in range(20):
+			inst.hold_tick(0.5)
+		freed_ok = inst.is_claimed()
+	print("[colony] THE WARDENS GATE THE CLAIM held under %d wardens without founding=%s, the prompt names the count=%s, founded once they are down=%s -> %s" % [
+		inst.wardens_standing() if inst else -1, str(gate_ok), str(prompt_named),
+		str(freed_ok), "PASS" if gate_ok and prompt_named and freed_ok else "FAIL"])
+
+	# --- F. a claim outlives both wipes --------------------------------------
+	# The warp, and the one nobody thinks of: rebuild_visuals() routes through
+	# _load_system when the player changes a COLOUR setting, and deep_space
+	# clears its session sets on every rebuild. Wardens keyed off session state
+	# would come back on a colony founded an hour ago.
+	var claimed_key := inst.claim_key() if inst else ""
+	_load_system("pyx02")
+	await get_tree().physics_frame
+	_load_system("pyx01")
+	await get_tree().physics_frame
+	var after_warp := GameState.is_colony_claimed(claimed_key)
+	var warp_wardens := 0
+	rebuild_visuals()
+	await get_tree().physics_frame
+	var after_colour := GameState.is_colony_claimed(claimed_key)
+	var colour_wardens := 0
+	for h2_v in get_tree().get_nodes_in_group("hyper"):
+		var h2 := h2_v as HyperStructure
+		if h2 != null and h2.claim_key() == claimed_key:
+			h2._process(0.016)
+			colour_wardens = h2.wardens_standing()
+	print("[colony] A CLAIM OUTLIVES A WARP after a warp claimed=%s wardens %d; after a COLOUR rebuild claimed=%s wardens %d -> %s" % [
+		str(after_warp), warp_wardens, str(after_colour), colour_wardens,
+		"PASS" if after_warp and after_colour and colour_wardens == 0 else "FAIL"])
+
+	# --- G. the refusal set, one flag at a time ------------------------------
+	GameState.salvage = 100000
+	GameState.last_colony_jump = -1.0e9
+	var base_ok := can_colony_jump(claimed_key)
+	boss_active = true
+	var no_boss := not can_colony_jump(claimed_key)
+	boss_active = false
+	warping = true
+	var no_warp := not can_colony_jump(claimed_key)
+	warping = false
+	GameState.salvage = 10
+	var no_broke := not can_colony_jump(claimed_key)
+	GameState.salvage = 100000
+	var no_unclaimed := not can_colony_jump("pyx01:99")
+	GameState.last_colony_jump = GameState.played_seconds
+	var no_cooling := not can_colony_jump(claimed_key)
+	GameState.last_colony_jump = -1.0e9
+	print("[colony] THE JUMP IS REFUSED base allowed=%s; boss=%s warping=%s broke=%s unclaimed=%s cooling=%s -> %s" % [
+		str(base_ok), str(no_boss), str(no_warp), str(no_broke),
+		str(no_unclaimed), str(no_cooling),
+		"PASS" if base_ok and no_boss and no_warp and no_broke and no_unclaimed
+			and no_cooling else "FAIL"])
+
+	# --- H. one clock for all of them ----------------------------------------
+	# The defect a single-colony test cannot see: per-colony stamps would let a
+	# player found five and be outbound five times as often.
+	GameState.colonies = {}
+	GameState.claim_colony("pyx01:0", 2000.0, 0.0)
+	GameState.claim_colony("pyx01:1", 0.0, 2500.0)
+	GameState.salvage = 100000
+	GameState.last_colony_jump = GameState.played_seconds
+	var second_refused := not can_colony_jump("pyx01:1")
+	GameState.last_colony_jump = GameState.played_seconds - COLONY_JUMP_COOLDOWN - 1.0
+	var later_allowed := can_colony_jump("pyx01:1")
+	print("[colony] ONE CLOCK FOR ALL OF THEM jumped to one, a jump to a DIFFERENT colony refused inside the %.0fs cooldown=%s, allowed after it=%s -> %s" % [
+		COLONY_JUMP_COOLDOWN, str(second_refused), str(later_allowed),
+		"PASS" if second_refused and later_allowed else "FAIL"])
+
+	# --- I. the jump is a foothold, not a farm -------------------------------
+	# Derived from live constants, the WARP FARM shape. Recall home is FREE, so
+	# a jump halves a ROUND trip: the saved flight is the outbound leg only.
+	# The rate that matters is saved-seconds per cooldown-second — above 1.0 the
+	# player is gaining more travel time than the clock costs them.
+	var speed := float(ModuleDB.BASE.get("max_speed", 5.75))
+	var deepest := SystemDB.bounds_of("pyx03") + SystemDB.HYPER_DEPTH_MAX
+	var saved := deepest / speed
+	var ratio := saved / COLONY_JUMP_COOLDOWN
+	# THE BOUND IS A GUARD ON THE COOLDOWN, and it is worth saying what it is
+	# not. A ratio above 1.0 means the jump saves more flying than it costs in
+	# waiting — which is the POINT of an earned foothold, not a defect, and the
+	# deep does not regenerate within a session (cells remember being cleared),
+	# so more trips to the same neighbourhood pay nothing anyway. What the bound
+	# catches is a cooldown that stops mattering: at 3.0 the clock cannot fall
+	# below ~245s without this going red, which pins it to within ~20% of the
+	# authored 300 and makes "someone tuned it to 30s" impossible to ship.
+	var floor_cooldown := saved / 3.0
+	print("[colony] A FOOTHOLD, NOT A FARM deepest %.0fu = %.0fs flown at %.2f u/s, against a %.0fs shared cooldown = %.2f saved-seconds per cooldown-second (bound 3.0, i.e. the cooldown may not fall below %.0fs; the %d fee is %.0f cr/min, a rounding error — the clock is the mechanism) -> %s" % [
+		deepest, saved, speed, COLONY_JUMP_COOLDOWN, ratio, floor_cooldown,
+		COLONY_JUMP_FEE, float(COLONY_JUMP_FEE) * 60.0 / COLONY_JUMP_COOLDOWN,
+		"PASS" if ratio <= 3.0 else "FAIL"])
+
+	# --- J. and it names no pacing term --------------------------------------
+	var named := PACING_LOOP.has("colony") or PACING_LOOP.has("hyper")
+	print("[colony] A JUMP IS NOT A RAISE PACING_LOOP names a colony term=%s -> %s" % [
+		str(named), "PASS" if not named else "FAIL"])
+
+	GameState.colonies = {}
 	get_tree().quit()
 
 

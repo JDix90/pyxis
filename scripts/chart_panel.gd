@@ -6,6 +6,7 @@ extends CanvasLayer
 
 signal travel_requested(id: String)
 signal recall_requested
+signal colony_jump_requested(key: String)
 
 const SHEET_RATIO := 0.55
 const SLIDE_TIME := 0.28
@@ -19,6 +20,7 @@ var _title: Label
 var _detail: Label
 var _plot: Control
 var _plot_note: Label
+var _colony_rows: VBoxContainer
 var _travel_button: Button
 var _recall_button: Button
 var _selected := ""
@@ -135,6 +137,16 @@ func _build() -> void:
 	_recall_button.visible = false
 	_recall_button.pressed.connect(_on_recall)
 	col.add_child(_recall_button)
+
+	# v20 HUNT STAGE 6. One row per founded colony in the selected system, between
+	# the recall button and WARP: recall is "get me home", a colony jump is "get
+	# me back out there", and travel is "another system" — nearest-first by how
+	# urgent it is, which is the argument the recall button's own placement note
+	# makes. Retained as a field because rows come and go as colonies are founded;
+	# `col` above is a local and cannot be rebuilt into.
+	_colony_rows = VBoxContainer.new()
+	_colony_rows.add_theme_constant_override("separation", 4)
+	col.add_child(_colony_rows)
 
 	_travel_button = Button.new()
 	_travel_button.custom_minimum_size = Vector2(0, 42)
@@ -425,6 +437,45 @@ func _on_recall() -> void:
 	recall_requested.emit()
 
 
+func _refresh_colonies() -> void:
+	# Rebuilt rather than updated: the set changes only when a colony is founded,
+	# and a stale row pointing at a colony that does not exist is worse than the
+	# cost of four Buttons.
+	for c in _colony_rows.get_children():
+		_colony_rows.remove_child(c)
+		c.queue_free()
+	var main := get_tree().get_first_node_in_group("main")
+	if main == null or not main.has_method("can_colony_jump"):
+		return
+	# Only for the system you are IN. A jump is in-system by definition, so a row
+	# offered while looking at another system's page would be a button that
+	# cannot mean what it says.
+	if _selected != GameState.current_system:
+		return
+	for c_v in GameState.colonies_in(_selected):
+		var c: Dictionary = c_v
+		var key := String(c["key"])
+		var parts := key.split(":")
+		var idx: int = int(String(parts[1])) if parts.size() == 2 else 0
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(0, 42)
+		b.add_theme_font_size_override("font_size", 13)
+		b.add_theme_color_override("font_color", Palette.GOLD)
+		var cooling: float = float(main.colony_jump_ready_in())
+		# THE ROW STATES ITS OWN TERMS — the fee always, the clock when it is
+		# running. A disabled button that does not say why is the refusal
+		# problem the parley had.
+		if cooling > 0.0:
+			b.text = "%s  —  %ds" % [SystemDB.hyper_designation(_selected, idx),
+				int(ceil(cooling))]
+		else:
+			b.text = "JUMP TO %s  (%d)" % [SystemDB.hyper_designation(_selected, idx),
+				main.COLONY_JUMP_FEE]
+		b.disabled = not bool(main.can_colony_jump(key))
+		b.pressed.connect(func() -> void: colony_jump_requested.emit(key))
+		_colony_rows.add_child(b)
+
+
 func _refresh_recall() -> void:
 	var main := get_tree().get_first_node_in_group("main")
 	if main == null or not main.has_method("deep_depth"):
@@ -455,6 +506,7 @@ func _refresh() -> void:
 	_map.queue_redraw()
 	_refresh_plot()
 	_refresh_recall()
+	_refresh_colonies()
 	if _selected == "":
 		return
 	var def := SystemDB.get_system(_selected)

@@ -94,6 +94,13 @@ const SYSTEMS := {
 			# were standing and fires down it a beat later — the starting boss
 			# teaches the series' one rule: standing still is what kills you.
 			"name": "THE GNOMON", "attack": "shadow_lance"},
+		# v20 HUNT STAGE 6. THE ARCHITECTURAL FAMILY. Every hyper-structure in
+		# this system is an instance of one instrument -- the sundial's system builds models of moving skies --
+		# and instances are named by index ("THE ORRERY - SECOND INSTRUMENT"),
+		# so finding a second one reads as recognition rather than as a new
+		# noun. The engine names (THE GNOMON / ARMILLARY / MERIDIAN) are the
+		# same vocabulary one scale down: this frontier measured things.
+		"hyper": {"family": "THE ORRERY"},
 		# v18 stage 3. WHO OWNS THIS SYSTEM. The engine was never masterless: the
 		# sentries standing over the lanes and the swarms that keep arriving are
 		# its forces, and silencing it is taking a system off a government rather
@@ -254,6 +261,13 @@ const SYSTEMS := {
 			# your position under a ground-ring telegraph — area denial where the
 			# Gnomon was a line, so the dodge you learned needs re-learning.
 			"name": "THE ARMILLARY", "attack": "flare_mortar"},
+		# v20 HUNT STAGE 6. THE ARCHITECTURAL FAMILY. Every hyper-structure in
+		# this system is an instance of one instrument -- the ringed system measures by falling water --
+		# and instances are named by index ("THE CLEPSYDRA - SECOND INSTRUMENT"),
+		# so finding a second one reads as recognition rather than as a new
+		# noun. The engine names (THE GNOMON / ARMILLARY / MERIDIAN) are the
+		# same vocabulary one scale down: this frontier measured things.
+		"hyper": {"family": "THE CLEPSYDRA"},
 		# v19 HUNT STAGE 4. THE DEEP HAS AN ACCENT HERE. Authored identity for
 		# the expanse, absent from pyx01 BY CONSTRUCTION: the weighted branch in
 		# DeepSpace.weighted_index only engages when a row exists, so the system
@@ -389,6 +403,13 @@ const SYSTEMS := {
 			# it drags you toward the hub and the sweep arm, so the final boss
 			# weaponizes the positioning the other two only pressured.
 			"name": "THE MERIDIAN", "attack": "grav_tether"},
+		# v20 HUNT STAGE 6. THE ARCHITECTURAL FAMILY. Every hyper-structure in
+		# this system is an instance of one instrument -- the anchorage's instrument takes the height of stars --
+		# and instances are named by index ("THE ASTROLABE - SECOND INSTRUMENT"),
+		# so finding a second one reads as recognition rather than as a new
+		# noun. The engine names (THE GNOMON / ARMILLARY / MERIDIAN) are the
+		# same vocabulary one scale down: this frontier measured things.
+		"hyper": {"family": "THE ASTROLABE"},
 		# v19 HUNT STAGE 4. The Quiet's accent: military and mute. BLACKWATCH
 		# YARD dominates its bands, and the deep is marked by monoliths and
 		# markers — things that say somebody measured this place and left.
@@ -655,6 +676,86 @@ static func lair_pos(id: String, run_seed: int) -> Vector3:
 	var depth := rng.randf_range(float(band[0]), float(band[1]))
 	var radius := float(s.get("bounds", 40.0)) + depth
 	return Vector3(cos(bearing) * radius, 0.0, sin(bearing) * radius)
+
+
+# --- hyper-structures (v20, Hunt stage 6) ------------------------------------
+# WHERE THE INSTRUMENTS STAND. lair_pos's contract, three to five times over:
+# one pure function, one salted stream, every consumer calls it.
+#
+# THE FLOOR IS DERIVED, NOT CHOSEN. The spec said 1500u, which is 6u past
+# pyx03's worst-case lair depth and only 50u clear of its lair RADIUS (bounds 44
+# + depth 1450 = 1494) -- inside LAIR_KEEPOUT 120, so a structure could roll
+# into the apex arena. 1600 clears every authored system's lair ceiling by at
+# least 150u, and OUTSIDE THE ARENA asserts that from the authored bands rather
+# than from a lucky roll.
+const HYPER_DEPTH_MIN := 1600.0
+const HYPER_DEPTH_MAX := 4200.0
+const HYPER_MIN := 3
+const HYPER_MAX := 5
+# How far apart any two instances in a system must stand. Finding one must tell
+# you nothing about where the others are, and 700u is comfortably past the
+# ~1000u silhouette range's usefulness as a lead -- you cannot see one from
+# another.
+const MIN_HYPER_SEPARATION := 700.0
+# The fixed oversample. A rejection sampler's draw count varies with its luck,
+# which makes the stream's shape a function of its own outcome; drawing a FIXED
+# 16 candidate pairs and selecting from them keeps the shape invariant -- the
+# same discipline deep_space.gd applies to its salted sub-streams.
+const HYPER_CANDIDATES := 16
+
+
+static func hyper_family(id: String) -> String:
+	return String((get_system(id).get("hyper", {}) as Dictionary).get("family", ""))
+
+
+static func hyper_designation(id: String, index: int) -> String:
+	# "THE ORRERY - THIRD INSTRUMENT". Ordinals rather than numbers because the
+	# game names things, and a numbered one reads as inventory.
+	const ORDINALS := ["FIRST", "SECOND", "THIRD", "FOURTH", "FIFTH"]
+	var fam := hyper_family(id)
+	if fam == "":
+		return ""
+	var ord_name: String = ORDINALS[index] if index >= 0 and index < ORDINALS.size() \
+		else str(index + 1)
+	return "%s · %s INSTRUMENT" % [fam, ord_name]
+
+
+static func hyper_positions(id: String, run_seed: int) -> Array:
+	# Deterministic given (system, run_seed), and the ONE place any consumer
+	# asks. Empty for a system with no hyper block, checked BEFORE the RNG is
+	# constructed so an unauthored system costs nothing.
+	var s := get_system(id)
+	if (s.get("hyper", {}) as Dictionary).is_empty():
+		return []
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("%s|hyper|%d" % [id, run_seed])
+	var bounds := float(s.get("bounds", 40.0))
+	# COUNT FIRST, then a FIXED oversample regardless of it -- so the number of
+	# draws this function makes does not depend on the count it rolled or on how
+	# many candidates the separation test rejects.
+	var want := HYPER_MIN + (rng.randi() % (HYPER_MAX - HYPER_MIN + 1))
+	var cand_b: Array = []
+	var cand_d: Array = []
+	for i in range(HYPER_CANDIDATES):
+		cand_b.append(rng.randf_range(0.0, TAU))
+		# INDEPENDENT depth per candidate. One shared depth would put every
+		# instance on one ring, and finding one would tell you the radius of
+		# all the others -- the exact inference this pillar exists to deny.
+		cand_d.append(rng.randf_range(HYPER_DEPTH_MIN, HYPER_DEPTH_MAX))
+	var out: Array = []
+	for i in range(HYPER_CANDIDATES):
+		if out.size() >= want:
+			break
+		var radius: float = bounds + float(cand_d[i])
+		var p := Vector3(cos(float(cand_b[i])) * radius, 0.0, sin(float(cand_b[i])) * radius)
+		var clear := true
+		for q_v in out:
+			if p.distance_to(q_v as Vector3) < MIN_HYPER_SEPARATION:
+				clear = false
+				break
+		if clear:
+			out.append(p)
+	return out
 
 
 static func lair_depth(id: String, run_seed: int) -> float:
