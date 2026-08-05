@@ -70,10 +70,50 @@ players.
 ## 5. What we deliberately do not build
 
 Real-time MMO backend; alliance/social systems; timer or energy monetization;
-base building; officer/crew collection; a three-tier map hierarchy; and any
-lookalike of the reference's licensed IP (ship silhouettes, insignia, HUD
-layout, naming). Divergence is checked at every art review — the
-amber-cartography identity is the mitigation.
+officer/crew collection; a three-tier map hierarchy; and any lookalike of the
+reference's licensed IP (ship silhouettes, insignia, HUD layout, naming).
+Divergence is checked at every art review — the amber-cartography identity is
+the mitigation.
+
+### Base building: exclusion LIFTED (2026-08-04, user decision)
+
+It was on that list and it is not any more. The reasoning for removing it, and
+the boundary that survives, both matter more than the removal.
+
+**Why it was there.** Read the company it kept — timer monetization, energy
+gates, crew gacha. Base building was excluded as one more *free-to-play
+retention pattern lifted from the reference*, where a base is a thing you queue
+upgrades on and come back to when a clock says so. That objection is intact and
+is not what has been lifted.
+
+**What is now allowed.** A place in the world the player owns and changes, in a
+single-player game with no clocks, no queues, no currency sink pretending to be
+a decision, and nothing that rewards logging in rather than flying. If a
+structure takes time to become something, the time is *spent flying to it with
+what it needs* — the trip is the cost, which is the trade the whole game already
+rests on. Nothing may be built by waiting.
+
+**The user's reason, recorded as given:** it makes the game endlessly more
+interesting, and the complexity is accepted.
+
+**What this does NOT authorise.** It is a lifted exclusion, not a queued
+feature. Colonies (§64's stage 6, and the horizon that builds it) remains
+**claim-and-travel**: you find a structure, clear its wardens, and it becomes a
+fast-travel anchor. Nothing is constructed there yet. Base building, if it is
+built, is its own horizon with its own spec and its own economic argument.
+
+**And that argument is the open question, stated now so it is not discovered
+late.** `PACING_LOOP` sits at ~97% of its ceiling with `MIDTIER` at 2.90 against
+a hard 3.00 (§51, §63). Every construction system ever built is a sink that
+becomes a source; this one has roughly 0.1 of a lance in headroom to be wrong
+in. A base-building horizon starts by re-deriving the pacing band, not by
+authoring a build tree.
+
+**One thing this changes today, cheaply.** Because a claimed colony is exactly
+where a construction layer would hang, stage 6 persists `colonies` as a
+**dict per instance rather than a set of keys** — the same shape `apex_intel`
+uses. It costs nothing now and means a later horizon adds fields instead of a
+save migration.
 
 ## 6. Roadmap
 
@@ -5978,6 +6018,38 @@ corrected.
 Audited 2026-08-04 by cross-checking every Pyxis plan file against the code for a
 sentinel symbol per feature: the hold console, mining, the expanse, the hunt, the
 commission, damage control and sections all resolve. Nothing else is outstanding.
+
+### The Hunt's back half: decisions taken before building (2026-08-04)
+
+The three outstanding stages are now in progress, and four decisions were
+settled with the user before any code:
+
+- **Base building's exclusion is lifted** — §5 carries the amendment and the
+  boundary that survives it (no clocks, no queues, nothing built by waiting).
+- **One save bump, v20, carrying both stores** (`beacons` and `colonies`). The
+  spec reserved a bump per stage; neither store needs a grandfather, so a second
+  version would buy nothing. Consequence worth knowing: a stage-5-era v20 save
+  has `beacons` and no `colonies`, which is harmless (absent keys default) but
+  means v20 describes two shapes.
+- **Three PRs, a full green sweep between each** — the spec's own "each
+  independently green + shippable", enforced at the review boundary.
+- **Colony discovery is by silhouette at range (~1000u), not proximity at
+  150u.** The spec's number fails its own arithmetic: 3–5 structures at 150u
+  detection cover **0.73%** of the 1500–4200u annulus, a systematic sweep is
+  ~161,000u of flying (**≈7.8 hours**), and the deepest point in the real save
+  is 1225u. It also re-creates the exact problem stage 3's intel dossier was
+  built to solve — the apex, *with* six intel channels, sits in a search space
+  ~80× smaller. The pillar ("no intel, found with your eyes") survives; the
+  detection radius was the defect. A camera check confirms the default 4000u
+  far plane renders a 1000u silhouette without a clip change; the cost is that
+  a hyper-structure must be modelled ~7× the apex's silhouette, which the
+  fiction wanted anyway.
+
+And one correction to the spec, found by survey before it could mislead:
+**`_apply_lair` does not exist** — the shipped keep-out is `built_plan`
+(`deep_space.gd:911`), which draws from *no generator at all* rather than from
+"its own salt" as the spec instructs. Purely-subtractive-with-no-stream is the
+pattern stages 4 and 6 follow; it is strictly stronger than what was specced.
 
 ### Why this is not an assertion
 
