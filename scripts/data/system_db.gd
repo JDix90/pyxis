@@ -254,6 +254,40 @@ const SYSTEMS := {
 			# your position under a ground-ring telegraph — area denial where the
 			# Gnomon was a line, so the dodge you learned needs re-learning.
 			"name": "THE ARMILLARY", "attack": "flare_mortar"},
+		# v19 HUNT STAGE 4. THE DEEP HAS AN ACCENT HERE. Authored identity for
+		# the expanse, absent from pyx01 BY CONSTRUCTION: the weighted branch in
+		# DeepSpace.weighted_index only engages when a row exists, so the system
+		# with no block plans exactly the cells it always did and WORLD
+		# FINGERPRINT cannot move. Weight rows are authored against
+		# DeepPortDB.for_band's OUTPUT length per band (1/3/4/5 for bands 1-4),
+		# never against ARCHETYPES — for_band filters by min_band in declaration
+		# order, and a row sized to the wrong list would silently misweight.
+		#
+		# PYX-02 reads industrial: the Combine's COLD FORGE dominates where it
+		# can exist (band 2+), and the skeleton "frame" landmark — the deep's
+		# unfinished construction — is the monument you meet most.
+		"deep": {
+			# band -> weights over for_band(band): b1 [relay], b2 [relay, haven,
+			# forge], b3 [+blackwatch], b4 [+last watch].
+			"station_weights": {
+				2: [1.0, 1.0, 2.5],
+				3: [1.0, 1.0, 2.5, 0.8],
+				4: [1.0, 1.0, 2.2, 0.8, 1.0],
+			},
+			# band -> weights over ["pylon", "frame", "monolith", "marker"].
+			"landmark_weights": {
+				1: [1.5, 2.5, 0.4, 0.4],
+				2: [0.6, 3.0, 0.6, 0.4],
+				3: [0.4, 2.2, 1.6, 0.6],
+				4: [0.3, 1.4, 1.2, 1.6],
+			},
+			# The weather reaches the Reaches here. 700 keeps every rift shy of
+			# the lair band's floor at 620 only by rejection (spawn_rift's
+			# keep-out loop) — the raw windows overlap by design, because a
+			# hard ceiling at 619 would author the lair's position into the
+			# weather table.
+			"rift": {"depth_max": 700.0, "rich_mult": 1.25},
+		},
 		"faction": "armillary",
 		# Mining colony: digs alloys and volatiles, starves for isotopes and cores.
 		"port": {
@@ -355,6 +389,23 @@ const SYSTEMS := {
 			# it drags you toward the hub and the sweep arm, so the final boss
 			# weaponizes the positioning the other two only pressured.
 			"name": "THE MERIDIAN", "attack": "grav_tether"},
+		# v19 HUNT STAGE 4. The Quiet's accent: military and mute. BLACKWATCH
+		# YARD dominates its bands, and the deep is marked by monoliths and
+		# markers — things that say somebody measured this place and left.
+		# Same authoring rules as pyx02's block above.
+		"deep": {
+			"station_weights": {
+				3: [1.0, 0.8, 0.8, 2.6],
+				4: [1.0, 0.8, 0.8, 2.4, 1.2],
+			},
+			"landmark_weights": {
+				1: [2.0, 0.5, 1.2, 0.8],
+				2: [0.8, 0.5, 2.4, 0.8],
+				3: [0.5, 0.4, 2.6, 1.2],
+				4: [0.3, 0.3, 1.6, 2.4],
+			},
+			"rift": {"depth_max": 1200.0, "rich_mult": 1.5},
+		},
 		"faction": "meridian",
 		# Military yards: refines its own isotopes, pays well for alloys and relics.
 		# Alloys Cinderworks->Bastion and isotopes Bastion->Cinderworks are the two
@@ -432,6 +483,37 @@ static func ids() -> Array:
 
 static func bounds_of(id: String) -> float:
 	return float(get_system(id).get("bounds", 40.0))
+
+
+# --- the deep block (v19, Hunt stage 4) --------------------------------------
+# Authored expanse identity. EVERY accessor's default IS the shipped behaviour,
+# which is the whole determinism argument: a system with no block (pyx01, and
+# any system a harness builds by hand) reads back exactly the world that existed
+# before this key did, so the weighted branches never engage and the fingerprint
+# cannot move. bounds_of's one-line .get(default) shape, applied five times.
+
+static func deep_of(id: String) -> Dictionary:
+	return get_system(id).get("deep", {})
+
+
+static func rift_depth_max(id: String, fallback: float) -> float:
+	# The fallback is Main.RIFT_DEPTH_MAX, passed in rather than restated here —
+	# one authored 260.0 in the game, not two that agree by luck.
+	return float((deep_of(id).get("rift", {}) as Dictionary).get("depth_max", fallback))
+
+
+static func rift_rich_mult(id: String) -> float:
+	return float((deep_of(id).get("rift", {}) as Dictionary).get("rich_mult", 1.0))
+
+
+static func station_weights(id: String, band: int) -> Array:
+	# Empty means "the shipped uniform pick", which DeepSpace.weighted_index
+	# honours with a byte-identical modulo. Keyed by int band.
+	return (deep_of(id).get("station_weights", {}) as Dictionary).get(band, [])
+
+
+static func landmark_weights(id: String, band: int) -> Array:
+	return (deep_of(id).get("landmark_weights", {}) as Dictionary).get(band, [])
 
 
 static func music_lp_of(id: String) -> float:

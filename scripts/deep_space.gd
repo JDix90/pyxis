@@ -385,6 +385,9 @@ var _lair := Vector3.ZERO
 var _has_lair := false
 var _hull := Vector3.ZERO
 var _has_hull := false
+# The authored deep block (v19 stage 4). Empty for pyx01 and for every def that
+# predates it, which is what keeps the weighted branches inert by construction.
+var _deep: Dictionary = {}
 
 # Live cells, keyed by Vector2i. The value is the cell's content node, or null
 # for a cell that generated nothing — the key still has to be present, or an
@@ -529,6 +532,11 @@ func configure(def: Dictionary, system_id: String) -> void:
 	# nothing to keep clear.
 	_has_hull = not (def.get("derelict", {}) as Dictionary).is_empty()
 	_hull = SystemDB.derelict_pos(system_id) if _has_hull else Vector3.ZERO
+	# v19 HUNT STAGE 4. The system's deep accent, resolved once — the _lair
+	# cache's idiom. Asked of the DEF so a harness that configures a probe with
+	# a stripped def gets the stripped world, which is what THE DRAW COUNT DID
+	# NOT MOVE stages.
+	_deep = def.get("deep", {})
 	var sf: Dictionary = def.get("starfield", {})
 	var seed_value := hash(system_id)
 
@@ -606,6 +614,40 @@ static func convoy_faction(band: int, roll: float) -> String:
 		if roll < acc:
 			return String(CONVOY_FACTIONS[i])
 	return String(CONVOY_FACTIONS[0])
+
+
+static func weighted_index(roll_u32: int, count: int, weights: Array) -> int:
+	# v19 HUNT STAGE 4. One weighted pick that is BYTE-IDENTICAL to the shipped
+	# uniform pick whenever no weights are authored — and that equivalence is
+	# the entire fingerprint argument, so it is the first line, not a comment.
+	#
+	# The caller keeps drawing `rng.randi()` exactly as it always did and hands
+	# the uint32 here. Deriving the index from the RETURNED value is what makes
+	# this safe: swapping the draw for randf() would advance the PCG stream
+	# differently and shift every draw after it — station positions included,
+	# which the fingerprint hashes. THE DRAW COUNT DID NOT MOVE red-verifies
+	# precisely that swap.
+	#
+	# A row of the wrong length falls back to the shipped pick too — toward the
+	# shipped shape, the direction every default in this file takes — because a
+	# row authored against ARCHETYPES instead of for_band's filtered output
+	# would otherwise misweight silently.
+	if weights.is_empty() or weights.size() != count:
+		return roll_u32 % count
+	var total := 0.0
+	for w_v in weights:
+		total += float(w_v)
+	if total <= 0.0:
+		return roll_u32 % count
+	# The uint32 remapped onto [0,1): the same entropy the modulo consumed,
+	# spent on a cumulative walk — guard_count's shape, one roll, pure.
+	var roll := float(roll_u32) / 4294967296.0 * total
+	var acc := 0.0
+	for i in range(count):
+		acc += float(weights[i])
+		if roll < acc:
+			return i
+	return count - 1
 
 
 static func guard_posts(hulk_pos: Vector3, rot_y: float, count: int,
@@ -702,7 +744,11 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 	if rng.randf() < STATION_CHANCE[band]:
 		var kinds := DeepPortDB.for_band(band)
 		if not kinds.is_empty():
-			var arch: Dictionary = kinds[rng.randi() % kinds.size()]
+			# v19 stage 4: the ONE edit inside plan_cell. The draw is still
+			# rng.randi(), verbatim — the index is derived from the returned
+			# uint32, and with no authored row weighted_index IS the old modulo.
+			var arch: Dictionary = kinds[weighted_index(rng.randi(), kinds.size(),
+				(_deep.get("station_weights", {}) as Dictionary).get(band, []))]
 			var sp := base + Vector3(rng.randf_range(STATION_INSET, CELL - STATION_INSET), 0.0,
 				rng.randf_range(STATION_INSET, CELL - STATION_INSET))
 			if depth_at(sp) >= CONTENT_MIN_DEPTH:
@@ -910,8 +956,8 @@ func flag_for_band(band: int) -> String:
 
 func built_plan(cx: int, cz: int) -> Dictionary:
 	# WHAT THE WORLD ACTUALLY BUILDS, as opposed to what the generator said. The
-	# only difference is the lair keep-out, and the split is the whole reason the
-	# keep-out is safe.
+	# differences are the keep-outs — the lair's and, since v18, the hull's —
+	# and the split is the whole reason a keep-out is safe.
 	#
 	# plan_cell stays untouched and stays the fingerprint's subject. Its rolls are
 	# one linear sequence and PYXIS_MINETEST's WORLD FINGERPRINT hashes cells
@@ -1038,6 +1084,10 @@ const SUPERCELL := 4
 # landmark inside the survey volume would be a landmark on a map that already
 # has one.
 const LANDMARKS := ["", "pylon", "frame", "monolith", "marker"]
+# The four real kinds, index-stable, for the weighted per-system pick. A weights
+# row is authored against THIS list, not against LANDMARKS — the empty band-0
+# entry would put every row off by one.
+const LANDMARK_KINDS := ["pylon", "frame", "monolith", "marker"]
 
 
 static func supercell_of(cx: int, cz: int) -> Vector2i:
@@ -1068,8 +1118,21 @@ func landmark_at(cx: int, cz: int, band: int) -> Dictionary:
 	var at := base + Vector3(CELL * 0.5, 0.0, CELL * 0.5)
 	if depth_at(at) < CONTENT_MIN_DEPTH:
 		return {}
+	# v19 stage 4. WHICH monument stands here can now be authored per system.
+	# The shipped pick was a zero-draw table lookup, so the weighted pick is
+	# GATED ON ROW PRESENCE and takes its roll from its own salted stream — a
+	# system with no row draws nothing anywhere, and a system with one leaves
+	# rot_y untouched because the kind roll never shares this rng. THE
+	# LANDMARKS DID NOT TURN pins three rotations against exactly that mistake.
+	var kind := String(LANDMARKS[band])
+	var row: Array = (_deep.get("landmark_weights", {}) as Dictionary).get(band, [])
+	if not row.is_empty():
+		var krng := RandomNumberGenerator.new()
+		krng.seed = hash("%s|%d|%d|landmark_kind" % [_id, cx, cz])
+		kind = String(LANDMARK_KINDS[weighted_index(krng.randi(),
+			LANDMARK_KINDS.size(), row)])
 	return {
-		"kind": String(LANDMARKS[band]),
+		"kind": kind,
 		"pos": at,
 		"rot_y": rng.randf_range(0.0, 360.0),
 		"band": band,

@@ -2572,6 +2572,13 @@ func break_parley() -> void:
 		hud.hide_parley()
 
 
+func lair_def(def: Dictionary) -> Dictionary:
+	# "This system has no apex" and "its lair block is empty" are one question,
+	# asked by spawn_rift and its assertion — through one door so they cannot
+	# drift on what an authored lair IS.
+	return ((def.get("apex", {}) as Dictionary).get("lair", {}) as Dictionary)
+
+
 func spawn_rift() -> Rift:
 	# Public so the harness forces one instead of gambling on the roll. Session
 	# weather: a system_root child at a random bearing, at a depth the ship can
@@ -2579,21 +2586,59 @@ func spawn_rift() -> Rift:
 	# toast strip because a thing with a fuse deserves the weightier surface.
 	if live_rift != null or state != State.PLAYING or warping or tutorial_active():
 		return null
+	# v19 HUNT STAGE 4. The weather reaches as deep as the SYSTEM says it does —
+	# 260 was a global cap, and it meant the Reaches and the Quiet had no
+	# weather at all in the two systems whose expanse is mostly made of them.
+	# The fallback is the shipped constant, passed in so 260.0 is authored once.
+	var depth_max := SystemDB.rift_depth_max(system_id, RIFT_DEPTH_MAX)
 	var bearing := randf() * TAU
-	var depth := randf_range(RIFT_DEPTH_MIN, RIFT_DEPTH_MAX)
+	var depth := randf_range(RIFT_DEPTH_MIN, depth_max)
+	# AND THE SHEAR CLEARS THE LAIR, constructively. pyx02's rift window [90,700]
+	# overlaps its lair band [620,780] by design — a ceiling at 619 would author
+	# the lair's position into the weather table — so overlap is resolved by
+	# REJECTION here instead: re-roll until the shear stands clear, bounded, and
+	# on the last attempt fall back to the shallow half of the window, which can
+	# never reach any lair (every lair floor is >= 620 where a deep window
+	# exists). Sampled assertions pass ~94% of the time on a build with this
+	# loop deleted, which is why THE SHEAR CLEARS THE LAIR sweeps all 360
+	# bearings at the worst depth instead of forcing spawns.
+	var lair := SystemDB.lair_pos(system_id, GameState.run_seed)
+	var has_lair: bool = not lair_def(system_def).is_empty()
 	var radius := chart_edge() + depth
 	var pos := Vector3(cos(bearing) * radius, 0.0, sin(bearing) * radius)
+	for attempt in range(24):
+		if not has_lair or pos.distance_to(lair) >= DeepSpace.LAIR_KEEPOUT:
+			break
+		bearing = randf() * TAU
+		depth = randf_range(RIFT_DEPTH_MIN, depth_max)
+		radius = chart_edge() + depth
+		pos = Vector3(cos(bearing) * radius, 0.0, sin(bearing) * radius)
+	if has_lair and pos.distance_to(lair) < DeepSpace.LAIR_KEEPOUT:
+		# The CONSTRUCTIVE guarantee, not a 25th hope. The antipode of a
+		# colliding roll sits 2*radius from it, and radius >= chart_edge +
+		# RIFT_DEPTH_MIN >= 130, so antipode-to-lair >= 2*130 - LAIR_KEEPOUT
+		# = 140 > 120 for every authored system. The loop above exists so this
+		# line is almost never the answer; this line exists so "almost" is not
+		# the guarantee. And this was reachable in pyx01 all along: its lair
+		# floor is 260 and its rift cap is 260, unasserted since rifts shipped.
+		bearing += PI
+		pos = Vector3(cos(bearing) * radius, 0.0, sin(bearing) * radius)
 
 	var rift := Rift.new()
 	rift.band = DeepSpace.band_of(depth)
+	rift.rich_mult = SystemDB.rift_rich_mult(system_id)
 	system_root.add_child(rift)
 	rift.global_position = pos
 	live_rift = rift
 
 	if hud:
+		# THROUGH THE GLASS, like every other quoted bearing since §60. This
+		# line used rad_to_deg on the world-convention angle, so the advisory
+		# and rift_rumor (which already used compass_deg) quoted two different
+		# bearings for the same shear.
 		hud.show_broadcast("SUBSPACE ADVISORY — AUTOMATED",
 			"SHEAR DETECTED · BEARING %03d · %du OUT · IT WILL NOT HOLD" % [
-				int(rad_to_deg(bearing)), int(depth)],
+				DeepSpace.compass_deg(pos), int(depth)],
 			Palette.band_color(rift.band))
 	return rift
 
@@ -3862,23 +3907,86 @@ func _run_rift_test() -> void:
 	set_deep_generation(false)
 	await get_tree().create_timer(0.4).timeout
 
-	# 1. SPAWNS in the current system, inside the reachable depth window, and
-	#    never two at once.
+	# 1. SPAWNS inside the reachable depth window — swept over EVERY system,
+	#    reading the ceiling from the same accessor spawn_rift uses. v19 made
+	#    the ceiling per-system (260 / 700 / 1200); an assertion that hardcoded
+	#    260 would call pyx02's deep weather a defect, and one that only ran
+	#    pyx01 could not see a deep window at all.
+	var spawn_report := ""
+	var spawns_ok := true
+	var deep_window_seen := false
+	for sid_v in SystemDB.ids():
+		var sid := String(sid_v)
+		_load_system(sid)
+		set_deep_generation(false)
+		await get_tree().physics_frame
+		var ceiling := SystemDB.rift_depth_max(sid, RIFT_DEPTH_MAX)
+		if ceiling > RIFT_DEPTH_MAX:
+			deep_window_seen = true
+		var r_probe := spawn_rift()
+		await get_tree().physics_frame
+		var pd := deep_space.depth_at(r_probe.global_position) if r_probe else -1.0
+		var second_probe := spawn_rift()
+		if r_probe == null or pd < RIFT_DEPTH_MIN or pd > ceiling \
+				or second_probe != null:
+			spawns_ok = false
+		spawn_report += "%s %.0f/[%.0f,%.0f] " % [sid, pd, RIFT_DEPTH_MIN, ceiling]
+		if r_probe != null:
+			r_probe.queue_free()
+		live_rift = null
+		await get_tree().physics_frame
+	# THE DEEP WINDOW IS REAL, deterministically. A build that quietly kept the
+	# global 260 cap would pass every clause above — a shallow roll satisfies
+	# the wider window too — so pin the RNG to a seed whose first depth roll
+	# lands PAST 260 under pyx03's authored ceiling (and clear of its lair, so
+	# the rejection loop cannot re-roll it). Under the broken build the same
+	# seed's roll is compressed into [90, 260] and the clause fails every run.
+	_load_system("pyx03")
+	set_deep_generation(false)
+	await get_tree().physics_frame
+	if is_instance_valid(live_rift):
+		live_rift.queue_free()
+	live_rift = null
+	await get_tree().physics_frame
+	var dw_max := SystemDB.rift_depth_max("pyx03", RIFT_DEPTH_MAX)
+	var dw_lair := SystemDB.lair_pos("pyx03", GameState.run_seed)
+	var dw_edge := chart_edge()
+	var dw_seed := -1
+	for dw_cand in range(20000):
+		seed(dw_cand)
+		var db := randf() * TAU
+		var dd := randf_range(RIFT_DEPTH_MIN, dw_max)
+		var dp := Vector3(cos(db) * (dw_edge + dd), 0.0, sin(db) * (dw_edge + dd))
+		if dd > 300.0 and dp.distance_to(dw_lair) >= DeepSpace.LAIR_KEEPOUT + 10.0:
+			dw_seed = dw_cand
+			break
+	var dw_depth := -1.0
+	if dw_seed >= 0:
+		seed(dw_seed)
+		var dw_rift := spawn_rift()
+		await get_tree().physics_frame
+		if dw_rift != null:
+			dw_depth = deep_space.depth_at(dw_rift.global_position)
+			dw_rift.queue_free()
+		live_rift = null
+	randomize()
+	_load_system("pyx01")
+	set_deep_generation(false)
+	await get_tree().physics_frame
+	print("[rift] SPAWNS %s· second always refused, a window past 260 exists=%s, and a pinned pyx03 spawn actually USED it (depth %.0f > 260) -> %s" % [
+		spawn_report, str(deep_window_seen), dw_depth,
+		"PASS" if spawns_ok and deep_window_seen and dw_depth > 260.0 else "FAIL"])
+
 	var rift := spawn_rift()
 	await get_tree().physics_frame
-	var d := deep_space.depth_at(rift.global_position) if rift else -1.0
-	var second := spawn_rift()
-	print("[rift] SPAWNS depth %.0f in [%.0f, %.0f], band %d, second refused=%s -> %s" % [
-		d, RIFT_DEPTH_MIN, RIFT_DEPTH_MAX, rift.band if rift else -1,
-		str(second == null),
-		"PASS" if rift != null and d >= RIFT_DEPTH_MIN and d <= RIFT_DEPTH_MAX
-			and second == null else "FAIL"])
 
 	# 2. RICH means one band better than the depth deserves, and every crate is
 	#    spill-flagged — a stock cube would reap itself at 25s and vacuum itself
 	#    to the player from any distance at 1.3s. A pot that collects itself is
 	#    not a pot; this prints which failure it found.
-	var rich := clampi(rift.band + 1, 1, DeepSpace.BAND_NAMES.size() - 1)
+	# Asks the rift's OWN rich_band() rather than re-deriving the clamp here —
+	# the §61 shape: a copy of the formula agrees with itself on any code.
+	var rich := rift.rich_band()
 	var want_good := CommodityDB.salvage_for_band(rich)
 	var wrong := ""
 	var crates := 0
@@ -3946,6 +4054,89 @@ func _run_rift_test() -> void:
 		"" if rift_rumor() == "" else "STILL NAMES IT",
 		"PASS" if survivors == 0 and live_rift == null and rift_rumor() == "" \
 			and second_spawned else "FAIL"])
+
+	# --- 6. v19 stage 4: THE SHEAR CLEARS THE LAIR ---------------------------
+	# pyx02's rift window [90,700] overlaps its lair band [620,780] BY DESIGN —
+	# a ceiling at 619 would author the lair into the weather table — so the
+	# clearance lives in spawn_rift's rejection loop and its antipode fallback.
+	#
+	# DETERMINISTIC, NOT SAMPLED. A "force N spawns and check" version passes
+	# ~94% of the time on a build with the whole loop deleted, because the
+	# collision is a sub-1% joint roll. Instead: search seeds until one is
+	# found whose FIRST (bearing, depth) roll collides — mirroring spawn_rift's
+	# draw order exactly — then pin the global RNG to it and drive the real
+	# spawn. On a build without the loop and fallback, that spawn lands inside
+	# the keep-out every single run.
+	_load_system("pyx02")
+	set_deep_generation(false)
+	await get_tree().physics_frame
+	if is_instance_valid(live_rift):
+		live_rift.queue_free()
+	live_rift = null
+	await get_tree().physics_frame
+	var f_lair := SystemDB.lair_pos("pyx02", GameState.run_seed)
+	var f_max := SystemDB.rift_depth_max("pyx02", RIFT_DEPTH_MAX)
+	var f_edge := chart_edge()
+	var f_seed := -1
+	var f_first_dist := -1.0
+	for cand in range(50000):
+		seed(cand)
+		var cb := randf() * TAU
+		var cd := randf_range(RIFT_DEPTH_MIN, f_max)
+		var cp := Vector3(cos(cb) * (f_edge + cd), 0.0, sin(cb) * (f_edge + cd))
+		if cp.distance_to(f_lair) < DeepSpace.LAIR_KEEPOUT:
+			f_seed = cand
+			f_first_dist = cp.distance_to(f_lair)
+			break
+	var f_clear := -1.0
+	if f_seed >= 0:
+		seed(f_seed)
+		var forced := spawn_rift()
+		await get_tree().physics_frame
+		if forced != null:
+			f_clear = forced.global_position.distance_to(f_lair)
+			forced.queue_free()
+		live_rift = null
+	randomize()
+	print("[rift] THE SHEAR CLEARS THE LAIR seed %d's first roll lands %.0fu from the lair (inside %.0f); the real spawn under that seed stands %.0fu clear -> %s" % [
+		f_seed, f_first_dist, DeepSpace.LAIR_KEEPOUT, f_clear,
+		"PASS" if f_seed >= 0 and f_first_dist < DeepSpace.LAIR_KEEPOUT
+			and f_clear >= DeepSpace.LAIR_KEEPOUT else "FAIL"])
+
+	# --- 7. v19 stage 4: A RICHER SYSTEM'S WEATHER PAYS MORE -----------------
+	# Two clauses, and each is deterministic on its own terms. The WIRING:
+	# spawn_rift hands the system's authored rich_mult to the rift it builds —
+	# checked in pyx02, where 1.25 is authored, so a build that dropped the
+	# hand-off reads 1.0 and fails on equality, not on a dice roll. The
+	# ARITHMETIC: a probe rift at mult 3.0 must spill within [3*CRATE_MIN,
+	# 3*CRATE_MAX] = [90, 108] — fully DISJOINT from the unscaled [30, 36], so
+	# a build that ignores the multiplier cannot pass on any roll. 3.0 is a
+	# test value precisely because no authored mult separates the ranges.
+	var wired := spawn_rift()
+	await get_tree().physics_frame
+	var wired_mult: float = wired.rich_mult if wired != null else -1.0
+	var want_mult := SystemDB.rift_rich_mult("pyx02")
+	if wired != null:
+		wired.queue_free()
+	live_rift = null
+	await get_tree().physics_frame
+	var fat := Rift.new()
+	fat.band = 2
+	fat.rich_mult = 3.0
+	system_root.add_child(fat)
+	await get_tree().physics_frame
+	var fat_crates := 0
+	for c_v in fat.get_children():
+		if c_v is LootCube:
+			fat_crates += 1
+	fat.queue_free()
+	live_rift = null
+	print("[rift] A RICHER SYSTEM'S WEATHER PAYS MORE pyx02 rift carries mult %.2f (authored %.2f); a 3.0x probe spilled %d crates in [%d, %d], disjoint from the unscaled [%d, %d] -> %s" % [
+		wired_mult, want_mult, fat_crates,
+		Rift.CRATE_MIN * 3, Rift.CRATE_MAX * 3, Rift.CRATE_MIN, Rift.CRATE_MAX,
+		"PASS" if is_equal_approx(wired_mult, want_mult) and want_mult > 1.0
+			and fat_crates >= Rift.CRATE_MIN * 3 and fat_crates <= Rift.CRATE_MAX * 3
+			else "FAIL"])
 	get_tree().quit()
 
 
@@ -10316,6 +10507,15 @@ func _run_pacing_test() -> void:
 	# spawner, no market events, no contract completing mid-measurement.
 	_wave_timer = 1.0e9
 	_event_roll_timer = 1.0e9
+	# v19 stage 4. The rift clock, pinned beside the wave and event clocks the
+	# comment above already pins — the same stated rule, applied to a third
+	# spawner. Kept for hygiene, not as a fix: it was pinned as a DIAGNOSTIC
+	# when MIDTIER read 2.97 twice in eight draws, and the readings did not
+	# move — then a control run on the unmodified parent commit read 2.88-3.00
+	# INCLUDING A 3.00 FAIL, exonerating both the rift and the stage. The
+	# excursion is the distribution under machine load, §65 records it, and the
+	# §41 re-derivation of this bar is now due.
+	_rift_timer = 1.0e9
 	contracts.active = []
 	await get_tree().create_timer(0.4).timeout
 	player.invulnerable = true
@@ -14358,6 +14558,53 @@ func _run_env_test() -> void:
 		str(kinds), str(kinds.size() == DeepSpace.LANDMARKS.size() - 1),
 		"PASS" if kinds.size() == DeepSpace.LANDMARKS.size() - 1 else "FAIL"])
 
+	# --- v19 stage 4: THE LANDMARKS DID NOT TURN -----------------------------
+	# The per-system kind pick is gated on row presence and salted on its own
+	# stream, so it must consume NOTHING from landmark_at's shared rng — whose
+	# only draw is rot_y. Self-deriving rather than pinned: an authored-def
+	# probe and a stripped-def probe of the SAME system must agree on every
+	# rotation (a kind draw inserted before rot_y shears them apart), and must
+	# DISAGREE on at least one kind (or the weights are dead code). No recorded
+	# literals, so a re-authored weight row cannot orphan this check.
+	#
+	# Nothing else in the 57 runs can see this defect: the fingerprint hashes no
+	# landmark field, and the checks above ask kinds and election, never
+	# rotation. Red-verified by moving the kind roll onto the shared rng before
+	# rot_y — every compared rotation shifts.
+	var lm_real := DeepSpace.new()
+	lm_real.generating = false
+	add_child(lm_real)
+	lm_real.configure(SystemDB.get_system("pyx02"), "pyx02")
+	var lm_def: Dictionary = SystemDB.get_system("pyx02").duplicate(true)
+	lm_def.erase("deep")
+	var lm_bare := DeepSpace.new()
+	lm_bare.generating = false
+	add_child(lm_bare)
+	lm_bare.configure(lm_def, "pyx02")
+	var rot_same := true
+	var kind_diffs := 0
+	var lm_seen := 0
+	for sx in range(-4, 5):
+		for sz in range(-4, 5):
+			var lc := DeepSpace.landmark_cell("pyx02", sx, sz)
+			var lband := DeepSpace.band_of(lm_real.depth_at(
+				Vector3(float(lc.x) * DeepSpace.CELL + DeepSpace.CELL * 0.5, 0.0,
+					float(lc.y) * DeepSpace.CELL + DeepSpace.CELL * 0.5)))
+			var la := lm_real.landmark_at(lc.x, lc.y, lband)
+			var lb := lm_bare.landmark_at(lc.x, lc.y, lband)
+			if la.is_empty() or lb.is_empty():
+				continue
+			lm_seen += 1
+			if absf(float(la["rot_y"]) - float(lb["rot_y"])) > 0.0001:
+				rot_same = false
+			if String(la["kind"]) != String(lb["kind"]):
+				kind_diffs += 1
+	lm_real.free()
+	lm_bare.free()
+	print("[env] THE LANDMARKS DID NOT TURN %d pyx02 landmarks weighted vs stripped: every rotation identical=%s, kinds differ on %d (0 = weights are dead code) -> %s" % [
+		lm_seen, str(rot_same), kind_diffs,
+		"PASS" if lm_seen >= 8 and rot_same and kind_diffs > 0 else "FAIL"])
+
 	# THE WORLD DOES NOT SPIN UNDER THE COMPASS. The cartography lattice looks
 	# exactly like a compass rose -- eight radial spokes on a ring -- and it
 	# used to turn a full revolution every 240 seconds. That was harmless while
@@ -16854,7 +17101,10 @@ func _run_hunt_test() -> void:
 		for cz in range(lair_cell.y - 3, lair_cell.y + 4):
 			var raw := deep_space.plan_cell(cx, cz)
 			var built := deep_space.built_plan(cx, cz)
-			for key_v in ["station", "pack", "hulk"]:
+			# All FOUR filtered keys since v18 — this list read
+			# ["station", "pack", "hulk"] while built_plan filtered convoy too,
+			# so a convoy leaking into the arena had no assertion at all.
+			for key_v in ["station", "pack", "hulk", "convoy"]:
 				var key := String(key_v)
 				var thing: Dictionary = raw[key]
 				if thing.is_empty():
@@ -17723,6 +17973,112 @@ func _run_mine_test() -> void:
 	print("[mine] WORLD FINGERPRINT %s vs %s recorded before seams existed -> %s" % [
 		fp, WORLD_FINGERPRINT_BEFORE_SEAMS,
 		"PASS" if fp == WORLD_FINGERPRINT_BEFORE_SEAMS else "FAIL"])
+
+	# --- 6b. v19 stage 4: identity is additive, and the draws did not move ---
+
+	# IDENTITY IS ADDITIVE. The fingerprint above is the ENFORCEMENT; this line
+	# is the meaning: pyx01 authors no deep block, so the weighted branches
+	# never engage in the hashed system and the hash cannot move. Red-verified
+	# by authoring a uniform station row for pyx01 — the fingerprint goes red
+	# at BOTH its call sites while this clause names why.
+	print("[mine] IDENTITY IS ADDITIVE pyx01 authors no deep block=%s (the fingerprint above is what enforces it) -> %s" % [
+		str(SystemDB.deep_of("pyx01").is_empty()),
+		"PASS" if SystemDB.deep_of("pyx01").is_empty() else "FAIL"])
+
+	# THE DRAW COUNT DID NOT MOVE — the sharp one. Two probes plan the same 200
+	# pyx02 cells: one with the authored def, one with `deep` stripped. Every
+	# shared-stream product (station POSITIONS, rocks, hulk, pack) must be
+	# byte-identical — the weighted pick spends the same single randi() the
+	# modulo did — while the archetype STRINGS must differ somewhere, or the
+	# feature is dead code shipping green. Red-verify: swap the pick's draw to
+	# randf(); positions shear apart on the first station cell.
+	var real_probe := DeepSpace.new()
+	real_probe.generating = false
+	add_child(real_probe)
+	real_probe.configure(SystemDB.get_system("pyx02"), "pyx02")
+	var stripped_def: Dictionary = SystemDB.get_system("pyx02").duplicate(true)
+	stripped_def.erase("deep")
+	var bare_probe := DeepSpace.new()
+	bare_probe.generating = false
+	add_child(bare_probe)
+	bare_probe.configure(stripped_def, "pyx02")
+	var stream_same := true
+	var arch_diffs := 0
+	var stream_bad := ""
+	for cz_p in range(4, 14):
+		for cx_p in range(4, 14):
+			var a := real_probe.plan_cell(cx_p, cz_p)
+			var b := bare_probe.plan_cell(cx_p, cz_p)
+			var sa: Dictionary = a["station"]
+			var sb: Dictionary = b["station"]
+			if sa.is_empty() != sb.is_empty():
+				stream_same = false
+				stream_bad = "station presence @(%d,%d)" % [cx_p, cz_p]
+			elif not sa.is_empty():
+				if (sa["pos"] as Vector3) != (sb["pos"] as Vector3) \
+						or bool(sa["storage"]) != bool(sb["storage"]):
+					stream_same = false
+					stream_bad = "station pos/storage @(%d,%d)" % [cx_p, cz_p]
+				if String(sa["archetype"]) != String(sb["archetype"]):
+					arch_diffs += 1
+			if str(a["rocks"]) != str(b["rocks"]) \
+					or str(a["hulk"]) != str(b["hulk"]) \
+					or str(a["pack"]) != str(b["pack"]):
+				stream_same = false
+				if stream_bad == "":
+					stream_bad = "rocks/hulk/pack @(%d,%d)" % [cx_p, cz_p]
+	real_probe.free()
+	bare_probe.free()
+	print("[mine] THE DRAW COUNT DID NOT MOVE 100 pyx02 cells weighted vs stripped: shared stream identical=%s%s, archetypes differ on %d (0 = the weights are dead code) -> %s" % [
+		str(stream_same), "" if stream_bad == "" else " (" + stream_bad + ")",
+		arch_diffs,
+		"PASS" if stream_same and arch_diffs > 0 else "FAIL"])
+
+	# IDENTITY IS REAL. The authored weights must be visible in the world, not
+	# merely consumed: bin band-3 pyx02 archetypes over a wide sweep and compare
+	# each share against the AUTHORED row — never a hardcoded percentage, so
+	# re-tuning the row cannot silently retire this. Red-verify: flatten the
+	# row to uniform; the COLD FORGE share falls to ~25% against an authored
+	# expectation of ~47% and the deviation clause fires.
+	var id_probe := DeepSpace.new()
+	id_probe.generating = false
+	add_child(id_probe)
+	id_probe.configure(SystemDB.get_system("pyx02"), "pyx02")
+	var band3_row: Array = SystemDB.station_weights("pyx02", 3)
+	var band3_kinds: Array = DeepPortDB.for_band(3)
+	var counts := {}
+	var stations_seen := 0
+	for cz_q in range(-24, 25):
+		for cx_q in range(-24, 25):
+			var plq := id_probe.plan_cell(cx_q, cz_q)
+			if int(plq["band"]) != 3:
+				continue
+			var st: Dictionary = plq["station"]
+			if st.is_empty():
+				continue
+			stations_seen += 1
+			var aid := String(st["archetype"])
+			counts[aid] = int(counts.get(aid, 0)) + 1
+	id_probe.free()
+	var row_total := 0.0
+	for w_v in band3_row:
+		row_total += float(w_v)
+	var worst_dev := 0.0
+	var share_report := ""
+	for i_k in range(band3_kinds.size()):
+		var kid := String((band3_kinds[i_k] as Dictionary)["id"])
+		var want_share := float(band3_row[i_k]) / row_total if row_total > 0.0 else 0.0
+		var got_share := float(int(counts.get(kid, 0))) / float(maxi(stations_seen, 1))
+		worst_dev = maxf(worst_dev, absf(got_share - want_share))
+		share_report += "%s %.0f/%.0f%% " % [kid, got_share * 100.0, want_share * 100.0]
+	# The bound is 10pp against a MEASURED deterministic deviation of 7.8 on
+	# today's row — plan_cell is cell-seeded, so this number cannot flake, but a
+	# retuned row re-rolls it and a bound the current value passes by 0.2 would
+	# turn a legitimate tune into a mystery red. 66 samples at p=0.47 have a
+	# binomial sigma of ~6pp; 10 is one comfortable sigma above the measurement.
+	print("[mine] IDENTITY IS REAL %d band-3 pyx02 stations: %svs authored, worst deviation %.1fpp vs 10.0 -> %s" % [
+		stations_seen, share_report, worst_dev * 100.0,
+		"PASS" if stations_seen >= 30 and worst_dev < 0.10 else "FAIL"])
 
 	# --- 7. and seams themselves are deterministic ---------------------------
 	var drift := true

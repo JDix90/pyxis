@@ -100,8 +100,12 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **550 PASS / 0 FAIL / 0 script errors** across 57 runs, save
-format **v19** — measured on Godot 4.6.stable, headless, on an idle machine.
+Current baseline: **556 PASS / 0 FAIL / 0 script errors** across 57 runs, save
+format **v19** — measured on Godot 4.6.stable, headless. The six lines over 550
+are Hunt stage 4's (STRATEGY §65): per-PYX deep identity and deep rifts, +6
+assertions across MINETEST/ENVTEST/RIFTTEST, all red-verified (ten injections,
+two of which turned out not to be defects — §65 records why that distinction
+is worth writing down).
 Fourteen lines up on playtest round 4's true starting point (STRATEGY §62), and
 the run count moves 56 -> 57 because `SAVETEST=migrate18` is new.
 
@@ -165,16 +169,17 @@ happens, and an observation is not an assertion.**
 **Two numbers to know before you add anything that earns or costs frames**,
 both measured this session rather than reasoned about:
 
-- **`PACINGTEST`'s `MIDTIER` has a spread of about ±0.05**, and it is the
-  binding economy assertion. Six samples of identical code read 2.84, 2.89,
-  2.90, 2.92, 2.94, **2.95** — mean 2.91 against a hard ceiling of **3.00**.
-  Four more after stage 4 read 2.92, 2.93, 2.94, 2.95: pooled mean **2.918**,
-  and no new maximum, so the muster added nothing.
-  The derelict term alone swings ±6% run to run (4771–5339 per hull), which is
-  most of it. So a single reading of 2.95 is the top of the distribution and
-  not a regression, and **a single reading is not evidence either way** — take
-  four before you conclude anything. Real headroom at the high end of the
-  spread is about 0.04.
+- **`PACINGTEST`'s `MIDTIER` can read 3.00 — a FAIL — on an unchanged catalog
+  under machine load**, measured on a control run of an unmodified commit
+  (STRATEGY §65). It is the binding economy assertion and it is now the third
+  member of the load-sensitive family (STREAMTEST's `worst`, PHASE INTEGRITY):
+  its own seed comment says variance comes from frame-count-dependent
+  interleaving, so a busy machine widens the spread. Historical quiet-machine
+  record: 2.84–2.95, mean 2.91; mid-session under load: 2.86–3.00, mean ~2.93.
+  The derelict term alone swings ±6% (4771–5339 per hull). **A red MIDTIER
+  needs the HOLDTEST treatment before you believe it: re-run the control on
+  the parent commit, idle machine, four samples minimum.** The §41
+  re-derivation of this bar is recorded as due in §65.
 - **`STREAMTEST`'s `FRAME TIME` fails on its `worst` clause, not its mean.**
   The mean is stable across every sweep this session (6.93, 6.97, 6.98, 7.37,
   7.40ms) and did not move when stage 3 added NPC-vs-NPC combat. `worst` is a

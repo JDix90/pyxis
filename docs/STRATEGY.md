@@ -6064,3 +6064,136 @@ that were weaker than their names.
 So it is a **discipline, stated once**: the inventory is part of the commit that
 changes it. The failure mode it replaces — a repo that implies completeness by
 omission — was silent and lasted months; this one is at least visible in a diff.
+
+## 65. The deep gets an accent (v19, Hunt stage 4)
+
+Stages 1–3 of the Hunt gave every system its own hidden engine; stage 4 gives
+every system its own *expanse*. A `"deep"` block in the system def authors
+station-archetype weights, landmark-kind weights, and the system's weather —
+`rift: {depth_max, rich_mult}` — and pyx01 deliberately authors none of it.
+
+### The determinism argument is structural, not statistical
+
+The whole risk of this stage was one line: `plan_cell`'s station archetype pick,
+`kinds[rng.randi() % kinds.size()]`, sitting mid-stream in a roll sequence whose
+order is load-bearing ("a roll inserted anywhere in it reshuffles every cell in
+the game"). The substitution keeps the draw **verbatim** — still `rng.randi()`,
+still one draw — and derives the index from the returned uint32 in a pure
+`weighted_index(roll, count, weights)` whose first line returns the shipped
+modulo whenever no row is authored. So the fingerprint's system cannot move
+*by construction*: the branch that could move it does not exist for a def with
+no block. `IDENTITY IS ADDITIVE` states the meaning; `WORLD FINGERPRINT`
+(unchanged at 3836096557) is the enforcement; and `THE DRAW COUNT DID NOT MOVE`
+plans 100 pyx02 cells against a `deep`-stripped twin and requires every
+shared-stream product byte-identical while the archetype strings differ — the
+only check in the suite that can catch a `randi()`→`randf()` swap.
+
+The landmark pick was a **zero-draw table lookup**, so its weighted form is
+gated on row presence and salted on its own stream. The hole that mattered:
+nothing in all 57 runs watched landmark *rotation* — the fingerprint hashes no
+landmark field and ENVTEST asked kinds and election only — so a kind roll
+inserted before `rot_y` would have turned every landmark in the game silently.
+`THE LANDMARKS DID NOT TURN` is self-deriving (authored vs stripped def, 81
+landmarks, rotations identical, kinds differing on 52) rather than pinned to
+recorded literals, so a re-authored row cannot orphan it.
+
+### The weather reaches the Reaches
+
+`RIFT_DEPTH_MAX` was a global 260 — the Reaches and the Quiet, most of two
+systems' expanse, had no weather at all. It is now per-system (260/700/1200)
+through an accessor whose fallback is the shipped constant passed in, so 260.0
+is authored once. `rich_mult` (1.0/1.25/1.5) scales the pot's crate count, not
+its grade — `rich_band` is already clamped at band 4, so in the Quiet a richer
+shear pays in volume, which is the only richer it has left. And what comes
+through a shear now carries the band's owner and its loot like a nest does:
+this block predated stage 6 and was spawning flagless FERAL darts with no drop
+in bands the unknowns own, with the Tally's no-leash tell missing exactly there.
+
+### Two latent defects the stage surfaced
+
+**A rift could spawn inside the apex arena, and always could.** pyx01's lair
+floor is 260 and its rift cap is 260 — the collision has been reachable since
+rifts shipped, rare (a sub-1% joint roll) and never asserted. The deep windows
+made it likelier, not possible. `spawn_rift` now rejects and re-rolls, with a
+**constructive fallback**: the antipode of a colliding roll is at least
+2·(chart_edge + RIFT_DEPTH_MIN) − LAIR_KEEPOUT = 140u > 120u clear, for every
+authored system. The loop exists so the fallback is almost never the answer;
+the fallback exists so "almost" is not the guarantee. `THE SHEAR CLEARS THE
+LAIR` is deterministic rather than sampled — it searches seeds for one whose
+first roll collides, pins the global RNG, and drives the real spawn; the
+sampled version passes ~94% of the time on a build with the loop deleted.
+
+**And the advisory quoted the wrong compass.** The rift broadcast used
+`rad_to_deg(bearing)` on the world-convention angle while `rift_rumor` used
+`compass_deg` — the §60 defect, surviving in one line, so the advisory and the
+rumor named two different bearings for the same shear. Through the glass now.
+
+### Assertions that separate, not overlap
+
+`A RICHER SYSTEM'S WEATHER PAYS MORE` checks the wiring on equality (authored
+1.25 vs carried) and the arithmetic with a **3.0× probe**, because 3·CRATE_MIN
+= 90 > CRATE_MAX = 36 makes broken and working code fully disjoint — no
+authored multiplier separates the ranges, so the test value is deliberately
+not an authored one. The pinned-seed idiom recurs in `SPAWNS`: a build that
+quietly kept the global cap passes every windowed clause (a shallow roll
+satisfies a wide window), so a seed whose first roll lands past 260 under the
+authored ceiling is pinned and driven — under the broken build the same seed
+compresses into [90, 260] and fails every run.
+
+In passing: `built_plan`'s keep-out assertion now checks all **four** keys it
+filters (convoy had been unasserted since v18), and its header comment no
+longer claims there is one keep-out when there are two.
+
+### Two injections that stayed green, and were right to
+
+The red-verify battery ran ten injections; eight went red on the assertion that
+names them, and two stayed green because **the injections were not defects**,
+which is worth recording as precisely as the reds:
+
+- Swapping the archetype pick's `rng.randi()` for `rng.randf()` moves nothing —
+  both consume exactly one step of the PCG stream, so every downstream draw
+  lands where it did. The hazard the assertion actually guards is a draw-COUNT
+  change, and the corrected injection (skip the draw entirely when no row is
+  authored — the "why waste a draw on a modulo" refactor someone will one day
+  propose) shears the two probes apart and goes red, pulling the fingerprint
+  with it because pyx01's cells shift too.
+- Flattening an authored weight row to uniform tracks green because `IDENTITY
+  IS REAL` reads its expectation **from the authored row** — a retune moves the
+  world and the expectation together, which is the design. The defect it
+  guards is `weighted_index` consuming its row and ignoring it; that injection
+  drops the observed COLD FORGE share to ~25% against an authored ~47% and
+  goes red.
+
+An injection that stays green is only a verdict after you know whether it was a
+defect. Both of these looked like defects when written and were not; saying so
+costs three sentences and saves the next reader from "fixing" either.
+
+### The ceiling was touched by code this stage never modified
+
+Four post-stage MIDTIER samples read 2.92 / 2.94 / 2.90 / **2.97** — a new
+recorded maximum, twice in eight draws. Two hypotheses were tested in order,
+and both parts of the outcome matter.
+
+**The mechanism hypothesis failed.** Stage 4 upgraded band-2 rift-pack drops,
+and the pacing harness pins the wave and event clocks but never pinned the rift
+clock — §58's exact shape. Pinned diagnostically: the readings did not move
+(2.86–2.99 with the pin). The pin is kept anyway, because it enforces the
+harness's own stated rule; it is not the fix because there was nothing to fix.
+
+**The control settled it.** Six samples on the **unmodified parent commit**,
+same machine, same hour: 2.88 / 2.92 / 2.93 / 2.95 / 2.97 / **3.00 — a FAIL on
+code containing none of this stage.** Stage 4 is exonerated the same way
+HOLDTEST's stale baseline was caught in §62: by running the control instead of
+writing the story.
+
+**What stands after the exoneration is the real finding: the binding economy
+assertion can fail on an unchanged catalog under machine load.** The historical
+record said 2.91 ± 0.05 with a max of 2.95; today's machine, mid-session, puts
+the tail at 3.00 exactly. MIDTIER's own seed comment says variance comes from
+frame-count-dependent interleaving, so load widens the spread — which makes
+this the third member of the family STREAMTEST's `worst` clause and PHASE
+INTEGRITY already belong to, and it wants the same medicine §41 prescribed
+twice: **re-derive the bar from the measured distribution rather than nudge
+it.** That is an economy decision (the ceiling is the design), recorded here as
+due rather than taken mid-stage. Until then: four samples minimum, idle
+machine, and a 2.9x reading proves nothing in either direction.
