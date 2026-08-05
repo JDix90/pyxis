@@ -6019,6 +6019,38 @@ Audited 2026-08-04 by cross-checking every Pyxis plan file against the code for 
 sentinel symbol per feature: the hold console, mining, the expanse, the hunt, the
 commission, damage control and sections all resolve. Nothing else is outstanding.
 
+### The Hunt's back half: decisions taken before building (2026-08-04)
+
+The three outstanding stages are now in progress, and four decisions were
+settled with the user before any code:
+
+- **Base building's exclusion is lifted** — §5 carries the amendment and the
+  boundary that survives it (no clocks, no queues, nothing built by waiting).
+- **One save bump, v20, carrying both stores** (`beacons` and `colonies`). The
+  spec reserved a bump per stage; neither store needs a grandfather, so a second
+  version would buy nothing. Consequence worth knowing: a stage-5-era v20 save
+  has `beacons` and no `colonies`, which is harmless (absent keys default) but
+  means v20 describes two shapes.
+- **Three PRs, a full green sweep between each** — the spec's own "each
+  independently green + shippable", enforced at the review boundary.
+- **Colony discovery is by silhouette at range (~1000u), not proximity at
+  150u.** The spec's number fails its own arithmetic: 3–5 structures at 150u
+  detection cover **0.73%** of the 1500–4200u annulus, a systematic sweep is
+  ~161,000u of flying (**≈7.8 hours**), and the deepest point in the real save
+  is 1225u. It also re-creates the exact problem stage 3's intel dossier was
+  built to solve — the apex, *with* six intel channels, sits in a search space
+  ~80× smaller. The pillar ("no intel, found with your eyes") survives; the
+  detection radius was the defect. A camera check confirms the default 4000u
+  far plane renders a 1000u silhouette without a clip change; the cost is that
+  a hyper-structure must be modelled ~7× the apex's silhouette, which the
+  fiction wanted anyway.
+
+And one correction to the spec, found by survey before it could mislead:
+**`_apply_lair` does not exist** — the shipped keep-out is `built_plan`
+(`deep_space.gd:911`), which draws from *no generator at all* rather than from
+"its own salt" as the spec instructs. Purely-subtractive-with-no-stream is the
+pattern stages 4 and 6 follow; it is strictly stronger than what was specced.
+
 ### Why this is not an assertion
 
 The instinct in this codebase is to make a claim checkable rather than trust it,
