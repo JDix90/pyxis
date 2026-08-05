@@ -4397,11 +4397,32 @@ func _run_smug_test() -> void:
 		if String(k2) != "persuasion" and int(talk_moved[k2]) != 0:
 			talk_spill += "%s " % String(k2)
 	GameState.persuasion_xp = 0
+	# THE COUNT STAYS A LITERAL and gains a partner rather than being derived.
+	# `ore_goods` IS CommodityDB.ore_ids(), so `ore_goods.size() ==
+	# CommodityDB.ore_ids().size()` is x == x — and it is this clause's only
+	# non-vacuity guard on the mining set: the overlap checks below all run
+	# INSIDE `for o_v in ore_goods`, so an empty ore set makes them pass by never
+	# executing. Renaming the `ore` marker key to `band` — exactly the failure
+	# this third set exists to detect — would empty the list and print
+	# "mining on 0 ores, overlap=none -> PASS".
+	#
+	# The partner is the completeness the number was standing in for: the ores a
+	# seam can yield and the ores the mining feed pays on must be THE SAME SET,
+	# checked both ways, so an ore added to one and forgotten in the other is
+	# caught by something other than a count somebody has to remember to bump.
+	var seam_union := {}
+	for b in range(0, DeepSpace.BAND_NAMES.size()):
+		for gid_v in CommodityDB.seam_yields(b):
+			seam_union[String(gid_v)] = true
+	var seam_set_matches: bool = seam_union.size() == ore_goods.size()
+	for o_v in ore_goods:
+		if not seam_union.has(String(o_v)):
+			seam_set_matches = false
 	print("[smug] FEEDS COMPETE smuggling pays on %s, archeology on %d salvage/component ids, mining on %d ores, overlap=%s; a talked-down parley moved persuasion by %d and spilled into: %s -> %s" % [
 		str(GameState.SMUGGLING_GOODS), arch_goods.size(), ore_goods.size(),
 		overlap if overlap != "" else "none", int(talk_moved["persuasion"]),
 		talk_spill if talk_spill != "" else "nothing",
-		"PASS" if overlap == "" and ore_goods.size() == 8
+		"PASS" if overlap == "" and ore_goods.size() == 10 and seam_set_matches
 			and int(talk_moved["persuasion"]) == 1 and talk_spill == "" else "FAIL"])
 
 	# 2. NO TOLL XP, NO XP FOR FLEEING. Both were proposed and both were killed by
@@ -4741,9 +4762,17 @@ func _run_log_test() -> void:
 	GameState.ledger["deepest_depth"] = 0
 	GameState.captains_log.clear()
 	var edge := chart_edge()
+	# TWO PROCESS FRAMES PER STOP, not one. The band-crossing line is derived in
+	# _process from the player's position, and one frame was enough only while
+	# the frame this loop yielded happened to be the one that observed the new
+	# position. The frontier added work to the same tick — two more band rows to
+	# walk and two more tables to read — and the race that had always been here
+	# went the other way, logging one line instead of two. The rule was never
+	# violated; the staging never guaranteed the observation it depends on.
 	for radius in [edge + 60.0, edge + 200.0, edge + 60.0, edge + 200.0]:
 		player.global_position = Vector3(float(radius), 0.0, 0.0)
 		await get_tree().physics_frame
+		await get_tree().process_frame
 		await get_tree().process_frame
 	var bands := GameState.log_lines()
 	var band_ok := bands.size() == 2 \
@@ -5626,15 +5655,30 @@ func _run_hold_test() -> void:
 	GameState.archeology = 2
 	GameState.archeology_xp = 40
 	var l2 := GameState.archeology_line()
+	# THE CAP TIER IS WRITTEN OUT, not derived, and that is deliberate after this
+	# clause was caught staging tier 3 as "the cap" — true until the frontier gave
+	# the ladder two more rungs, at which point it asserted cap text against a
+	# tier that had a countdown. Deriving it with ARCHEOLOGY_TIERS.size() - 1 was
+	# proposed and refused: archeology_next_at() returns -1 exactly when
+	# `archeology + 1 >= size()`, so the derived form makes NOTHING LEFT TO LEARN
+	# an identity that holds for a table of four rungs, sixty, or one.
+	GameState.archeology = 5
+	GameState.archeology_xp = 999
+	var l5 := GameState.archeology_line()
+	# AND THE COUNTDOWN CANNOT GO NEGATIVE, which is the live defect this clause
+	# actually surfaced: a tier below the cap holding more xp than the next rung
+	# costs printed "· -891 TO NEXT" from an unfloored subtraction. Staged one
+	# rung below the top, where next_at is a real number and xp is past it.
 	GameState.archeology = 3
 	GameState.archeology_xp = 999
-	var l3 := GameState.archeology_line()
+	var l_over := GameState.archeology_line()
 	GameState.archeology = 0
 	GameState.archeology_xp = 0
-	print("[hold] PILOT LINE t2='%s' | t3 caps='%s' -> %s" % [
-		l2, l3,
+	print("[hold] PILOT LINE t2='%s' | t5 caps='%s' | t3 overshoot='%s' -> %s" % [
+		l2, l5, l_over,
 		"PASS" if l2.contains("ARCHEOLOGY 2") and l2.contains("TO NEXT")
-			and l3.contains("NOTHING LEFT TO LEARN") else "FAIL"])
+			and l5.contains("NOTHING LEFT TO LEARN")
+			and not l_over.contains("-") else "FAIL"])
 
 	# 7. CYCLE TARGET is bounded. Tab used to walk to a guard 200u out and fly the
 	#    ship there — the deep expanse made a nearest-first sort over every
@@ -5695,7 +5739,12 @@ func _run_cart_test() -> void:
 		if c == sv or c == "":
 			mislabelled = "band %d collides" % band
 	print("[cart] NOT SALVAGE %d chart goods, none answers is_salvage or shadows a grade -> %s %s" % [
-		charts.size(), "PASS" if charts.size() == 4 and mislabelled == "" else "FAIL",
+		charts.size(),
+		# Anchored on BAND_EDGES rather than BAND_NAMES: band_of returns at most
+		# BAND_EDGES.size(), so that is the number of bands a chart can exist
+		# for, and it is a different table from the GOODS dict this counts —
+		# which is what keeps this a real comparison rather than x == x.
+		"PASS" if charts.size() == DeepSpace.BAND_EDGES.size() and mislabelled == "" else "FAIL",
 		mislabelled])
 
 	# 2. NO BUY LEG anywhere. A survey is something you make, never something you
@@ -7486,8 +7535,12 @@ func _run_deep_test() -> void:
 			hold_ok = false
 		if band >= 3 and tankable:
 			hold_ok = false
-	print("[deep] GUARD HOLD base 100 shield: %sBulwark 250 survives all four=%s -> %s" % [
-		hold_line, str(bulwark_worst < 250.0),
+	# "all four" was written when there were four deep bands. The count is derived
+	# now, because the sentence is a claim about EVERY band the game has, and a
+	# label that says four while measuring six is a comment that has become false.
+	print("[deep] GUARD HOLD base 100 shield: %sBulwark 250 survives all %d (worst %.0f)=%s -> %s" % [
+		hold_line, DeepSpace.BAND_NAMES.size() - 1, bulwark_worst,
+		str(bulwark_worst < 250.0),
 		"PASS" if hold_ok and bulwark_worst < 250.0 else "FAIL"])
 
 	# The wave-spawner block above turned generation OFF to measure it in
@@ -14035,11 +14088,19 @@ func _run_gsa_test() -> void:
 			bands_answer = false
 	# Band 4 stays silent, and that is the note the arc ends on: COMMISSIONED
 	# requires reaching THE QUIET, the one band that will never acknowledge it.
-	var quiet_silent: bool = String(DeepSpace.broadcast_for(4, true).get("body", "")) \
-		== String(DeepSpace.broadcast_for(4, false).get("body", ""))
+	# EVERY BAND PAST THE DRIFT IS SILENT, not just index 4. The literal was
+	# written when the Quiet was the last band; the register's arc still ends
+	# there, so the frontier's two bands must carry no commissioned variant
+	# either — and asserting that over the whole tail is the rule, where "band 4"
+	# was only the instance of it that existed at the time.
+	var quiet_silent := true
+	for band in range(4, DeepSpace.BROADCASTS.size()):
+		if String(DeepSpace.broadcast_for(band, true).get("body", "")) \
+				!= String(DeepSpace.broadcast_for(band, false).get("body", "")):
+			quiet_silent = false
 	print("[gsa] BEACON PARITY %d bands, uncommissioned text unchanged=%s, bands 1-3 answer=%s, band 4 silent=%s -> %s" % [
 		DeepSpace.BROADCASTS.size(), str(uncommissioned_intact), str(bands_answer), str(quiet_silent),
-		"PASS" if DeepSpace.BROADCASTS.size() == 5 and uncommissioned_intact \
+		"PASS" if DeepSpace.BROADCASTS.size() == DeepSpace.BAND_NAMES.size() and uncommissioned_intact \
 			and bands_answer and quiet_silent else "FAIL"])
 
 	# --- 7. every service renders its own body -------------------------------
@@ -14624,8 +14685,21 @@ func _run_manual_test() -> void:
 	#
 	# So it states what the clamp is actually for: the scroll viewport must be
 	# exactly min(content, available). Too tall fails it, and so does collapsed.
+	# MEASURED WITH THE SHEET OPEN, because section 6 above closes it and a
+	# closed panel keeps whatever rect it last had. That is what failed here: the
+	# 569 rows reported against a 512 window were the DEEP page's height from
+	# section 6 at 720x1280, not anything this block laid out — _refresh() on a
+	# hidden panel updates the scroll's minimum size (which is why the viewport
+	# half of this clause stayed exact) while _panel.size.y goes nowhere.
+	#
+	# Which half is which: the VIEWPORT equality is the teeth — it fails on a
+	# sheet that is too tall AND on one that collapsed, which is the whole reason
+	# 36 rejected `panel <= viewport`. The panel-height bound is a sanity
+	# readout beside it, and it is only meaningful at all when the thing it
+	# measures has been laid out.
 	get_window().size = Vector2i(1440, 900)
 	GameState.set_setting("ui_scale", 1.6)
+	manual.open()
 	await get_tree().process_frame
 	await get_tree().process_frame
 	var worst := 0.0
@@ -18594,12 +18668,23 @@ func _run_mine_test() -> void:
 		if g.has("band") or g.has("chart_band") or g.has("parent"):
 			shadowing = String(id_v)
 	var grades_intact := true
-	for band in range(0, 5):
+	# DERIVED. This was range(0, 5) and the message said "all 5 grades", so the
+	# frontier's two grades were never resolved by it — a dropped or duplicated
+	# `band` key on either would have left salvage_for_band(6) returning "" with
+	# this clause still printing PASS.
+	for band in range(0, DeepSpace.BAND_NAMES.size()):
 		if not CommodityDB.is_salvage(CommodityDB.salvage_for_band(band)):
 			grades_intact = false
-	print("[mine] NOT SALVAGE, NOT CHART %d ore goods, none carries band/chart_band/parent (%s), all 5 grades still resolve=%s -> %s" % [
-		ore.size(), shadowing if shadowing != "" else "none", str(grades_intact),
-		"PASS" if ore.size() == 8 and shadowing == "" and grades_intact else "FAIL"])
+	# THE COUNT STAYS A LITERAL, and deriving it was proposed and refused: `ore`
+	# IS CommodityDB.ore_ids(), so `ore.size() == ore_ids().size()` is x == x and
+	# could never fail. This literal is the clause's only independently authored
+	# expectation and its only guard against a good DRIFTING INTO the ore set —
+	# the shadowing loop above only looks for band/chart_band/parent, so a bulk
+	# good typo'd with `"ore": "metal"` is invisible to everything else here.
+	print("[mine] NOT SALVAGE, NOT CHART %d ore goods, none carries band/chart_band/parent (%s), all %d grades still resolve=%s -> %s" % [
+		ore.size(), shadowing if shadowing != "" else "none",
+		DeepSpace.BAND_NAMES.size(), str(grades_intact),
+		"PASS" if ore.size() == 10 and shadowing == "" and grades_intact else "FAIL"])
 
 	# --- 2. ore is not loot ---------------------------------------------------
 	var minted := ""
@@ -18613,7 +18698,12 @@ func _run_mine_test() -> void:
 
 	# --- 3. one step, and every ore is sellable somewhere ---------------------
 	var bad := ""
-	for band in range(0, 5):
+	# DERIVED, not range(0, 5). Both of this suite's gradient sweeps were written
+	# when there were five bands and stopped dead at index 4, so the frontier's
+	# two seam rows were never validated by either of them — the ore ceiling
+	# stated in commodity_db's own header was broken by 70 credits and nothing
+	# said a word.
+	for band in range(0, DeepSpace.BAND_NAMES.size()):
 		for gid_v in CommodityDB.seam_yields(band):
 			var gid := String(gid_v)
 			if not CommodityDB.is_ore(gid) or CommodityDB.no_retail(gid) \
@@ -18630,7 +18720,7 @@ func _run_mine_test() -> void:
 	# never resets -- so it must be the poorest of all, or the eleven permanent
 	# seams become the best rate in the game rather than a windfall.
 	var means: Array = []
-	for band in range(0, 5):
+	for band in range(0, DeepSpace.BAND_NAMES.size()):
 		var total := 0.0
 		var table: Array = CommodityDB.seam_yields(band)
 		for gid_v in table:
@@ -19462,6 +19552,22 @@ const OUTER_BAYS_BEFORE_FRONTIER := {
 }
 
 
+func _rises(name: String, arr: Array) -> String:
+	# A band curve that never turns back on itself, walked to the ARRAY's own
+	# length so a short table is reported by the size sweep rather than crashing
+	# the run here.
+	#
+	# FROM INDEX 2, not 1, and that is not an off-by-one: GUARD_DIFFICULTY reads
+	# [1.0, 0.90, ...] because the Shoals are deliberately GENTLER than charted
+	# space — the band whose job is teaching that going out is survivable. Band 1
+	# is allowed to dip; nothing after it is.
+	var bad := ""
+	for b in range(2, arr.size()):
+		if float(arr[b]) < float(arr[b - 1]):
+			bad += "%s@%d " % [name, b]
+	return bad
+
+
 func _outer_bays(sid: String) -> Array:
 	# Every station the generator plans along four radial lanes through the
 	# band-5/6 shell, as "cell:x,z,storage" entries. Lanes rather than a square
@@ -19578,18 +19684,24 @@ func _run_frontier_test() -> void:
 	# that pinned them would be rewritten every time rather than consulted. What
 	# may never happen is a band that is SAFER or POORER than the one inside it,
 	# which is the whole premise of measuring distance as depth.
+	# EACH TABLE IS WALKED TO ITS OWN LENGTH, not to the band count, and that is a
+	# defect this harness shipped with for exactly one red-verify. Shortening
+	# TRAP_EMP to test the clause above threw "Out of bounds get index 6" HERE and
+	# aborted the run — so the assertion whose whole job is diagnosing a short
+	# table was followed immediately by the code that dies on one, and nine
+	# clauses below never printed. The size sweep above already owns "this table
+	# is the wrong length"; this one must survive to report what it owns.
 	var mono := ""
-	for b in range(2, DeepSpace.BAND_NAMES.size()):
-		if DeepSpace.PACK_HP[b] < DeepSpace.PACK_HP[b - 1]: mono += "PACK_HP@%d " % b
-		if DeepSpace.PACK_DIFFICULTY[b] < DeepSpace.PACK_DIFFICULTY[b - 1]: mono += "PACK_DIFF@%d " % b
-		if DeepSpace.PACK_MAX[b] < DeepSpace.PACK_MAX[b - 1]: mono += "PACK_MAX@%d " % b
-		if DeepSpace.PACK_ESCORTS[b] < DeepSpace.PACK_ESCORTS[b - 1]: mono += "ESCORTS@%d " % b
-		if DeepSpace.TRAP_CHANCE[b] < DeepSpace.TRAP_CHANCE[b - 1]: mono += "TRAP@%d " % b
-		if DeepSpace.TRAP_EMP[b] < DeepSpace.TRAP_EMP[b - 1]: mono += "EMP@%d " % b
-		if DeepSpace.GUARD_DIFFICULTY[b] < DeepSpace.GUARD_DIFFICULTY[b - 1]: mono += "GUARD@%d " % b
-		if DeepSpace.GUARD_HP_SCALE[b] < DeepSpace.GUARD_HP_SCALE[b - 1]: mono += "GUARDHP@%d " % b
-		if DeepSpace.STATION_CHANCE[b] < DeepSpace.STATION_CHANCE[b - 1]: mono += "STATION@%d " % b
-		if DeepSpace.SEAM_CHANCE[b] < DeepSpace.SEAM_CHANCE[b - 1]: mono += "SEAM@%d " % b
+	mono += _rises("PACK_HP", DeepSpace.PACK_HP)
+	mono += _rises("PACK_DIFF", DeepSpace.PACK_DIFFICULTY)
+	mono += _rises("PACK_MAX", DeepSpace.PACK_MAX)
+	mono += _rises("ESCORTS", DeepSpace.PACK_ESCORTS)
+	mono += _rises("TRAP", DeepSpace.TRAP_CHANCE)
+	mono += _rises("EMP", DeepSpace.TRAP_EMP)
+	mono += _rises("GUARD", DeepSpace.GUARD_DIFFICULTY)
+	mono += _rises("GUARDHP", DeepSpace.GUARD_HP_SCALE)
+	mono += _rises("STATION", DeepSpace.STATION_CHANCE)
+	mono += _rises("SEAM", DeepSpace.SEAM_CHANCE)
 	# And the raid taper is the one curve that runs the OTHER way and must never
 	# reach zero — 17's "there is no range at which a full hold is safe".
 	var taper_ok := true

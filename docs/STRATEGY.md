@@ -6512,6 +6512,97 @@ unchanged: the frontier deliberately does **not** introduce a fourth unknown —
 the Stillness is neutral to the surveyor, and its neutrality is what keeps the
 Last Watch's fence open.
 
+### The sweep found eleven defects, and only two were visible
+
+The bands landed green on their own suite — 14 `FRONTIERTEST` assertions, all
+red-verified by injection. The full sweep then failed **eleven** assertions in
+ten other suites, and the split is the interesting part: two would have been
+obvious in play, and nine would not have been found by playing at all.
+
+**What a player would have hit:**
+
+- **The Quiet was re-lit.** `Atmosphere.set_depth` read `DeepSpace.BAND_EDGES`
+  as the anchor list of a normalised 0..1 ramp and divided by `size() - 1`, so
+  the array's LENGTH set how dark every band was. Appending two edges moved the
+  Shoals from 0.333 to 0.200, the Drift from 0.667 to 0.400, and **THE QUIET
+  from 1.0 to 0.6** — the band whose entire identity is having no light left.
+  Nothing in the lighting was touched and nobody would have looked there. It has
+  its own `LIGHT_ANCHORS` now, a copy rather than a reference, saturating at the
+  Quiet for the same reason the palette does.
+- **The hold offered impossible advice.** `locked_need` is the band itself, and
+  band 6 is one rung past the top of `ARCHEOLOGY_TIERS` on purpose, so the strip
+  read `ARCHEOLOGY 6` at a game whose ladder stops at 5. §58's rule is that a
+  line must use a word the game has taught **or say what to do about it**; this
+  said what to do about it and the thing was unreachable. It names the lab now.
+
+**What only the harness would have caught:** reading the two new grades LOST
+money (`salvage_unsounded` 660 read into a 420 part — the comment above it,
+"a crate is already worth carrying home unread", was the broken rule written out
+as if it were a feature); the archeology ladder's new rungs needed 21.7 loops
+against a stated ceiling of 12, pricing out of reach the exact rungs that exist
+to make frontier salvage readable; band-6 guard posts cost 258 against Bulwark's
+250 pool, so the deepest posts were the ones **no fit could hold, including the
+fit built to hold them**; the two new ores broke the ceiling stated in their own
+block ("every one of them under Intact Relics (260)"); the pilot strip printed
+`· -891 TO NEXT` from an unfloored subtraction that was only ever safe because
+the top rung used to be the last one; and the manual said "Each has 3 tiers",
+denying the existence of the two rungs the frontier had just added.
+
+### The derived bound is a policy, and this stage found three of them
+
+`.size() - 1` is a clamp and a decision at once, and the two only look identical
+while the array is fixed. Three separate places had quietly encoded "and the
+Quiet is the last band" as arithmetic:
+
+| site | what it meant | what growing the array did |
+|---|---|---|
+| `Rift.rich_band` | clamp to the best grade | a band-4 shear paying Fathom (480) not Quiet (340) — **+41% at 1200u** |
+| `Atmosphere.set_depth` | ramp knots | re-lit every existing band |
+| three `for band in range(0, 5)` loops | "all of them" | blind to exactly the bands under test |
+
+The first was caught by reading the clamp before shipping. The second and third
+were caught by the sweep. **The lesson is not "prefer literals" — it is that a
+derived bound must derive from the thing it actually means.** The light ramp
+means "how dark does it get by the Quiet", which is not "how many bands exist".
+
+### Three of the proposed fixes were tautologies
+
+Every "the test was merely stale" verdict was put to three independent
+skeptics, and six of seven came back refuted. The most valuable catches were
+fixes that would have made assertions *weaker* than the numbers they replaced:
+
+- `ore_goods.size() == CommodityDB.ore_ids().size()` is **x == x** — `ore_goods`
+  IS `ore_ids()`. Worse, that literal is the clause's only non-vacuity guard:
+  every overlap check runs inside `for o_v in ore_goods`, so an empty ore set
+  prints "mining on 0 ores, overlap=none -> PASS". Renaming the `ore` marker key
+  — the precise failure the clause exists to detect — would have gone green.
+- Deriving the archeology cap makes `NOTHING LEFT TO LEARN` an identity:
+  `archeology_next_at()` returns -1 exactly when `archeology + 1 >= size()`, so
+  the check holds for a table of four rungs, sixty, or one.
+- Re-staging the manual clamp by opening the sheet makes `worst <= avail`
+  unfailable, since a live panel is clamped by construction — the shape §36
+  records `SHEET FITS` being rewritten to escape.
+
+Those literals stayed literal. What replaced the *count* was the completeness it
+had been standing in for: the ores a seam can yield and the ores the mining feed
+pays on must be the same set, checked both ways.
+
+### Measurements
+
+`MIDTIER` **2.94 / 2.88 / 2.90 / 2.90, mean 2.905** on an idle machine, against
+§63's recorded 2.9025 — the frontier moves the measured loop by 0.003, which is
+what "the pacing loop runs at depth 0" is supposed to mean. `CEILING` 0.040-0.041
+against 0.15. `ROUTE PARITY` 1.4-2.2% against 20%.
+
+Two notes on how those were taken, both §51's rule earning itself again. A first
+set read 2.95/2.97/2.95/2.89 and was **discarded**: a hung Godot process was
+eating a core throughout, and §65 records that `MIDTIER` reads high under load.
+And the hang itself is worth naming — a harness whose `main.gd` fails to compile
+does not error, it boots the game normally and runs forever, so a broken run and
+a slow one look identical. One sat for four hours before anyone checked.
+
+Final: **61 runs | 588 PASS | 0 FAIL | 0 script errors | save intact.**
+
 ### And `LANDMARK_KINDS` deliberately did not grow
 
 Appending "gate" and "cairn" to it would silently widen the target of every

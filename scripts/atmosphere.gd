@@ -67,13 +67,31 @@ func bind(env: Environment, sun: DirectionalLight3D) -> void:
 	_apply()
 
 
+# THE LIGHT'S OWN ANCHORS, and they are a COPY of the first four band edges
+# rather than a reference to them. That looks like duplication and it is the
+# opposite: this list and DeepSpace.BAND_EDGES answer two different questions
+# that happened to have the same answer until v20.
+#
+# set_depth reads its anchors as the knots of a normalised 0..1 ramp and divides
+# by size() - 1, so the array's LENGTH sets how dark every band is. Sharing
+# BAND_EDGES meant appending THE FATHOMS and THE UNSOUNDED silently re-lit the
+# whole game: measured, THE QUIET at 1100u went from 1.0 (full dark, its whole
+# point) to 0.6, and the Shoals and Drift brightened with it. Nothing about the
+# lighting had been touched, and nobody would have looked here.
+#
+# The ramp SATURATES at the Quiet on purpose — the same argument the palette
+# makes about DEEP_QUIET being "no colour left at all". There is nowhere darker
+# to go, so the frontier is not darker, it is wrong in other ways. Adding a band
+# must never again change what an existing one looks like.
+const LIGHT_ANCHORS := [0.0, 160.0, 440.0, 1100.0]
+
+
 func set_depth(units: float) -> void:
-	# Shares DeepSpace's band anchors so the light and the score change at the
-	# same places. Piecewise for the same reason the music is: the bands are not
-	# evenly spaced, and a linear map would spend most of the visible change
-	# inside one band.
+	# Piecewise for the same reason the music is: the bands are not evenly
+	# spaced, and a linear map would spend most of the visible change inside one
+	# band.
 	var d := maxf(units, 0.0)
-	var anchors := DeepSpace.BAND_EDGES
+	var anchors := LIGHT_ANCHORS
 	var last: float = anchors[anchors.size() - 1]
 	if d >= last:
 		_depth_target = 1.0

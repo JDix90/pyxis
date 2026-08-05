@@ -100,8 +100,14 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **574 PASS / 0 FAIL / 0 script errors** across 60 runs, save
-format **v20** — measured on Godot 4.6.stable, headless. Stage 4 (STRATEGY
+Current baseline: **588 PASS / 0 FAIL / 0 script errors** across 61 runs, save
+format **v20** — measured on Godot 4.6.stable, headless. The frontier's stage 1
+(STRATEGY §68) added bands 5 and 6 past THE QUIET and a `FRONTIERTEST` tag of 14
+assertions, and needed no save bump: deep space persists nothing, and new module
+and commodity ids ride the existing generic `owned`/`fit`/cargo paths. Its sweep
+is the one worth reading §68 for — the new suite went green on its own and the
+OTHER ten suites then failed eleven assertions, nine of which no amount of
+playing would have surfaced. Stage 4 (STRATEGY
 §65) added per-PYX deep identity and deep rifts (+6 assertions); stage 5
 (§66) added waypoint beacons at v20 (+5 BEACONTEST, +2 SAVETEST, and the run
 count moves 57 → 59 for the new tag and `migrate19`). Every addition

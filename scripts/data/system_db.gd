@@ -174,7 +174,7 @@ const SYSTEMS := {
 				# and the Anchor — and a port that is named as one of a good's
 				# only three buyers had better actually have a counter for it.
 				"fence_goods": ["contraband", "stolen",
-					"plate_ablative", "cell_fuel", "rod_decay", "sink_thermal", "lattice_data", "index_cartographic", "servo_prewar", "heart_reliquary", "manifest_forged", "charge_unstable"],
+					"plate_ablative", "cell_fuel", "rod_decay", "sink_thermal", "lattice_data", "index_cartographic", "servo_prewar", "heart_reliquary", "lens_unsounded", "manifest_forged", "charge_unstable"],
 				"fence_mult": 1.25,
 				"stock": [],
 			},
@@ -461,7 +461,7 @@ const SYSTEMS := {
 				"bias": {"relics": 1.15, "cores": 1.10, "contraband": 0.72, "stolen": 1.0},
 				"services": ["market", "fence", "outfitter", "contracts"],
 				"fence_goods": ["relics", "cores", "stolen",
-					"plate_ablative", "cell_fuel", "rod_decay", "sink_thermal", "lattice_data", "index_cartographic", "servo_prewar", "heart_reliquary", "manifest_forged", "charge_unstable"],
+					"plate_ablative", "cell_fuel", "rod_decay", "sink_thermal", "lattice_data", "index_cartographic", "servo_prewar", "heart_reliquary", "lens_unsounded", "manifest_forged", "charge_unstable"],
 				"fence_mult": 1.25,      # what the fence pays over the local price
 				"outfit_mult": 0.80,     # grey-market modules, 20% off
 				"stock": ["arc_1", "arc_2", "pulse_2", "core_surge", "util_scanner", "drive_vector"],

@@ -373,14 +373,26 @@ const GUARD_WEIGHTS := [0.20, 0.25, 0.30, 0.25]
 # console: you can tank a guarded crack in the Shoals and the Drift, and from the
 # Reaches out you clear the post first or you fit Bulwark.
 #                         charted shoals drift reaches quiet fathoms unsounded
-# The frontier rows continue the TAPER, not the early slope: alpha steps +0.20
-# where the Drift-to-Reaches step was +0.30, because the paragraph above is a
-# standing decision and not a curve to extrapolate. A guard past the Quiet is
-# scary through count, HP and standing — PACK_ESCORTS and GUARD_BEARINGS — and
-# an Unsounded guard hitting for 14.0 x 2.05 is 28.7 against PYX-03's authored
-# sentries at 30.8. Still under the chart's hardest gun, on purpose.
-const GUARD_DIFFICULTY := [1.0, 0.90, 1.10, 1.40, 1.65, 1.85, 2.05]
-const GUARD_HP_SCALE := [1.0, 1.20, 1.45, 1.50, 1.60, 1.70, 1.80]
+# THE FRONTIER'S ALPHA IS ALMOST FLAT, AND THAT IS THE POINT. The first draft
+# read 1.85 / 2.05, extrapolating the +0.20 step, and GUARD HOLD caught it: at
+# 2.05 a three-gun post over a 3.0s crack costs 14.0 x 2.05 x 3 x 3 = 258
+# against Bulwark's 250 pool, so the deepest posts in the game were the ones no
+# fit could hold — including the fit built to hold them. That contradicts the
+# paragraph directly above this one, which is a standing decision and not a
+# curve to extrapolate: "you clear the post first or you fit Bulwark" has to
+# stay true at every band, or the answer the game taught stops being an answer.
+#
+# So 1.90 (239 against 250, surviving with 4% left — dramatic, and survivable),
+# and the threat the alpha gave up is paid back in HP: +0.20 at band 6 where
+# every earlier step was +0.10, making an Unsounded post the LONGEST fight in
+# the game rather than the sharpest. Count and standing are already maxed —
+# GUARD_BEARINGS runs out at four — so HP is the axis left, which is exactly
+# what the paragraph above says it should be.
+#
+# An Unsounded guard's shot is 14.0 x 1.90 = 26.6, still under PYX-03's authored
+# sentries at 14.0 x 2.2 = 30.8. Nothing in the deep out-hits the chart.
+const GUARD_DIFFICULTY := [1.0, 0.90, 1.10, 1.40, 1.65, 1.85, 1.90]
+const GUARD_HP_SCALE := [1.0, 1.20, 1.45, 1.50, 1.60, 1.70, 1.90]
 
 # Posts ring the BREACH POINT, not the hull: what they are guarding is the way in.
 #

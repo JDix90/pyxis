@@ -131,7 +131,7 @@ const GOODS := {
 	},
 	"salvage_unsounded": {
 		"name": "Unsounded Salvage", "short": "SLV-U",
-		"base": 660, "space": 3, "color": Color(0.60, 0.92, 0.66),
+		"base": 620, "space": 3, "color": Color(0.60, 0.92, 0.66),
 		"desc": "It was not built. It grew.",
 		"band": 6, "no_retail": true, "interdiction_weight": 2.4,
 	},
@@ -208,6 +208,35 @@ const GOODS := {
 		"parent": "relics", "no_retail": true,
 		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch"],
 		"interdiction_weight": 1.9,
+	},
+	# v20 THE FRONTIER, and it exists because READING PAYS demanded it rather
+	# than because the frontier wanted a new noun.
+	#
+	# The rule is that the CHEAPEST thing a grade reads into must still beat
+	# selling it unread, or one of the player's choices is a trap. The component
+	# table topped out at the Reliquary Heart's 700, so an Unsounded crate could
+	# be priced no higher than ~560 and still offer two honest reads — which
+	# flattened the raw gradient past the Quiet to 1.08x and quietly deleted the
+	# thing depth is supposed to buy. One part above the Heart restores it: the
+	# grade sits at 620 (1.29x on the Fathoms, continuing the 1.58/1.53/1.48/1.41
+	# taper) with two reads that both pay.
+	#
+	# NOT a forge input, and the Unstable Charge is the precedent: a component may
+	# be something you only ever sell. The four craft recipes are untouched.
+	# SPACE 2, NOT 3, and that is READ COMPRESSION's doing rather than flavour's.
+	# Reading has to be worth the hold space it frees — every shipped grade reads
+	# into something at least 1.5x denser than itself — and the frontier's grades
+	# are space 3 reading into space-3 parts, which came out at 1.45x: a read that
+	# barely repaid the gesture. At space 2 the Lens is 450 a slot against the
+	# Unsounded's 207, which is the 2.2x the rule is asking for. A lens being the
+	# compact thing in a crate of wreckage is also simply true.
+	"lens_unsounded": {
+		"name": "Unsounded Lens", "short": "LENS",
+		"base": 900, "space": 2, "color": Color(0.58, 0.94, 0.72),
+		"desc": "Ground by nothing, to a figure nobody chose. It focuses something.",
+		"parent": "relics", "no_retail": true,
+		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch"],
+		"interdiction_weight": 2.2,
 	},
 	"manifest_forged": {
 		"name": "Forged Manifest", "short": "MANIFEST",
@@ -363,22 +392,33 @@ const GOODS := {
 		"ore": "metal", "interdiction_weight": 1.3,
 		"trade_only_at": ["anchor", "cinderworks", "depot", "bastion"],
 	},
-	# v20 THE FRONTIER: one metal and one mineral, because a seam row has to be
-	# able to hold both. Same four industrial buyers as every ore above them --
-	# the deep hatch in trades_at already lets every deep port take them, which is
-	# the point of carrying ore outward instead of home.
-	"ore_osmium": {
-		"name": "Osmium Grit", "short": "OSMIUM",
-		"base": 290, "space": 1, "color": Color(0.62, 0.68, 0.78),
-		"desc": "Heavier than it has any business being. The hold notices.",
-		"ore": "metal", "interdiction_weight": 1.5,
-		"trade_only_at": ["anchor", "cinderworks", "depot", "bastion"],
-	},
+	# v20 THE FRONTIER: one mineral and one metal, in that order, because Iridium
+	# above is a metal and the header's alternation rule is what keeps either
+	# category from becoming the rich one.
+	#
+	# 248 AND 256, NOT 290 AND 330. The first draft priced them at 290/330 and
+	# broke the ceiling stated at the top of this very block — "every one of them
+	# under Intact Relics (260)... the deep pays a prospector in volume and
+	# density, never in one fat unit." Nothing caught it, because BOTH of
+	# MINETEST's gradient sweeps were written `for band in range(0, 5)` and could
+	# not see bands 5 or 6 at all; they are derived now. A comment is a claim, and
+	# this one had been true for four bands.
+	#
+	# The frontier still pays more per cut than the Quiet — 1447 against 981 —
+	# and it does it the way the header says it should, through SEAM_UNITS 6 and
+	# SEAM_CHANCE 0.56, which is volume and density rather than one fat unit.
 	"ore_vitrite": {
 		"name": "Vitrite Shards", "short": "VITRITE",
-		"base": 330, "space": 1, "color": Color(0.56, 0.86, 0.80),
+		"base": 248, "space": 1, "color": Color(0.56, 0.86, 0.80),
 		"desc": "Glass that formed under pressure nobody has measured.",
 		"ore": "mineral", "interdiction_weight": 1.5,
+		"trade_only_at": ["anchor", "cinderworks", "depot", "bastion"],
+	},
+	"ore_osmium": {
+		"name": "Osmium Grit", "short": "OSMIUM",
+		"base": 256, "space": 1, "color": Color(0.62, 0.68, 0.78),
+		"desc": "Heavier than it has any business being. The hold notices.",
+		"ore": "metal", "interdiction_weight": 1.5,
 		"trade_only_at": ["anchor", "cinderworks", "depot", "bastion"],
 	},
 }
@@ -410,9 +450,9 @@ const SEAM_YIELDS := {
 	2: ["ore_ferrite", "ore_tungsten", "ore_hydrate", "ore_phosphor"],
 	3: ["ore_tungsten", "ore_hydrate", "ore_platinum", "ore_phosphor"],
 	4: ["ore_platinum", "ore_iridium", "ore_phosphor", "ore_corundum"],
-	# The frontier's rows. Means of 231.25 and 270 against band 4's 163.75, which
+	# The frontier's rows. Means of 222.75 and 241 against band 4's 163.75, which
 	# is what keeps RICHER OUTWARD strictly rising once SEAM_UNITS is folded in:
-	# 981 -> 1387.5 -> 1620 per seam. Each row carries at least one metal and one
+	# 981 -> 1337 -> 1446 per seam. Each row carries at least one metal and one
 	# mineral, the contract every row above holds to.
 	5: ["ore_iridium", "ore_osmium", "ore_corundum", "ore_platinum"],
 	6: ["ore_osmium", "ore_vitrite", "ore_iridium", "ore_corundum"],
@@ -430,13 +470,29 @@ const READS_AS := {
 	"salvage_drift": ["rod_decay", "sink_thermal", "lattice_data", "servo_prewar"],
 	"salvage_reaches": ["lattice_data", "servo_prewar", "index_cartographic", "manifest_forged"],
 	"salvage_quiet": ["index_cartographic", "heart_reliquary", "charge_unstable", "servo_prewar"],
-	# The frontier reads as MORE OF THE BEST rather than as new components. At 480
-	# and 660 a crate is already worth carrying home unread; inventing two more
-	# component tiers would push the forge's craft table out of reach in the same
-	# breath, and this stage does not touch the forge. What the depth buys is the
-	# rate, not a new noun.
-	"salvage_fathom": ["heart_reliquary", "charge_unstable", "index_cartographic", "servo_prewar"],
-	"salvage_unsounded": ["heart_reliquary", "index_cartographic", "charge_unstable"],
+	# THE FRONTIER'S LISTS ARE SHORT ON PURPOSE, and the first draft of them was
+	# wrong in a way worth recording. It read
+	#
+	#   fathom:    [heart, charge, index, servo]     raw 480, cheapest read 420
+	#   unsounded: [heart, index, charge]            raw 660, cheapest read 420
+	#
+	# with a comment claiming "at 480 and 660 a crate is already worth carrying
+	# home unread" — which is not a justification, it is the broken rule written
+	# out as if it were a feature. READING PAYS says the CHEAPEST thing a grade
+	# reads into must beat selling it unread, because the alternative is a menu
+	# where some entries lose the player money and nothing on screen says which.
+	# Reading an Unsounded crate as an Unstable Charge lost 240.
+	#
+	# Every option in both lists now clears its own grade with room: the Fathoms
+	# read at 560 or 700 against a raw 480, the Unsounded at 700 or 900 against
+	# 620. Two honest choices each, which is what this table is for.
+	# The Fathoms reaches the Lens too, and the two grades are told apart by their
+	# FLOOR rather than by their ceiling: the cheapest honest read of a Fathom
+	# crate is 560 and of an Unsounded one is 700. Both clear their own raw price
+	# by exactly 80. That is what going deeper buys here — not a part nobody else
+	# can reach, but a worse case that is better.
+	"salvage_fathom": ["index_cartographic", "heart_reliquary", "lens_unsounded"],
+	"salvage_unsounded": ["heart_reliquary", "lens_unsounded"],
 }
 
 # How often a crate that would have held a good holds unidentified salvage

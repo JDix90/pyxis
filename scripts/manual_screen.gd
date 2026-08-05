@@ -325,7 +325,12 @@ func _build_living() -> void:
 	_body.add_child(_spacer(6))
 	# Derived count, static description: the tiers are named in GameState and
 	# their number is the thing most likely to change.
-	_body.add_child(_para("Four skills, each fed by a different verb so no single run levels them all: ARCHEOLOGY reads salvage, SMUGGLING moves what a market will not touch, MINING cuts rock, PERSUASION talks a pack out of a toll. Each has %d tiers, and not one of them pays you in credits — they buy information, a choice, and access." % (GameState.MINING_TIERS.size() - 1)))
+	# THE LADDERS ARE NO LONGER THE SAME LENGTH, so "each has N tiers" became a
+	# lie the moment the frontier gave archeology two more rungs — and it lied
+	# about precisely the rungs that make the deepest salvage readable, telling
+	# the player the only thing that opens the Fathoms does not exist. Both
+	# numbers are derived, and the sentence now says which skill is the long one.
+	_body.add_child(_para("Four skills, each fed by a different verb so no single run levels them all: ARCHEOLOGY reads salvage, SMUGGLING moves what a market will not touch, MINING cuts rock, PERSUASION talks a pack out of a toll. Most have %d tiers and ARCHEOLOGY has %d, because the deepest salvage needs the last two. Not one of them pays you in credits — they buy information, a choice, and access." % [GameState.MINING_TIERS.size() - 1, GameState.ARCHEOLOGY_TIERS.size() - 1]))
 	_body.add_child(_back())
 
 
