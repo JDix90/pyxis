@@ -56,7 +56,7 @@ func _build() -> void:
 	tm.ring_segments = 48
 	_tear.mesh = tm
 	_tear.scale = Vector3(1.0, 2.6, 0.35)
-	_tear_mat = Palette.emissive(Palette.band_color(_rich_band()), 3.2)
+	_tear_mat = Palette.emissive(Palette.band_color(rich_band()), 3.2)
 	_tear.material_override = _tear_mat
 	add_child(_tear)
 
@@ -70,18 +70,27 @@ func _build() -> void:
 	mast.position = Vector3(0, 0, 4.0)
 
 
-func _rich_band() -> int:
+# v19 HUNT STAGE 4. How much richer this system's weather runs. 1.0 is the
+# shipped pot exactly; pyx02/03 author more. Set by spawn_rift before add_child,
+# the tint/difficulty contract every spawner in this project uses.
+var rich_mult := 1.0
+
+
+func rich_band() -> int:
 	# Rich means ONE BAND BETTER than the depth deserves, using goods that
 	# already exist — no new grade, no new table.
 	return clampi(band + 1, 1, DeepSpace.BAND_NAMES.size() - 1)
 
 
 func _spill_pot() -> void:
-	var good := CommodityDB.salvage_for_band(_rich_band())
+	var good := CommodityDB.salvage_for_band(rich_band())
 	if good == "":
 		return
 	var script := load("res://scripts/loot_cube.gd") as GDScript
-	var count := randi_range(CRATE_MIN, CRATE_MAX)
+	# rich_mult scales the CRATE COUNT, not the grade — rich_band is already
+	# clamped at band 4, so in the Quiet a richer shear pays in volume, which is
+	# the only richer it has left.
+	var count := int(round(float(randi_range(CRATE_MIN, CRATE_MAX)) * rich_mult))
 	for i in range(count):
 		var cube: Node3D = script.new()
 		cube.commodity = good
@@ -128,7 +137,7 @@ func pulse() -> void:
 			_intel_read = true
 			m2.file_apex_intel("rift", global_position, INTEL_ERROR_DEG)
 	Sfx.play("klaxon", -9.0, 1.3)
-	FX.shockwave(get_parent(), global_position, Palette.band_color(_rich_band()), 9.0, 0.8)
+	FX.shockwave(get_parent(), global_position, Palette.band_color(rich_band()), 9.0, 0.8)
 	var rig := tree.get_first_node_in_group("camera_rig")
 	if rig:
 		rig.shake(0.1)
@@ -141,7 +150,7 @@ func pulse() -> void:
 	var lose := int(ceil(float(standing.size()) * EVAPORATE_SHARE))
 	for i in range(mini(lose, standing.size())):
 		var victim: Node3D = standing[i]
-		FX.flash(get_parent(), victim.global_position, Palette.band_color(_rich_band()), 0.5, 0.2)
+		FX.flash(get_parent(), victim.global_position, Palette.band_color(rich_band()), 0.5, 0.2)
 		victim.queue_free()
 
 	# And something comes through it. Band-curve pack, leashed like every other
@@ -150,13 +159,26 @@ func pulse() -> void:
 	var root := get_parent()
 	var hud := tree.get_first_node_in_group("hud")
 	if root:
+		# v19 stage 4: what comes through carries the band's OWNER and its
+		# loot, exactly like a nest — this block predates stage 6 and was
+		# spawning flagless FERAL darts with no drop in bands the unknowns own.
+		# The leash conditional is the Tally's no-leash tell (deep_space.gd,
+		# nest spawn): unknown_a pursues forever, and a rift pack that gave up
+		# at 140u would be the one place in the Reaches that rule went missing.
+		var main_node := tree.get_first_node_in_group("main")
+		var flag := ""
+		if main_node != null and main_node.deep_space != null:
+			flag = main_node.deep_space.flag_for_band(band)
 		var count := randi_range(DeepSpace.PACK_MIN[band], maxi(DeepSpace.PACK_MIN[band], DeepSpace.PACK_MAX[band] - 2))
 		for i in range(maxi(count, 2)):
 			var s := SwarmHostile.new()
 			s.difficulty = DeepSpace.PACK_DIFFICULTY[band]
 			s.hp_scale = DeepSpace.PACK_HP[band]
 			s.tint = Palette.band_color(band)
-			s.despawn_radius = DeepSpace.HOSTILE_LEASH
+			if flag != "":
+				s.faction = flag
+			s.drop_good = DeepSpace.PACK_DROP[band]
+			s.despawn_radius = 0.0 if flag == "unknown_a" else DeepSpace.HOSTILE_LEASH
 			root.add_child(s)
 			s.global_position = global_position + Vector3(
 				randf_range(-2.0, 2.0), 0.0, randf_range(-2.0, 2.0))
@@ -172,7 +194,7 @@ func pulse() -> void:
 			hud.show_toast("THE SHEAR CLOSED — WHAT WAS LEFT IN IT IS GONE",
 				Palette.AMBER_DIM)
 		# `band` is where the shear SAT, not what it paid — the pot is
-		# _rich_band(). The log records the place, in the toast's own words.
+		# rich_band(). The log records the place, in the toast's own words.
 		GameState.note_log("THE SHEAR CLOSED — %s" % DeepSpace.BAND_NAMES[band])
 		var m := tree.get_first_node_in_group("main")
 		if m and m.get("live_rift") == self:
