@@ -6197,3 +6197,77 @@ twice: **re-derive the bar from the measured distribution rather than nudge
 it.** That is an economy decision (the ceiling is the design), recorded here as
 due rather than taken mid-stage. Until then: four samples minimum, idle
 machine, and a 2.9x reading proves nothing in either direction.
+
+## 66. Eight bookmarks for a place with no pages (v20, Hunt stage 5)
+
+The deep has no lattice and no chart, so a place worth returning to could only
+be remembered by writing its bearing on paper. A beacon is that memory: dropped
+where the ship stands, persisted in the save, standing in the world until it is
+recovered. **Eight in stock, and the stock is the design** — enough to thread a
+route across a system's deep, few enough that each one is a decision. An
+unlimited supply would be spray-paint, and the recover verb would never once be
+used.
+
+### Where the rules live, and what is derived
+
+The stock is **derived** — `BEACON_STOCK` minus every entry across every system
+— never stored, so a hand-edited save cannot carry "stock: 9" beside eight
+standing beacons (§59's rule). The drop rule lives in `GameState.drop_beacon`,
+with depth as an **argument**, §59's other rule: GameState cannot read the
+world, and a rule it cannot be handed is a rule it cannot enforce. The chart
+refuses a beacon because the chart already remembers every place in it.
+
+Recovery is **keyed by position, never by index** — an index held on a live
+node goes stale the moment a sibling is recovered first, and a position cannot.
+The node itself is a projection: the store is authoritative, rebuilt on every
+`_load_system`, and `_recover` writes the store before the theater so a ghost
+cannot respawn on the next warp.
+
+### The verbs sit where the game already taught them
+
+Dropping lives on the hold console — the one sheet that opens in flight by
+design (§43's premise) — with the stock printed on the button (§12's
+odds-on-the-button rule), shown only in the deep so it never has to explain a
+refusal the world makes visible. Recovery is the mast's hold gesture, because
+the deep already taught it, and a flyover pickup would delete the marker at the
+exact moment the player arrives at the thing it marks. On the radar a beacon is
+`TIER_BEACON`, **below even the ghost**: it is the one marker whose position
+the player already knows, so when the 12-marker cap bites it is the cheapest
+thing to shed.
+
+### What the probes got wrong before the assertions got it right
+
+Three findings from this stage's own verification, each a probe defect rather
+than a code defect, and each worth keeping:
+
+- **The radar is an edge-arrow instrument, not a minimap.** The first board
+  probe dropped a beacon on top of the ship and read the board while standing
+  on the thing it was looking for — a marker exists only for what is off
+  screen, which the collect loop says in its own comment.
+- **`teleport_to` moves the ship and not the camera.** The second probe flew
+  away and read the board from a seat 400u behind the ship. `start_new_game`
+  moves the rig by hand after its teleport for exactly this reason.
+- **A full board is not a failure.** The probe then failed because the 12-cap
+  had bitten and the beacon was shed first — **which is the design certifying
+  itself against a one-sided check**. The final leg asserts both directions:
+  on a full board the beacon is absent while twelve others stand; thinned, it
+  appears. Either half alone is satisfiable by a beacon that never reaches the
+  collection at all.
+
+And one assertion vacuity caught by its own battery: the position-keyed
+recovery leg originally recovered in storage order and checked return values,
+which remove-the-first-entry-regardless satisfies perfectly — every call
+returns true, the stock comes home, and the wrong beacon died every time.
+Rewritten around **the survivor's coordinates**, which no remove-something
+implementation can fake; the same injection now goes red on exactly that
+clause.
+
+### The save
+
+v19 → v20, the four-times-shipped pattern, plus a loader that treats the file
+as input rather than truth: unknown systems, malformed entries, non-finite
+coordinates and anything past the stock cap are dropped **in file order**, so
+which eight survive a corrupt file is deterministic rather than
+dictionary-order luck. `migrate19` proves a v19 save arrives with an empty
+store and a full rack, and its rubbish pass feeds the loader five broken
+shapes and keeps exactly the one valid entry.
