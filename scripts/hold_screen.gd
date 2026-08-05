@@ -466,9 +466,20 @@ func _build_idle() -> void:
 				readable, "" if readable == 1 else "S"],
 			UIKit.SIZE_FINE, Palette.TEAL, HORIZONTAL_ALIGNMENT_LEFT))
 	if locked > 0:
-		_strip.add_child(UIKit.label(
-			"%d UNIT%s TOO DEEP TO READ HERE — ARCHEOLOGY %d, OR A LAB AT A PORT." % [
-				locked, "" if locked == 1 else "S", locked_need],
+		# A TIER THE LADDER DOES NOT HAVE IS NOT ADVICE. The field requirement is
+		# the band itself, and the deepest band is one rung PAST the top of
+		# ARCHEOLOGY_TIERS on purpose — the Unsounded is lab-only forever, the
+		# same closing note the Quiet used to carry. So for that grade this line
+		# used to read "ARCHEOLOGY 6" at a game whose ladder stops at 5: a
+		# instruction the player can follow exactly never, which is the failure
+		# 58's copy rule is about. Naming the lab alone is the whole of what can
+		# be done about it, so that is what it says.
+		var top_tier: int = GameState.ARCHEOLOGY_TIERS.size() - 1
+		var lock_text := ("%d UNIT%s TOO DEEP TO READ ANYWHERE BUT A LAB — TAKE THEM TO A PORT."
+			% [locked, "" if locked == 1 else "S"]) if locked_need > top_tier \
+			else ("%d UNIT%s TOO DEEP TO READ HERE — ARCHEOLOGY %d, OR A LAB AT A PORT."
+			% [locked, "" if locked == 1 else "S", locked_need])
+		_strip.add_child(UIKit.label(lock_text,
 			UIKit.SIZE_FINE, Palette.AMBER_DIM, HORIZONTAL_ALIGNMENT_LEFT))
 	var pilot := UIKit.label("%s\n%s\n%s\n%s" % [GameState.archeology_line(),
 		GameState.smuggling_line(), GameState.mining_line(),

@@ -119,6 +119,22 @@ const GOODS := {
 		"desc": "Unreadable. Something was built out here.",
 		"band": 4, "no_retail": true, "interdiction_weight": 1.7,
 	},
+	# v20 THE FRONTIER. The ratios were 1.58 / 1.58 / 1.53 / 1.48 -- a curve
+	# already tapering -- so 1.41 and 1.375 continue it rather than restarting it.
+	# Both stay no_retail like every grade above them: unread salvage has never
+	# been something a counter will sell you, and the deepest of it least of all.
+	"salvage_fathom": {
+		"name": "Fathom Salvage", "short": "SLV-F",
+		"base": 480, "space": 3, "color": Color(0.62, 0.80, 0.96),
+		"desc": "Crushed by depth, not by impact.",
+		"band": 5, "no_retail": true, "interdiction_weight": 2.0,
+	},
+	"salvage_unsounded": {
+		"name": "Unsounded Salvage", "short": "SLV-U",
+		"base": 620, "space": 3, "color": Color(0.60, 0.92, 0.66),
+		"desc": "It was not built. It grew.",
+		"band": 6, "no_retail": true, "interdiction_weight": 2.4,
+	},
 
 	# --- phase 4: components -------------------------------------------------
 	# What salvage becomes once it can be read. Each names its `parent`, which is
@@ -193,6 +209,35 @@ const GOODS := {
 		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch"],
 		"interdiction_weight": 1.9,
 	},
+	# v20 THE FRONTIER, and it exists because READING PAYS demanded it rather
+	# than because the frontier wanted a new noun.
+	#
+	# The rule is that the CHEAPEST thing a grade reads into must still beat
+	# selling it unread, or one of the player's choices is a trap. The component
+	# table topped out at the Reliquary Heart's 700, so an Unsounded crate could
+	# be priced no higher than ~560 and still offer two honest reads — which
+	# flattened the raw gradient past the Quiet to 1.08x and quietly deleted the
+	# thing depth is supposed to buy. One part above the Heart restores it: the
+	# grade sits at 620 (1.29x on the Fathoms, continuing the 1.58/1.53/1.48/1.41
+	# taper) with two reads that both pay.
+	#
+	# NOT a forge input, and the Unstable Charge is the precedent: a component may
+	# be something you only ever sell. The four craft recipes are untouched.
+	# SPACE 2, NOT 3, and that is READ COMPRESSION's doing rather than flavour's.
+	# Reading has to be worth the hold space it frees — every shipped grade reads
+	# into something at least 1.5x denser than itself — and the frontier's grades
+	# are space 3 reading into space-3 parts, which came out at 1.45x: a read that
+	# barely repaid the gesture. At space 2 the Lens is 450 a slot against the
+	# Unsounded's 207, which is the 2.2x the rule is asking for. A lens being the
+	# compact thing in a crate of wreckage is also simply true.
+	"lens_unsounded": {
+		"name": "Unsounded Lens", "short": "LENS",
+		"base": 900, "space": 2, "color": Color(0.58, 0.94, 0.72),
+		"desc": "Ground by nothing, to a figure nobody chose. It focuses something.",
+		"parent": "relics", "no_retail": true,
+		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch"],
+		"interdiction_weight": 2.2,
+	},
 	"manifest_forged": {
 		"name": "Forged Manifest", "short": "MANIFEST",
 		"base": 320, "space": 2, "color": Color(0.92, 0.40, 0.48),
@@ -251,6 +296,21 @@ const GOODS := {
 		"base": 300, "space": 1, "color": Color(0.88, 0.74, 1.0),
 		"desc": "A place with a shape, and no name, and no record of anyone else.",
 		"chart_band": 4, "no_retail": true, "interdiction_weight": 0.5,
+	},
+	# The frontier's two, on `chart_band` for the reason written above -- a `band`
+	# key here would let spawn_loot's regrade mint survey data out of combat
+	# crates. Steps of +110 and +130 continue +60/+70/+90.
+	"chart_fathom": {
+		"name": "Fathom Survey", "short": "CHT-F",
+		"base": 410, "space": 1, "color": Color(0.60, 0.84, 0.98),
+		"desc": "Depths, taken by a ship that was there. Nobody has these.",
+		"chart_band": 5, "no_retail": true, "interdiction_weight": 0.5,
+	},
+	"chart_unsounded": {
+		"name": "Unsounded Survey", "short": "CHT-U",
+		"base": 540, "space": 1, "color": Color(0.62, 0.94, 0.68),
+		"desc": "A sounding where the line never found bottom. It is still a reading.",
+		"chart_band": 6, "no_retail": true, "interdiction_weight": 0.5,
 	},
 
 	# --- v14 ore: metals and minerals ----------------------------------------
@@ -332,6 +392,35 @@ const GOODS := {
 		"ore": "metal", "interdiction_weight": 1.3,
 		"trade_only_at": ["anchor", "cinderworks", "depot", "bastion"],
 	},
+	# v20 THE FRONTIER: one mineral and one metal, in that order, because Iridium
+	# above is a metal and the header's alternation rule is what keeps either
+	# category from becoming the rich one.
+	#
+	# 248 AND 256, NOT 290 AND 330. The first draft priced them at 290/330 and
+	# broke the ceiling stated at the top of this very block — "every one of them
+	# under Intact Relics (260)... the deep pays a prospector in volume and
+	# density, never in one fat unit." Nothing caught it, because BOTH of
+	# MINETEST's gradient sweeps were written `for band in range(0, 5)` and could
+	# not see bands 5 or 6 at all; they are derived now. A comment is a claim, and
+	# this one had been true for four bands.
+	#
+	# The frontier still pays more per cut than the Quiet — 1447 against 981 —
+	# and it does it the way the header says it should, through SEAM_UNITS 6 and
+	# SEAM_CHANCE 0.56, which is volume and density rather than one fat unit.
+	"ore_vitrite": {
+		"name": "Vitrite Shards", "short": "VITRITE",
+		"base": 248, "space": 1, "color": Color(0.56, 0.86, 0.80),
+		"desc": "Glass that formed under pressure nobody has measured.",
+		"ore": "mineral", "interdiction_weight": 1.5,
+		"trade_only_at": ["anchor", "cinderworks", "depot", "bastion"],
+	},
+	"ore_osmium": {
+		"name": "Osmium Grit", "short": "OSMIUM",
+		"base": 256, "space": 1, "color": Color(0.62, 0.68, 0.78),
+		"desc": "Heavier than it has any business being. The hold notices.",
+		"ore": "metal", "interdiction_weight": 1.5,
+		"trade_only_at": ["anchor", "cinderworks", "depot", "bastion"],
+	},
 }
 
 # What a seam of each band can hold. The depth axis lives in a TABLE, mirroring
@@ -361,6 +450,12 @@ const SEAM_YIELDS := {
 	2: ["ore_ferrite", "ore_tungsten", "ore_hydrate", "ore_phosphor"],
 	3: ["ore_tungsten", "ore_hydrate", "ore_platinum", "ore_phosphor"],
 	4: ["ore_platinum", "ore_iridium", "ore_phosphor", "ore_corundum"],
+	# The frontier's rows. Means of 222.75 and 241 against band 4's 163.75, which
+	# is what keeps RICHER OUTWARD strictly rising once SEAM_UNITS is folded in:
+	# 981 -> 1337 -> 1446 per seam. Each row carries at least one metal and one
+	# mineral, the contract every row above holds to.
+	5: ["ore_iridium", "ore_osmium", "ore_corundum", "ore_platinum"],
+	6: ["ore_osmium", "ore_vitrite", "ore_iridium", "ore_corundum"],
 }
 
 # What each grade of salvage can be READ AS. The player picks from this list —
@@ -375,6 +470,29 @@ const READS_AS := {
 	"salvage_drift": ["rod_decay", "sink_thermal", "lattice_data", "servo_prewar"],
 	"salvage_reaches": ["lattice_data", "servo_prewar", "index_cartographic", "manifest_forged"],
 	"salvage_quiet": ["index_cartographic", "heart_reliquary", "charge_unstable", "servo_prewar"],
+	# THE FRONTIER'S LISTS ARE SHORT ON PURPOSE, and the first draft of them was
+	# wrong in a way worth recording. It read
+	#
+	#   fathom:    [heart, charge, index, servo]     raw 480, cheapest read 420
+	#   unsounded: [heart, index, charge]            raw 660, cheapest read 420
+	#
+	# with a comment claiming "at 480 and 660 a crate is already worth carrying
+	# home unread" — which is not a justification, it is the broken rule written
+	# out as if it were a feature. READING PAYS says the CHEAPEST thing a grade
+	# reads into must beat selling it unread, because the alternative is a menu
+	# where some entries lose the player money and nothing on screen says which.
+	# Reading an Unsounded crate as an Unstable Charge lost 240.
+	#
+	# Every option in both lists now clears its own grade with room: the Fathoms
+	# read at 560 or 700 against a raw 480, the Unsounded at 700 or 900 against
+	# 620. Two honest choices each, which is what this table is for.
+	# The Fathoms reaches the Lens too, and the two grades are told apart by their
+	# FLOOR rather than by their ceiling: the cheapest honest read of a Fathom
+	# crate is 560 and of an Unsounded one is 700. Both clear their own raw price
+	# by exactly 80. That is what going deeper buys here — not a part nobody else
+	# can reach, but a worse case that is better.
+	"salvage_fathom": ["index_cartographic", "heart_reliquary", "lens_unsounded"],
+	"salvage_unsounded": ["heart_reliquary", "lens_unsounded"],
 }
 
 # How often a crate that would have held a good holds unidentified salvage

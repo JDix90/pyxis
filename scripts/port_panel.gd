@@ -787,7 +787,9 @@ func _build_lab() -> void:
 	var sub := Label.new()
 	var readable: String = DeepSpace.BAND_NAMES[mini(tier + 1, DeepSpace.BAND_NAMES.size() - 1)]
 	sub.text = "READS UP TO %s HERE. %s" % [readable,
-		("%d MORE TO THE NEXT GRADE" % (next_at - GameState.archeology_xp)) if next_at >= 0
+		# Floored, the same guard and for the same reason as archeology_line's:
+		# this is the untested twin of that subtraction.
+		("%d MORE TO THE NEXT GRADE" % maxi(next_at - GameState.archeology_xp, 0)) if next_at >= 0
 			else "NOTHING LEFT TO LEARN."]
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	sub.add_theme_font_size_override("font_size", 10)

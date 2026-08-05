@@ -1645,7 +1645,32 @@ func stash_to_fit_now(key: String) -> int:
 #
 # so the lab is always exactly one band ahead of you. There is always a reason to
 # carry something home, and always a reason to raise the skill, at every tier.
-const ARCHEOLOGY_TIERS := [0, 12, 34, 78]
+# v20 THE FRONTIER: two more rungs, because the frontier's salvage grades are
+# band 5 and band 6 and the rule above is `band <= archeology (+1 at a lab)`.
+# Without them Fathom Salvage is unreadable forever by anybody and the deepest
+# loot in the game is a crate you can only sell.
+#
+# 108 AND 140 ARE A BUDGET, NOT A CURVE. The first draft read 150 and 260,
+# extrapolating the ~1.9x/2.3x ratios above, and TIERS caught it: a standard loop
+# cracks one hull and reads a hold, which is ARCHEOLOGY_PER_BREACH 4 + 8 reads =
+# 12 xp, so a 260 cap is 21.7 loops against a stated ceiling of 12. The rule that
+# ceiling protects is "a tier needing fifteen derelicts is content you can see
+# and never use" — and the failure it describes is exactly the one these two
+# rungs exist to PREVENT, so shipping them out of reach would have made the
+# deepest loot in the game a crate you can only sell for hours of play.
+#
+# So the cap is 144 (12 loops) and the ladder finishes at 140 = 11.7. The
+# increments dip from +44 to +30/+32 as a consequence; that is what a fixed
+# budget spent over six rungs instead of four looks like, and it is preferable to
+# a curve nobody can climb. Raising ARCHEOLOGY_PER_READ to fit was considered and
+# refused: it pulls tiers 1-3 in as well and brings forward reading the Quiet's
+# salvage, which is an income change against a loop at 97% of its ceiling.
+#
+# THE UNSOUNDED STAYS LAB-ONLY FOREVER, which is not an oversight: tier 5 is the
+# last rung, so band 6 is only ever readable at `archeology + 1`. That is exactly
+# the note band 4 used to end on, moved outward — there is still always a reason
+# to carry something home.
+const ARCHEOLOGY_TIERS := [0, 12, 34, 78, 108, 140]
 const ARCHEOLOGY_PER_READ := 1
 const ARCHEOLOGY_PER_BREACH := 4
 
@@ -1997,7 +2022,14 @@ func archeology_line() -> String:
 	var field: String = DeepSpace.BAND_NAMES[mini(archeology,
 		DeepSpace.BAND_NAMES.size() - 1)]
 	var next_at := archeology_next_at()
-	var tail := ("%d TO NEXT" % (next_at - archeology_xp)) if next_at >= 0 \
+	# FLOORED AT ZERO. The subtraction was unguarded, and it only ever showed a
+	# sane number because the ladder's top rung was also the last one: xp could
+	# not sit above a threshold that did not exist. Adding two rungs made
+	# `next_at` a real number where it used to be -1, and a hold carrying more xp
+	# than the next tier costs printed "· -891 TO NEXT" on the pilot strip.
+	# Nothing about the arithmetic was frontier-specific; the frontier only made
+	# it reachable.
+	var tail := ("%d TO NEXT" % maxi(next_at - archeology_xp, 0)) if next_at >= 0 \
 		else "NOTHING LEFT TO LEARN"
 	# AND AT TIER 0 IT SAYS WHAT TO DO. Breaching hulls is the feed that carries
 	# this ladder on its own — a playtester's 48 xp was 12 breaches x 4 exactly,

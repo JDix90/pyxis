@@ -299,6 +299,12 @@ func _band_note(band: int) -> String:
 		2: return "Nobody has swept this lane in a long time."
 		3: return "Past where the beacons reliably answer."
 		4: return "Nothing is transmitting. Nothing is listening."
+		# The frontier's two say what is DIFFERENT out there, not merely that it
+		# is worse -- a note reading "even more dangerous" teaches nothing a
+		# bigger number would not. One names the thing you can dock at; the other
+		# names the thing you cannot outrun.
+		5: return "There are lights out here, and somebody keeps them. Their guns are for sale."
+		6: return "Nothing is transmitting. Something is listening. It follows further than anything closer in."
 	return ""
 
 
@@ -319,7 +325,12 @@ func _build_living() -> void:
 	_body.add_child(_spacer(6))
 	# Derived count, static description: the tiers are named in GameState and
 	# their number is the thing most likely to change.
-	_body.add_child(_para("Four skills, each fed by a different verb so no single run levels them all: ARCHEOLOGY reads salvage, SMUGGLING moves what a market will not touch, MINING cuts rock, PERSUASION talks a pack out of a toll. Each has %d tiers, and not one of them pays you in credits — they buy information, a choice, and access." % (GameState.MINING_TIERS.size() - 1)))
+	# THE LADDERS ARE NO LONGER THE SAME LENGTH, so "each has N tiers" became a
+	# lie the moment the frontier gave archeology two more rungs — and it lied
+	# about precisely the rungs that make the deepest salvage readable, telling
+	# the player the only thing that opens the Fathoms does not exist. Both
+	# numbers are derived, and the sentence now says which skill is the long one.
+	_body.add_child(_para("Four skills, each fed by a different verb so no single run levels them all: ARCHEOLOGY reads salvage, SMUGGLING moves what a market will not touch, MINING cuts rock, PERSUASION talks a pack out of a toll. Most have %d tiers and ARCHEOLOGY has %d, because the deepest salvage needs the last two. Not one of them pays you in credits — they buy information, a choice, and access." % [GameState.MINING_TIERS.size() - 1, GameState.ARCHEOLOGY_TIERS.size() - 1]))
 	_body.add_child(_back())
 
 

@@ -130,7 +130,9 @@ class RadarLayer:
 	# contacts are hundreds of units apart and every one of them pinned at 0.3.
 	# Scaled by the player's band so distance keeps reading as distance.
 	const ALPHA_SPAN := 60.0
-	const ALPHA_SPAN_BY_BAND := [1.0, 2.5, 5.0, 8.0, 12.0]
+	# Indexed DIRECTLY, so this array is not decoration: a band with no row here
+	# is an out-of-bounds read on the radar's hot path.
+	const ALPHA_SPAN_BY_BAND := [1.0, 2.5, 5.0, 8.0, 12.0, 16.0, 21.0]
 	# A Cartographic Index in the hold is somebody else's chart of out here, and
 	# stations answer it. Applied to PORT markers only — this is a thing that
 	# finds stations, not a general sensor upgrade, and a carried good must never
