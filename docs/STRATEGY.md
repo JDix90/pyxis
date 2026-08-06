@@ -5995,13 +5995,18 @@ playtest; stage 1 shipped as §68). The full plan is in
 |---|---|---|---|
 | 1 | bands 5/6 (THE FATHOMS, THE UNSOUNDED): edges, every band table, threats, commodities, landmarks, palette, `PYXIS_FRONTIERTEST` | none | **BUILT** — §68 |
 | 2 | the Mk III line: 4 Mk III weapons, 3 Mk III utilities, Breaching Torch / Surge Capacitors / Expedition Frame, **Reactor Mk V** (24 power), `reactor_cap` port-def gating | none | **BUILT** — §69 |
-| 3 | **THE BREAKWATER** (band 5, military) and **THE FAR LANTERN** (band 6, cantina): the first deep ports that sell what the chart cannot, plus `station_weights` rows for pyx02/pyx03 | none | **not built** |
+| 3 | **THE BREAKWATER** (band 5) and **THE FAR LANTERN** (band 6): the first deep ports that sell what the chart cannot, plus `station_weights` rows for pyx02/pyx03 and two new silhouettes | none | **BUILT** — §70 |
 | 4 | deep weather (optional): band-6 grave-fields on a `"\|hulk2"` salted stream, pyx03 rift depth extension, `LANDMARK_KINDS` growth **with every authored row widened in the same commit** | none | **not built** |
 
-Stage 3 is what makes it a loop. Stage 2's gear exists but is stocked NOWHERE
-until stage 3 authors the counters, so until then bands 5 and 6 remain harder
-and richer with chart-bought gear as the only counter — coherent, and
-deliberately a stretch. **No save bump is
+**The commissioned loop is closed** (2026-08-05): stages 1-3 shipped as §68,
+§69 and §70. Only stage 4 remains, and it is optional polish rather than a
+missing pillar — the playtest's actual complaint is answered.
+
+**One piece of debt is now due and is the reason to do stage 4 carefully.**
+§41's re-derivation of the `MIDTIER` bar has been outstanding since §65, and
+stage 4 is the first frontier work that would add INCOME (a rift depth
+extension) rather than sinks. Stages 1-3 could be measured against a bar nobody
+had re-derived because none of them could move it; stage 4 cannot. **No save bump is
 expected anywhere in this horizon**: deep space persists nothing, and module and
 commodity ids flow through the existing generic `owned`/`fit`/cargo paths.
 
@@ -6705,3 +6710,95 @@ and hangs forever without an import pass, and `--check-only --script` answers in
 0.6s. **That command always exits 0** — the Parse Error count is the signal, not
 the exit code. Three silent hangs this horizon, one of four hours, were all this
 failure and all preventable by one line.
+
+---
+
+## 70. The counters that sell it (the frontier, stage 3)
+
+THE BREAKWATER at band 5 and THE FAR LANTERN at band 6, and with them the loop
+closes: fly past 2600u, fight band-5 threats with band-5 guns bought at band-5
+prices, come home loaded or do not. Both owned by **THE STILLNESS** — the
+Stillness keeps the lights, at 1100, 2600 and 5200, and a fourth unknown would
+have spent a fresh mystery to say a thing the Last Watch already said.
+
+### The audit ran before the code, and found six defects in the proposal
+
+Four adversarial readers went at the two archetypes as a *specification* — no
+file written — against the arbitrage rails, the generator and save contract,
+reachability and the copy, and the stock/fence/service wiring. **Two of what
+they found would have shipped.**
+
+**The fence would have sold what the market hid.** `trades_at` short-circuits on
+`is_component` BEFORE the deep-port exemption, so a component stays restricted to
+its own `trade_only_at` list however deep the counter sits. The Far Lantern's
+`fence_goods` names eleven components; its market tab would have listed none of
+them, its fence tab would have sold all eleven at 1.45x, and the two data
+sources would have disagreed at one desk with nothing going red — `STATIONTEST`
+sweeps `SystemDB.port_ids()` only, and `EVERY NAMED BUYER BUYS` walks each
+good's own list, which never named the port. This is §11's rule pointing the
+other way: **declared tradeable must mean actually tradeable**, and a fence is a
+declaration.
+
+**And `repair_price` 1600 broke a property nobody had written down.** Every
+shipped deep repair bay is cheaper than the charted 1400, and from the Reaches
+outward the tail gets *kinder*: 900, then 800. The first draft put 1600 on the
+band with the highest `PACK_HP` in the game — the only repair above the chart's
+own price, at the place furthest from any alternative. It reads
+**[900, 800, 750, 700]** now and is asserted never to rise. "You pay for the
+address" was already said once by `outfit_mult` 1.10; saying it twice was just a
+worse number.
+
+The other four were caught the same way and cost nothing because the code did
+not exist yet: a duplicated `lens_unsounded` in a fence list that already had it
+(the UI iterates the array, so it renders twice), the `for_band` row widths, the
+`(1/3/4/5 for bands 1-4)` legend that would have stopped one band short of the
+rows beneath it, and two comments that go false — dealt with in §68's own note.
+
+### Two silhouettes, because a marker is all you get before the flight
+
+Both ports were specced wearing shapes another archetype already wears at a band
+where both spawn — `military` against BLACKWATCH YARD, `cantina` against THE
+LAST WATCH. A port's NAME only reaches the player at `DOCK_RANGE` 5.0, so the
+silhouette is the entire content of a marker until you have committed to the
+approach. That is the argument `landmarks.gd` makes for giving each band a
+different shape rather than one shape in six colours, and it applies harder here
+because the wrong guess costs a four-hundred-unit flight rather than a glance.
+
+THE BREAKWATER is a wall with its buttresses on the deep-facing side — it has a
+FRONT, which is what makes it read as a breakwater rather than a block. THE FAR
+LANTERN is the smallest silhouette of any port in the game carrying the
+brightest single element: a mast, one enormous lamp, an unlit housing for
+something that used to be bigger, and two habitation cans, because somebody
+lives there. `ONE SHAPE, ONE COUNTER` asserts the rule over every band.
+
+### The staleness trap, caught in my own guard
+
+`EVERY AUTHORED ROW IS THE RIGHT WIDTH` first read `rows_checked >= 18` — a
+literal that is nothing but today's count, and the precise species of defect
+§68 spent eleven failures learning. It is the rule now: bands 5 and 6 must be
+**authored** somewhere, because a sweep over zero rows passes perfectly.
+
+### Measurements
+
+**61 runs | 598 PASS | 0 FAIL | 0 script errors | save intact.** No save bump —
+the third stage in a row that needed none.
+
+`NO ARBITRAGE` widened from 11 counters and 121 pairs to **13 and 169**, picking
+the new defs up with zero edits because it iterates `ARCHETYPES` directly, and
+the binding pair did not move: the Grinning Void's x0.80 against Forgeline
+Depot's x0.75, −0.05. Both new defs clear the guard rails with room (0.70/1.10
+and 0.72/1.05), and the self-pairs are −0.40 and −0.33.
+
+`MIDTIER` **2.86 / 2.95 / 2.90 / 2.93, mean 2.91** on an idle machine against
+stage 1's 2.905 — a prediction confirmed rather than a hope: ports are sinks,
+and `PACINGTEST`'s route search reads `SystemDB.port_ids()`, which deep stations
+are excluded from by construction. `CEILING` **halved, 0.041 → 0.020**, because
+the Mk III line and the Mk V roughly doubled the catalog denominator. That is
+exactly what a sink is supposed to buy.
+
+Six new assertions across stages 2 and 3, **six injections, 6/6 red with zero
+collateral.** Two of them test things that were nearly wrong in the assertions
+themselves rather than in the game: one deletes the frontier weight rows outright
+to prove the non-vacuity clause catches an empty sweep, and one removes a single
+port from a single component's `trade_only_at` to reproduce the fence/market
+disagreement the audit caught before it existed.

@@ -26,8 +26,9 @@ anyone is watching — which is the trade the whole game rests on.
 **Before asking "what is left to build", read `docs/STRATEGY.md` §64.** Every
 other section of that file records what SHIPPED, so searching it for gaps returns
 nothing — the outstanding work is not in the numbered record, by construction.
-§64 is the inventory: today it holds the Hunt's stages 4–6, whose spec lives in a
-plan file outside the repo entirely.
+§64 is the inventory: today it holds the frontier's stage 4 (optional polish)
+and one named piece of debt — §41's re-derivation of the `MIDTIER` bar, which
+stage 4 is the first work in a while that could actually move.
 
 **Read the relevant `docs/STRATEGY.md` section before touching an adjacent
 system.** Most sections record a defect and explain why the current shape
@@ -115,7 +116,7 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **592 PASS / 0 FAIL / 0 script errors** across 61 runs, save
+Current baseline: **598 PASS / 0 FAIL / 0 script errors** across 61 runs, save
 format **v20** — measured on Godot 4.6.stable, headless. The frontier's stage 1
 (STRATEGY §68) added bands 5 and 6 past THE QUIET and a `FRONTIERTEST` tag of 14
 assertions, and needed no save bump: deep space persists nothing, and new module
@@ -125,7 +126,10 @@ OTHER ten suites then failed eleven assertions, nine of which no amount of
 playing would have surfaced. Stage 2 (§69) adds the Mk III line, three new
 tools and Reactor Mk V — ten modules stocked nowhere until stage 3 authors the
 counters, the forge craftables' precedent that an unstocked catalog row is
-invisible and safe. Stage 4 (STRATEGY
+invisible and safe. Stage 3 (§70) lands THE BREAKWATER and THE FAR LANTERN and
+closes the loop — `NO ARBITRAGE` widens to 13 counters and 169 pairs with the
+binding pair unmoved, and the whole horizon needed no save bump. Hunt stage 4
+(STRATEGY
 §65) added per-PYX deep identity and deep rifts (+6 assertions); stage 5
 (§66) added waypoint beacons at v20 (+5 BEACONTEST, +2 SAVETEST, and the run
 count moves 57 → 59 for the new tag and `migrate19`). Every addition
@@ -134,7 +138,7 @@ their own batteries caught, which is the reason the batteries exist.
 
 Stage 6 (§67) completes the horizon: hyper-structures and Colonies, +10
 `COLONYTEST` assertions and +1 SAVETEST clause, riding v20 with no further bump.
-**The Hunt's six stages are now all built** — §64's outstanding list is empty.
+**The Hunt's six stages are all built.**
 
 `Beacon` and `HyperStructure` are new `class_name`s — a fresh checkout, and the
 play checkout at `/Users/jefe/Downloads/Pyxis`, need the import pass before the
