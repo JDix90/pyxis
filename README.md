@@ -43,9 +43,24 @@ behind a `PYXIS_*` environment variable and run headless:
 PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 ```
 
-Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 42 of them —
-the 41 tags in `run_harness.sh`'s `TAGS`, plus `SAVETEST`, which is one harness
-with 15 modes rather than 15 harnesses (hence 56 runs from 42 suites).
+Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 44 of them —
+the 44 tags in `run_harness.sh`'s `TAGS` (`SAVETEST` among them is one harness
+with 17 modes rather than 17 harnesses), which is why 44 suites make **61 runs**.
+
+**Before running one, check that it parses** — 0.6 seconds against a 7-minute
+silent hang:
+
+```bash
+/Applications/Godot.app/Contents/MacOS/Godot --headless --path . \
+  --check-only --script scripts/main.gd 2>&1 | grep -c 'Parse Error'
+```
+
+That command **always exits 0**, so the count is the signal, not the exit
+status. It matters because a `main.gd` that fails to parse does not error — the
+harness never dispatches, the game boots normally, and it runs forever. A broken
+run and a slow one look identical, and one sat for four hours before anybody
+checked (STRATEGY §69).
+
 The house rules, learned the hard way and enforced by review:
 
 - **Assert the rule, not the rendering.** Test the thing that must be true once,
@@ -100,14 +115,17 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **588 PASS / 0 FAIL / 0 script errors** across 61 runs, save
+Current baseline: **592 PASS / 0 FAIL / 0 script errors** across 61 runs, save
 format **v20** — measured on Godot 4.6.stable, headless. The frontier's stage 1
 (STRATEGY §68) added bands 5 and 6 past THE QUIET and a `FRONTIERTEST` tag of 14
 assertions, and needed no save bump: deep space persists nothing, and new module
 and commodity ids ride the existing generic `owned`/`fit`/cargo paths. Its sweep
 is the one worth reading §68 for — the new suite went green on its own and the
 OTHER ten suites then failed eleven assertions, nine of which no amount of
-playing would have surfaced. Stage 4 (STRATEGY
+playing would have surfaced. Stage 2 (§69) adds the Mk III line, three new
+tools and Reactor Mk V — ten modules stocked nowhere until stage 3 authors the
+counters, the forge craftables' precedent that an unstocked catalog row is
+invisible and safe. Stage 4 (STRATEGY
 §65) added per-PYX deep identity and deep rifts (+6 assertions); stage 5
 (§66) added waypoint beacons at v20 (+5 BEACONTEST, +2 SAVETEST, and the run
 count moves 57 → 59 for the new tag and `migrate19`). Every addition

@@ -5994,13 +5994,14 @@ playtest; stage 1 shipped as §68). The full plan is in
 | stage | what | save | status |
 |---|---|---|---|
 | 1 | bands 5/6 (THE FATHOMS, THE UNSOUNDED): edges, every band table, threats, commodities, landmarks, palette, `PYXIS_FRONTIERTEST` | none | **BUILT** — §68 |
-| 2 | the Mk III line: 4 Mk III weapons, 3 Mk III utilities, Breaching Torch / Surge Capacitors / Expedition Frame, **Reactor Mk V** (24 power), `reactor_cap` port-def gating | none | **not built** |
+| 2 | the Mk III line: 4 Mk III weapons, 3 Mk III utilities, Breaching Torch / Surge Capacitors / Expedition Frame, **Reactor Mk V** (24 power), `reactor_cap` port-def gating | none | **BUILT** — §69 |
 | 3 | **THE BREAKWATER** (band 5, military) and **THE FAR LANTERN** (band 6, cantina): the first deep ports that sell what the chart cannot, plus `station_weights` rows for pyx02/pyx03 | none | **not built** |
 | 4 | deep weather (optional): band-6 grave-fields on a `"\|hulk2"` salted stream, pyx03 rift depth extension, `LANDMARK_KINDS` growth **with every authored row widened in the same commit** | none | **not built** |
 
-Stage 2 is what makes the frontier survivable and stage 3 is what makes it a
-loop; until they land, bands 5 and 6 are harder and richer with chart-bought gear
-as the only counter — coherent, and deliberately a stretch. **No save bump is
+Stage 3 is what makes it a loop. Stage 2's gear exists but is stocked NOWHERE
+until stage 3 authors the counters, so until then bands 5 and 6 remain harder
+and richer with chart-bought gear as the only counter — coherent, and
+deliberately a stretch. **No save bump is
 expected anywhere in this horizon**: deep space persists nothing, and module and
 commodity ids flow through the existing generic `owned`/`fit`/cargo paths.
 
@@ -6603,7 +6604,7 @@ a slow one look identical. One sat for four hours before anyone checked.
 
 Final: **61 runs | 588 PASS | 0 FAIL | 0 script errors | save intact.**
 
-### And `LANDMARK_KINDS` deliberately did not grow
+### And `LANDMARK_KINDS` deliberately did not grow (frontier stage 1)
 
 Appending "gate" and "cairn" to it would silently widen the target of every
 authored 4-wide weights row in `system_db`, because `weighted_index` falls back
@@ -6612,3 +6613,95 @@ accents off and rolling frontier kinds into the Shoals. The new bands take their
 kind from the unweighted `LANDMARKS` path, which needs no row. Growing the list
 and every authored row **in one commit** is its own change, and it is deferred to
 §64 rather than done carelessly here.
+
+---
+
+## 69. Ten modules nobody can buy yet (the frontier, stage 2)
+
+The catalog half of the frontier: four Mk III weapons, three Mk III utilities,
+three new tools and a fifth reactor. **Stocked nowhere.** The forge craftables
+are the precedent — a catalog row with no counter carrying it is invisible to
+the player and safe to ship, and it lets the stage that authors the gear be
+separate from the stage that authors the shopfronts.
+
+### Why a Mk ladder is allowed here at all
+
+§9 calls "Mk I → II → III, +10% each" a salvage sink rather than a decision, and
+that objection is still right. What makes this line a decision is that the
+question is never *which* Mk III — it is **whether a Mk III fits**. Every one
+costs a power point its Mk II did not, and the choice it forces is what comes
+*off*. The new MECHANICS live in the three tools, each carrying a cost, which is
+where §9 says novelty belongs.
+
+Cargo and Tractor deliberately stop at Mk II. Hauling deeper is answered by the
+Expedition Frame, which is a trade; a Mk III of everything would be a shopping
+list.
+
+### The Mk V is one named product, not a percentage
+
+24 power for 90,000, a step of four where every earlier step was two or three —
+and justified the way Mk IV's was, by naming the fit it exists to permit:
+
+    lance_3 (6) + torp_3 (7) + drive_vector_2 (4) + core_aegis (4) + torch (3)
+    = 24 exactly, with the second utility bay still empty.
+
+That emptiness is the price. **All-best stays out of reach at 32 against 24** —
+a margin of 8 where Mk IV's was 7 — and the assertion computes both from the
+live catalog rather than from the numbers in this paragraph, so a cheap new
+module cannot quietly close the gap.
+
+### Two defects found in the wiring, both introduced by this stage
+
+- **The HUD ring would have lied.** `ability_cooldown_fraction` divided the
+  *hasted* timer by the *unhasted* cooldown, so a fit carrying Surge Capacitors
+  would show the ring starting at 0.75 and never reaching full — the readout
+  claiming an ability was three-quarters recharged at the instant it fired. Both
+  sites read one `ModuleDB.ability_cooldown()` now, so the console's ability row
+  and the ship's real timer cannot disagree.
+- **The Mk V was for sale at the Anchor.** `upgrade_reactor` checked nothing but
+  the price. The cap arrives as an argument now, the way `drop_beacon`'s depth
+  does — GameState cannot read the world, and a rule it cannot be handed is a
+  rule it cannot enforce — defaulted to the shipped ceiling so every charted
+  counter keeps its behaviour by construction. A counter that does not stock it
+  says **NOT SOLD HERE** rather than MAX, because MAX would be a lie about the
+  ship instead of a fact about the shop.
+
+### A stat key with an untested consumer is a stat key with no consumer
+
+Both new keys were wired, and both were drawn on the refit console per the
+`summary_lines` rule — and *nothing asserted either one did anything*. That is
+the same defect as an unconsumed stat, wearing better clothes: correct on the
+sheet, inert in play, and the store row is a lie.
+
+Both are measured through the REAL code path rather than by re-deriving the
+arithmetic, which would assert the formula against itself: a live `Derelict`'s
+hold moves **0.100 bare and 0.150 lit**, and the core runs **12.00s → 9.00s**
+with the ring reading **1.00** at the instant it fires.
+
+`THE TORCH CUTS FASTER` failed on its first run reading 0.000 both ways —
+`hold_tick` measures range from `breach_point`, not the hull centre, so a probe
+parked on the hull is out of range and the tick returns having done nothing.
+Both samples would have been zero and their *ratio* meaningless. Caught because
+the number was obviously wrong, not because the verdict was.
+
+### The weapons could not join the shipped tier sweep
+
+`STRICTLY BETTER` demands every stat RISE, and `interval` is the one stat where
+lower is better — which is why it covers six drives and utilities and no guns at
+all. `EVERY MK III EARNS ITS RUNG` states the direction per key, which is the
+only way a typo'd interval is caught, and it re-checks the family rule the
+catalog states about itself: Pulse at 133 dps stays under Lance's 168.
+
+### Measurements
+
+**61 runs | 592 PASS | 0 FAIL | 0 script errors | save intact.** No save bump:
+module ids ride `owned`/`fit` as strings, and `reactor_tier`'s loader already
+clamps against `REACTOR_TIERS.size()`.
+
+Six new assertions, **eight injections, 8/8 red with zero collateral** — and the
+run took 4 minutes against the previous round's 37, because the agents were
+given two things learned the hard way: a fresh worktree has no `.godot` cache
+and hangs forever without an import pass, and `--check-only --script` answers in
+0.6s. **That command always exits 0** — the Parse Error count is the signal, not
+the exit code. Three silent hangs this horizon, one of four hours, were all this
+failure and all preventable by one line.
