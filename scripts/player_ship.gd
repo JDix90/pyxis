@@ -744,7 +744,11 @@ func ability_ready() -> bool:
 func ability_cooldown_fraction() -> float:
 	if _ability.is_empty():
 		return 0.0
-	var total := float(_ability.get("cooldown", 1.0))
+	# AGAINST THE HASTED TOTAL, which is the same number activate_ability set the
+	# timer to. Dividing by the raw cooldown would start the HUD's ring at 0.75
+	# on a hasted fit and never let it read full — the ring would say the ability
+	# was three-quarters recharged at the instant it was fired.
+	var total := maxf(ModuleDB.ability_cooldown(GameState.stats), 0.001)
 	return clampf(_ability_cd / total, 0.0, 1.0)
 
 
@@ -756,7 +760,11 @@ func activate_ability() -> bool:
 	if not ability_ready():
 		return false
 	_ability_time = float(_ability.get("duration", 2.0))
-	_ability_cd = float(_ability.get("cooldown", 10.0))
+	# Hasted through ModuleDB rather than computed here, so the refit console's
+	# ability row and the ship's real cooldown cannot disagree. A stat that is
+	# applied in one place and displayed in another with its own arithmetic is
+	# how a module ends up lying about itself on the sheet.
+	_ability_cd = ModuleDB.ability_cooldown(GameState.stats)
 	var main := get_tree().get_first_node_in_group("main")
 	if main and main.tutorial:
 		main.tutorial.on_ability_used()

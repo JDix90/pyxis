@@ -318,7 +318,11 @@ func hold_tick(delta: float) -> void:
 		_approach()
 		return
 
-	_progress += delta / crack_time
+	# THE BREACHING TORCH'S ONE JOB. A rate multiplier rather than a shorter
+	# crack_time, because crack_time is the WRECK's property — set by the band it
+	# was found in — and a tool that edited it would be writing the world's number
+	# from the ship. The hold gets faster; the hull stays what it is.
+	_progress += delta * (1.0 + maxf(float(GameState.stats.get("breach_speed", 0.0)), 0.0)) / crack_time
 	_sync_gauge()
 
 	var rig := get_tree().get_first_node_in_group("camera_rig")

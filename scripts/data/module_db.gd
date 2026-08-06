@@ -67,7 +67,30 @@ const REACTOR_TIERS := [
 	{"name": "Reactor Mk II", "power": 15, "price": 10000},
 	{"name": "Reactor Mk III", "power": 18, "price": 32000},
 	{"name": "Reactor Mk IV", "power": 20, "price": 55000},
+	# v20 THE FRONTIER. A step of FOUR where every other step was two or three,
+	# and like Mk IV's it is one named product rather than a percentage.
+	#
+	# At 20, a pair of Mk III heavy mounts (lance_3 6 + torp_3 7 = 13) plus a
+	# Vector Mk II (4) and an Aegis (4) is 21 and does not fit. At 24 it fits
+	# with exactly one 3-power tool — a Torch, a Runner Frame, a Repair Bay —
+	# and the second utility bay still empty. That is the entire product: ninety
+	# thousand credits to bring two Mk III mounts AND one tool to the Unsounded,
+	# and no more than one.
+	#
+	# All-best stays out of reach, which is the invariant Mk IV was built to hold
+	# and this must not break: greedy best-per-slot is 32 against 24, a margin of
+	# 8 where Mk IV's was 7. Asserted from the live catalog rather than from these
+	# numbers, so a cheap new module cannot quietly close it.
+	{"name": "Reactor Mk V", "power": 24, "price": 90000},
 ]
+# WHICH TIERS A COUNTER MAY SELL. A port def carries `reactor_cap`; absent, it
+# means this — Mk IV, the shipped ceiling — so every charted counter keeps its
+# behaviour by construction and only a def that says otherwise sells the Mk V.
+#
+# Without this the reactor row is money-only: GameState.upgrade_reactor checked
+# nothing but the price, so the deepest purchase in the game would have been for
+# sale at the Waypoint Anchor to anyone holding ninety thousand.
+const REACTOR_CAP_DEFAULT := 3
 
 # --- base hull stats, before modules ---------------------------------------
 const BASE := {
@@ -188,6 +211,73 @@ const MODULES := {
 		# torpedo fit costs 12 of an 18-point Mk III reactor, which leaves no
 		# room for a utility. Area damage should have to give something up.
 		"stats": {"damage": 128.0, "interval": 1.6, "range": 10.0, "chain": 0, "splash": 2.9},
+	},
+
+	# --- Mk III: v20, THE FRONTIER, and sold only past the Quiet --------------
+	# The Mk II doctrine one rung further out: same identity, higher numbers,
+	# heavy prices, +1 power each. Deliberately NOT new mechanics — the new
+	# MECHANICS in this stage are the three tools below, each of which carries a
+	# cost, because 9 rejects a ladder whose rungs are all upside.
+	#
+	# WHY A LADDER IS ALLOWED TO EXIST AT ALL, given 9 calls "Mk I -> II -> III,
+	# +10% each" a salvage sink rather than a decision: the decision is not WHICH
+	# Mk III, it is whether a Mk III fits. Every one of these costs a power point
+	# its Mk II did not, against a budget that grows by 4 and a catalog whose
+	# best-in-slot draw grows by more. The choice a Mk III forces is what you take
+	# OFF.
+	#
+	# The family shape is unchanged and still asserted: Pulse stays the efficient
+	# generalist and must not out-damage a Lance of its own tier (133 against
+	# 168), Arc buys chain and pays in reach, Torpedo buys splash and pays in
+	# everything.
+	"pulse_3": {
+		"name": "Pulse Repeater Mk III",
+		"category": "weapon",
+		"family": "pulse",
+		"tier": 3,
+		"power": 4,
+		"price": 21000,
+		"desc": "Cycles faster than the eye follows. The cheap gun, grown up.",
+		"stats": {"damage": 40.0, "interval": 0.30, "range": 8.0, "chain": 0},
+	},
+	"lance_3": {
+		"name": "Lance Array Mk III",
+		"category": "weapon",
+		"family": "lance",
+		"tier": 3,
+		"power": 6,
+		"price": 42000,
+		"desc": "One shot, one hull. Reach nothing else in the game has.",
+		# The longest reach and the highest single-target damage, and a dual
+		# Lance fit is 12 of a 24-point Mk V — which is the whole budget minus a
+		# drive and a core. Still a sacrifice, one tier up.
+		"stats": {"damage": 158.0, "interval": 0.94, "range": 13.0, "chain": 0},
+	},
+	"arc_3": {
+		"name": "Arc Projector Mk III",
+		"category": "weapon",
+		"family": "arc",
+		"tier": 3,
+		"power": 5,
+		"price": 44000,
+		"desc": "Four jumps. Built for whatever the deep sends in numbers.",
+		# THE FRONTIER'S ANSWER TO ITS OWN PACKS. Bands 5 and 6 run 7-13 hostiles
+		# with two escorts, and a fourth chain jump is the only thing in the
+		# catalog that scales with how many of them there are.
+		"stats": {"damage": 30.0, "interval": 0.38, "range": 7.0, "chain": 4},
+	},
+	"torp_3": {
+		"name": "Torpedo Rack Mk III",
+		"category": "weapon",
+		"family": "torp",
+		"tier": 3,
+		"power": 7,
+		"price": 40000,
+		"desc": "A charge with a horizon. Nothing else empties a nest this fast.",
+		# 7 power: the dearest mount in the game, and a dual torpedo fit is 14 of
+		# 24 — a drive, a core and ONE tool, with a utility bay left empty. That
+		# emptiness is the price, and it is meant to be felt.
+		"stats": {"damage": 176.0, "interval": 1.55, "range": 11.0, "chain": 0, "splash": 3.6},
 	},
 	"drive_cruise": {
 		"name": "Cruise Drive",
@@ -326,6 +416,88 @@ const MODULES := {
 		"price": 19500,
 		"desc": "Reads plating like a map, and the dark like a page.",
 		"stats": {"weapon_range_bonus": 3.2, "crit_chance": 0.34, "survey_speed": 0.60},
+	},
+
+	# --- Mk III utilities: the defensive and survey line only ------------------
+	# THREE, NOT SEVEN. Cargo and Tractor deliberately stop at Mk II: hauling
+	# deeper is answered by the Expedition Frame below, which is a trade, and a
+	# Mk III of everything would be a shopping list rather than a fitting
+	# decision. What earns a third rung here is what the frontier actually kills
+	# you with — a longer fight against more of them, further from a dock.
+	"util_repair_3": {
+		"name": "Repair Bay Mk III",
+		"category": "utility",
+		"tier": 3,
+		"power": 4,
+		"price": 30000,
+		"desc": "Rebuilds between volleys. The reason a long fight is survivable.",
+		"stats": {"shield_regen": 30.0},
+	},
+	"util_shield_3": {
+		"name": "Shield Capacitor Mk III",
+		"category": "utility",
+		"tier": 3,
+		"power": 5,
+		"price": 38000,
+		"desc": "A bank deep enough to cross a guarded wreck and still be standing.",
+		"stats": {"shield_max": 180.0, "shield_regen": 13.0},
+	},
+	"util_scanner_3": {
+		"name": "Targeting Scanner Mk III",
+		"category": "utility",
+		"tier": 3,
+		"power": 5,
+		"price": 42000,
+		"desc": "Reads a hull, a seam and a horizon, and is wrong about none of them.",
+		"stats": {"weapon_range_bonus": 4.5, "crit_chance": 0.45, "survey_speed": 0.85},
+	},
+
+	# --- the frontier's three tools -------------------------------------------
+	# The NEW MECHANICS of this stage, and each one answers something the deep
+	# past 2600u does specifically. Every one carries a cost, which SHIPTEST
+	# asserts of the rigs and 16 states as the rule for all of them: a module
+	# with no downside is a stat stick, not a fitting decision.
+	#
+	# Deliberately NOT built, and both for the same reason: an EMP-resist module
+	# and a scan-masking module. The carried Thermal Sink and the crafted Sink
+	# Lattice already own the first axis and the Forged Manifest and Baffle Array
+	# the second, and a shop module that did their job would delete the
+	# carried-beats-bought ladder those exist to teach.
+	"util_torch": {
+		"name": "Breaching Torch",
+		"category": "utility",
+		"tier": 3,
+		"power": 3,
+		"price": 22000,
+		"desc": "Cuts a hull in half the time. Steers like a barge while it is lit.",
+		# The frontier's crack times are 2.8s and 3.0s, held under three guns and
+		# a trap — long enough that the hold itself is the danger. This is the
+		# only module in the game that shortens it.
+		"stats": {"breach_speed": 0.5, "turn_rate": -1.4},
+	},
+	"util_haste": {
+		"name": "Surge Capacitors",
+		"category": "utility",
+		"tier": 3,
+		"power": 4,
+		"price": 30000,
+		"desc": "The core comes back sooner. There is less of you while it does.",
+		# Band 5/6 fights are longer, so a core that fires once per fight fires
+		# twice. Paid for in the pool those fights are measured against.
+		"stats": {"ability_haste": 0.25, "shield_max": -25.0},
+	},
+	"rig_expedition": {
+		"name": "Expedition Frame",
+		"category": "utility",
+		"tier": 3,
+		"power": 5,
+		"price": 34000,
+		"desc": "Rigged to stay out. Carries more, mends between fights, hits softer.",
+		# The whole-ship commitment to a long way from home: hold, pull and regen
+		# for crit and reach. A frame you fit to SURVIVE the trip rather than to
+		# win the fight, which is the trade the other four rigs already model.
+		"stats": {"cargo_space": 16.0, "magnet_range": 5.0, "shield_regen": 5.0,
+			"max_speed": 0.4, "crit_chance": -0.10, "weapon_range_bonus": -1.0},
 	},
 	# --- mining tools ---------------------------------------------------------
 	# The fit half of the mining verb. Deliberately TWO axes rather than one
@@ -733,6 +905,12 @@ static func summary_lines(stats: Dictionary) -> Array:
 		out.append(["PULL", "%.0f" % float(stats["magnet_range"])])
 	if float(stats.get("survey_speed", 0.0)) != 0.0:
 		out.append(["SURVEY", "+%.0f%%" % (float(stats["survey_speed"]) * 100.0)])
+	# v20. The Breaching Torch's entire upside, and without this row it reads on
+	# the console as HANDLING -1.4 and nothing else — the exact state the Cutting
+	# Head and the Assay Rig shipped in, recorded in the paragraph above. A tool
+	# whose benefit the strip cannot draw is a tool nobody buys.
+	if float(stats.get("breach_speed", 0.0)) != 0.0:
+		out.append(["BREACH", "+%.0f%%" % (float(stats["breach_speed"]) * 100.0)])
 
 	# chain and splash are NOT flat keys. compute_stats folds drive/utility/core
 	# stats into the top level but keeps weapon stats per-weapon in `weapons`, so
@@ -755,9 +933,27 @@ static func summary_lines(stats: Dictionary) -> Array:
 	# comparison they decide.
 	var ability: Dictionary = stats.get("ability", {})
 	if not ability.is_empty():
+		# THE COOLDOWN IS SHOWN HASTED, because that is the number the ship will
+		# actually run at and the Surge Capacitors have to be seen paying for
+		# themselves here or they read as SHIELD -25 and nothing else. Same
+		# arithmetic as PlayerShip.activate_ability, and one source for it:
+		# ability_cooldown() is what both call.
 		out.append([String(ability.get("name", "ABILITY")),
-			"%.1fs/%.0fs" % [float(ability.get("duration", 0.0)), float(ability.get("cooldown", 0.0))]])
+			"%.1fs/%.0fs" % [float(ability.get("duration", 0.0)),
+				ability_cooldown(stats)]])
 	return out
+
+
+static func ability_cooldown(stats: Dictionary) -> float:
+	# What the fitted core's cooldown actually is, haste folded in. The clamp is
+	# not decoration: haste is additive across utilities, and two hypothetical
+	# 0.25 modules in both bays would otherwise approach a free ability. 0.60 is
+	# the floor, so the deepest possible discount is 40%.
+	var ability: Dictionary = stats.get("ability", {})
+	if ability.is_empty():
+		return 0.0
+	var haste := clampf(float(stats.get("ability_haste", 0.0)), 0.0, 0.40)
+	return float(ability.get("cooldown", 0.0)) * (1.0 - haste)
 
 
 static func delta_lines(before: Dictionary, after: Dictionary) -> Array:

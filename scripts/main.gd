@@ -18735,7 +18735,12 @@ func _run_mine_test() -> void:
 
 	# --- 5. every band offers both categories --------------------------------
 	var lopsided := ""
-	for band in range(0, 5):
+	# The fourth range(0, 5) in this file, and the last: the frontier's seam rows
+	# carry a comment claiming "at least one metal and one mineral, the contract
+	# every row above holds to" and nothing checked it. They do — but a comment is
+	# a claim, and an unchecked claim is how the ore ceiling got broken by 70
+	# credits two rows above this one.
+	for band in range(0, DeepSpace.BAND_NAMES.size()):
 		var kinds := {}
 		for gid_v in CommodityDB.seam_yields(band):
 			kinds[CommodityDB.ore_class(String(gid_v))] = true
@@ -19858,5 +19863,190 @@ func _run_frontier_test() -> void:
 		DeepSpace.BAND_NAMES.size() - 1,
 		"PASS" if voiceless == "" and late_register == "" else "FAIL",
 		voiceless, late_register])
+
+	# --- 11. every Mk III beats its Mk II, and pays for it -------------------
+	# The weapon families could not join the shipped STRICTLY BETTER sweep,
+	# because `interval` is the one stat where LOWER is better and that sweep
+	# demands every key rise. So the direction is stated per key here rather than
+	# assumed, which is also the only way a typo'd interval gets caught at all.
+	var mk3 := ["pulse_3", "lance_3", "arc_3", "torp_3",
+		"util_repair_3", "util_shield_3", "util_scanner_3"]
+	var better := ""
+	for id_v in mk3:
+		var id := String(id_v)
+		var prev := id.trim_suffix("_3") + "_2"
+		var a: Dictionary = ModuleDB.get_module(prev)
+		var b: Dictionary = ModuleDB.get_module(id)
+		if a.is_empty() or b.is_empty():
+			better += "%s missing " % id
+			continue
+		for key in (a["stats"] as Dictionary):
+			var lo := float((a["stats"] as Dictionary)[key])
+			var hi := float((b["stats"] as Dictionary).get(key, -1.0))
+			# interval is a period: shorter is faster, so it must FALL.
+			var ok: bool = (hi < lo) if key == "interval" else (hi > lo)
+			# chain 0 on a family that does not chain stays 0 rather than rising.
+			if key == "chain" and lo == 0.0 and hi == 0.0:
+				ok = true
+			if not ok:
+				better += "%s.%s %.2f->%.2f " % [id, key, lo, hi]
+		if int(b["power"]) <= int(a["power"]):
+			better += "%s draws no more power " % id
+		if int(b["price"]) <= int(a["price"]):
+			better += "%s costs no more " % id
+	# And the family rule the catalog states about itself: Pulse is the efficient
+	# generalist and must never out-damage a Lance of its own tier.
+	var pulse_st: Dictionary = ModuleDB.get_module("pulse_3")["stats"]
+	var lance_st: Dictionary = ModuleDB.get_module("lance_3")["stats"]
+	var pulse_dps := float(pulse_st["damage"]) / float(pulse_st["interval"])
+	var lance_dps := float(lance_st["damage"]) / float(lance_st["interval"])
+	print("[frontier] EVERY MK III EARNS ITS RUNG %d modules beat their Mk II on every stat, power and price; pulse %.0f dps stays under lance %.0f -> %s %s" % [
+		mk3.size(), pulse_dps, lance_dps,
+		"PASS" if better == "" and pulse_dps < lance_dps else "FAIL", better])
+
+	# --- 12. the Mk V is a destination --------------------------------------
+	# The gate is the whole feature. Without it the reactor row is money-only and
+	# the deepest purchase in the game is for sale at the first counter a new
+	# pilot ever docks at.
+	GameState.reactor_tier = 3
+	GameState.salvage = 200000
+	var sold_at_chart := GameState.upgrade_reactor()                       # default cap
+	var sold_at_deep := GameState.upgrade_reactor(4)                       # a counter that stocks it
+	var chart_caps := ""
+	for pid_v in SystemDB.port_ids():
+		if SystemDB.port_def_by_id(String(pid_v)).has("reactor_cap"):
+			chart_caps += "%s " % String(pid_v)
+	GameState.reactor_tier = 0
+	GameState.salvage = 0
+	print("[frontier] THE MK V IS A DESTINATION refused at a default counter=%s, sold at a cap-4 counter=%s, charted defs naming a cap: %s -> %s" % [
+		str(not sold_at_chart), str(sold_at_deep), chart_caps if chart_caps != "" else "none",
+		"PASS" if not sold_at_chart and sold_at_deep and chart_caps == "" else "FAIL"])
+
+	# --- 13. all-best is still out of reach ---------------------------------
+	# 46's invariant, and the one thing a new reactor tier could quietly break.
+	# Computed from the LIVE catalog rather than from the numbers in the comment
+	# beside REACTOR_TIERS, so a cheap new module cannot close the gap silently.
+	var by_slot := {}
+	for id_v in ModuleDB.MODULES:
+		var m: Dictionary = ModuleDB.get_module(String(id_v))
+		var cat := String(m.get("category", ""))
+		by_slot[cat] = maxi(int(by_slot.get(cat, 0)), int(m.get("power", 0)))
+	var all_best: int = int(by_slot.get("weapon", 0)) * 2 \
+		+ int(by_slot.get("drive", 0)) + int(by_slot.get("utility", 0)) * 2 \
+		+ int(by_slot.get("core", 0))
+	var top_power: int = int(ModuleDB.REACTOR_TIERS[ModuleDB.REACTOR_TIERS.size() - 1]["power"])
+	# And the step IS the product: the named fit Mk V exists to make possible must
+	# fit it exactly, or the number is arbitrary.
+	var named := 0
+	for id_v in ["lance_3", "torp_3", "drive_vector_2", "core_aegis", "util_torch"]:
+		named += int(ModuleDB.get_module(String(id_v))["power"])
+	print("[frontier] ALL-BEST IS STILL OUT OF REACH greedy best-per-slot draws %d against the top reactor's %d (margin %d); the named Mk V fit draws exactly %d -> %s" % [
+		all_best, top_power, all_best - top_power, named,
+		"PASS" if all_best > top_power and named == top_power else "FAIL"])
+
+	# --- 14. the frontier's gear is not on the chart -------------------------
+	# The inverse of the shipped STOCKED sweep, and the point of the whole stage:
+	# every charted outfitter's stock is a set the Mk III line must be absent
+	# from. Set-based with the count asserted, so a tier-3 module added later and
+	# quietly stocked at home is caught by the same clause.
+	var charted_stock := {}
+	for pid_v in SystemDB.port_ids():
+		for m_v in SystemDB.port_def_by_id(String(pid_v)).get("stock", []):
+			charted_stock[String(m_v)] = true
+	var tier3 := []
+	var on_chart := ""
+	for id_v in ModuleDB.MODULES:
+		var m: Dictionary = ModuleDB.get_module(String(id_v))
+		if int(m.get("tier", 0)) != 3:
+			continue
+		tier3.append(String(id_v))
+		if charted_stock.has(String(id_v)):
+			on_chart += "%s " % String(id_v)
+	# The deep half is gated until a deep archetype stocks any of it, so this
+	# clause is honest in the stage that authors the catalog AND in the stage
+	# that authors the counters — rather than being written twice.
+	var deep_stock := {}
+	for arch_v in DeepPortDB.ARCHETYPES:
+		for m_v in (arch_v as Dictionary).get("stock", []):
+			deep_stock[String(m_v)] = true
+	var deep_sells_any := false
+	for id_v in tier3:
+		if deep_stock.has(String(id_v)):
+			deep_sells_any = true
+	var unsold := ""
+	if deep_sells_any:
+		for id_v in tier3:
+			if not deep_stock.has(String(id_v)):
+				unsold += "%s " % String(id_v)
+	print("[frontier] THE FRONTIER'S GEAR IS NOT ON THE CHART %d tier-3 modules, on charted counters: %s; a deep counter stocks them=%s, unsold out there: %s -> %s" % [
+		tier3.size(), on_chart if on_chart != "" else "none", str(deep_sells_any),
+		unsold if unsold != "" else "none",
+		"PASS" if on_chart == "" and tier3.size() == 10 and unsold == "" else "FAIL"])
+
+	# --- 15. the two new tools actually DO something -------------------------
+	# A stat key with a consumer nobody drives is the same defect as a stat key
+	# with no consumer at all: it reads correctly on the sheet, moves nothing in
+	# play, and the store row is a lie. Both are measured through the REAL code
+	# path — a live Derelict's hold and the ship's own activate_ability — rather
+	# than by re-deriving the arithmetic here, which would assert the formula
+	# against itself.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	GameState.owned.append("util_torch")
+	GameState.owned.append("util_haste")
+
+	var wreck := Derelict.new()
+	wreck.counts_as_survey = false
+	wreck.counts_for_contract = false
+	system_root.add_child(wreck)
+	wreck.global_position = player.global_position + Vector3(0.0, 0.0, -10.0)
+	await get_tree().process_frame
+	# PARKED AT THE BREACH POINT, not at the hull: hold_tick's range check
+	# measures from breach_point, which sits off the hull's own axis, so a probe
+	# sitting on the centre reads as out of range and the tick returns having
+	# done nothing. Both samples would then be 0.000 and their ratio meaningless
+	# — which is exactly how this assertion first failed.
+	player.global_position = wreck.breach_point
+	await get_tree().process_frame
+	wreck.crack_time = 10.0                 # long, so one tick is well clear of 1.0
+	# Bare hull first, then the same tick with the Torch fitted.
+	GameState.equip(ModuleDB.Slot.UTILITY, "")
+	await get_tree().process_frame
+	wreck._progress = 0.0
+	wreck._holding = true
+	wreck.hold_tick(1.0)
+	var bare_progress := wreck._progress
+	GameState.equip(ModuleDB.Slot.UTILITY, "util_torch")
+	await get_tree().process_frame
+	wreck._progress = 0.0
+	wreck._holding = true
+	wreck.hold_tick(1.0)
+	var torch_progress := wreck._progress
+	wreck._holding = false
+	wreck.queue_free()
+	var torch_gain := torch_progress / maxf(bare_progress, 0.0001)
+	var want_gain := 1.0 + float(ModuleDB.get_module("util_torch")["stats"]["breach_speed"])
+	print("[frontier] THE TORCH CUTS FASTER one second of hold moves a 10s wreck %.3f bare and %.3f lit, a factor of %.2f against the fitted %.2f -> %s" % [
+		bare_progress, torch_progress, torch_gain, want_gain,
+		"PASS" if is_equal_approx(snappedf(torch_gain, 0.01), snappedf(want_gain, 0.01)) else "FAIL"])
+
+	# The Capacitors, through activate_ability, plus the readout that goes with
+	# it: the HUD ring must read FULL the instant the ability fires, which is the
+	# defect a hasted timer divided by an unhasted total would have shipped.
+	GameState.equip(ModuleDB.Slot.CORE, "core_overcharge")
+	GameState.equip(ModuleDB.Slot.UTILITY, "")
+	await get_tree().process_frame
+	var bare_cd := ModuleDB.ability_cooldown(GameState.stats)
+	GameState.equip(ModuleDB.Slot.UTILITY, "util_haste")
+	await get_tree().process_frame
+	var hasted_cd := ModuleDB.ability_cooldown(GameState.stats)
+	player.activate_ability()
+	var ring := player.ability_cooldown_fraction()
+	var haste := float(ModuleDB.get_module("util_haste")["stats"]["ability_haste"])
+	var want_cd := bare_cd * (1.0 - haste)
+	GameState.equip(ModuleDB.Slot.UTILITY, "")
+	print("[frontier] THE CAPACITORS BRING IT BACK cooldown %.2fs bare -> %.2fs hasted (want %.2f); the ring reads %.2f at the instant it fires -> %s" % [
+		bare_cd, hasted_cd, want_cd, ring,
+		"PASS" if is_equal_approx(snappedf(hasted_cd, 0.01), snappedf(want_cd, 0.01))
+			and hasted_cd < bare_cd and ring > 0.99 else "FAIL"])
 
 	get_tree().quit()
