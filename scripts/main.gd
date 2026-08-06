@@ -1718,7 +1718,7 @@ func _process(delta: float) -> void:
 							engine.global_position) < edge
 			_carrier_wash = washed
 		hud.set_deep_tag(DeepSpace.band_name(depth) if depth > 0.0 else "", depth,
-			_carrier_wash)
+			_carrier_wash, storm_has_player())
 	# The score's second axis, fed from the same poll that already drives the
 	# wayfinding label and the beacons. Music smooths it internally, so this is a
 	# raw value every frame rather than something this function has to rate-limit.
@@ -18779,10 +18779,26 @@ func _run_beacon_test() -> void:
 	for m_v2 in hud.radar_markers():
 		if int((m_v2 as Dictionary).get("tier", -99)) == hud._radar.TIER_BEACON:
 			beacon_on_thin = true
-	var tier_last: bool = hud._radar.TIER_BEACON == hud._radar.TIER_NAMES.size() - 2
-	print("[beacon] THE BOARD CARRIES IT, AND SHEDS IT FIRST full board %d markers with the beacon shed=%s; thinned to %d the beacon stands=%s; TIER_BEACON is the last tier=%s -> %s" % [
+	# THE RULE, NOT THE INSTANCE. This read `TIER_BEACON == TIER_NAMES.size() - 2`
+	# — "the beacon is the last tier" — which was true when written and went red
+	# the moment v20 appended TIER_STORM below it. The property it actually
+	# protects is that a beacon sheds before every CONTACT, i.e. before every
+	# marker whose position the player does not already know, and that is still
+	# true.
+	#
+	# Exactly ONE thing now sheds before it, and the inversion is principled: a
+	# storm carries four other telegraphs (a 400u silhouette readable at ~1500u,
+	# a broadcast at 520u, the deep-tag suffix and the prompt), so its arrow is
+	# the most redundant marker on a full board — while a beacon's arrow is its
+	# ONLY channel. Asserted as a set with its contents named, so a third tier
+	# appended below the beacon turns this red and makes somebody argue for it.
+	var below_beacon: Array = []
+	for t in range(hud._radar.TIER_BEACON + 1, hud._radar.TIER_NAMES.size() - 1):
+		below_beacon.append(String(hud._radar.TIER_NAMES[t + 1]))
+	var tier_last: bool = below_beacon == ["STORM"]
+	print("[beacon] THE BOARD CARRIES IT, AND SHEDS IT FIRST full board %d markers with the beacon shed=%s; thinned to %d the beacon stands=%s; the only tier shed before it is %s -> %s" % [
 		full_count, str(not beacon_on_full), thin_count, str(beacon_on_thin),
-		str(tier_last),
+		str(below_beacon),
 		"PASS" if full_count >= 12 and not beacon_on_full and beacon_on_thin
 			and tier_last else "FAIL"])
 
@@ -20544,9 +20560,19 @@ func _run_storm_test() -> void:
 	var guard_dps := Hostile.DAMAGE \
 		* float(DeepSpace.GUARD_DIFFICULTY[DeepSpace.GUARD_DIFFICULTY.size() - 1]) \
 		/ Hostile.FIRE_INTERVAL
+	# FLOORED AS WELL AS CAPPED, and the floor is the half this shipped without.
+	# All three terms were one-sided `<`, so ZEROING the constants made the clause
+	# pass HARDER — a storm that does no damage and casts no EMP would have read
+	# as "comfortably under the chart's hardest gun". A red-verify caught it
+	# printing `per-tick 0.00, sustained 0.0/s -> PASS`.
+	#
+	# The rule was never "the storm hits softly"; it is "the storm hits, and
+	# softer than the chart". A bound with only one side cannot tell those apart,
+	# and this is the third clause this horizon to learn it.
 	var outhit_ok: bool = storm_tick < chart_alpha and Storm.EYE_DPS_MAX < guard_dps \
-		and Storm.EMP_LEN_MAX < deep_emp
-	print("[storm] NOTHING IN A STORM OUT-HITS THE CHART per-tick %.2f vs the chart's hardest shot %.1f; sustained %.1f/s vs an Unsounded post's %.1f/s; EMP %.1fs vs a rigged hulk's %.1fs -> %s" % [
+		and Storm.EMP_LEN_MAX < deep_emp \
+		and storm_tick > 0.0 and Storm.EYE_DPS_MAX > 0.0 and Storm.EMP_LEN_MAX > 0.0
+	print("[storm] NOTHING IN A STORM OUT-HITS THE CHART (and it does hit) per-tick %.2f vs the chart's hardest shot %.1f; sustained %.1f/s vs an Unsounded post's %.1f/s; EMP %.1fs vs a rigged hulk's %.1fs -> %s" % [
 		storm_tick, chart_alpha, Storm.EYE_DPS_MAX, guard_dps,
 		Storm.EMP_LEN_MAX, deep_emp, "PASS" if outhit_ok else "FAIL"])
 
@@ -20607,32 +20633,6 @@ func _run_storm_test() -> void:
 		player.shield, player.shield_max, str(player.is_emp_stunned()),
 		(player._tether_vel as Vector3).length(), "PASS" if docked_safe else "FAIL"])
 
-	# --- S8. a storm is session weather -------------------------------------
-	# THE BACK DOOR, CHECKED IN THE SOURCE. 53's rule is that anything ambient
-	# which LOGS, saves — note_log queues a write, and that is how a convoy's
-	# arrival once overwrote a SAVETEST fixture. A storm is ambient and
-	# long-lived, so the temptation is real and the check has to be too. Read
-	# out of the file the way THE PINNING LIST IS COMPLETE reads main.gd, because
-	# there is no runtime signal for "this never happens".
-	var storm_src := FileAccess.get_file_as_string("res://scripts/storm.gd")
-	# THE CALL FORM, NOT THE WORD. The first draft searched for "note_log" and
-	# went red on storm.gd's own header comment promising it never calls it —
-	# an assertion defeated by the sentence written to explain it. Matching
-	# "GameState.note_log(" cannot be satisfied by prose.
-	var logs := storm_src.contains("GameState.note_log(") \
-		or storm_src.contains("GameState.note_ledger(")
-	var save_leak := storm_src.contains("_queue_save(") or storm_src.contains("save_game(")
-	spawn_storm()
-	var before_load := live_storms.size()
-	_load_system(system_id)
-	await get_tree().process_frame
-	var after_load := get_tree().get_nodes_in_group("storm").size()
-	print("[storm] A STORM IS SESSION WEATHER %d live before a rebuild, %d nodes after, live list %d; storm.gd logs=%s saves=%s, format still v%d -> %s" % [
-		before_load, after_load, live_storms.size(), str(logs), str(save_leak),
-		GameState.SAVE_VERSION,
-		"PASS" if after_load == 0 and live_storms.is_empty() and not logs and not save_leak
-			and GameState.SAVE_VERSION == 20 and storm_src.length() > 0 else "FAIL"])
-
 	# --- S10. the roll lands where the band is, and the refusals -------------
 	var pl2: PlayerShip = get_tree().get_first_node_in_group("player")
 	pl2.global_position = Vector3(SystemDB.bounds_of(system_id) + Storm.band_floor() + 100.0, 0, 0)
@@ -20643,7 +20643,14 @@ func _run_storm_test() -> void:
 	var made := 0
 	for i in range(60):
 		live_storms.clear()
+		# NOT the probe storm the rest of this suite is standing next to. A blanket
+		# free over the group took it out from under S5, S9 and S13, which then
+		# dereferenced a freed node — logged as "Invalid access to property on a
+		# base object of type 'previously freed'" and failing nothing, because a
+		# freed-node read is an error rather than a FAIL.
 		for n in get_tree().get_nodes_in_group("storm"):
+			if n == storm:
+				continue
 			(n as Node3D).queue_free()
 		var st := spawn_storm()
 		if st == null:
@@ -20688,5 +20695,142 @@ func _run_storm_test() -> void:
 	print("[storm] THE GATE IS A GATE %d conditions checked (%s) -> %s %s" % [
 		refusals.size(), str(refusals.keys()),
 		"PASS" if bad == "" else "FAIL", bad])
+
+		# --- S5. the telegraph reads from further out than the point of no return
+	# 21's rule made arithmetic. NOT a comparison of two constants: walk inward
+	# from the pull radius evaluating the storm's OWN accessors until the weakest
+	# legal fit stops making headway, and use that. A constant comparison would
+	# still pass if the curve underneath it changed shape.
+	# WALK INWARD AND STOP AT THE FIRST ONE. The first draft assigned on every
+	# match and let the loop keep going, so `pin` ended up holding the SMALLEST
+	# radius where the floor fit is beaten rather than the largest — it printed
+	# 0.5u for a true answer of 33.2u. The clause still passed, which is the
+	# point worth recording: a number nobody checks is a number that can be
+	# wrong while the verdict beside it is right.
+	var pin := 0.0
+	var d := Storm.PULL_RADIUS
+	while d > 0.0:
+		if Storm.threshold_at(d) > floor_speed:
+			pin = d
+			break
+		d -= 0.5
+	var warn_secs := (Storm.WARN_RADIUS - Storm.PULL_RADIUS) / floor_speed
+	print("[storm] THE TELEGRAPH READS FROM FURTHER OUT THAN THE POINT OF NO RETURN announces at %.0fu, pulls at %.0fu, the weakest legal fit stops making headway at %.1fu — %.0fs of warning at the %.1f floor -> %s" % [
+		Storm.WARN_RADIUS, Storm.PULL_RADIUS, pin, warn_secs, floor_speed,
+		"PASS" if Storm.WARN_RADIUS > Storm.PULL_RADIUS and Storm.PULL_RADIUS > pin
+			and pin > 0.0 else "FAIL"])
+
+	# --- S9. it pays nothing ------------------------------------------------
+	# COLONYTEST's NOTHING POINTS AT THEM shape, plus the non-vacuity clause that
+	# battery learned the hard way: the whole check passes on a storm that was
+	# never entered, so the shield MUST have actually fallen.
+	var loot_before := _count_loot_cubes()
+	var salv_before := GameState.salvage
+	var cargo_before := GameState.cargo_used()
+	player.invulnerable = false
+	player.shield = player.shield_max
+	player.global_position = storm.global_position
+	for i in range(420):
+		await get_tree().physics_frame
+	var hurt := player.shield < player.shield_max
+	player.invulnerable = true
+	player.shield = player.shield_max
+	var leaked := ""
+	for g in ["apex", "dockable", "crackable", "hostiles", "mineable", "beacon", "hyper"]:
+		if storm.is_in_group(g):
+			leaked += "%s " % g
+	var pays_ok: bool = _count_loot_cubes() == loot_before \
+		and GameState.salvage == salv_before and GameState.cargo_used() == cargo_before \
+		and leaked == "" and storm.is_in_group("storm") \
+		and not PACING_LOOP.has("storm") and not PACING_PROSPECT.has("storm")
+	print("[storm] IT PAYS NOTHING crates %d->%d, salvage unchanged=%s, hold unchanged=%s, groups leaked: %s; and the eye actually bit (shield fell=%s) -> %s" % [
+		loot_before, _count_loot_cubes(), str(GameState.salvage == salv_before),
+		str(GameState.cargo_used() == cargo_before), leaked if leaked != "" else "none",
+		str(hurt), "PASS" if pays_ok and hurt else "FAIL"])
+
+	# --- S11. the copy says what to do --------------------------------------
+	# 58, and 63's warning that a contains-check happily accepts a noun. Read off
+	# the SHIPPED strings via Storm.COPY rather than a re-typed copy, asserted
+	# over the set with the count, so a sixth line cannot arrive unchecked.
+	var copy_bad := ""
+	for key in ["pull", "eye", "tag"]:
+		if not String(Storm.COPY[key]).contains("BURN OUTWARD"):
+			copy_bad += "%s has no verb " % key
+	var sink_name := String(CommodityDB.get_good("sink_thermal")["name"]).to_upper()
+	var body := String(Storm.COPY["body"])
+	if not body.contains("GO AROUND") or not body.contains(sink_name):
+		copy_bad += "the broadcast names no answer "
+	print("[storm] THE COPY SAYS WHAT TO DO %d authored lines, every prompt names the verb and the broadcast names '%s' -> %s %s" % [
+		Storm.COPY.size(), sink_name,
+		"PASS" if copy_bad == "" and Storm.COPY.size() == 6 else "FAIL", copy_bad])
+
+	# --- S13. reduced motion shows the end state ----------------------------
+	# ACCESSTEST's shape, two-sided. 30: the accommodation is the END STATE
+	# immediately, never a slower animation — so with it on there is no particle
+	# node at all and nothing turns, and with it off both are true.
+	var motion_before: bool = bool(GameState.setting("reduce_motion"))
+	GameState.set_setting("reduce_motion", true)
+	var calm := Storm.new()
+	system_root.add_child(calm)
+	calm.global_position = storm.global_position + Vector3(0, 0, 900)
+	await get_tree().process_frame
+	var calm_parts := 0
+	for c in calm.get_children():
+		if c is CPUParticles3D:
+			calm_parts += 1
+	var calm_rot := calm.rotation.y
+	for i in range(30):
+		await get_tree().process_frame
+	var calm_still: bool = is_equal_approx(calm.rotation.y, calm_rot) and calm.visible
+	calm.queue_free()
+
+	GameState.set_setting("reduce_motion", false)
+	var lively := Storm.new()
+	system_root.add_child(lively)
+	lively.global_position = storm.global_position + Vector3(0, 0, 1200)
+	await get_tree().process_frame
+	var lively_parts := 0
+	for c in lively.get_children():
+		if c is CPUParticles3D:
+			lively_parts += 1
+	lively.queue_free()
+	GameState.set_setting("reduce_motion", motion_before)
+	print("[storm] REDUCED MOTION SHOWS THE END STATE on: %d particle nodes, visible and still=%s; off: %d -> %s" % [
+		calm_parts, str(calm_still), lively_parts,
+		"PASS" if calm_parts == 0 and calm_still and lively_parts > 0 else "FAIL"])
+
+	# --- S8 RUNS LAST, and the ordering is load-bearing. It calls _load_system,
+	# which frees system_root and every storm hanging off it — so any assertion
+	# after it that still holds a Storm reference is reading a freed node. That
+	# is exactly what happened on the first run: S9 and S13 both dereferenced the
+	# storm S8 had just destroyed, and the harness logged "Invalid access to
+	# property on a base object of type 'previously freed'" without failing a
+	# single clause. A test that tears down the world belongs at the end of the
+	# test that needs one.
+	# --- S8. a storm is session weather -------------------------------------
+	# THE BACK DOOR, CHECKED IN THE SOURCE. 53's rule is that anything ambient
+	# which LOGS, saves — note_log queues a write, and that is how a convoy's
+	# arrival once overwrote a SAVETEST fixture. A storm is ambient and
+	# long-lived, so the temptation is real and the check has to be too. Read
+	# out of the file the way THE PINNING LIST IS COMPLETE reads main.gd, because
+	# there is no runtime signal for "this never happens".
+	var storm_src := FileAccess.get_file_as_string("res://scripts/storm.gd")
+	# THE CALL FORM, NOT THE WORD. The first draft searched for "note_log" and
+	# went red on storm.gd's own header comment promising it never calls it —
+	# an assertion defeated by the sentence written to explain it. Matching
+	# "GameState.note_log(" cannot be satisfied by prose.
+	var logs := storm_src.contains("GameState.note_log(") \
+		or storm_src.contains("GameState.note_ledger(")
+	var save_leak := storm_src.contains("_queue_save(") or storm_src.contains("save_game(")
+	spawn_storm()
+	var before_load := live_storms.size()
+	_load_system(system_id)
+	await get_tree().process_frame
+	var after_load := get_tree().get_nodes_in_group("storm").size()
+	print("[storm] A STORM IS SESSION WEATHER %d live before a rebuild, %d nodes after, live list %d; storm.gd logs=%s saves=%s, format still v%d -> %s" % [
+		before_load, after_load, live_storms.size(), str(logs), str(save_leak),
+		GameState.SAVE_VERSION,
+		"PASS" if after_load == 0 and live_storms.is_empty() and not logs and not save_leak
+			and GameState.SAVE_VERSION == 20 and storm_src.length() > 0 else "FAIL"])
 
 	get_tree().quit()

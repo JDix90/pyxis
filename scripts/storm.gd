@@ -126,6 +126,16 @@ const COPY := {
 	"eye": "THE STORM IS TAKING YOUR HULL — BURN OUTWARD NOW",
 	"tag": " · CAUGHT — BURN OUTWARD",
 	"blow_out": "THE STORM BLEW ITSELF OUT",
+	# 58 audited: "storm" is taught by the line that introduces it, "bearing" is
+	# already vocabulary, GO AROUND and CARRY are the verbs, and the answer is
+	# named by CommodityDB's own display name rather than by a description of it.
+	#
+	# The sender is the ship's OWN INSTRUMENTS and not the GSA. Band 4's
+	# broadcast already established that the beacon net does not reach, and band
+	# 6's is "· · ·" / "Nothing is transmitting. Something is listening." An
+	# automated advisory out here would contradict shipped fiction.
+	"from": "YOUR OWN INSTRUMENTS",
+	"body": "A STORM AHEAD — BEARING %03d, %du OFF. IT PULLS EVERYTHING INWARD. GO AROUND IT, OR CARRY A THERMAL SINK THROUGH IT.",
 }
 
 var _heading := Vector2.RIGHT
@@ -448,7 +458,23 @@ func _tick_hud(player: PlayerShip, dist: float) -> void:
 		# every quarter second is free and survives being clobbered by a bark.
 		hud.prompt(want)
 
+	# ANNOUNCED ONCE, on the first crossing of the warning ring, latched like
+	# Rift._intel_read. The bearing is through the glass — compass_deg of the
+	# DIFFERENCE, not of the storm's position — because 60's rule is that a
+	# readout points where the player must turn, and a bearing measured from the
+	# origin to something 5,600u out is arithmetic nobody can fly.
+	if not _announced and dist <= WARN_RADIUS:
+		_announced = true
+		var away := global_position - player.global_position
+		away.y = 0.0
+		hud.show_broadcast(String(COPY["from"]),
+			String(COPY["body"]) % [DeepSpace.compass_deg(away), int(dist)],
+			Palette.band_color(band_index()))
+
 	if _audio:
+		# Loudness alone carries proximity: the rig is fixed top-down, so there
+		# is no stereo image to place it in. SweepArm's argument, and a storm is
+		# the second thing in the game that reaches you from off screen.
 		var t := clampf(1.0 - dist / WARN_RADIUS, 0.0, 1.0)
 		_audio.volume_db = lerpf(AUDIO_DB_FAR, AUDIO_DB_NEAR, t)
 

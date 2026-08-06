@@ -116,7 +116,7 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **598 PASS / 0 FAIL / 0 script errors** across 61 runs, save
+Current baseline: **616 PASS / 0 FAIL / 0 script errors** across 62 runs, save
 format **v20** — measured on Godot 4.6.stable, headless. The frontier's stage 1
 (STRATEGY §68) added bands 5 and 6 past THE QUIET and a `FRONTIERTEST` tag of 14
 assertions, and needed no save bump: deep space persists nothing, and new module
@@ -126,7 +126,10 @@ OTHER ten suites then failed eleven assertions, nine of which no amount of
 playing would have surfaced. Stage 2 (§69) adds the Mk III line, three new
 tools and Reactor Mk V — ten modules stocked nowhere until stage 3 authors the
 counters, the forge craftables' precedent that an unstocked catalog row is
-invisible and safe. Stage 3 (§70) lands THE BREAKWATER and THE FAR LANTERN and
+invisible and safe. §71 adds **storms** — wandering weather in THE UNSOUNDED
+with its own `STORMTEST` tag, and the source of this repo's clearest statement
+yet that an assertion can fail by CRASHING rather than by printing FAIL, which a
+sweep reports as a timeout rather than a red line. Stage 3 (§70) lands THE BREAKWATER and THE FAR LANTERN and
 closes the loop — `NO ARBITRAGE` widens to 13 counters and 169 pairs with the
 binding pair unmoved, and the whole horizon needed no save bump. Hunt stage 4
 (STRATEGY

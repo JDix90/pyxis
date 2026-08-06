@@ -5987,6 +5987,10 @@ same commit.**
 
 ### Outstanding
 
+**Nothing outstanding from the frontier.** Stages 1–4 shipped as §68–§70 plus
+stage 4's own commit; §71 adds storms on top. The historical table is kept below
+as the record of how it resolved.
+
 **The frontier, stages 2–4** (owner-commissioned 2026-08-05 after the 8000u
 playtest; stage 1 shipped as §68). The full plan is in
 `~/.claude/plans/you-are-continuing-work-kind-lemur.md`.
@@ -6802,3 +6806,161 @@ themselves rather than in the game: one deletes the frontier weight rows outrigh
 to prove the non-vacuity clause catches an empty sweep, and one removes a single
 port from a single component's `trade_only_at` to reproduce the fence/market
 disagreement the audit caught before it existed.
+
+---
+
+## 71. Weather in the Unsounded
+
+Four hundred units across, wandering, and the only thing in this game that kills
+you without shooting at you. Asked for as *"random, massive space storms out
+beyond 5000u, hurricane-esque… ships without a Mk II drive or higher pulled in
+slowly, unable to escape without specialized equipment… these destroy anything
+unable to escape their pull."*
+
+### Three collisions, asked about before anything was built
+
+Each part of that sentence hit a rule this repo already enforces, so all three
+went to the owner as questions rather than to the compiler as assumptions.
+
+- **"Unable to escape" is forbidden by a constant.** `apply_tether` ends
+  `minf(cap, TETHER_DRAG_CEILING)` at 1.5, `enforce_floors` floors `max_speed` at
+  1.6, and §40 adds *"no tuning of it may build a cage."*
+- **"Destroyed" had no precedent.** §18, of the deep's nastiest trap: *"It can
+  cost you the run; it cannot trap you in one."*
+- **"Beyond 5000u" is not a band edge**, and §17 rejects "an absolute number that
+  happens to suit PYX-01".
+
+Answered: band 6, the game's existing worst death (emergency warp +
+`spill_unread`, which at 5200u is a ~15-minute flight home and every unread crate
+left behind), and a pull that goes **through `apply_tether`** so the promise holds
+by construction rather than by this file remembering it.
+
+### The gradient replaces the gate
+
+Thrust and drag add; an EMP kills thrust while drag keeps applying. So net
+progress is `max_speed·(1 − duty) − drag` and the break-even speed is
+`drag / (1 − duty)` — which means **the storm needs no rule about drive tiers at
+all**, only a gradient:
+
+| dist | drag | duty | break-even speed |
+|---|---|---|---|
+| 200 | 0.300 | — | 0.30 |
+| 36 (eyewall) | 1.202 | 0.000 | **1.20** |
+| 18 | 1.301 | 0.608 | 3.32 |
+| 0 | 1.400 | 0.860 | **10.00** |
+
+The eyewall threshold sits **under the 1.6 floor**, so every legal fit escapes
+from anywhere outside the eye, always. The centre sits at exactly 10.00 —
+between the best tier-1 drive (9.25) and the best tier-2 (10.75). `DRAG_MAX` is
+*derived* from that threshold rather than chosen, and `THE CEILING IS THE
+PROMISE` reads the drive totals out of the live catalog, so **a Mk III drive
+turns the clause red and makes somebody re-decide the boundary** instead of
+silently moving it.
+
+**The pull is not the trap**, and the header says so in the first paragraph: the
+radii where a real drive is genuinely pinned are single digits (Vector 5.1u,
+Cruise 0.8u, Cruise Mk II never). The teeth are the **cancelled move order** —
+`emp_stun` clears `has_move_target`, every 4–5s in the eye — and a damage clock
+ramping to 14/s. From dead centre a Cruise Mk II behind Bulwark's 250 shield
+still dies; with a carried Thermal Sink it is a seven-second walk out costing 57.
+**The specialised equipment already existed and had never had a job.**
+
+### Wandering turned out to be free
+
+The plan flagged "genuinely wandering" as the expensive option because the deep
+is stateless. It is not: **the deep's purity rule governs CELLS**, which must be
+pure functions of position and seed. `Rift` is already the precedent for weather
+that is not — `spawn_rift` uses the unsalted global `randf()` because *"this is
+session weather, not world generation"*, and a rift *"is weather you were present
+for… a reload never owed it to you."* A storm is a `system_root` child: no cell,
+no salted stream, no fingerprint, no saved byte.
+
+§14 — being jumped must be something you could have reacted to — is answered by
+one clamp rather than by making it stationary: inside the warning ring the drift
+is projected onto the tangent, so **a storm never closes the last 520u; the
+player does.**
+
+### Six defects, and the one that matters most is a class
+
+Three in the object, caught in two harness runs: the pull was guarded on
+`is_protected()` (which would have made the Aegis core a tractor immunity nobody
+designed); the session-weather check searched `storm.gd` for `note_log` and was
+**defeated by the header comment promising it never calls it**; and the standoff
+clamp had its sign inverted, so a storm that "never closes" walked 8.5u straight
+down the ship's throat — caught only because that clause is two-sided.
+
+And three in the assertions themselves, which is the pattern worth naming:
+
+**`TWO STORMS CANNOT BUILD A CAGE` was vacuous.** It staged the ship exactly
+midway between two storms, so their inward unit vectors cancelled and it measured
+**0.000 — a number it would print with no clamp at all.** It was asserting that
+two opposed unit vectors sum to zero. The proof it was blind rather than lucky:
+its neighbour moved 2.4u → 4.4u in the *same process*. It now stages them 60°
+apart at equal distance so the pulls add, and asserts the channel actually
+filled — the missing clause that let zero pass.
+
+### Assertions that fail by CRASHING, not by printing FAIL
+
+Three times this horizon now, and it deserves its own name because the remedy is
+different from the vacuity remedy:
+
+| where | what happened |
+|---|---|
+| §68, `TRAP_EMP` | shortening a band table threw out-of-bounds in the next clause; 9 of 14 never printed |
+| §70 (stage 4) | the orphan grave-field branch recorded the orphan, then read `["pos"]` off the hull that was missing |
+| §71 | `_load_system` freed the probe storm; two later clauses read a freed node |
+
+In every case the run did not fail — it **aborted or hung**, which a sweep
+reports as a timeout or a script error rather than a red line, and which a
+summary line renders as *fewer passes* rather than as a failure. The rules that
+follow:
+
+- **An assertion must survive the defect it describes.** Bound every loop by the
+  array's own length; `continue` after recording a missing thing rather than
+  falling through to arithmetic on it.
+- **An assertion that tears down the world belongs last**, and one that frees a
+  group must spare the fixtures its neighbours are standing on.
+- Red-verify now reports **`harness_completed` separately from
+  `target_went_red`**, because those two failures look identical in a summary and
+  have opposite fixes.
+
+### A bound with one side cannot tell "softly" from "not at all"
+
+`NOTHING IN A STORM OUT-HITS THE CHART` compared three storm constants against
+three chart constants with `<`, and shipped that way. A red-verify that happened
+to zero `EYE_DPS_MAX` produced:
+
+    per-tick 0.00 ... sustained 0.0/s ... -> PASS
+
+**Zeroing the constants made it pass harder.** The rule was never "the storm hits
+softly"; it is "the storm hits, AND softer than the chart" — and a one-sided
+bound cannot express the conjunction. Floors added, and the line now says "(and
+it does hit)" so the shape of the claim is legible from the output alone.
+
+Fourth vacuity this horizon, and the pattern across all four is one sentence:
+**every bound needs the side that proves the thing exists**, because absence
+satisfies every inequality pointing away from it.
+
+### And a number that was wrong while its verdict was right
+
+`THE TELEGRAPH READS FROM FURTHER OUT THAN THE POINT OF NO RETURN` walked inward
+assigning on every match instead of stopping at the first, so it printed the
+*smallest* radius where the floor fit is beaten: **0.5u for a true 33.2u**. The
+PASS beside it was correct throughout. This is the third instance this session,
+and it is the argument for printing the measurement next to the verdict rather
+than the verdict alone — a bare PASS would have hidden all three.
+
+### Measurements
+
+**62 runs, 612 PASS, 0 FAIL** at PR 1; the instruments add four more clauses.
+`MIDTIER` untouched and structurally so: the storm generates no income, the
+pacing profiles are measured at depth 0, and a storm cannot exist inside 5400.
+What it *is* is a **denial** of income that `MIDTIER` is blind to — and its real
+economic teeth are emergent rather than authored: **you cannot work a site inside
+a storm's pull ring**, because the drag pulls a parked ship out of `CRACK_RANGE`
+and `hold_tick` releases.
+
+One adjacent fix, found on the way: **`FX.vortex` had never honoured
+`reduce_motion()`** — every other effect in that file does. §30's rule is
+gate-at-the-function, and it is gated there now; both callers already discarded
+the return.

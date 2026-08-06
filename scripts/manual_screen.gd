@@ -252,6 +252,7 @@ func _build_hud() -> void:
 	_body.add_child(_legend(Palette.HULL, "SEAM", "Ore on a rock. Grey until MINING teaches it to show its colour."))
 	_body.add_child(_legend(Palette.GOLD, "GHOST", "Where your readings agree the engine is. It is a guess, and it moves as you gather more."))
 	_body.add_child(_legend(Palette.GOLD, "BEACON", "A waypoint you dropped. Eight in stock; hold on one to take it back."))
+	_body.add_child(_legend(Palette.band_color(DeepSpace.BAND_NAMES.size() - 1), "STORM", "Weather in the deepest band. It pulls you in and it kills drives. Fly around it, or carry a Thermal Sink through it."))
 	_body.add_child(_back())
 
 
