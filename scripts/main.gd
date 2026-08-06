@@ -20560,9 +20560,19 @@ func _run_storm_test() -> void:
 	var guard_dps := Hostile.DAMAGE \
 		* float(DeepSpace.GUARD_DIFFICULTY[DeepSpace.GUARD_DIFFICULTY.size() - 1]) \
 		/ Hostile.FIRE_INTERVAL
+	# FLOORED AS WELL AS CAPPED, and the floor is the half this shipped without.
+	# All three terms were one-sided `<`, so ZEROING the constants made the clause
+	# pass HARDER — a storm that does no damage and casts no EMP would have read
+	# as "comfortably under the chart's hardest gun". A red-verify caught it
+	# printing `per-tick 0.00, sustained 0.0/s -> PASS`.
+	#
+	# The rule was never "the storm hits softly"; it is "the storm hits, and
+	# softer than the chart". A bound with only one side cannot tell those apart,
+	# and this is the third clause this horizon to learn it.
 	var outhit_ok: bool = storm_tick < chart_alpha and Storm.EYE_DPS_MAX < guard_dps \
-		and Storm.EMP_LEN_MAX < deep_emp
-	print("[storm] NOTHING IN A STORM OUT-HITS THE CHART per-tick %.2f vs the chart's hardest shot %.1f; sustained %.1f/s vs an Unsounded post's %.1f/s; EMP %.1fs vs a rigged hulk's %.1fs -> %s" % [
+		and Storm.EMP_LEN_MAX < deep_emp \
+		and storm_tick > 0.0 and Storm.EYE_DPS_MAX > 0.0 and Storm.EMP_LEN_MAX > 0.0
+	print("[storm] NOTHING IN A STORM OUT-HITS THE CHART (and it does hit) per-tick %.2f vs the chart's hardest shot %.1f; sustained %.1f/s vs an Unsounded post's %.1f/s; EMP %.1fs vs a rigged hulk's %.1fs -> %s" % [
 		storm_tick, chart_alpha, Storm.EYE_DPS_MAX, guard_dps,
 		Storm.EMP_LEN_MAX, deep_emp, "PASS" if outhit_ok else "FAIL"])
 

@@ -6924,6 +6924,23 @@ follow:
   `target_went_red`**, because those two failures look identical in a summary and
   have opposite fixes.
 
+### A bound with one side cannot tell "softly" from "not at all"
+
+`NOTHING IN A STORM OUT-HITS THE CHART` compared three storm constants against
+three chart constants with `<`, and shipped that way. A red-verify that happened
+to zero `EYE_DPS_MAX` produced:
+
+    per-tick 0.00 ... sustained 0.0/s ... -> PASS
+
+**Zeroing the constants made it pass harder.** The rule was never "the storm hits
+softly"; it is "the storm hits, AND softer than the chart" — and a one-sided
+bound cannot express the conjunction. Floors added, and the line now says "(and
+it does hit)" so the shape of the claim is legible from the output alone.
+
+Fourth vacuity this horizon, and the pattern across all four is one sentence:
+**every bound needs the side that proves the thing exists**, because absence
+satisfies every inequality pointing away from it.
+
 ### And a number that was wrong while its verdict was right
 
 `THE TELEGRAPH READS FROM FURTHER OUT THAN THE POINT OF NO RETURN` walked inward
