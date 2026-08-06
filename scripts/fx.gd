@@ -87,6 +87,15 @@ static func shockwave(parent: Node3D, pos: Vector3, color: Color, max_radius := 
 static func vortex(parent: Node3D, pos: Vector3, color: Color, duration := 3.0) -> Node3D:
 	# Inward-swirling shimmer for the salvage-vacuum climax. Returns the node
 	# so the caller can stop it early.
+	#
+	# GATED AT THE FUNCTION, which is 30's rule and the reason this is here and
+	# not at the two call sites: an accommodation checked by callers is an
+	# accommodation the next caller forgets. This one had been missed since it
+	# shipped — every other effect in this file honours the setting and the
+	# vortex did not. Both existing callers already discard the return value, so
+	# null is safe.
+	if GameState.reduce_motion():
+		return null
 	var p := CPUParticles3D.new()
 	p.amount = 220
 	p.lifetime = 1.1

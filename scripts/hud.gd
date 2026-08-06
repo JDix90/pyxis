@@ -109,14 +109,30 @@ class RadarLayer:
 	# v20. Appended at the BOTTOM for the third time, same argument as both
 	# above: nothing renumbered. Below even the ghost, deliberately — a beacon
 	# is the one marker whose position the player ALREADY KNOWS (they put it
-	# there), so when the 12-marker cap bites it is the cheapest thing to shed.
+	# there), so when the 12-marker cap bites it is the cheapest CONTACT to shed.
+	#
+	# v20 put one thing below it, and the reason is a different one: a storm
+	# carries four other telegraphs, so its arrow is redundant where a beacon's
+	# is the only channel that marker has.
 	const TIER_BEACON := 6
+	# v20 STORMS. Appended at the BOTTOM for the fourth time, same argument as
+	# all three above: nothing renumbered. It sits below even the beacon because
+	# a storm is the one marker the player is trying to be AWAY from — when the
+	# 12-marker cap bites, the thing you are avoiding is the least useful arrow
+	# on a crowded board.
+	#
+	# AND IT IS SUPPRESSED ONCE THE STORM HAS YOU. See the collector: an arrow
+	# pointing at the centre while the prompt reads BURN OUTWARD is the
+	# instrument contradicting the cockpit, which is the defect 60 fixed on the
+	# compass. Outside the ring it means "that way is weather"; inside it, the
+	# always-on HOME compass is the bearing that matters.
+	const TIER_STORM := 7
 	# Every tier, in tier order, by the NAME THE MANUAL PRINTS. The manual's
 	# rows stay hand-written -- each carries a colour and a sentence, which is
 	# copy, not data -- but COVERAGE becomes assertable: a tier added here
 	# without a legend row turns THE MANUAL IS TRUE TO THE DEVICE AND TO THE
 	# HUD red, naming the tier nobody documented.
-	const TIER_NAMES := ["HOME", "APEX", "PORT", "SITE", "HOSTILE", "SEAM", "GHOST", "BEACON"]
+	const TIER_NAMES := ["HOME", "APEX", "PORT", "SITE", "HOSTILE", "SEAM", "GHOST", "BEACON", "STORM"]
 	# What the dossier has to be worth before the ghost appears at all. Three
 	# agreeing hints and a search circle under 200u is the point where an arrow
 	# is honest guidance rather than a confident lie: below that the estimate
@@ -307,6 +323,10 @@ class RadarLayer:
 		# v20. The player's own waypoints. GOLD like nothing hostile, sized
 		# normal, and last in line for the cap — see TIER_BEACON's comment.
 		["beacon", TIER_BEACON, Palette.GOLD, SIZE_NORMAL],
+		# v20. Weather. Band 6's own colour rather than THREAT, because THREAT is
+		# what shoots at you and a storm does not — and APEX-sized, because it is
+		# four hundred units across and a normal dot would be a lie about scale.
+		["storm", TIER_STORM, Palette.band_color(DeepSpace.BAND_NAMES.size() - 1), SIZE_APEX],
 		]:
 			for node in get_tree().get_nodes_in_group(String(spec[0])):
 				var n := node as Node3D
@@ -328,6 +348,17 @@ class RadarLayer:
 				# before the first hint was ever bought.
 				if String(spec[0]) == "apex" \
 						and player.global_position.distance_to(world) > ApexBoss.DETECT_RANGE:
+					continue
+				# v20. THE OPPOSITE RULE, FOR THE OPPOSITE REASON. The apex is
+				# hidden until you are close; a storm is shown until you are
+				# INSIDE it. Once the pull has you the prompt reads BURN OUTWARD,
+				# and an arrow pointing at the centre in that same moment is the
+				# instrument contradicting the cockpit — 60's compass defect,
+				# rebuilt on a new surface. Out there the arrow means "that way is
+				# weather"; in here the always-on HOME compass is the only bearing
+				# worth having.
+				if String(spec[0]) == "storm" \
+						and player.global_position.distance_to(world) <= Storm.PULL_RADIUS:
 					continue
 				var screen := _project(cam, world, centre, rect)
 				if inset.grow(-OFFSCREEN_PAD + EDGE_MARGIN).has_point(screen):
@@ -498,6 +529,7 @@ var _system_short := ""
 var _deep_band := ""
 var _deep_out := 0.0
 var _deep_wash := false
+var _deep_caught := false
 var _gain_timer: SceneTreeTimer = null
 
 
@@ -1099,15 +1131,21 @@ func set_system_tag(text: String) -> void:
 	_apply_system_tag()
 
 
-func set_deep_tag(band_name: String, out_distance: float, wash := false) -> void:
+func set_deep_tag(band_name: String, out_distance: float, wash := false,
+		caught := false) -> void:
 	# band_name "" means inside the charted system, where this whole readout
 	# collapses back to exactly the string it has always shown.
+	#
+	# `caught` is a FOURTH OPTIONAL param rather than a reshaped signature, so
+	# the one production caller and the one harness caller that do not pass it
+	# are untouched by construction.
 	if band_name == _deep_band and absf(out_distance - _deep_out) < 1.0 \
-			and wash == _deep_wash:
+			and wash == _deep_wash and caught == _deep_caught:
 		return
 	_deep_band = band_name
 	_deep_out = out_distance
 	_deep_wash = wash
+	_deep_caught = caught
 	_apply_system_tag()
 
 
@@ -1147,6 +1185,17 @@ func _apply_system_tag() -> void:
 		# boundary sits outside the radar cutoff it precedes -- it can never be
 		# more precise than the instrument it is announcing.
 		_system_label.text += " · JAMMED — SOMETHING IS CLOSE"
+	if _deep_caught:
+		# v20. The same grammatical shape as the jam above — state, em-dash,
+		# consequence — and the same HERE-never-THAT-WAY rule: byte-identical at
+		# 199u and at 5, so no bearing leaks out of it, and its boundary is the
+		# pull radius, coarser than the prompt it sits beside.
+		#
+		# The two can never both be true. The lair keep-out lives at depth 1450
+		# at the deepest and the storm floor is 5400, so a ship cannot be inside
+		# a carrier wash and a storm at once — worth saying, because a reader
+		# will otherwise wonder what a double suffix reads like.
+		_system_label.text += Storm.COPY["tag"]
 	var c: Color = Palette.band_color(band)
 	_system_label.add_theme_color_override("font_color", Color(c.r, c.g, c.b, 0.75))
 
