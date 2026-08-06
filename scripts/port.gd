@@ -1,7 +1,10 @@
 class_name Port
 extends Node3D
-# A dockable place. Station, colony, or military yard — three silhouettes over
-# one contract, so adding a fourth port is a data entry rather than a new class.
+# A dockable place. Seven silhouettes over one contract, so adding a port is a
+# data entry rather than a new class — and each shape is used by exactly one
+# archetype at any depth a player can reach it, because a port's NAME only
+# appears at DOCK_RANGE and a shape shared by two counters at the same band
+# means flying four hundred units to find out which one you picked.
 #
 # Docking is the game's only safe state: clamped on, nothing can hurt you and
 # nothing hunts you. It is refused during an apex fight, because breaking off a
@@ -73,6 +76,10 @@ func _build() -> void:
 			_build_depot()
 		"den":
 			_build_den()
+		"bulwark":
+			_build_bulwark()
+		"lantern":
+			_build_lantern()
 		_:
 			_build_station()
 	_build_dock_ring()
@@ -371,6 +378,99 @@ func _build_strobes() -> void:
 		_strobes.append(mat)
 		_strobe_phase.append(seed_rng.randf_range(0.0, TAU))
 		_strobe_rate.append(seed_rng.randf_range(0.55, 0.95))
+
+
+func _build_bulwark() -> void:
+	# THE BREAKWATER, band 5. A wall, and everything else is behind it.
+	#
+	# Its own silhouette rather than `military`, because BLACKWATCH YARD already
+	# wears that one and both are eligible from band 5 out. A port's name only
+	# appears at DOCK_RANGE 5.0, so two identical shapes at the same depth means
+	# committing to a four-hundred-unit approach to find out which counter you
+	# flew to. The landmarks make the same argument for the same reason: a second
+	# tell that is also the first tell says nothing new.
+	var slab := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(6.4, 3.0, 0.9)
+	slab.mesh = bm
+	slab.material_override = Palette.matte(Color(0.17, 0.18, 0.19))
+	add_child(slab)
+
+	# Buttresses on the deep-facing side only. The wall has a FRONT, which is
+	# what makes it read as a breakwater rather than as a block.
+	for i in range(4):
+		var rib := MeshInstance3D.new()
+		var rm := BoxMesh.new()
+		rm.size = Vector3(0.55, 2.2, 2.6)
+		rib.mesh = rm
+		rib.material_override = Palette.matte(Color(0.13, 0.14, 0.15))
+		rib.position = Vector3(-2.4 + float(i) * 1.6, -0.2, -1.5)
+		rib.rotation_degrees.x = -12.0
+		add_child(rib)
+
+	# Gun galleries: three hard points along the top, lit like something on
+	# watch rather than something for sale.
+	for i in range(3):
+		var mount := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.26
+		cm.bottom_radius = 0.42
+		cm.height = 1.1
+		mount.mesh = cm
+		mount.material_override = Palette.emissive(Palette.THREAT, 1.5)
+		mount.position = Vector3(-2.1 + float(i) * 2.1, 1.9, -0.2)
+		add_child(mount)
+
+
+func _build_lantern() -> void:
+	# THE FAR LANTERN, band 6. One light on a mast, and nothing behind it.
+	#
+	# Deliberately the SMALLEST silhouette of any port in the game and the
+	# brightest single element — the opposite of the Cantina's ring of signs. A
+	# place that is keeping a light on, not advertising one.
+	var mast := MeshInstance3D.new()
+	var mm := CylinderMesh.new()
+	mm.top_radius = 0.22
+	mm.bottom_radius = 0.34
+	mm.height = 5.2
+	mast.mesh = mm
+	mast.material_override = Palette.matte(Color(0.15, 0.16, 0.18))
+	add_child(mast)
+
+	# The lamp, and it is enormous for the mast carrying it.
+	var lamp := MeshInstance3D.new()
+	var lm := SphereMesh.new()
+	lm.radius = 1.15
+	lm.height = 2.3
+	lamp.mesh = lm
+	lamp.position.y = 3.2
+	lamp.material_override = Palette.emissive(Palette.WHITE_HOT, 4.2)
+	add_child(lamp)
+
+	# A single hoop under it, unlit: the housing of something that used to be
+	# bigger. The one detail that says this was not built to be the last thing.
+	var housing := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 1.5
+	tm.outer_radius = 1.72
+	tm.ring_segments = 20
+	housing.mesh = tm
+	housing.position.y = 3.2
+	housing.scale.y = 0.35
+	housing.material_override = Palette.matte(Color(0.19, 0.20, 0.22))
+	add_child(housing)
+
+	# Two habitation cans clamped low on the mast. Somebody lives here.
+	for i in range(2):
+		var can := MeshInstance3D.new()
+		var cm2 := CapsuleMesh.new()
+		cm2.radius = 0.36
+		cm2.height = 1.5
+		can.mesh = cm2
+		can.rotation_degrees.z = 90.0
+		can.position = Vector3(0.0, -0.4 + float(i) * 0.9, 0.62 if i == 0 else -0.62)
+		can.material_override = Palette.matte(Color(0.22, 0.21, 0.20))
+		add_child(can)
 
 
 func _build_dock_ring() -> void:

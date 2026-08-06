@@ -39,15 +39,23 @@ const SELLBACK_CEILING := 0.75
 # and paint is an indulgence you fly home for. Out here you trade, you refit,
 # you unload what you should not be carrying, and you patch the hull.
 #
-# v16 ADDED ONE, and only to the furthest station out. This file used to say
-# flatly that "rumours are the Cantina's trade in news of a chart these places
-# are off", and for market gossip that is still exactly right -- a station 1,200
-# units past the edge has nothing to say about a glut at the Anchor. But THE
-# HUNT is not news of the chart; it is news of the deep, and the Last Watch is
-# the only address in the game that is deeper than the thing being hunted. So it
-# sells the sharpest bearing there is (+-5 degrees, 900 salvage) while the
-# Cantina sells the vaguest (a band and a quadrant, 500), and the price of
-# precision is measured in how far out you were willing to go to ask.
+# v16 ADDED ONE, and only to one station. This file used to say flatly that
+# "rumours are the Cantina's trade in news of a chart these places are off", and
+# for market gossip that is still exactly right -- a station 1,200 units past the
+# edge has nothing to say about a glut at the Anchor. But THE HUNT is not news of
+# the chart; it is news of the deep, and the Last Watch sits deeper than the
+# thing being hunted. So it sells the sharpest bearing there is (+-5 degrees, 900
+# salvage) while the Cantina sells the vaguest (a band and a quadrant, 500), and
+# the price of precision is measured in how far out you were willing to go to
+# ask.
+#
+# v20 BROKE THE "FURTHEST STATION" HALF OF THAT AND KEPT THE REST. The Last Watch
+# was the deepest address in the game when the paragraph above was written; THE
+# FAR LANTERN now sits four thousand units past it and sells NO rumours and no
+# bearing at all. That is deliberate rather than an omission: the arc the intel
+# prices walk is about how far you went to ask, and a station past the end of the
+# question has nobody left to ask. Depth stops buying information out there — it
+# buys a reactor instead.
 const ARCHETYPES := [
 	{
 		"id": "deep_relay",
@@ -155,10 +163,17 @@ const ARCHETYPES := [
 		"min_band": 4,
 		"freeport": true,
 		"blurb": "Still lit. Nobody is sure who is paying for it.",
-		# The furthest thing out, and the best prices in the game for the things
-		# only the deep produces. It fences as well as the Haven, because at this
-		# range the distinction between a fence and a market has stopped meaning
-		# anything to anyone.
+		# The best prices in the game for the things only the deep produces. It
+		# fences as well as the Haven, because at this range the distinction
+		# between a fence and a market has stopped meaning anything to anyone.
+		#
+		# NO LONGER THE FURTHEST THING OUT, and that line is deleted rather than
+		# softened: v20's frontier put THE FAR LANTERN four thousand units past
+		# this one. What survives is the claim that actually earns its keep — the
+		# Watch still sells the SHARPEST BEARING there is, because the Lantern
+		# deliberately buys no rumours and asks after nothing. Further out is not
+		# the same as better informed, and out here it stops being the same at
+		# all.
 		"services": ["market", "fence", "repair", "rumors"],
 		"rumor_price": 700,
 		"hunt_price": 900,
@@ -169,6 +184,76 @@ const ARCHETYPES := [
 		"fence_mult": 1.45,
 		"repair_price": 800,
 		"stock": [],
+	},
+	{
+		"id": "deep_breakwater",
+		"name": "THE BREAKWATER",
+		"kind": "bulwark",
+		# THE STILLNESS KEEPS THE LIGHTS, and this is the second of them. The Last
+		# Watch's reveal was that somebody neutral is paying for a lamp 1,200u out;
+		# the frontier's answer to "who else" is the same somebody, twice more. A
+		# fourth unknown would spend a fresh mystery to say a thing already said.
+		"owner": "unknown_c",
+		"min_band": 5,
+		"freeport": true,
+		"blurb": "The wall the deep breaks on. Guns sold by people who use them.",
+		# The armoury of the Fathoms, and the reason band 6 is survivable: THE MK
+		# III WEAPONS ARE BOUGHT HERE, one band inside the place they are for.
+		# Blackwatch does the same thing one rung down — you arm for the Quiet in
+		# the Reaches — and repeating it is what makes the ladder a ladder.
+		"services": ["market", "outfitter", "repair"],
+		"bias": {"alloys": 1.40, "cores": 1.35, "ore_osmium": 1.25, "ore_vitrite": 1.25},
+		"sellback": 0.70,
+		# YOU PAY FOR THE ADDRESS, and this is the only place that idea is
+		# expressed. The first draft also charged 1600 to repair, which the audit
+		# caught as the one number that broke a property holding across all five
+		# shipped deep bays: every one of them is CHEAPER than the charted 1400,
+		# and the deep tail runs 900 -> 800 monotonically outward. Charging twice
+		# for "far from anybody" is redundant when outfit_mult already says it.
+		"outfit_mult": 1.10,
+		"repair_price": 750,
+		"stock": ["pulse_3", "lance_3", "arc_3", "torp_3",
+			"util_repair_3", "util_torch", "rig_expedition"],
+	},
+	{
+		"id": "deep_lantern",
+		"name": "THE FAR LANTERN",
+		"kind": "lantern",
+		"owner": "unknown_c",
+		"min_band": 6,
+		"freeport": true,
+		"blurb": "The last light. After it there is nothing, and it knows.",
+		# THE DEEPEST DESK IN THE GAME, and it sells no news at all. That is the
+		# note, not an omission: the intel prices walk an arc about how far you
+		# went to ASK, and past the end of the question there is nobody left to
+		# ask. The Last Watch keeps the sharpest bearing; this place keeps a lamp.
+		#
+		# What depth buys here instead is the RACK: the defensive Mk III line and
+		# the only Reactor Mk V in the game.
+		"services": ["market", "outfitter", "fence", "repair"],
+		# Better than the Watch on the two things only the frontier drops, which
+		# is what stops the deepest counter being worse than a band-2 one at
+		# everything. Deliberately small: this is 5,200u of income at the far end
+		# of a loop the pacing band cannot see, and a big number here would be a
+		# raise nobody measured.
+		"bias": {"relics": 1.50, "cores": 1.45, "contraband": 1.25, "stolen": 1.20},
+		"fence_goods": ["relics", "cores", "contraband", "stolen",
+			"plate_ablative", "cell_fuel", "rod_decay", "sink_thermal", "lattice_data", "index_cartographic", "servo_prewar", "heart_reliquary", "lens_unsounded", "manifest_forged", "charge_unstable"],
+		"fence_mult": 1.45,
+		"sellback": 0.72,
+		"outfit_mult": 1.05,
+		# The cheapest repair in the game, continuing the mercy gradient the deep
+		# bays already walk: 900 at the Reaches, 800 at the Quiet, 750, then this.
+		# The further out you are, the less the last lit place charges to put you
+		# back together, and it is the one number in this file that gets kinder
+		# with distance.
+		"repair_price": 700,
+		# THE ONLY DEF IN THE GAME THAT NAMES A REACTOR CAP. Absent means
+		# ModuleDB.REACTOR_CAP_DEFAULT (Mk IV), so every other counter keeps its
+		# behaviour by construction and the Mk V is bought at the far end of the
+		# Unsounded or not at all.
+		"reactor_cap": 4,
+		"stock": ["util_shield_3", "util_scanner_3", "util_haste"],
 	},
 ]
 
