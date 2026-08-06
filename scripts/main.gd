@@ -20155,4 +20155,75 @@ func _run_frontier_test() -> void:
 	print("[frontier] THE FENCE SELLS NOTHING THE MARKET HIDES every fence_goods entry trades at the desk that fences it -> %s %s" % [
 		"PASS" if hidden == "" else "FAIL", hidden])
 
+	# --- 20. a grave-field is two wrecks, and they die separately -----------
+	# THE INVARIANT STAGE 4 BROKE ON PURPOSE. deep_space.gd said in writing that
+	# "a cell holds at most one hulk", and `_cracked` was a flat set of CELLS on
+	# the strength of it — so a second hull would have come back already-breached
+	# the moment its partner was opened, and its loot would have vanished with it.
+	# Identity is (cell, index) now, and this is the check.
+	var gf_cell := Vector2i(9001, -9001)
+	deep_space.note_hulk_cracked(gf_cell, 0)
+	var first_open := deep_space.is_hulk_cracked(gf_cell, 0)
+	var second_still_shut := not deep_space.is_hulk_cracked(gf_cell, 1)
+	deep_space.note_hulk_cracked(gf_cell, 1)
+	var second_open := deep_space.is_hulk_cracked(gf_cell, 1)
+	# And the shipped call shape still means what it always meant: no argument is
+	# index 0, so every existing caller is untouched by construction.
+	var legacy_cell := Vector2i(9002, -9002)
+	deep_space.note_hulk_cracked(legacy_cell)
+	var legacy_ok := deep_space.is_hulk_cracked(legacy_cell) \
+		and deep_space.is_hulk_cracked(legacy_cell, 0)
+	print("[frontier] TWO WRECKS DIE SEPARATELY cracking one leaves the other shut=%s, both can open=%s, the no-index call still means index 0=%s -> %s" % [
+		str(second_still_shut), str(first_open and second_open), str(legacy_ok),
+		"PASS" if second_still_shut and first_open and second_open and legacy_ok else "FAIL"])
+
+	# --- 21. grave-fields are band 6 and pair with a wreck that exists -------
+	# Planned rather than spawned, because the property is the GENERATOR's: a
+	# second hull may only exist beside a first, only past 5200u, and never
+	# carrying its own trap. Swept over real cells rather than asserted of the
+	# constants, so the gate is measured where it actually runs.
+	var gf_probe := DeepSpace.new()
+	gf_probe.generating = false
+	add_child(gf_probe)
+	gf_probe.configure(SystemDB.get_system("pyx01"), "pyx01")
+	var gf_bad := ""
+	var gf_found := 0
+	var gf_inner := 0
+	for c in range(20, 96):
+		for cell in [Vector2i(c, 0), Vector2i(0, c), Vector2i(c, c), Vector2i(-c, 0)]:
+			var pl: Dictionary = gf_probe.plan_cell(cell.x, cell.y)
+			var h2: Dictionary = pl["hulk2"]
+			if h2.is_empty():
+				continue
+			gf_found += 1
+			if int(pl["band"]) < 6:
+				gf_inner += 1
+			if (pl["hulk"] as Dictionary).is_empty():
+				gf_bad += "orphan@%d,%d " % [cell.x, cell.y]
+			if not (h2["trap"] as Dictionary).is_empty():
+				gf_bad += "trapped@%d,%d " % [cell.x, cell.y]
+			var gap: float = (h2["pos"] as Vector3).distance_to((pl["hulk"] as Dictionary)["pos"])
+			if gap < DeepSpace.GRAVE_GAP_MIN - 0.01 or gap > DeepSpace.GRAVE_GAP_MAX + 0.01:
+				gf_bad += "gap %.1f@%d,%d " % [gap, cell.x, cell.y]
+	gf_probe.queue_free()
+	print("[frontier] A GRAVE-FIELD IS TWO SHIPS THAT DIED TOGETHER %d found, none inside band 6=%s, each beside a real wreck at %.0f-%.0fu and carrying no trap -> %s %s" % [
+		gf_found, str(gf_inner == 0), DeepSpace.GRAVE_GAP_MIN, DeepSpace.GRAVE_GAP_MAX,
+		"PASS" if gf_bad == "" and gf_found > 0 and gf_inner == 0 else "FAIL", gf_bad])
+
+	# --- 22. the weather reaches further and pays the same ------------------
+	# Range is content; grade is economy. Stage 4 ships the first, and this pins
+	# the second: no authored rift may reach a band deeper than the grade ceiling
+	# can pay for, or a shear starts paying WORSE than the band it is standing in.
+	var deepest_rift := 0.0
+	for sid_v in SystemDB.ids():
+		deepest_rift = maxf(deepest_rift, SystemDB.rift_depth_max(String(sid_v), RIFT_DEPTH_MAX))
+	var rift_band := DeepSpace.band_of(deepest_rift)
+	var pays := CommodityDB.salvage_for_band(Rift.GRADE_CEILING)
+	var stands_in := CommodityDB.salvage_for_band(rift_band)
+	var not_worse: bool = CommodityDB.base_price(pays) >= CommodityDB.base_price(stands_in)
+	print("[frontier] THE WEATHER REACHES FURTHER AND PAYS THE SAME deepest rift %.0fu is band %d standing in '%s' (%d); the ceiling pays '%s' (%d), never less -> %s" % [
+		deepest_rift, rift_band, stands_in, CommodityDB.base_price(stands_in),
+		pays, CommodityDB.base_price(pays),
+		"PASS" if not_worse and Rift.GRADE_CEILING <= rift_band else "FAIL"])
+
 	get_tree().quit()

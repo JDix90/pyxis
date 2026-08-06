@@ -299,12 +299,25 @@ const SYSTEMS := {
 				# density is a window or two of flying.
 				6: [1.0, 0.8, 1.8, 0.8, 1.0, 2.2, 1.4],
 			},
-			# band -> weights over ["pylon", "frame", "monolith", "marker"].
+			# band -> weights over LANDMARK_KINDS, which is SIX wide as of v20's
+			# stage 4: ["pylon", "frame", "monolith", "marker", "gate", "cairn"].
+			# Every row here grew with it in the same commit — a row left at four
+			# does not error, it silently drops this system's whole accent back to
+			# a uniform pick.
+			#
+			# The frontier's two kinds are ZERO inside the Quiet rather than rare:
+			# a gate is a threshold and a cairn is a grave-marker, and meeting one
+			# in the Shoals would spend both. They are the deep's own vocabulary
+			# and they start where the deep stops being surveyed.
 			"landmark_weights": {
-				1: [1.5, 2.5, 0.4, 0.4],
-				2: [0.6, 3.0, 0.6, 0.4],
-				3: [0.4, 2.2, 1.6, 0.6],
-				4: [0.3, 1.4, 1.2, 1.6],
+				1: [1.5, 2.5, 0.4, 0.4, 0.0, 0.0],
+				2: [0.6, 3.0, 0.6, 0.4, 0.0, 0.0],
+				3: [0.4, 2.2, 1.6, 0.6, 0.0, 0.0],
+				4: [0.3, 1.4, 1.2, 1.6, 0.0, 0.0],
+				# PYX-02 builds things and stops: the unfinished arch is its
+				# frontier monument, the way the unfinished frame is its inner one.
+				5: [0.2, 1.0, 0.8, 0.8, 2.6, 0.4],
+				6: [0.1, 0.6, 0.6, 0.8, 1.4, 2.2],
 			},
 			# The weather reaches the Reaches here. 700 keeps every rift shy of
 			# the lair band's floor at 620 only by rejection (spawn_rift's
@@ -438,13 +451,31 @@ const SYSTEMS := {
 				# 9.2. The mute system is where the lit place matters most.
 				6: [1.0, 0.6, 0.6, 2.0, 1.0, 2.0, 2.0],
 			},
+			# Six wide, matching LANDMARK_KINDS. See the note in PYX-02's block.
 			"landmark_weights": {
-				1: [2.0, 0.5, 1.2, 0.8],
-				2: [0.8, 0.5, 2.4, 0.8],
-				3: [0.5, 0.4, 2.6, 1.2],
-				4: [0.3, 0.3, 1.6, 2.4],
+				1: [2.0, 0.5, 1.2, 0.8, 0.0, 0.0],
+				2: [0.8, 0.5, 2.4, 0.8, 0.0, 0.0],
+				3: [0.5, 0.4, 2.6, 1.2, 0.0, 0.0],
+				4: [0.3, 0.3, 1.6, 2.4, 0.0, 0.0],
+				# The mute system marks its dead. PYX-03 leans on the cairn where
+				# PYX-02 leans on the gate — one system builds and abandons, the
+				# other buries and moves on.
+				5: [0.2, 0.2, 1.2, 1.4, 1.6, 1.4],
+				6: [0.1, 0.1, 0.8, 1.0, 0.8, 3.0],
 			},
-			"rift": {"depth_max": 1200.0, "rich_mult": 1.5},
+			# v20 STAGE 4: THE WEATHER REACHES FURTHER, AND PAYS THE SAME. 1200 -> 2400
+			# doubles the volume PYX-03's shears can occur in and leaves the deepest
+			# one squarely in band 4, which is the whole point.
+			#
+			# 2800 was the obvious number and it is the one this stage refused.
+			# band_of(2800) is 5, and Rift.GRADE_CEILING is pinned at 4 — so a
+			# band-5 shear would pay QUIET salvage while standing in the Fathoms,
+			# i.e. worse than the band it is in. Fixing that means raising the
+			# ceiling, and at band-6 grades one shear pays 27,900-33,480 against a
+			# best-case eight-minute loop of ~17,000: a single windfall worth two
+			# loops, in the one part of the game no harness measures. Range is
+			# content; grade is economy. This stage ships the first.
+			"rift": {"depth_max": 2400.0, "rich_mult": 1.5},
 		},
 		"faction": "meridian",
 		# Military yards: refines its own isotopes, pays well for alloys and relics.

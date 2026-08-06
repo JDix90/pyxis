@@ -336,6 +336,18 @@ const TRAP_ESCORT_FROM := 3
 # needed. This is what gives it a job.
 const TRAP_ESCORTS := [0, 0, 0, 1, 1, 2, 3]
 
+# --- grave-fields (v20 stage 4, THE UNSOUNDED only) --------------------------
+# How often a band-6 cell that already holds a wreck holds a SECOND one beside
+# it. Gated on the first existing, so this is a conditional on the plan rather
+# than an independent roll: a grave-field is two ships that died together, and
+# one of them has to be the one the cell already had.
+const GRAVE_CHANCE := 0.34
+# How far apart. Close enough to read as one event at a glance, far enough that
+# the two hulls do not intersect — HULL_KEEPOUT is 40 and a hull's own obstacle
+# is well inside this.
+const GRAVE_GAP_MIN := 11.0
+const GRAVE_GAP_MAX := 19.0
+
 # How many deep stations keep a bonded store. Deliberately a minority: stations
 # out here are already scarce, and one that will hold your cargo has to be a
 # relief rather than an amenity. Not finding one is the point.
@@ -498,8 +510,10 @@ var _cell_last := Vector2i(0x7fffffff, 0x7fffffff)
 # Cells registered but not yet dressed. See _stream for the split and why.
 var _build_queue: Array[Vector2i] = []
 # cell -> { seam index: true }. A dict of dicts rather than the flat set
-# _cracked and _surveyed use, because a cell holds at most one hulk but can hold
-# a seam on every rock in it.
+# _cracked and _surveyed use, because a cell holds at most one SURVEY but can
+# hold a seam on every rock in it. (_cracked stopped being a flat cell set in
+# stage 4: a band-6 grave-field puts two hulls in one cell, so it keys on
+# cell-and-index now — see _hulk_key.)
 var _mined := {}
 # Per-frame budget for building meshes. About a third of a 60Hz frame, which
 # leaves room for everything else that happens on a frame where the player
@@ -1036,6 +1050,51 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 				and (cp - leg).distance_to(keep_out) >= STATION_SAFE_RADIUS:
 			out["convoy"] = {"pos": cp, "band": band, "faction": cfac,
 				"escorts": cesc, "darts": cdart, "wp": [cp + leg, cp - leg]}
+
+	# A GRAVE-FIELD. v20 stage 4, band 6 only, and the LAST thing in this
+	# function — appended after every existing roll on its own salted stream,
+	# for the reason the three comments above give and the one the seam roll's
+	# red-verify taught: trailing the stream is what makes appending safe, and
+	# the salt is what protects the NEXT appended feature from this one.
+	#
+	# EVERY DRAW HAPPENS BEFORE THE GATE, the convoy's rule: the stream's shape
+	# must not depend on what the shared stream rolled, or this block's
+	# determinism becomes hostage to whether a cell happened to hold a hulk.
+	#
+	# WHAT IT IS. The Unsounded's one piece of authored weather: a second wreck
+	# beside the first, close enough to read as one event. Everything else out
+	# there is a single hull adrift; a PAIR says they arrived together and
+	# neither left. It carries no trap and no guards — the cell's first hulk
+	# already rolled both, and doubling them would make the field a fight rather
+	# than a place.
+	#
+	# It also pays, and the payment is deliberately the SAME loot table the first
+	# hulk uses rather than a richer one. The frontier's reward for depth is
+	# already in the band tables; this is the same crate twice, which is volume,
+	# which is what the deep is supposed to give.
+	out["hulk2"] = {}
+	if band >= 6:
+		var h2rng := RandomNumberGenerator.new()
+		h2rng.seed = hash("%s|%d|%d|hulk2" % [_id, cx, cz])
+		var h2_roll := h2rng.randf()
+		var h2_ang := h2rng.randf_range(0.0, TAU)
+		var h2_gap := h2rng.randf_range(GRAVE_GAP_MIN, GRAVE_GAP_MAX)
+		var h2_rot := h2rng.randf_range(0.0, 360.0)
+		var first: Dictionary = out["hulk"]
+		if h2_roll < GRAVE_CHANCE and not first.is_empty():
+			var h2p: Vector3 = (first["pos"] as Vector3) \
+				+ Vector3(cos(h2_ang), 0.0, sin(h2_ang)) * h2_gap
+			# The same two keep-outs the first hulk answered to. A second wreck
+			# is not exempt from the dock ring just because its partner cleared it.
+			if depth_at(h2p) >= CONTENT_MIN_DEPTH \
+					and h2p.distance_to(keep_out) >= STATION_CLEARANCE:
+				out["hulk2"] = {
+					"pos": h2p,
+					"rot_y": h2_rot,
+					"loot": int(first["loot"]),
+					"crack_time": float(first["crack_time"]),
+					"trap": {},
+				}
 	return out
 
 
@@ -1084,8 +1143,14 @@ func built_plan(cx: int, cz: int) -> Dictionary:
 	var plan := plan_cell(cx, cz)
 	# Mutated in place, which is only safe because plan_cell builds a fresh
 	# dictionary on every call and shares nothing between them.
+	# "hulk2" rides in both lists beside "hulk", because a grave-field is two
+	# crackables and the keep-outs exist to stop a SECOND crackable landing on
+	# the survey hull or inside the apex arena. Filtered independently rather
+	# than with its partner: the pair is 11-19u apart, so one of them can be
+	# inside a keep-out while the other is not, and dropping both would delete
+	# content the keep-out never objected to.
 	if _has_lair:
-		for key_v in ["station", "pack", "hulk", "convoy"]:
+		for key_v in ["station", "pack", "hulk", "hulk2", "convoy"]:
 			var key := String(key_v)
 			var thing: Dictionary = plan[key]
 			if not thing.is_empty() \
@@ -1100,7 +1165,7 @@ func built_plan(cx: int, cz: int) -> Dictionary:
 	# ringing the breach point would read as a second guard post nobody
 	# authored.
 	if _has_hull:
-		for key_v in ["station", "hulk", "convoy"]:
+		for key_v in ["station", "hulk", "hulk2", "convoy"]:
 			var key := String(key_v)
 			var thing: Dictionary = plan[key]
 			if not thing.is_empty() \
@@ -1202,14 +1267,22 @@ const LANDMARKS := ["", "pylon", "frame", "monolith", "marker", "gate", "cairn"]
 # row is authored against THIS list, not against LANDMARKS — the empty band-0
 # entry would put every row off by one.
 #
-# AND IT STAYS FOUR while the frontier ships. weighted_index falls back to the
-# uniform pick when a row's width does not match the list's, so appending "gate"
-# and "cairn" here would silently widen the target of every authored 4-wide row
-# in system_db — turning pyx02's and pyx03's landmark accents off, and rolling
-# frontier kinds into the Shoals. The new bands take their kind from LANDMARKS
-# above (the unweighted path), which needs no row. Growing this list and every
-# authored row in the same commit is its own change.
-const LANDMARK_KINDS := ["pylon", "frame", "monolith", "marker"]
+# IT STAYED FOUR FOR A STAGE, ON PURPOSE, and this is the commit that grows it.
+# weighted_index falls back to the uniform pick when a row's width does not match
+# the list's — silently, by design — so appending here without widening every
+# authored row in system_db would have turned pyx02's and pyx03's landmark
+# accents off without a word and rolled frontier kinds into the Shoals. §68
+# deferred it for exactly that reason and said so in §64.
+#
+# What makes it safe NOW rather than then is not care, it is coverage: EVERY
+# AUTHORED ROW IS THE RIGHT WIDTH (stage 3) checks all eight shipped rows against
+# this list's live length, so a row left at four goes red instead of going quiet.
+# The assertion was written for the station list and pays for itself here.
+#
+# Fingerprint-safe by measurement, not assumption: WORLD FINGERPRINT hashes
+# rocks, hulk, pack, station, seams and convoy — not the landmark — and
+# landmark_at draws from its own salted stream either way.
+const LANDMARK_KINDS := ["pylon", "frame", "monolith", "marker", "gate", "cairn"]
 
 
 static func supercell_of(cx: int, cz: int) -> Vector2i:
@@ -1392,8 +1465,14 @@ func _register_cell(cx: int, cz: int):
 	# and the "content implies a container node" invariant would quietly stop
 	# being true in the sparse cells this feature exists to make less empty.
 	var convoy: Dictionary = plan.get("convoy", {})
+	# hulk2 counts as content for the landmark's and the convoy's exact reason: a
+	# cell discarded as empty builds no container node, and the second hull would
+	# have nowhere to hang. It cannot currently be the ONLY content — it is gated
+	# on the first hulk existing — but naming it here keeps the check honest if
+	# that ever stops being true, which is the same sentence the convoy earned.
 	if rocks.is_empty() and hulk.is_empty() and station.is_empty() \
-			and mark.is_empty() and convoy.is_empty():
+			and mark.is_empty() and convoy.is_empty() \
+			and (plan.get("hulk2", {}) as Dictionary).is_empty():
 		return null
 
 	var tag := _owner_tag(cx, cz)
@@ -1414,6 +1493,17 @@ func _register_cell(cx: int, cz: int):
 		var at: Vector3 = hulk["pos"]
 		Obstacles.add(at - fwd * 2.6, 1.9, tag)
 		Obstacles.add(at + fwd * 2.6, 1.9, tag)
+
+	# The grave-field's second hull, obstacled exactly like the first. A wreck you
+	# can fly through is the failure this whole block exists to prevent, and it
+	# would only ever show up at band 6 — the least-visited place in the game and
+	# the worst one to find a bug in.
+	var hulk2r: Dictionary = plan.get("hulk2", {})
+	if not hulk2r.is_empty():
+		var fwd2 := Vector3(0.0, 0.0, 1.0).rotated(Vector3.UP, deg_to_rad(float(hulk2r["rot_y"])))
+		var at2: Vector3 = hulk2r["pos"]
+		Obstacles.add(at2 - fwd2 * 2.6, 1.9, tag)
+		Obstacles.add(at2 + fwd2 * 2.6, 1.9, tag)
 
 	if not station.is_empty():
 		var arch0 := DeepPortDB.by_id(String(station["archetype"]))
@@ -1483,7 +1573,7 @@ func _populate_cell(cx: int, cz: int, node: Node3D) -> void:
 		# is what applies the already-opened state.
 		d.cell = Vector2i(cx, cz)
 		d.deep = true
-		d.cracked = _cracked.has(Vector2i(cx, cz))
+		d.cracked = is_hulk_cracked(Vector2i(cx, cz), 0)
 		node.add_child(d)
 		d.global_position = hulk["pos"]
 		d.rotation_degrees.y = float(hulk["rot_y"])
@@ -1548,6 +1638,27 @@ func _populate_cell(cx: int, cz: int, node: Node3D) -> void:
 			node.add_child(p)
 			p.global_position = station["pos"]
 
+
+
+	# THE SECOND HULL OF A GRAVE-FIELD. Built from the same block deliberately
+	# rather than from a shared helper: it differs in exactly three ways, and all
+	# three are the point. It carries hulk_index 1 so cracking one of the pair
+	# does not open the other; it arms NO trap, because the cell's trap roll
+	# belongs to the first wreck and two ambushes at one site is a fight rather
+	# than a place; and it posts NO guards, for the same reason.
+	var hulk2: Dictionary = plan.get("hulk2", {})
+	if not hulk2.is_empty():
+		var d2 := Derelict.new()
+		d2.loot_total = int(hulk2["loot"])
+		d2.crack_time = float(hulk2["crack_time"])
+		d2.counts_as_survey = false
+		d2.cell = Vector2i(cx, cz)
+		d2.hulk_index = 1
+		d2.deep = true
+		d2.cracked = is_hulk_cracked(Vector2i(cx, cz), 1)
+		node.add_child(d2)
+		d2.global_position = hulk2["pos"]
+		d2.rotation_degrees.y = float(hulk2["rot_y"])
 
 func _check_encounters(at: Vector3) -> void:
 	# At most 25 armed nests, and almost always none — this is a distance check
@@ -1806,13 +1917,20 @@ func _build_post(key: Vector2i, cfg: Dictionary) -> void:
 		_guard_origin[key] = cfg["origin"]
 
 
-func note_hulk_cracked(key: Vector2i) -> void:
+static func _hulk_key(key: Vector2i, index: int) -> String:
+	# One place that decides what identifies a wreck, so the writer and the
+	# reader cannot drift apart. Index DEFAULTS to 0 everywhere, which is what
+	# keeps every shipped call site meaning exactly what it always meant.
+	return "%d,%d,%d" % [key.x, key.y, index]
+
+
+func note_hulk_cracked(key: Vector2i, index := 0) -> void:
 	# Called from Derelict._breach, the same shape note_guard_died is called in.
-	_cracked[key] = true
+	_cracked[_hulk_key(key, index)] = true
 
 
-func is_hulk_cracked(key: Vector2i) -> bool:
-	return _cracked.has(key)
+func is_hulk_cracked(key: Vector2i, index := 0) -> bool:
+	return _cracked.has(_hulk_key(key, index))
 
 
 func note_surveyed(key: Vector2i) -> void:

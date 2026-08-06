@@ -76,6 +76,13 @@ var _cracked := false
 # any of it — their persistence is `GameState.breached`, which is a different
 # guarantee entirely. See DeepSpace._cracked for why a deep hulk needs one.
 var cell := Vector2i.ZERO
+# WHICH hulk in that cell. 0 for the wreck a cell has always held, 1 for the
+# second one a band-6 grave-field puts beside it. The breached-set was keyed by
+# CELL alone, on a stated invariant ("a cell holds at most one hulk") that
+# grave-fields are the first thing to break — so cracking one of a pair would
+# have opened the other, and the second wreck's loot would have vanished with a
+# hull that read as already-breached.
+var hulk_index := 0
 var deep := false
 var cracked := false
 var _hull_parts: Array[MeshInstance3D] = []
@@ -393,7 +400,7 @@ func _breach() -> void:
 	# the same hull over twice. Charted derelicts skip this: `deep` is false and
 	# their persistence is GameState.breached.
 	if deep and main and main.deep_space:
-		main.deep_space.note_hulk_cracked(cell)
+		main.deep_space.note_hulk_cracked(cell, hulk_index)
 	if GameState.mark_archeology(GameState.ARCHEOLOGY_PER_BREACH) and hud:
 		hud.show_toast("ARCHEOLOGY %d — IDENTIFY %s SALVAGE WITHOUT DOCKING" % [
 			GameState.archeology, DeepSpace.BAND_NAMES[GameState.archeology]],
