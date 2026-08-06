@@ -20440,11 +20440,29 @@ func _run_storm_test() -> void:
 	# limit_length re-clamps per call, so N storms still cannot exceed the
 	# ceiling — and somebody who believes the separation is load-bearing will
 	# eventually delete the assertion that actually proves it.
+	# STAGED SO THE TWO PULLS REINFORCE, which the first draft got exactly wrong.
+	# It put the ship midway between the storms, so their inward UNIT vectors
+	# were exactly opposed, cancelled every frame, and the channel measured
+	# 0.000 — a number it would also print with no clamp whatsoever. The clause
+	# was asserting that two opposed unit vectors sum to zero.
+	#
+	# It was caught by a red-verify, and the proof it was blind rather than lucky
+	# is that S1 above moved from 2.4u to 4.4u in the SAME process: the
+	# un-ceilinged drag was live on the very frames this was measuring.
+	#
+	# Both storms now sit at the same distance from the ship and 60 degrees
+	# apart, so the pulls add rather than annihilate and the cap is the binding
+	# constraint. Equal distance also removes the order-dependence: apply_tether
+	# limit_lengths the ACCUMULATED vector on every call, so with unequal caps
+	# the last caller wins and the reading would be about call order rather than
+	# about the ceiling.
 	var storm_b := Storm.new()
 	system_root.add_child(storm_b)
-	storm_b.global_position = storm.global_position + Vector3(120, 0, 0)
+	var cage_r := Storm.PULL_RADIUS * 0.3
+	player.global_position = storm.global_position + Vector3(-cage_r, 0, 0)
+	storm_b.global_position = player.global_position \
+		+ Vector3(cos(deg_to_rad(60.0)), 0.0, sin(deg_to_rad(60.0))) * cage_r
 	await get_tree().process_frame
-	player.global_position = storm.global_position + Vector3(60, 0, 0)
 	player.velocity = Vector3.ZERO
 	player.clear_tether()
 	for i in range(120):
@@ -20452,9 +20470,14 @@ func _run_storm_test() -> void:
 	var caged: float = (player._tether_vel as Vector3).length()
 	var floor_speed := float(ModuleDB.enforce_floors({"max_speed": 0.0, "accel": 0.0,
 		"turn_rate": 0.0, "shield_max": 0.0, "weapon_range_bonus": 0.0})["max_speed"])
-	print("[storm] TWO STORMS CANNOT BUILD A CAGE overlapping rings drove the drag channel to %.3f u/s against the %.2f ceiling and the %.2f max_speed floor -> %s" % [
-		caged, PlayerShip.TETHER_DRAG_CEILING, floor_speed,
-		"PASS" if caged <= PlayerShip.TETHER_DRAG_CEILING + 0.001 and caged < floor_speed else "FAIL"])
+	# AND THE CHANNEL HAS TO HAVE ACTUALLY FILLED. This is the clause the first
+	# draft lacked, and its absence is the whole reason the vacuous version
+	# passed: every bound here is satisfied by zero, and zero is exactly what
+	# perfect cancellation produces.
+	print("[storm] TWO STORMS CANNOT BUILD A CAGE two reinforcing rings drove the drag channel to %.3f u/s (it did fill=%s) against the %.2f ceiling and the %.2f max_speed floor -> %s" % [
+		caged, str(caged > 0.05), PlayerShip.TETHER_DRAG_CEILING, floor_speed,
+		"PASS" if caged > 0.05 and caged <= PlayerShip.TETHER_DRAG_CEILING + 0.001
+			and caged < floor_speed else "FAIL"])
 	storm_b.queue_free()
 	await get_tree().process_frame
 
