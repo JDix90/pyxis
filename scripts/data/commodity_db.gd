@@ -6,6 +6,23 @@ extends Object
 # `space` is hold volume per unit — the reason a trading build has to argue with
 # a combat build over the utility slot.
 
+# What a ship out in the black pays for cargo, as a fraction of base price. It
+# lives HERE, in the leaf that owns base_price, because it is a fact about what
+# goods are worth rather than about who is buying — and because both the seller
+# (Main.space_trade) and the label that quotes it (HUD.contact_options) need it,
+# and neither of those two files can see the other's constants.
+#
+# DELIBERATELY WELL UNDER ANY SANE DOCK ROUTE. What is being sold to a passing
+# convoy is the trip home, not the cargo. It is also flat, and applied to
+# base_price rather than through Market: no price in this game consults standing
+# (asserted by NO PRICE MOVES WITH STANDING), and the reputation gate on this
+# trade decides only whether it is offered at all.
+#
+# It ignores market drift on purpose — a port whose price has drifted under
+# 0.7x base is briefly the worse deal. Accepted, because a convoy never resells
+# and no loop closes; if the drift range ever widens, re-check that.
+const SPACE_TRADE_RATE := 0.7
+
 const GOODS := {
 	"alloys": {
 		"name": "Scrap Alloys",

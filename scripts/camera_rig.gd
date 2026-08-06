@@ -195,6 +195,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.pressed:
 			_touches[event.index] = event.position
 			if _touches.size() == 1:
+				# Touch cannot OPEN the menu (see _mouse_button), but a machine
+				# with both a mouse and a touchscreen can have one open when a
+				# finger lands, and a plate that ignored the touch would be a
+				# plate with no way to dismiss it on that device.
+				_dismiss_contact_menu()
 				_press_pos = event.position
 				_press_time = Time.get_ticks_msec() / 1000.0
 				_dragged = false
@@ -274,10 +279,25 @@ func _mouse_button(event: InputEventMouseButton) -> void:
 	if event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
 		_target_zoom = clampf(_target_zoom * 1.1, ZOOM_MIN, ZOOM_MAX)
 		return
+	# THE SECOND BUTTON, and it is desktop-only on purpose. Touch is not getting a
+	# gesture for this yet: tap-on-ship already means two things (arm an engage,
+	# and fall through to a move order), press-and-hold already means "work this"
+	# against a four-group pick ladder, and a third meaning on either of them
+	# needs a gesture audit rather than a branch. A phone player still learns who
+	# a ship is and how it regards them from the first tap's toast, which is the
+	# information half of this menu. See STRATEGY §64 for the deferral.
+	if event.button_index == MOUSE_BUTTON_RIGHT:
+		if event.pressed:
+			_context_menu(event.position)
+		return
 	if event.button_index != MOUSE_BUTTON_LEFT:
 		return
 
 	if event.pressed:
+		# ANY PRESS ELSEWHERE DISMISSES. Presses on the menu never reach here --
+		# its panel and buttons stop mouse events themselves -- so this needs no
+		# hit test against the plate.
+		_dismiss_contact_menu()
 		_mouse_down = true
 		_mouse_dragged = false
 		_press_pos = event.position
@@ -304,13 +324,57 @@ func _cycle_target() -> void:
 			Sfx.play("tap", -14.0, 0.7)
 
 
+func _context_menu(screen_pos: Vector2) -> void:
+	# Right-click a flagged ship that is not shooting at you and it tells you what
+	# it will discuss. What is on the menu is the faction's business: the band
+	# decides, in HUD.contact_options.
+	var hud := get_tree().get_first_node_in_group("hud")
+	var main := get_tree().get_first_node_in_group("main")
+	if hud == null or main == null or not main.is_playing():
+		return
+	# A second right-click closes whatever was open, whether or not this one lands
+	# on something -- otherwise a miss leaves the old menu up, pointing at a ship
+	# the player has stopped talking to.
+	if hud.contact_menu_open():
+		hud.hide_contact_menu()
+	# The tutorial is a scripted sequence with its own idea of what the next
+	# input means; the same exclusion interdictions and musters already carry.
+	if main.tutorial_active():
+		return
+	# Same group and same picker as the left-button ladder, so what is clickable
+	# is what is right-clickable and the two cannot drift.
+	var ship := _pick(screen_pos, "hostiles")
+	if ship != null and main.contact_menu_eligible(ship):
+		Sfx.play("tap", -8.0, 1.0)
+		hud.show_contact_menu(ship)
+
+
+func _dismiss_contact_menu() -> bool:
+	# Returns whether there was one to dismiss, so _cancel can spend a rung on it
+	# without asking the same question a second way.
+	var hud := get_tree().get_first_node_in_group("hud")
+	if hud != null and hud.has_method("contact_menu_open") and hud.contact_menu_open():
+		hud.hide_contact_menu()
+		return true
+	return false
+
+
 func _cancel() -> void:
 	# Escape is a ladder: it always backs out exactly one step, never two.
-	#   1. a console is open      -> close it
-	#   2. a target is designated -> drop it
-	#   3. otherwise              -> pause
+	#   1. a contact menu is open -> close it
+	#   2. a console is open      -> close it
+	#   3. a target is designated -> drop it
+	#   4. otherwise              -> pause
 	# The pause menu handles Escape itself once open, because this node stops
 	# receiving input the moment the tree is paused.
+	#
+	# THE MENU IS THE FIRST RUNG, above the consoles, for the manual's reason one
+	# line down: it is the only one of these that can be open on top of another,
+	# so it has to come off first.
+	if _dismiss_contact_menu():
+		Sfx.play("tap", -12.0, 0.8)
+		return
+
 	var main := get_tree().get_first_node_in_group("main")
 	if main:
 		# The manual is first: it is the only one of these that can be open on top
@@ -429,7 +493,19 @@ func _select(screen_pos: Vector2) -> bool:
 		var now := Time.get_ticks_msec() / 1000.0
 		if _engage_armed == hostile.get_instance_id() and now - _engage_at <= ENGAGE_CONFIRM:
 			_engage_armed = 0
-			FX.ring_pulse(get_parent(), hostile.global_position, Palette.THREAT, 1.3)
+			# THE FLAG'S COLOUR, NOT THREAT. The toast that armed this confirm
+			# already named the faction in its own tint; a red pulse answering it
+			# says the thing you just agreed to attack was hostile all along,
+			# which is the misreading this whole branch exists to prevent. The
+			# hostile branch above keeps THREAT — there it is the truth.
+			#
+			# Asked of the ship rather than of FactionDB directly, so the pulse
+			# cannot come out invisible: marker_color carries the fallback for a
+			# flag with no tint, and it is the same answer the radar, the reticle
+			# and the HP bar are showing for this ship at this instant.
+			var pulse_col: Color = hostile.marker_color() \
+				if hostile.has_method("marker_color") else Palette.THREAT
+			FX.ring_pulse(get_parent(), hostile.global_position, pulse_col, 1.3)
 			Sfx.play("tap", -4.0, 1.12)
 			if player:
 				player.command_attack(hostile)

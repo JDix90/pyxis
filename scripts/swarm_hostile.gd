@@ -374,6 +374,33 @@ func fights_the_player() -> bool:
 	var p := get_tree().get_first_node_in_group("player")
 	return p != null and (_target == p or _aggro == p)
 
+
+func marker_color() -> Color:
+	# Mirrors Hostile.marker_color, which carries the reasoning. Kept as a copy
+	# rather than hoisted for the same reason fights_the_player and provoke are
+	# copies: these two classes share a contract, not a base class, and a shared
+	# helper would put a third file between the radar and the answer.
+	#
+	# A DART NEEDS THIS MORE THAN A SENTRY DOES. A convoy escort spawned without
+	# an explicit tint renders THREAT red at the mesh (this class has no
+	# tint_of fallback in _ready, unlike Hostile) — so on the board it was red
+	# twice over.
+	if GameState.hostile_to_player(self):
+		return Palette.THREAT
+	var c := FactionDB.tint_of(faction)
+	if c.a > 0.0:
+		return c
+	return tint if tint.a > 0.0 else Palette.HULL
+
+
+func current_goal() -> Vector3:
+	# See Hostile.current_goal. A dart's goal is its march order; a dart with no
+	# march is orbiting something and is not "bound" anywhere worth reporting.
+	if march_to == Vector3.ZERO:
+		return Vector3.INF
+	return march_to
+
+
 func provoke(who: Node3D) -> void:
 	# Same contract as Hostile.provoke, which carries the reasoning: aggro with
 	# an expiry, never a band. A provoked dart needs no beat exception — its

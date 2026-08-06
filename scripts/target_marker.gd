@@ -12,6 +12,9 @@ var _ring: MeshInstance3D
 var _mat: StandardMaterial3D
 var _ticks: Array[MeshInstance3D] = []
 var _t := 0.0
+# What the reticle is currently painted. One material is shared by the ring and
+# all four ticks, so one compare and one write recolour the whole marker.
+var _col := Palette.THREAT
 
 
 func _ready() -> void:
@@ -59,6 +62,21 @@ func _process(delta: float) -> void:
 	global_position = target.global_position
 	_t += delta
 	rotation.y = _t * SPIN_SPEED
+
+	# THE RETICLE SAYS WHAT THE THING IS, NOT THAT YOU HAVE ONE. A red ring on a
+	# GSA picket you have ordered an attack on read exactly like a red ring on a
+	# raider, which made the one command in the game with a standing consequence
+	# look like the one without. Same marker_color() the radar and the HP bar ask,
+	# so the three instruments cannot disagree — and because that answer flips the
+	# frame a neutral answers your fire, the ring goes red exactly when the fight
+	# becomes real rather than when you picked it.
+	var col := Palette.THREAT
+	if target.has_method("marker_color"):
+		col = target.marker_color()
+	if col != _col:
+		_col = col
+		_mat.albedo_color = Color(col.r, col.g, col.b, 0.85)
+		_mat.emission = Color(col.r, col.g, col.b)
 
 	# Size to the thing being marked so a swarm dart and the Gnomon both read.
 	var radius := 1.0

@@ -5987,6 +5987,16 @@ same commit.**
 
 ### Outstanding
 
+**The contact menu has no touch gesture** (deferred 2026-08-06, §72). Right-click
+opens it; a phone has no way in. This is the one place in the game where a verb
+is desktop-only, and it is deferred rather than dropped because the reason is a
+gesture-vocabulary problem rather than a scoping one: tap-on-ship already means
+two things (arm an engage, and fall through to a move order) and press-and-hold
+already means "work this" against a four-group pick ladder, so a third meaning
+on either needs an audit of the whole touch grammar, not a branch. **What a
+touch player is not missing today is the information** — the first tap's toast
+already names the flag and the band. What they are missing are the verbs.
+
 **Nothing outstanding from the frontier.** Stages 1–4 shipped as §68–§70 plus
 stage 4's own commit; §71 adds storms on top. The historical table is kept below
 as the record of how it resolved.
@@ -6964,3 +6974,143 @@ One adjacent fix, found on the way: **`FX.vortex` had never honoured
 `reduce_motion()`** — every other effect in that file does. §30's rule is
 gate-at-the-function, and it is gated there now; both callers already discarded
 the return.
+
+---
+
+## 72. The ships that were red for no reason
+
+Asked for as *"some friendly forces appear as if they are hostile… let's also
+allow the player to right click on the friendly units to display a list of
+options to help them interact. Each reputation level with the factions should
+dictate the options available."*
+
+Two complaints, and the first one was written down in this file two horizons
+ago. §47's own text, on why `hostiles` could not be derived from faction:
+
+> An allied picket in it would be painted red, blasted by the player's own area
+> weapons, and counted as a live raid.
+
+The fix chosen there was a SECOND group, `combatants`, leaving `hostiles`
+untouched — which resolved the counting and the targeting, and left the
+**painting** exactly as described. A GSA picket cannot fire on the surveyor at
+any standing (`GSA_SURVEYOR_FLOOR`), patrols charted space specifically so it
+reads as patrolled, and drew the same THREAT red as the thing hunting you. The
+player reported it as a bug three horizons later. It was a documented,
+predicted, unbuilt half of a fix.
+
+### The rule is one sentence
+
+**Red means it shoots at you. Any other colour is a flag.**
+
+`marker_color()` on both hostile classes, routed through
+`GameState.hostile_to_player()` — not through the band. The distinction is the
+whole reason the ramp still works: a neutral you pick a fight with turns red the
+frame it *answers*, which is the same test `cycle_target`, the music and the
+selection ladder already use. Three surfaces now ask it and cannot disagree:
+
+| surface | was | is |
+|---|---|---|
+| radar marker | `Palette.THREAT` for everything in `hostiles` | `marker_color()`, via the per-node override that already existed at `hud.gd:372` and had one implementor |
+| target reticle | one THREAT material, always | recoloured on change; goes red when the ship answers, not when you give the order |
+| HP bar (fill **and** backing) | THREAT fill on a red backing | both from `marker_color()`, refreshed per frame against a cached colour |
+
+**Faction tint rather than a new "friendly" swatch**, against HORIZON-4 finding
+A2's warning that the colour channel is already double-booked (band tint, raid
+tint, faction tint). A fourth booking would have been the easy answer. The
+convoy clusters and the muster marker already speak faction tint *on this very
+instrument*, so this spends a booking that was already made rather than making
+one.
+
+**And a fourth instrument had already drifted.** `Main._threat_near_player()`
+carries the comment *"the same question Music asks, asked once here and handed
+to both — the lighting and the score must never disagree"*. Music's copy grew
+the IFF filter when a neutral convoy was found raising the combat layer; this
+one did not. The lighting had been calling a GSA picket a fight ever since. Same
+defect as the radar, one instrument over, found by the repair verb's combat gate
+refusing to fire beside a friendly ship — and then caught twice more by the new
+harness before the fixture was right.
+
+### What a flag will discuss (the contact menu)
+
+The second complaint is the larger one: fourteen flags, a full attitude matrix,
+and exactly one verb the player could aim at any of them. Right-click a flagged
+ship that is not shooting at you and it says what it will discuss.
+
+**The band opens a door; the world decides what is behind it.** An ALLIED ship
+with no circumstances offers exactly what a NEUTRAL one does plus its bearings —
+asserted, because a ladder that reads as a reward list is a ladder that promises
+things the situation cannot deliver.
+
+| band | options |
+|---|---|
+| HOSTILE | *none — it is not taking questions, and left-click already engages it* |
+| WARY / NEUTRAL | HAIL · ENGAGE |
+| FRIENDLY | + BEARINGS · SELL HOLD *(convoys, non-empty quote)* |
+| ALLIED | + REQUEST REPAIRS *(damaged, out of combat)* · REQUEST ESCORT *(route pickets, off cooldown)* · MARK MY TARGET *(live locked target)* |
+
+**GATES, NEVER PRICES.** `NO PRICE MOVES WITH STANDING` is asserted against
+Market's own functions, and the brief's "free or discounted at ALLIED" would
+have broken it. What a band buys is whether a line is on the menu at all; every
+figure is flat. A field repair costs `missing * PortPanel.REPAIR_FULL_PRICE` —
+the dock's own const, so the two can never drift and the deep mercies' authored
+discount is never undercut.
+
+**The escort is the only verb that puts a second gun on the board**, and it
+needed no new rules to stay honest:
+
+* it **cannot deplete the world** (§51) — `SKIRMISH_HP_FLOOR` already clamps
+  damage from any combatant at half hull, and every payout in `_die` is gated on
+  player attribution. It softens; you still have to land the kill. *(2000 damage
+  from an ally leaves a 120hp machine on exactly 60, alive — asserted.)*
+* it **does not strip the beat** — `unmanned_routes()` counts a route manned by
+  its picket's `route_i` meta, which an escorting picket keeps, so the cordon
+  tick spawns no relief and the Cordon never doubles.
+* it **stops at the marker** — the band-1 beacon has promised since v13 that
+  patrols do not operate past the chart edge. An escort is the first Cordon ship
+  that could ever have been invited across it, so crossing the line is how you
+  say goodbye to your escort.
+* it **does not answer the player's parley** — finding A3's exclusion, applied to
+  the guard scan as well as to the beat.
+
+Movement is at `PATROL_SPEED` 3.2 against the player's 5.75, deliberately: a
+player running farming loops outruns their own escort. That is the pacing valve
+and the characterisation at once — *a patrol is a presence, not a pursuer*.
+
+**A plate, not a console.** `console_open()` gates interdiction and muster
+eligibility, so a right-click on a passing convoy that registered as a console
+would quietly hold the world's events off for as long as it stood. Asserted
+directly. It is also deliberately absent from `band_controls()`: that inventory
+is every centre-anchored plate, and this one is positioned over a moving ship.
+
+### What the harness caught
+
+`PYXIS_CONTACTTEST`, 19 assertions. Four of them found nothing wrong with the
+game and everything wrong with the test, which is worth recording because each
+was a real property stated badly:
+
+1. **The reticle assertion raced the mounts.** It ordered an attack and checked
+   the colour one frame later. But `fights_the_player()` reads `_aggro` and
+   `_target`, and an *order* sets neither — the first shot landing does. The
+   test was asserting the wrong moment of a mechanism the code describes
+   correctly. It now asserts the answer, through the path a player's shot
+   actually takes.
+2. **The skirmish clock broke off mid-assertion.** Six seconds of fire and a
+   machine stands down for twelve, nulling `_target`. A sub-assertion landing in
+   that window read "the escort did not take the target" when what happened was
+   "the escort had already fought it". Reported opposite results on consecutive
+   runs.
+3. **The parley exclusion was tested with a ship the exclusion never saw.** The
+   GSA is HOSTILE to the Tithe at baseline, so a Tithe raider is picked up by the
+   ordinary enemy scan whatever the escort thinks. The test proved nothing and
+   looked like it proved something. It uses a League sentry now — FRIENDLY to the
+   GSA, in no enemy list — so the guard scan is the only thing that can select
+   it.
+4. **The events were not pinned.** A muster firing mid-run calls `end_escort()`,
+   correctly, and the escort assertions then failed about one run in six. §33's
+   pinning list exists for exactly this and the wave timer alone does not cover
+   it.
+
+**Moving a station-keeper does not move it** — `Hostile._process` assigns
+`global_position` from `_home` every frame, so a fixture shoved aside is back on
+its post next frame. That is also why a station-keeper cannot be offered an
+escort: one that ended anywhere else would teleport home.

@@ -49,6 +49,7 @@ const HARNESS_VARS := [
 	"PYXIS_CARTTEST",
 	"PYXIS_COLLISIONTEST",
 	"PYXIS_COLONYTEST",
+	"PYXIS_CONTACTTEST",
 	"PYXIS_CONTRACTTEST",
 	"PYXIS_DAMAGETEST",
 	"PYXIS_DEEPSHOTS",
@@ -1008,6 +1009,14 @@ func _ready() -> void:
 		_run_gsa_test()
 		return
 
+	if OS.get_environment("PYXIS_CONTACTTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_contact_test()
+		return
+
 	if OS.get_environment("PYXIS_UITEST") != "":
 		GameState.lock_saving()
 		state = State.PLAYING
@@ -1688,6 +1697,11 @@ func _process(delta: float) -> void:
 	# AFTER the warping guard above, unlike _tick_market: a relief must not walk
 	# onto a beat in a system the player is in the middle of leaving.
 	_tick_cordon(delta)
+	# The escort's own clock lives on the picket; this is only the gap before the
+	# next one can be asked for. It runs down whether or not an escort is out, so
+	# an escort cut short by the chart edge does not shorten the wait.
+	if _escort_cd > 0.0:
+		_escort_cd = maxf(_escort_cd - delta, 0.0)
 
 	# Wayfinding. The bottom-left readout is the only thing out here that tells
 	# you where "here" is — there is no lattice past the chart edge and no
@@ -2052,6 +2066,299 @@ func credit_defence(saved) -> void:
 	GameState.shift_faction(FactionDB.SURVEYOR, flag, 1, true)
 
 
+# --- talking to a flagged ship (the contact menu) ----------------------------
+# The other half of stage 1's unfinished business. STRATEGY §47 left allies in
+# the "hostiles" group and named two consequences: they would be painted red,
+# and they would be blasted by the player's own area weapons. marker_color()
+# answered the first. This answers a third that was never written down — that
+# the ONLY thing the player could do to a flagged ship was shoot it. Fourteen
+# flags, a full attitude matrix, and one verb.
+#
+# WHAT THE BAND BUYS IS ACCESS, NEVER A PRICE. Market's "no price function
+# anywhere consults standing" is asserted (NO PRICE MOVES WITH STANDING), and
+# these verbs stay on the right side of it by construction: a band decides
+# whether an option is on the menu at all, and every number below is flat.
+
+# The rate a convoy pays lives in CommodityDB, beside the base_price it
+# multiplies -- see the argument there. Both this file and the HUD label that
+# quotes it need it, and neither can see the other's constants.
+#
+# How long an ally rides along, and how long before another will. The escort is
+# the one verb that puts a second gun on the board, so the duty cycle is the
+# valve: a quarter of the cooldown, and never more than one at a time.
+const ESCORT_COOLDOWN := 240.0
+
+var _escort_ship: Node3D = null
+var _escort_cd := 0.0
+
+
+func contact_menu_eligible(ship) -> bool:
+	# THE DOOR. One function, asked by the rig before opening the menu, by the HUD
+	# every frame it is open, and by every verb before it acts -- so a ship that
+	# stops qualifying mid-conversation cannot be acted on through a menu that has
+	# not caught up yet.
+	#
+	# UNTYPED, for _targetable's reason: what arrives is a picked node that may
+	# have been freed since, and a typed parameter fails at the call boundary
+	# before is_instance_valid can run.
+	if not is_instance_valid(ship) or not (ship is Node3D):
+		return false
+	var n := ship as Node3D
+	if not n.is_inside_tree():
+		return false
+	# No flag, no conversation. This is also what excludes ApexBoss, which has no
+	# faction property at all -- and which hostile_to_player would refuse anyway,
+	# via the no-method-means-hostile rule.
+	if not ("faction" in n):
+		return false
+	var flag := String(n.faction)
+	if not FactionDB.is_faction(flag) or flag == FactionDB.FERAL:
+		return false
+	# The dispatcher, not the band: something that is shooting at you is not
+	# taking questions, whatever its flag says. Left-click already engages it.
+	if GameState.hostile_to_player(n):
+		return false
+	# A muster is a set piece with an announced beginning and end (HORIZON-4 §8).
+	# Ships in one are scenery with guns; talking to one would be a side door into
+	# an event the whole design keeps sealed. Post-muster keepers stay excluded
+	# for the same reason -- the flag survives the event on purpose.
+	if bool(n.get("muster")):
+		return false
+	# THE PARLEY IS THE PLAYER'S CONVERSATION (finding A3), and it already has a
+	# surface: the plates. A second menu over a live standoff would be two
+	# conversations with the same ship about the same moment.
+	if n.is_in_group("raider") and float(n.get("standoff")) > 0.0:
+		return false
+	if n.has_method("is_dying") and n.is_dying():
+		return false
+	return true
+
+
+func contact_menu_context(ship) -> Dictionary:
+	# Everything the option ladder needs to know that is not the band, gathered
+	# once. HUD.contact_options stays a pure function of (band, this) so the
+	# harness can assert the ladder without a viewport, a ship or a player.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	var quote: Dictionary = space_trade_quote()
+	var repair := 0
+	if player != null:
+		repair = int(round((1.0 - player.shield_fraction()) * float(PortPanel.REPAIR_FULL_PRICE)))
+	var n := ship as Node3D
+	return {
+		"has_target": player != null and is_instance_valid(player.attack_target),
+		"is_convoy": n != null and n.is_in_group("deep_convoy"),
+		# A route picket walks a beat. A station-keeper cannot escort: its
+		# position is ASSIGNED from _home every frame, so one that ended an
+		# escort anywhere else would teleport back -- see Hostile._process.
+		"is_route_picket": n is Hostile and not (n as Hostile).patrol.is_empty() \
+			and not n.is_in_group("deep_convoy") and not n.has_meta("post_key"),
+		"quote": int(quote.get("total", 0)),
+		"repair_price": repair,
+		"escort_ready": _escort_cd <= 0.0 and not muster_active() and not boss_active,
+		"in_combat": _threat_near_player(),
+	}
+
+
+func hail_contact(ship) -> void:
+	# Says who they are and how they regard you. The same sentence the engage
+	# confirm has always shown, in the same tint, because it is the same fact --
+	# and it is the one option every band gets, since refusing to say your name is
+	# not something even a WARY flag does.
+	if not contact_menu_eligible(ship):
+		return
+	var flag := String((ship as Node3D).faction)
+	var band: int = GameState.faction_band(flag, FactionDB.SURVEYOR)
+	var line := "%s — %s" % [FactionDB.display_name(flag), FactionDB.BAND_NAMES[band]]
+	var desig := String((ship as Node3D).get("designation"))
+	if desig != "":
+		line += " · %s" % desig
+	_contact_toast(line, FactionDB.tint_of(flag))
+
+
+func hail_bearings(ship) -> void:
+	# FRIENDLY+. Where they are headed, in the HDG figures every other bearing in
+	# this game is given in. Pure read: it asks the ship the question the ship
+	# already knows the answer to and puts it on screen.
+	if not contact_menu_eligible(ship):
+		return
+	var n := ship as Node3D
+	var flag := String(n.faction)
+	var goal: Vector3 = n.current_goal() if n.has_method("current_goal") else Vector3.INF
+	if goal == Vector3.INF or goal == Vector3.ZERO:
+		_contact_toast("HOLDING STATION", FactionDB.tint_of(flag))
+		return
+	var to := goal - n.global_position
+	# THROUGH THE SAME TWO FUNCTIONS THE HDG READOUT USES, not a private atan2.
+	# compass_deg is what makes 000 mean north on this instrument, and
+	# quadrant_of derives its word from the displayed number so the figures and
+	# the quarter on one line cannot contradict each other. A bearing the player
+	# is given has to be in the figures the compass is showing them.
+	var flat := Vector3(to.x, 0.0, to.z)
+	_contact_toast("BOUND %03d · %s" % [DeepSpace.compass_deg(flat),
+		DeepSpace.quadrant_of(flat)], FactionDB.tint_of(flag))
+
+
+func mark_target_for(ship) -> void:
+	# ALLIED. The strongest thing an ally does short of riding along, and it is
+	# built entirely out of machinery that already exists: provoke() is aggro with
+	# a 30s expiry that never writes a band, so this cannot author a faction state
+	# in the player's save and cannot outlive the fight it was asked for.
+	if not contact_menu_eligible(ship):
+		return
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	if player == null or not is_instance_valid(player.attack_target):
+		return
+	if not (ship as Node3D).has_method("provoke"):
+		return
+	(ship as Node3D).provoke(player.attack_target)
+	_contact_toast("THEY ANSWER — %d SECONDS" % int(FactionDB.GRUDGE_TIME),
+		FactionDB.tint_of(String((ship as Node3D).faction)))
+
+
+func engage_contact(ship) -> void:
+	# THE MENU CLICK IS THE SECOND ACT. The two-tap ladder in _select exists so a
+	# stray finger cannot start a war; picking ENGAGE off a labelled menu is
+	# already the deliberate choice that ladder was arming, and the label carries
+	# the warning the toast used to. Everything downstream is untouched: the
+	# witness call in take_damage, the -1 in _die, the whole standing ramp.
+	if not contact_menu_eligible(ship):
+		return
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	if player == null:
+		return
+	var col: Color = (ship as Node3D).marker_color() \
+		if (ship as Node3D).has_method("marker_color") else Palette.THREAT
+	FX.ring_pulse(self, (ship as Node3D).global_position, col, 1.3)
+	Sfx.play("tap", -4.0, 1.12)
+	player.command_attack(ship as Node3D)
+
+
+func request_escort(ship) -> void:
+	# ALLIED, route pickets only. One at a time, and a long cooldown after --
+	# see ESCORT_COOLDOWN. A new request ends the old escort rather than fielding
+	# two, because two pickets off their beats is the Cordon thinning itself.
+	if not contact_menu_eligible(ship):
+		return
+	var ctx := contact_menu_context(ship)
+	if not bool(ctx["is_route_picket"]) or not bool(ctx["escort_ready"]):
+		return
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	if player == null or not (ship as Node3D).has_method("begin_escort"):
+		return
+	end_escort()
+	_escort_ship = ship as Node3D
+	_escort_cd = ESCORT_COOLDOWN
+	(ship as Node3D).begin_escort(player)
+	_contact_toast("ON YOUR WING — %d SECONDS" % int(Hostile.ESCORT_TIME),
+		FactionDB.tint_of(String((ship as Node3D).faction)))
+
+
+func end_escort() -> void:
+	# ONE PLACE EVERY ENDING GOES THROUGH. A muster and a boss fight both spawn
+	# their own set pieces, and an escort still walking around inside one is two
+	# systems arguing over the same ship -- _tick_interdiction paid for that
+	# lesson once already.
+	if is_instance_valid(_escort_ship) and _escort_ship.has_method("end_escort"):
+		_escort_ship.end_escort()
+	_escort_ship = null
+
+
+func space_trade_quote() -> Dictionary:
+	# What a convoy would pay for the hold, and what it would take. Pure, so the
+	# assertion can price a hold without a ship in the world.
+	#
+	# TWO EXCLUSIONS, both of them load-bearing rather than tidy:
+	#   * trade_only_at goods. Contraband and components have a named list of
+	#     buyers, and that list IS the route problem they exist to create.
+	#     Selling BANNED to a passing League convoy would walk around the fence,
+	#     the smuggling XP feed and the standing consequences in one button.
+	#   * chart goods. Selling one runs note_ledger and the commission pipeline;
+	#     keeping charts at a dock keeps that plumbing in one place.
+	# Unidentified salvage sells: it sells as scrap everywhere, by design.
+	var goods := {}
+	var total := 0
+	for id_v in GameState.cargo:
+		var id := String(id_v)
+		var units := int(GameState.cargo[id_v])
+		if units <= 0:
+			continue
+		if not CommodityDB.get_good(id).get("trade_only_at", []).is_empty():
+			continue
+		if CommodityDB.is_chart(id):
+			continue
+		goods[id] = units
+		total += int(round(float(CommodityDB.base_price(id)) * CommodityDB.SPACE_TRADE_RATE)) * units
+	return {"total": total, "goods": goods}
+
+
+func space_trade(ship) -> void:
+	# FRIENDLY+, convoys only. No trade pressure (there is no port), no smuggling
+	# XP (that feed is the fence's), and NO STANDING -- paying for cargo is a
+	# transaction, not a favour, and a +1 per convoy would be a printer without a
+	# per-convoy bound to go with it. If that is ever wanted, mirror the fence's
+	# _fence_marked exactly.
+	if not contact_menu_eligible(ship):
+		return
+	if not (ship as Node3D).is_in_group("deep_convoy"):
+		return
+	if GameState.faction_band(String((ship as Node3D).faction),
+			FactionDB.SURVEYOR) > FactionDB.Band.FRIENDLY:
+		return
+	var quote := space_trade_quote()
+	var total := int(quote["total"])
+	if total <= 0:
+		return
+	var goods: Dictionary = quote["goods"]
+	for id_v in goods:
+		GameState.unload_cargo(String(id_v), int(goods[id_v]))
+	GameState.add_salvage(total)
+	# The dock's own sale sound, for the dock's own reason: this is the same
+	# transaction happening somewhere with no counter.
+	Sfx.play_streak("pickup", -8.0)
+	if hud != null:
+		hud.set_value(GameState.salvage)
+	_contact_toast("SOLD — %s SALVAGE" % _comma_int(total),
+		FactionDB.tint_of(String((ship as Node3D).faction)))
+
+
+func field_repair(ship) -> void:
+	# ALLIED. The dock's own formula and the dock's own const, so a field repair
+	# can never drift away from the bay it is standing in for and can never
+	# undercut the deep mercies whose cheaper price is authored on purpose.
+	#
+	# THE COMBAT GATE IS THE WHOLE BALANCE STORY. A purchasable full heal mid-fight
+	# is a difficulty dial nobody asked for; out of a fight the regen is free
+	# anyway, so what is sold here is exactly what the dock sells -- skipping the
+	# wait. That gate is also why this needs no cooldown of its own.
+	if not contact_menu_eligible(ship):
+		return
+	if GameState.faction_band(String((ship as Node3D).faction),
+			FactionDB.SURVEYOR) != FactionDB.Band.ALLIED:
+		return
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	if player == null or _threat_near_player():
+		return
+	var missing := 1.0 - player.shield_fraction()
+	if missing <= 0.001:
+		return
+	var price := int(round(missing * float(PortPanel.REPAIR_FULL_PRICE)))
+	if not GameState.spend_salvage(price):
+		Sfx.play("hit", -12.0, 0.7)     # the sheet's own refusal note
+		return
+	player.repair_full()
+	FX.ring_pulse(self, player.global_position, Palette.TEAL, 1.6)
+	Sfx.play("equip", -6.0, 0.85)
+	if hud != null:
+		hud.set_value(GameState.salvage)
+	_contact_toast("PATCHED — %s SALVAGE" % _comma_int(price), Palette.TEAL)
+
+
+func _contact_toast(line: String, col: Color) -> void:
+	var h := get_tree().get_first_node_in_group("hud")
+	if h != null and h.has_method("show_toast"):
+		h.show_toast(line, col)
+
+
 func _raid_wants_the_player() -> bool:
 	# Whether ANY raider still counts the player as prey. Asked through the one
 	# dispatcher, so a raider the player has shot -- _aggro is the player --
@@ -2347,6 +2654,12 @@ func _warn_muster() -> void:
 func _open_muster() -> void:
 	# The line forms first, so the player sees the Cordon standing to before
 	# anything appears out in the dark.
+	#
+	# AND EVERY PICKET GOES BACK ON DUTY FIRST. A muster is the Cordon standing
+	# to; one of its pickets off walking with the player through it would be the
+	# event's own ships showing up in two places at once. See _set_boss_active
+	# for the other half of the same argument.
+	end_escort()
 	_muster_active = true
 	_muster_released = 0
 	_muster_wave_t = 0.0
@@ -3533,6 +3846,13 @@ func _announce_dormant_apex(boss: ApexBoss) -> void:
 
 func _set_boss_active(v: bool) -> void:
 	boss_active = v
+	# An escort walking around inside an apex fight is two spawn systems arguing
+	# over one ship. Released HERE because this is the one place every beginning
+	# and ending of a boss fight passes through -- the comment below says so, and
+	# a teardown hung off the four call sites instead would be four places to
+	# remember it.
+	if v:
+		end_escort()
 	if hud:
 		hud.set_panels_locked(v)
 		if not v:
@@ -3779,7 +4099,14 @@ func _threat_near_player() -> bool:
 	var r2: float = Music.THREAT_RADIUS * Music.THREAT_RADIUS
 	for n in get_tree().get_nodes_in_group("hostiles"):
 		var h := n as Node3D
-		if is_instance_valid(h) and h.global_position.distance_squared_to(player.global_position) <= r2:
+		# AND THE TWO SCANS HAD ALREADY DRIFTED, which is what the comment above
+		# says must never happen. Music's copy of this loop gained the IFF filter
+		# when a neutral convoy was found raising the combat layer; this one did
+		# not, so the lighting has been calling a GSA picket a fight ever since —
+		# the same "friendly forces read as hostile" defect the radar had, one
+		# instrument over. Same dispatcher, same answer, no third opinion.
+		if is_instance_valid(h) and GameState.hostile_to_player(h) \
+				and h.global_position.distance_squared_to(player.global_position) <= r2:
 			return true
 	return false
 
@@ -17074,6 +17401,539 @@ func _run_faction_test() -> void:
 			and warp_cooldown >= MUSTER_COOLDOWN - 1.0 else "FAIL"])
 
 	_clear_faction_matrix()
+	await get_tree().create_timer(0.2).timeout
+	get_tree().quit()
+
+
+func _reset_picket_clocks(h: Hostile) -> void:
+	# Fixture hygiene between the escort's target assertions, and every line of it
+	# is a mechanism asserted elsewhere that would otherwise race this one.
+	#
+	# THE SKIRMISH CLOCK IS THE ONE THAT BITES: six seconds of fire and a machine
+	# BREAKS OFF, nulling _target and resting for twelve. A sub-assertion that ran
+	# into that window read "the escort did not take the target" when what
+	# happened was "the escort had already fought it and stood down" -- which is
+	# how this test reported the opposite result on two consecutive runs.
+	#
+	# The aggro pointer goes too: whoever last shot the picket outranks the guard
+	# scan by design, and _targetable applies no range limit, so a fixture parked
+	# 400u away still holds the slot.
+	h._skirmish = 0.0
+	h._skirmish_rest = 0.0
+	h._aggro = null
+	h._target = null
+	h._retarget_t = 0.0
+
+
+func _park_hostile(n: Node3D, at: Vector3) -> void:
+	# Puts a machine somewhere and makes it STAY there. See the note at the call
+	# site: a station-keeping Hostile rewrites its own position from _home every
+	# frame, so the position alone is a suggestion.
+	n.global_position = at
+	if n is Hostile:
+		(n as Hostile)._home = at
+		(n as Hostile)._home_set = true
+
+
+func _run_contact_test() -> void:
+	# THE FRIENDLY HALF. Two claims, and the first one is older than the second:
+	# that a ship which will not fire on you does not LOOK like one that will
+	# (STRATEGY §47 predicted the defect and only half-fixed it), and that there
+	# is something to do with such a ship besides shoot it.
+	#
+	# Everything here is asserted against the FUNCTIONS THE PLAYER'S INPUT REACHES
+	# -- marker_color, contact_options, contact_menu_eligible, the verbs -- rather
+	# than against the rules they wrap. §54's lesson: assert the path the player
+	# takes, not the function it wraps.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	if player:
+		player.invulnerable = true
+	_wave_timer = 1.0e9
+	_apex_wake_timer = -1.0
+	# AND THE EVENTS ARE PINNED TOO, which the wave timer alone does not do. A
+	# muster or a raid landing mid-run calls end_escort -- correctly, since two
+	# spawn systems must not argue over one ship -- and the escort assertions
+	# below then read "the picket is not covering you" when what happened is that
+	# the Cordon was called to the line. It failed about one run in six before
+	# this line existed, which is exactly the kind of intermittent green §33's
+	# pinning list was written about.
+	_muster_cooldown = 1.0e9
+	_raid_cooldown = 1.0e9
+	_clear_faction_matrix()
+	await get_tree().create_timer(0.3).timeout
+
+	# --- 1. THE IFF TABLE ----------------------------------------------------
+	# The bug as the player met it: a Cordon picket, which cannot fire on the
+	# surveyor at any standing, painted the same red as the thing hunting them.
+	var picket := Hostile.new()
+	picket.faction = "gsa"
+	system_root.add_child(picket)
+	picket.global_position = player.global_position + Vector3(6, 0, 0)
+	var wild := Hostile.new()
+	wild.faction = FactionDB.FERAL
+	system_root.add_child(wild)
+	wild.global_position = player.global_position + Vector3(-6, 0, 0)
+	var trader := SwarmHostile.new()
+	trader.faction = "league"
+	system_root.add_child(trader)
+	trader.global_position = player.global_position + Vector3(0, 0, 6)
+	await get_tree().process_frame
+
+	var gsa_tint := FactionDB.tint_of("gsa")
+	var league_tint := FactionDB.tint_of("league")
+	var table_ok: bool = picket.marker_color() == gsa_tint \
+		and wild.marker_color() == Palette.THREAT \
+		and trader.marker_color() == league_tint
+	print("[contact] THE IFF TABLE gsa picket=%s (want flag), feral=%s (want THREAT), league dart=%s (want flag) -> %s" % [
+		"flag" if picket.marker_color() == gsa_tint else str(picket.marker_color()),
+		"THREAT" if wild.marker_color() == Palette.THREAT else str(wild.marker_color()),
+		"flag" if trader.marker_color() == league_tint else str(trader.marker_color()),
+		"PASS" if table_ok else "FAIL"])
+
+	# BOTH DIRECTIONS, because a colour that can only go red is half a fix. The
+	# radar re-collects every marker every frame, so there is nothing to
+	# invalidate -- the question is only whether the answer moves.
+	picket.provoke(player)
+	await get_tree().process_frame
+	var went_red: bool = picket.marker_color() == Palette.THREAT
+	# Released the way a lapsed grudge releases it: the clock AND the pointers.
+	picket._grudge = 0.0
+	picket._release_grudge()
+	await get_tree().process_frame
+	var came_back: bool = picket.marker_color() == gsa_tint
+	print("[contact] THE FLIP RUNS BOTH WAYS provoked picket -> %s, grudge released -> %s -> %s" % [
+		"THREAT" if went_red else "flag", "flag" if came_back else "THREAT",
+		"PASS" if went_red and came_back else "FAIL"])
+
+	# The bar is the second surface the group colour reached. A picket worn down
+	# by ambient skirmishing showed a red bar over a blue hull.
+	await get_tree().process_frame
+	var bar_ok: bool = picket._hp_col == picket.marker_color()
+	picket.provoke(player)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var bar_follows: bool = picket._hp_col == Palette.THREAT
+	picket._grudge = 0.0
+	picket._release_grudge()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	print("[contact] THE BAR FOLLOWS IFF at rest bar==marker=%s, after provoke bar==THREAT=%s -> %s" % [
+		str(bar_ok), str(bar_follows), "PASS" if bar_ok and bar_follows else "FAIL"])
+
+	# --- 2. THE DOOR ---------------------------------------------------------
+	# Who will talk to you at all. Each refusal below is a different reason, and
+	# the muster and standoff ones are protections rather than tidiness: both
+	# name conversations that already have their own surface.
+	var muster_ship := Hostile.new()
+	muster_ship.faction = "gsa"
+	muster_ship.muster = true
+	system_root.add_child(muster_ship)
+	muster_ship.global_position = player.global_position + Vector3(8, 0, 8)
+	var held := SwarmHostile.new()
+	held.faction = "tithe"
+	system_root.add_child(held)
+	held.global_position = player.global_position + Vector3(-8, 0, 8)
+	held.add_to_group("raider")
+	held.standoff = 6.0
+	await get_tree().process_frame
+
+	var door := {
+		"gsa picket": [picket, true],
+		"league convoy escort": [trader, true],
+		"feral": [wild, false],
+		"muster ship": [muster_ship, false],
+		"raider in standoff": [held, false],
+		"the apex": [get_tree().get_first_node_in_group("apex"), false],
+	}
+	var door_ok := true
+	var door_report: Array = []
+	for name_v in door:
+		var pair: Array = door[name_v]
+		var want: bool = bool(pair[1])
+		var got := contact_menu_eligible(pair[0])
+		if got != want:
+			door_ok = false
+			door_report.append("%s got %s want %s" % [name_v, str(got), str(want)])
+	print("[contact] THE DOOR %d cases (%s) -> %s" % [door.size(),
+		"all as specified" if door_report.is_empty() else ", ".join(door_report),
+		"PASS" if door_ok else "FAIL"])
+
+	# A HOSTILE BAND IS NOT A CONVERSATION, asked through the band rather than
+	# through a fixture: the Tithe is HOSTILE at baseline and left-click already
+	# engages it.
+	held.standoff = 0.0
+	held.remove_from_group("raider")
+	await get_tree().process_frame
+	var hostile_refused: bool = not contact_menu_eligible(held)
+	print("[contact] A HOSTILE BAND IS NOT A CONVERSATION tithe dart out of standoff eligible=%s (want false) -> %s" % [
+		str(not hostile_refused), "PASS" if hostile_refused else "FAIL"])
+
+	# --- 3. THE LADDER -------------------------------------------------------
+	# Pure over (band, ctx), so the whole reputation ramp is readable here
+	# without flying a save into position for each rung.
+	var bare := {"has_target": false, "is_convoy": false, "is_route_picket": false,
+		"quote": 0, "repair_price": 0, "escort_ready": false, "in_combat": false}
+	var rich := {"has_target": true, "is_convoy": true, "is_route_picket": true,
+		"quote": 900, "repair_price": 560, "escort_ready": true, "in_combat": false}
+	var want_ladder := {
+		FactionDB.Band.HOSTILE: [],
+		FactionDB.Band.WARY: ["hail_contact", "engage_contact"],
+		FactionDB.Band.NEUTRAL: ["hail_contact", "engage_contact"],
+		FactionDB.Band.FRIENDLY: ["hail_contact", "hail_bearings", "space_trade",
+			"engage_contact"],
+		FactionDB.Band.ALLIED: ["hail_contact", "hail_bearings", "space_trade",
+			"field_repair", "request_escort", "mark_target_for", "engage_contact"],
+	}
+	var ladder_ok := true
+	var ladder_report: Array = []
+	for band_v in want_ladder:
+		var band := int(band_v)
+		var ctx: Dictionary = bare if band >= FactionDB.Band.NEUTRAL else rich
+		var got_verbs: Array = []
+		for o_v in HUD.contact_options(band, ctx):
+			got_verbs.append(String((o_v as Dictionary)["verb"]))
+		var want_verbs: Array = want_ladder[band_v]
+		if got_verbs != want_verbs:
+			ladder_ok = false
+			ladder_report.append("%s got %s" % [FactionDB.BAND_NAMES[band], str(got_verbs)])
+	# EVERY SITUATIONAL ROW IS SITUATIONAL. An ALLIED ship with none of the
+	# circumstances offers exactly what a NEUTRAL one does, plus its bearings --
+	# so the band opens a door and the world decides what is behind it.
+	var allied_bare: Array = []
+	for o_v in HUD.contact_options(FactionDB.Band.ALLIED, bare):
+		allied_bare.append(String((o_v as Dictionary)["verb"]))
+	var situational: bool = allied_bare == ["hail_contact", "hail_bearings", "engage_contact"]
+	print("[contact] THE LADDER 5 bands (%s); ALLIED with no circumstances = %s -> %s" % [
+		"exact" if ladder_report.is_empty() else ", ".join(ladder_report),
+		str(allied_bare), "PASS" if ladder_ok and situational else "FAIL"])
+
+	# --- 4. WHAT THE VERBS DO ------------------------------------------------
+	GameState.shift_faction(FactionDB.SURVEYOR, "gsa", 4)      # 0 -> +4, ALLIED
+	await get_tree().process_frame
+	var allied_now: bool = GameState.faction_band("gsa", FactionDB.SURVEYOR) \
+		== FactionDB.Band.ALLIED
+
+	engage_contact(picket)
+	var engaged: bool = player.attack_target == picket
+	# AND THE RETICLE TURNS WHEN THE SHIP ANSWERS, NOT WHEN YOU GIVE THE ORDER --
+	# which is the honest claim and the one the code makes. fights_the_player()
+	# reads _aggro and _target, and the player's ORDER sets neither; what sets
+	# them is the first shot landing. So the answer is what gets asserted, through
+	# the real path a player shot takes (take_damage with the player as attacker),
+	# rather than by racing the mounts for a frame -- which is what an earlier
+	# version of this line did, and it failed about one run in four.
+	picket.take_damage(1.0, player)
+	await get_tree().process_frame
+	var engage_red: bool = picket.marker_color() == Palette.THREAT
+	player.clear_target()
+	picket._aggro = null
+	picket._target = null
+	await get_tree().process_frame
+	print("[contact] ENGAGE IS AN ORDER standing pinned ALLIED=%s, target set=%s, marker went THREAT=%s -> %s" % [
+		str(allied_now), str(engaged), str(engage_red),
+		"PASS" if allied_now and engaged and engage_red else "FAIL"])
+
+	# MARK MY TARGET is the existing grudge, pointed somewhere useful: aggro with
+	# an expiry, and never a band.
+	var deltas_before := GameState.faction_deltas.duplicate(true)
+	player.command_attack(wild)
+	mark_target_for(picket)
+	var marked: bool = picket._aggro == wild and picket._grudge > 0.0
+	var mark_quiet: bool = GameState.faction_deltas == deltas_before
+	player.clear_target()
+	picket._grudge = 0.0
+	picket._aggro = null
+	print("[contact] MARK MY TARGET ally aggro=%s grudge=%.0fs, standing untouched=%s -> %s" % [
+		str(marked), FactionDB.GRUDGE_TIME, str(mark_quiet),
+		"PASS" if marked and mark_quiet else "FAIL"])
+
+	# --- 5. THE QUOTE IS THE TRADE -------------------------------------------
+	# The two exclusions are the whole assertion. Contraband has a named list of
+	# buyers and that list IS the route problem it exists to create; a chart runs
+	# the ledger and the commission pipeline on its way out.
+	for id in GameState.cargo.keys():
+		GameState.unload_cargo(String(id), 99)
+	GameState.load_cargo("alloys", 3)
+	GameState.load_cargo("contraband", 1)
+	GameState.load_cargo("chart_shoal", 1)
+	var quote := space_trade_quote()
+	var want_total := int(round(float(CommodityDB.base_price("alloys"))
+		* CommodityDB.SPACE_TRADE_RATE)) * 3
+	var quote_ok: bool = int(quote["total"]) == want_total \
+		and (quote["goods"] as Dictionary).has("alloys") \
+		and not (quote["goods"] as Dictionary).has("contraband") \
+		and not (quote["goods"] as Dictionary).has("chart_shoal")
+	print("[contact] THE QUOTE IS THE TRADE alloys x3 + BANNED + a chart -> %d (want %d), goods %s -> %s" % [
+		int(quote["total"]), want_total, str((quote["goods"] as Dictionary).keys()),
+		"PASS" if quote_ok else "FAIL"])
+
+	# AND IT PAYS EXACTLY THAT, AND NOTHING ELSE MOVES. No trade pressure (there
+	# is no port), no smuggling ladder (that feed is the fence's), no standing
+	# (payment is not a favour).
+	GameState.shift_faction(FactionDB.SURVEYOR, "league", 2)   # 0 -> +2, FRIENDLY
+	trader.add_to_group("deep_convoy")
+	var salvage_before := GameState.salvage
+	var smug_before := GameState.smuggling
+	deltas_before = GameState.faction_deltas.duplicate(true)
+	space_trade(trader)
+	await get_tree().process_frame
+	var paid: bool = GameState.salvage - salvage_before == want_total
+	var left_aboard: bool = GameState.cargo_count("alloys") == 0 \
+		and GameState.cargo_count("contraband") == 1 \
+		and GameState.cargo_count("chart_shoal") == 1
+	var trade_quiet: bool = GameState.smuggling == smug_before \
+		and GameState.faction_deltas == deltas_before
+	print("[contact] THE SALE PAYS THE QUOTE +%d salvage (want %d), restricted cargo still aboard=%s, smuggling and standing untouched=%s -> %s" % [
+		GameState.salvage - salvage_before, want_total, str(left_aboard), str(trade_quiet),
+		"PASS" if paid and left_aboard and trade_quiet else "FAIL"])
+
+	# --- 6. REPAIRS ARE GATED, NEVER PRICED ----------------------------------
+	# Market's NO PRICE MOVES WITH STANDING is asserted elsewhere against Market's
+	# own functions; this is the same claim about the one price this feature
+	# introduces. What ALLIED buys is the option, at the dock's own figure.
+	#
+	# EVERY HOSTILE FIXTURE GOES FIRST, and the reason is itself an assertion.
+	# The feral and the Tithe dart stood within Music.THREAT_RADIUS through
+	# everything above, and the repair gate refused every purchase while they did
+	# -- correctly, and it took two tries to notice, which is the gate working.
+	# The GSA picket standing just as close does NOT refuse them. That is the
+	# _threat_near_player fix read from the side: the lighting and the score had
+	# drifted from Music's copy of the same scan and were calling a friendly ship
+	# a fight, which is the radar's defect one instrument over.
+	# MOVING A STATION-KEEPER DOES NOT MOVE IT. Hostile._process ASSIGNS
+	# `global_position = _home + beat + wander` every frame for a machine with no
+	# patrol, so a fixture shoved aside is back on its post next frame -- the same
+	# property that makes an escort offer refuse station-keepers. _home is the
+	# real handle, and `wild` is relocated rather than freed because section 7
+	# needs a live feral to point the escort at.
+	var moved_off := 0
+	for n_v in get_tree().get_nodes_in_group("hostiles"):
+		var n3 := n_v as Node3D
+		if not is_instance_valid(n3) or not GameState.hostile_to_player(n3):
+			continue
+		moved_off += 1
+		if n3 == wild:
+			_park_hostile(n3, player.global_position + Vector3(400, 0, 0))
+		else:
+			n3.queue_free()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var no_fight: bool = not _threat_near_player()
+	print("[contact] A FRIENDLY SHIP IS NOT A FIGHT %d hostiles moved off, a gsa picket left %.0fu away, in combat=%s (want false) -> %s" % [
+		moved_off, player.global_position.distance_to(picket.global_position),
+		str(not no_fight), "PASS" if no_fight else "FAIL"])
+	for id2 in GameState.cargo.keys():
+		GameState.unload_cargo(String(id2), 99)
+	GameState.salvage = 100000
+	player.shield = player.shield_max * 0.4
+	var want_price := int(round(0.6 * float(PortPanel.REPAIR_FULL_PRICE)))
+	var before_repair := GameState.salvage
+	field_repair(picket)
+	var spent := before_repair - GameState.salvage
+	var healed: bool = is_equal_approx(player.shield, player.shield_max)
+	# Same call one band down: refused, and it costs nothing to be refused.
+	GameState.shift_faction(FactionDB.SURVEYOR, "gsa", -2)      # +4 -> +2, FRIENDLY
+	player.shield = player.shield_max * 0.4
+	var friendly_before := GameState.salvage
+	field_repair(picket)
+	var friendly_refused: bool = GameState.salvage == friendly_before \
+		and player.shield < player.shield_max
+	print("[contact] REPAIRS ARE GATED, NEVER PRICED ALLIED spent %d (want %d, the dock's own formula) and healed=%s; FRIENDLY refused=%s -> %s" % [
+		spent, want_price, str(healed), str(friendly_refused),
+		"PASS" if spent == want_price and healed and friendly_refused else "FAIL"])
+
+	# THE PRICE IS BAND-BLIND ACROSS THE BAND ITSELF: +4 and +6 are both ALLIED,
+	# and a price that moved between them would be a price consulting standing.
+	GameState.shift_faction(FactionDB.SURVEYOR, "gsa", 2)       # +2 -> +4
+	player.shield = player.shield_max * 0.4
+	var at_four := GameState.salvage
+	field_repair(picket)
+	var price_four := at_four - GameState.salvage
+	GameState.shift_faction(FactionDB.SURVEYOR, "gsa", 2)       # +4 -> +6
+	player.shield = player.shield_max * 0.4
+	var at_six := GameState.salvage
+	field_repair(picket)
+	var price_six := at_six - GameState.salvage
+	# And never mid-fight: the shared combat oracle refuses, so a full heal can
+	# never be bought out of a fight the player is losing. Its own machine rather
+	# than one of the fixtures above -- the player's mounts fire on a locked
+	# target by themselves, so anything this file has pointed the ship at once
+	# may not be alive by the time a later section wants it.
+	var menace := Hostile.new()
+	menace.faction = FactionDB.FERAL
+	system_root.add_child(menace)
+	_park_hostile(menace, player.global_position + Vector3(2, 0, 0))
+	player.shield = player.shield_max * 0.4
+	await get_tree().process_frame
+	var in_fight := GameState.salvage
+	field_repair(picket)
+	var fight_refused: bool = GameState.salvage == in_fight
+	menace.queue_free()
+	await get_tree().process_frame
+	print("[contact] THE PRICE IS BAND-BLIND +4 costs %d, +6 costs %d (want equal); refused with a hostile inside %.0fu=%s -> %s" % [
+		price_four, price_six, Music.THREAT_RADIUS, str(fight_refused),
+		"PASS" if price_four == price_six and price_four > 0 and fight_refused else "FAIL"])
+
+	# --- 7. THE ESCORT -------------------------------------------------------
+	# The one verb that puts a second gun on the board, so it carries the most
+	# assertions. The first is that the beat it left is still counted as manned:
+	# a picket out walking whose route reported empty would have the cordon tick
+	# spawn a relief, and the Cordon would quietly double.
+	player.shield = player.shield_max
+	GameState.salvage = 100000
+	var route_count := cordon_routes().size()
+	var beat: Array[Vector3] = [
+		player.global_position + Vector3(14, 0, 0),
+		player.global_position + Vector3(14, 0, 14),
+	]
+	picket.patrol = beat
+	picket.set_meta("route_i", 0)
+	_escort_cd = 0.0
+	request_escort(picket)
+	await get_tree().process_frame
+	var riding: bool = picket.escorting()
+	var still_manned: bool = not unmanned_routes().has(0)
+	print("[contact] THE ESCORT LEAVES THE BEAT MANNED escorting=%s, route 0 of %d still counted=%s -> %s" % [
+		str(riding), route_count, str(still_manned),
+		"PASS" if riding and still_manned else "FAIL"])
+
+	# FIGHTS WHAT FIGHTS THE PLAYER, and does not answer a demand that was put to
+	# the player: the parley is the player's conversation, for the escort exactly
+	# as for a picket on its beat.
+	_park_hostile(wild, player.global_position + Vector3(8, 0, 0))
+	_reset_picket_clocks(picket)
+	await get_tree().create_timer(0.6).timeout
+	var answers: bool = picket._target == wild
+	_park_hostile(wild, player.global_position + Vector3(400, 0, 0))
+	# THE PARLEY EXCLUSION, ISOLATED TO THE ESCORT SCAN. It has to be a flag the
+	# PICKET has no quarrel with, or the assertion proves nothing: the GSA is
+	# HOSTILE to the Tithe at baseline, so a Tithe raider is picked up by the
+	# ordinary enemy scan whatever the escort thinks, and a test using one would
+	# report the escort's exclusion broken when it was never consulted. A League
+	# sentry is FRIENDLY to the GSA and appears in no enemy list, so the escort
+	# scan is the ONLY thing that can select it.
+	#
+	# ASKED OF _pick_target DIRECTLY, and that is the difference between an
+	# assertion and a coin toss. Run against the live world these two questions
+	# fought each other: the picket shoots the bystander, the bystander answers
+	# the picket, and _aggro -- which outranks the guard scan by design -- ends up
+	# holding the very ship the second half is trying to prove is ignored. The
+	# rule under test IS this function, so it is called with the clocks pinned and
+	# nothing in flight, which answers the same question the same way every run.
+	var bystander := Hostile.new()
+	bystander.faction = "league"
+	system_root.add_child(bystander)
+	_park_hostile(bystander, player.global_position + Vector3(7, 0, 0))
+	bystander.provoke(player)                   # hostile to the player, to nobody else
+	await get_tree().process_frame
+
+	_reset_picket_clocks(picket)
+	var picked_open := picket._pick_target(0.0)
+	var covered: bool = picked_open == bystander
+
+	bystander.add_to_group("raider")
+	bystander.standoff = 9.0
+	_reset_picket_clocks(picket)
+	var picked_held := picket._pick_target(0.0)
+	var left_parley_alone: bool = picked_held != bystander
+
+	bystander.standoff = 0.0
+	bystander.queue_free()
+	_reset_picket_clocks(picket)
+	print("[contact] THE ESCORT ANSWERS FOR YOU took the feral near the player=%s; covered a flag only the player was fighting=%s, then ignored the same ship in standoff=%s (picked %s) -> %s" % [
+		str(answers), str(covered), str(left_parley_alone),
+		"nothing" if picked_held == null else "it",
+		"PASS" if answers and covered and left_parley_alone else "FAIL"])
+
+	# IT CANNOT DEPLETE THE WORLD (§51). Not a new rule -- SKIRMISH_HP_FLOOR
+	# already clamps damage from any combatant, so fire support can soften and
+	# can never finish. Asserted through the escort because that is the new way
+	# for an NPC to be shooting on the player's behalf.
+	var quarry := Hostile.new()
+	quarry.faction = "gnomon"
+	system_root.add_child(quarry)
+	quarry.global_position = player.global_position + Vector3(0, 0, 20)
+	await get_tree().process_frame
+	for _i in range(40):
+		quarry.take_damage(50.0, picket)
+	var floored: bool = quarry.hp >= quarry.max_hp * FactionDB.SKIRMISH_HP_FLOOR \
+		and not quarry.is_dying()
+	print("[contact] THE ESCORT CANNOT FINISH ANYTHING 2000 damage from an ally leaves %.0f/%.0f hp (floor %.0f), alive=%s -> %s" % [
+		quarry.hp, quarry.max_hp, quarry.max_hp * FactionDB.SKIRMISH_HP_FLOOR,
+		str(not quarry.is_dying()), "PASS" if floored else "FAIL"])
+	quarry.queue_free()
+
+	# AND IT STOPS AT THE MARKER. The band-1 beacon has promised since v13 that
+	# patrols do not operate past the edge; an escort is the first Cordon ship
+	# that could ever have been invited across it.
+	var home := player.global_position
+	player.global_position = Vector3(0, 0, -(chart_edge() + 30.0))
+	await get_tree().create_timer(0.4).timeout
+	var let_go: bool = not picket.escorting()
+	player.global_position = home
+	print("[contact] THE ESCORT STOPS AT THE MARKER player %.0fu out (edge %.0f) -> escorting=%s -> %s" % [
+		chart_edge() + 30.0, chart_edge(), str(picket.escorting()),
+		"PASS" if let_go else "FAIL"])
+
+	# --- 8. THE MENU CLOSES ITSELF -------------------------------------------
+	# Four ways a conversation ends without the player ending it. Each one leaves
+	# the plate pointing at something that is no longer what it described.
+	_escort_cd = 0.0
+	hud.show_contact_menu(picket)
+	var opened: bool = hud.contact_menu_open()
+	picket.provoke(player)                      # it turns on you mid-sentence
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var closed_on_hostile: bool = not hud.contact_menu_open()
+	picket._grudge = 0.0
+	picket._release_grudge()
+	await get_tree().process_frame
+
+	hud.show_contact_menu(picket)
+	var reopened: bool = hud.contact_menu_open()
+	GameState.shift_faction(FactionDB.SURVEYOR, "gsa", -6)      # ALLIED -> WARY
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var closed_on_band: bool = not hud.contact_menu_open()
+
+	hud.show_contact_menu(picket)
+	var open_again: bool = hud.contact_menu_open()
+	picket.queue_free()                         # it dies mid-sentence
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var closed_on_death: bool = not hud.contact_menu_open()
+	print("[contact] THE MENU CLOSES ITSELF opened=%s; on turning hostile=%s, on a band change=%s (reopened=%s), on the ship dying=%s (reopened=%s) -> %s" % [
+		str(opened), str(closed_on_hostile), str(closed_on_band), str(reopened),
+		str(closed_on_death), str(open_again),
+		"PASS" if opened and reopened and open_again and closed_on_hostile
+			and closed_on_band and closed_on_death else "FAIL"])
+
+	# A MENU IS NOT A CONSOLE, and this is the assertion that keeps it that way.
+	# console_open() gates interdiction and muster eligibility, so a plate that
+	# registered as a console would hold the world's events off while it stood.
+	# Guarded, every one: the player's mounts fire on a locked target without
+	# being told to, so a fixture this file aimed at earlier may already be gone.
+	for spent_v in [wild, trader, muster_ship, held]:
+		if is_instance_valid(spent_v):
+			(spent_v as Node).queue_free()
+	await get_tree().process_frame
+	var quiet_world := SwarmHostile.new()
+	quiet_world.faction = "league"
+	system_root.add_child(quiet_world)
+	quiet_world.global_position = player.global_position + Vector3(5, 0, 0)
+	await get_tree().process_frame
+	hud.show_contact_menu(quiet_world)
+	var menu_up: bool = hud.contact_menu_open()
+	var not_a_console: bool = not console_open()
+	hud.hide_contact_menu()
+	quiet_world.queue_free()
+	print("[contact] A MENU IS NOT A CONSOLE menu open=%s, console_open()=%s (want false) -> %s" % [
+		str(menu_up), str(console_open()),
+		"PASS" if menu_up and not_a_console else "FAIL"])
+
+	_clear_faction_matrix()
+	for id3 in GameState.cargo.keys():
+		GameState.unload_cargo(String(id3), 99)
 	await get_tree().create_timer(0.2).timeout
 	get_tree().quit()
 

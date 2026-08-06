@@ -692,6 +692,7 @@ func _ready() -> void:
 	_build_crack_gauge()
 	_build_action_dock()
 	_build_parley_button()
+	_build_contact_menu()
 	_build_pause_button()
 	_build_contract_tracker()
 	_build_banners()
@@ -1032,6 +1033,249 @@ func hide_parley() -> void:
 
 func bluff_text() -> String:
 	return _bluff_button.text
+
+
+# --- the contact menu --------------------------------------------------------
+# A plate, NOT A CONSOLE, and the distinction is load-bearing rather than
+# stylistic: console_open() gates interdiction and muster eligibility, so a
+# right-click on a passing convoy that registered as a console would quietly
+# hold the world's events off for as long as it stayed up. The parley plates
+# made the same argument for the same reason and are the template here.
+#
+# It is also deliberately absent from band_controls(). That inventory is every
+# CENTRE-ANCHORED plate, measured by BANDS CLEAR and BAND CENTRED; this one is
+# positioned over a ship in the world and has no band and no centre to hold, so
+# a probe that saw it would be measuring a moving target against a fixed rule.
+
+const CMENU_WIDTH := 232.0
+const CMENU_PAD := 12.0
+# Past this the conversation is over -- it also keeps the every-frame unproject
+# to ships that are plausibly on screen.
+const CMENU_RANGE := 60.0
+
+var _cmenu: PanelContainer
+var _cmenu_box: VBoxContainer
+var _cmenu_head: Label
+var _cmenu_ship: Node3D = null
+var _cmenu_band := -1
+# Which option is armed for its second press, by verb name. The hold screen's
+# idiom: a sale that cannot be undone asks twice, in place, without a dialog.
+var _cmenu_armed := ""
+# The repair row, kept by hand so its figure can be re-quoted while the menu
+# stands. See _tick_contact_menu: the hull knits itself back together on its own,
+# so this is the one label on the plate whose number moves under the player.
+var _cmenu_repair: Button = null
+
+
+static func contact_options(band: int, ctx: Dictionary) -> Array:
+	# THE LADDER, AS A PURE FUNCTION. No node, no viewport, no ship -- so the
+	# assertion can read the whole reputation ramp out of hand-built dictionaries
+	# instead of flying a save into position first.
+	#
+	# Returns [{label, verb}] in render order. Band is FactionDB.Band, where
+	# ALLIED is 0 and HOSTILE is 4, so "FRIENDLY or better" is `<=` -- the
+	# inversion main.gd's standing toast also warns about.
+	var out: Array = []
+	if band >= FactionDB.Band.HOSTILE:
+		return out                       # not a conversation; left-click engages
+	out.append({"label": "HAIL", "verb": "hail_contact"})
+	if band <= FactionDB.Band.FRIENDLY:
+		out.append({"label": "BEARINGS", "verb": "hail_bearings"})
+		# Convoys are the traders. A picket buying cargo would be a fence with a
+		# badge, and the fence is somebody else's mechanic.
+		if bool(ctx.get("is_convoy", false)) and int(ctx.get("quote", 0)) > 0:
+			out.append({
+				"label": "SELL HOLD — %d%%  ·  %d" % [
+					int(round(CommodityDB.SPACE_TRADE_RATE * 100.0)), int(ctx["quote"])],
+				"verb": "space_trade"})
+	if band <= FactionDB.Band.ALLIED:
+		# ACCESS IS THE PERK, THE PRICE NEVER MOVES. Market's "no price function
+		# consults standing" is asserted; what ALLIED buys is that this line is on
+		# the menu at all, at the same figure the dock charges.
+		if int(ctx.get("repair_price", 0)) > 0 and not bool(ctx.get("in_combat", false)):
+			out.append({"label": "REQUEST REPAIRS  ·  %d" % int(ctx["repair_price"]),
+				"verb": "field_repair"})
+		if bool(ctx.get("is_route_picket", false)) and bool(ctx.get("escort_ready", false)):
+			out.append({"label": "REQUEST ESCORT — %d SECONDS" % int(Hostile.ESCORT_TIME),
+				"verb": "request_escort"})
+		if bool(ctx.get("has_target", false)):
+			out.append({"label": "MARK MY TARGET", "verb": "mark_target_for"})
+	# LAST, ALWAYS, AND IT NAMES ITS STAKE. Same shape as REFUSE — THEY OPEN
+	# FIRE: the plate says what it costs, so the menu press can be the deliberate
+	# second act the two-tap ladder exists to force.
+	out.append({"label": "ENGAGE — STANDING WILL FALL", "verb": "engage_contact"})
+	return out
+
+
+func _build_contact_menu() -> void:
+	_cmenu = PanelContainer.new()
+	_cmenu.add_theme_stylebox_override("panel", UIKit.stylebox(Palette.AMBER, 0.14, 0.6))
+	_cmenu.custom_minimum_size = Vector2(CMENU_WIDTH, 0)
+	_cmenu.visible = false
+	# Mouse events on the panel itself must not fall through to the world, or the
+	# rig's dismiss-on-press would close the menu the moment it was aimed at.
+	_cmenu.mouse_filter = Control.MOUSE_FILTER_STOP
+	_root.add_child(_cmenu)
+
+	_cmenu_box = VBoxContainer.new()
+	_cmenu_box.add_theme_constant_override("separation", 4)
+	_cmenu.add_child(_cmenu_box)
+
+	_cmenu_head = UIKit.label("", UIKit.SIZE_LABEL, Palette.AMBER)
+	_cmenu_box.add_child(_cmenu_head)
+
+
+func contact_menu_open() -> bool:
+	return _cmenu != null and _cmenu.visible
+
+
+func contact_menu_ship() -> Node3D:
+	return _cmenu_ship
+
+
+func show_contact_menu(ship: Node3D) -> void:
+	if _cmenu == null or ship == null or not is_instance_valid(ship):
+		return
+	var main := get_tree().get_first_node_in_group("main")
+	if main == null or not main.contact_menu_eligible(ship):
+		return
+	var flag := String(ship.faction)
+	var band: int = GameState.faction_band(flag, FactionDB.SURVEYOR)
+	_cmenu_ship = ship
+	_cmenu_band = band
+	_cmenu_armed = ""
+
+	var col := FactionDB.tint_of(flag)
+	if col.a <= 0.0:
+		col = Palette.AMBER
+	_cmenu.add_theme_stylebox_override("panel", UIKit.stylebox(col, 0.14, 0.6))
+	_cmenu_head.text = "%s — %s" % [FactionDB.display_name(flag),
+		FactionDB.BAND_NAMES[band]]
+	_cmenu_head.add_theme_color_override("font_color", col)
+
+	# Buttons are rebuilt per open rather than shown and hidden. The ladder is
+	# situational -- a quote, a repair price and a live target all move between
+	# one right-click and the next -- so a fixed row of plates would need every
+	# label rewritten anyway, and four small controls are not a budget.
+	_cmenu_repair = null
+	for child in _cmenu_box.get_children():
+		if child != _cmenu_head:
+			_cmenu_box.remove_child(child)
+			child.queue_free()
+	for opt_v in contact_options(band, main.contact_menu_context(ship)):
+		var opt: Dictionary = opt_v
+		var verb := String(opt["verb"])
+		var label := String(opt["label"])
+		# ENGAGE wears THREAT because that is what it does; everything else wears
+		# the flag's own colour, which is the same paint the ship is showing on
+		# the radar and under the reticle.
+		var b := UIKit.button(label, Palette.THREAT if verb == "engage_contact" else col,
+			UIKit.SIZE_LABEL, Vector2(0, 34))
+		b.pressed.connect(_on_contact_option.bind(verb, label))
+		_cmenu_box.add_child(b)
+		if verb == "field_repair":
+			_cmenu_repair = b
+
+	_cmenu.visible = true
+	_cmenu.reset_size()
+	_reposition_contact_menu()
+	UIKit.press_pop(_cmenu)
+
+
+func hide_contact_menu() -> void:
+	if _cmenu == null:
+		return
+	_cmenu.visible = false
+	_cmenu_ship = null
+	_cmenu_band = -1
+	_cmenu_armed = ""
+	_cmenu_repair = null
+
+
+func _on_contact_option(verb: String, label: String) -> void:
+	var main := get_tree().get_first_node_in_group("main")
+	var ship := _cmenu_ship
+	if main == null or not main.contact_menu_eligible(ship):
+		hide_contact_menu()
+		return
+	# SELLING THE HOLD ASKS TWICE, in place. It empties the manifest in one press
+	# and cannot be undone; the hold screen already established arm-then-confirm
+	# as this game's answer to that, and it costs no new surface.
+	if verb == "space_trade" and _cmenu_armed != verb:
+		_cmenu_armed = verb
+		for child in _cmenu_box.get_children():
+			var b := child as Button
+			if b != null and b.text == label:
+				b.text = "CONFIRM — %s" % label
+		Sfx.play("tap", -8.0, 0.9)
+		return
+	# HIDDEN BEFORE THE VERB RUNS, never after. engage_contact makes its target
+	# hostile, which makes it ineligible — so a menu still standing when the verb
+	# returns would be a menu pointing at a ship it may no longer describe.
+	hide_contact_menu()
+	if main.has_method(verb):
+		main.call(verb, ship)
+
+
+func _reposition_contact_menu() -> void:
+	# Re-projected every frame while open: convoys walk, pickets patrol and the
+	# camera pans, and a plate that resolved its position once would detach from
+	# the ship it belongs to within a second.
+	if _cmenu_ship == null or not is_instance_valid(_cmenu_ship):
+		return
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var at := cam.unproject_position(_cmenu_ship.global_position)
+	# This is a CanvasLayer, so the visible rect comes from the viewport rather
+	# than from self -- RadarLayer's get_viewport_rect() works because that inner
+	# class is a Control.
+	var rect := get_viewport().get_visible_rect()
+	var size := _cmenu.size
+	_cmenu.position = Vector2(
+		clampf(at.x + 28.0, CMENU_PAD, maxf(rect.size.x - size.x - CMENU_PAD, CMENU_PAD)),
+		clampf(at.y - 20.0, CMENU_PAD, maxf(rect.size.y - size.y - CMENU_PAD, CMENU_PAD)))
+
+
+func _tick_contact_menu() -> void:
+	# EVERY WAY THE CONVERSATION ENDS, asked once a frame. Each of these is a real
+	# case rather than a defensive list: the ship dies mid-menu, it turns on you
+	# because a grudge landed, a raid drops it into a standoff, your standing
+	# crosses a band while the options for the old one are on screen, you fly
+	# away, you dock, you warp.
+	if not contact_menu_open():
+		return
+	var main := get_tree().get_first_node_in_group("main")
+	if main == null or not main.is_playing() or not main.contact_menu_eligible(_cmenu_ship):
+		hide_contact_menu()
+		return
+	# THE BAND MOVED, SO THE MENU CLOSES rather than reshuffling under the cursor.
+	# A ladder that grew a row between the press starting and landing is a
+	# misclick machine; reopening costs one right-click.
+	if GameState.faction_band(String(_cmenu_ship.faction), FactionDB.SURVEYOR) != _cmenu_band:
+		hide_contact_menu()
+		return
+	var player: Node3D = get_tree().get_first_node_in_group("player")
+	if player == null or bool(player.get("docked")) \
+			or player.global_position.distance_to(_cmenu_ship.global_position) > CMENU_RANGE:
+		hide_contact_menu()
+		return
+	# RE-QUOTED WHILE IT STANDS. Every other figure on this plate holds still --
+	# a trade quote moves only when the hold does, and the hold cannot change
+	# with a menu up -- but the hull repairs itself for free between fights, so a
+	# price fixed at open time drifts away from the price charged at press time
+	# within a second or two. 12's rule is about a stake the player can read;
+	# quoting one number and taking another is the same offence in miniature,
+	# even when the difference is in their favour.
+	if _cmenu_repair != null and is_instance_valid(_cmenu_repair) \
+			and _cmenu_armed == "":
+		var now := int(round((1.0 - float(player.shield_fraction()))
+			* float(PortPanel.REPAIR_FULL_PRICE)))
+		if now <= 0:
+			hide_contact_menu()
+			return
+		_cmenu_repair.text = "REQUEST REPAIRS  ·  %d" % now
+	_reposition_contact_menu()
 
 
 func _build_pause_button() -> void:
@@ -1412,6 +1656,10 @@ func _process(_delta: float) -> void:
 	# Ahead of the player lookup: an abandoned hold has to finish draining even
 	# on the frames where there is no ship to poll, or it freezes half-full.
 	_tick_crack(_delta)
+	# Ahead of it for the same reason, from the other direction: the menu's own
+	# dismissal rules include "there is no player", so it has to be asked on the
+	# frames the poll below returns early on.
+	_tick_contact_menu()
 	var player: Node3D = get_tree().get_first_node_in_group("player")
 	if not player or not player.has_method("ability_info"):
 		return

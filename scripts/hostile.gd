@@ -81,6 +81,37 @@ const PATROL_RELEASE := 25.0
 
 var _patrol_i := 0
 
+# --- riding along (the contact menu's ALLIED verb) ---------------------------
+# An ALLIED picket walks with the player for a while and answers what is
+# shooting at them. Bounded and self-expiring, SHAPED LIKE THE GRUDGE and for
+# the grudge's reason: it is a session pointer with a clock, never a saved
+# state, so nothing here can author a permanent fact in the player's file.
+#
+# IT CANNOT FARM THE WORLD, and that falls out of machinery that already
+# exists rather than out of a new rule. FactionDB.SKIRMISH_HP_FLOOR clamps
+# damage from any `combatants` attacker at half hull, so an escort wears a
+# machine down and can never finish one; and every payout in _die is gated on
+# the attacker being the player. The escort is fire support -- the player still
+# has to land the kill to be paid. STRATEGY §51's ONLY THE PLAYER DEPLETES THE
+# WORLD needs nothing added to stay true.
+#
+# THE BEAT IS NOT STRIPPED EITHER: Main.unmanned_routes counts a route as manned
+# by its picket's `route_i` meta, which an escorting picket keeps, so the cordon
+# tick spawns no relief for a route whose picket is out walking and the picket
+# resumes that same beat when the clock runs out.
+const ESCORT_TIME := 60.0
+# How far off the player's shoulder it stations. Far enough not to sit inside
+# the ship's silhouette, near enough to read as company.
+const ESCORT_FOLLOW := 4.0
+# How far from THE PLAYER it will answer something. The anchor moves from the
+# route to the player for exactly as long as the escort lasts -- that is what an
+# escort IS -- and nothing else about _worth_leaving_the_beat changes, including
+# the chart-edge rule.
+const ESCORT_GUARD_RANGE := 15.0
+
+var _escort: Node3D = null
+var _escort_t := 0.0
+
 # --- the beat a STANDING machine walks (v18, playtest round 4) ----------------
 # How far a station-keeping sentry orbits its post. 0 means "hold exactly", which
 # is every machine in the game except the authored garrison — see the opt-in
@@ -145,6 +176,12 @@ var _drift_phase := 0.0
 var _dying := false
 var _hp_fill: MeshInstance3D
 var _core_mat: StandardMaterial3D
+# The bar's two materials and the colour they are currently showing. Cached so
+# the per-frame IFF refresh in _process compares a Color instead of rebuilding
+# two materials sixty times a second — see _refresh_bar_color.
+var _hp_mat: StandardMaterial3D
+var _hp_bg_mat: StandardMaterial3D
+var _hp_col := Color(0, 0, 0, 0)
 var _body_parts: Array[MeshInstance3D] = []
 
 
@@ -231,11 +268,19 @@ func _build_hp_bar() -> void:
 	add_child(bar)
 	bar.position = Vector3(0, 1.1, 0)
 
+	# THE BAR ANSWERS TO IFF, NOT TO THE GROUP. Both halves: a friendly bar on a
+	# red backing is the fix half-done, and the backing is the larger surface of
+	# the two whenever the ship is hurt — which is exactly when the bar is worth
+	# looking at. Both are seeded here and both are re-tinted by
+	# _refresh_bar_color, so a picket worn to the skirmish floor by ambient fire
+	# shows a blue bar on a blue backing rather than a red one on red.
+	var col := marker_color()
 	var bg := MeshInstance3D.new()
 	var bgm := BoxMesh.new()
 	bgm.size = Vector3(1.3, 0.09, 0.02)
 	bg.mesh = bgm
-	bg.material_override = Palette.emissive(Color(0.25, 0.03, 0.1, 0.85), 1.0)
+	_hp_bg_mat = Palette.emissive(_bar_backing(col), 1.0)
+	bg.material_override = _hp_bg_mat
 	bar.add_child(bg)
 
 	_hp_fill = MeshInstance3D.new()
@@ -243,8 +288,38 @@ func _build_hp_bar() -> void:
 	fm.size = Vector3(1.3, 0.09, 0.02)
 	_hp_fill.mesh = fm
 	_hp_fill.position.z = -0.01
-	_hp_fill.material_override = Palette.emissive(Palette.THREAT, 2.0)
+	_hp_mat = Palette.emissive(col, 2.0)
+	_hp_fill.material_override = _hp_mat
 	bar.add_child(_hp_fill)
+	_hp_col = col
+
+
+func _bar_backing(col: Color) -> Color:
+	# The spent half of the bar: the same hue, darkened, at the alpha the shipped
+	# backing already used. Derived rather than authored so a faction tint and the
+	# THREAT red both get a backing that reads as "this part is gone" instead of
+	# as a second colour.
+	return Color(col.r * 0.25, col.g * 0.25, col.b * 0.25, 0.85)
+
+
+func _refresh_bar_color() -> void:
+	# Per-frame, guarded by the cached colour. Deliberately NOT a list of the
+	# events that can flip IFF — take_damage aggro, provoke, a witness grudge, a
+	# grudge expiring, a band moving under a standing shift are five paths into
+	# the same answer, and enumerating them is how one gets missed. Asking the
+	# question is one band lookup; acting on it happens only when it changes.
+	if _hp_mat == null:
+		return
+	var col := marker_color()
+	if col == _hp_col:
+		return
+	_hp_col = col
+	_hp_mat.albedo_color = col
+	_hp_mat.emission = Color(col.r, col.g, col.b)
+	if _hp_bg_mat != null:
+		var back := _bar_backing(col)
+		_hp_bg_mat.albedo_color = back
+		_hp_bg_mat.emission = Color(back.r, back.g, back.b)
 
 
 func _process(delta: float) -> void:
@@ -265,6 +340,10 @@ func _process(delta: float) -> void:
 		_grudge = maxf(_grudge - delta, 0.0)
 		if _grudge <= 0.0:
 			_release_grudge()
+	# Before the movement branch below, so the frame an escort ends is a frame the
+	# picket is already walking its own beat again.
+	if _escort != null:
+		_tick_escort(delta)
 	rotation.y += delta * 0.8
 	var t := Time.get_ticks_msec() / 1000.0
 	var wander := Vector3(sin(t * 0.5 + _drift_phase), 0, cos(t * 0.4 + _drift_phase)) * 0.4
@@ -299,6 +378,7 @@ func _process(delta: float) -> void:
 	var bar := get_node_or_null("HPBar")
 	if cam and bar:
 		bar.global_transform.basis = cam.global_transform.basis
+	_refresh_bar_color()
 
 	_weapon(delta)
 
@@ -321,6 +401,49 @@ func fights_the_player() -> bool:
 	var p := get_tree().get_first_node_in_group("player")
 	return p != null and (_target == p or _aggro == p)
 
+
+func marker_color() -> Color:
+	# IFF FOR EVERY SURFACE THAT PAINTS THIS SHIP AS A DOT, A BAR OR A RING.
+	# STRATEGY §47 wrote down what would happen when allies were left in the
+	# "hostiles" group and the display half of the fix was skipped: "an allied
+	# picket in it would be painted red". It was. A Cordon picket cannot fire on
+	# the surveyor at any standing (FactionDB.GSA_SURVEYOR_FLOOR) and still drew
+	# a THREAT arrow on the radar, which is the instrument contradicting the
+	# fiction the beacon has been selling since v13.
+	#
+	# THE RULE IS ONE SENTENCE: red means it shoots at you; any other colour is a
+	# flag. Deliberately routed through hostile_to_player rather than through the
+	# band alone, so a neutral the player picked a fight with turns red the frame
+	# it answers — the same test the reticle, the music and cycle_target use.
+	#
+	# FACTION TINT RATHER THAN ONE "FRIENDLY" SWATCH (HORIZON-4 finding A2, which
+	# warns the colour channel is already double-booked). A new swatch would be a
+	# FOURTH booking; the convoy clusters and the muster marker already speak
+	# faction tint on this very instrument, so this resolves a booking instead of
+	# adding one.
+	#
+	# Cheap on purpose: the radar re-collects every marker every frame, so this is
+	# called per node per frame and must stay one band lookup deep.
+	if GameState.hostile_to_player(self):
+		return Palette.THREAT
+	var c := FactionDB.tint_of(faction)
+	if c.a > 0.0:
+		return c
+	# Unreachable for an unflagged machine — FERAL is HOSTILE to the surveyor, so
+	# it left through the first branch. Kept for a spawner-painted ship that flies
+	# no flag at all.
+	return tint if tint.a > 0.0 else Palette.HULL
+
+
+func current_goal() -> Vector3:
+	# Where this machine is headed, for anyone the player is on speaking terms
+	# enough with to ask. Vector3.INF means "nowhere" — a station-keeper is at its
+	# post and a sentry mid-engagement is not going anywhere it would report.
+	if patrol.is_empty():
+		return Vector3.INF
+	return patrol[_patrol_i]
+
+
 func enter_beat(i: int) -> void:
 	# Join the route at waypoint `i` and walk ON from there rather than turning
 	# round to reach waypoint 0. The re-form enters at the waypoint furthest from
@@ -329,6 +452,69 @@ func enter_beat(i: int) -> void:
 	if patrol.is_empty():
 		return
 	_patrol_i = (i + 1) % patrol.size()
+
+
+func begin_escort(who: Node3D) -> void:
+	# Main.request_escort is the only caller, and it holds the gates: ALLIED band,
+	# a route picket, off cooldown, no muster or boss running. This is the state
+	# change alone.
+	if _dying or who == null or not is_instance_valid(who) or patrol.is_empty():
+		return
+	_escort = who
+	_escort_t = ESCORT_TIME
+
+
+func end_escort() -> void:
+	# Position and groups are untouched: the picket simply stops having an escort,
+	# which _walk_beat reads as "resume the beat" from wherever it is standing.
+	# enter_beat is deliberately NOT called -- patrol[_patrol_i] is still a legal
+	# waypoint and walking to it IS returning, exactly as the no-third-state
+	# argument in _walk_beat says.
+	#
+	# The target pointer goes with the clock, for _release_grudge's reason: an
+	# escort's target was picked against the PLAYER's position, and leaving it
+	# set would have the picket standing off something the route never cared
+	# about until the next retarget happened to notice.
+	_escort = null
+	_escort_t = 0.0
+	_target = null
+
+
+func escorting() -> bool:
+	return _escort != null and is_instance_valid(_escort)
+
+
+func _tick_escort(delta: float) -> void:
+	# FOUR WAYS IT ENDS, and the last one is the one the fiction already sold.
+	# The band-1 beacon has promised since v13 that patrols do not operate past
+	# the marker; THE CORDON STOPS AT THE MARKER made that true of the routes and
+	# _worth_leaving_the_beat made it true of a pursuit. An escort that followed
+	# the player into the deep would be the first Cordon ship ever to break it,
+	# and it would do so on the player's invitation -- so crossing the line is
+	# how you say goodbye to your escort, not a loophole around the line.
+	if not is_instance_valid(_escort) or bool(_escort.get("docked")):
+		end_escort()
+		return
+	_escort_t -= delta
+	if _escort_t <= 0.0:
+		end_escort()
+		return
+	if _edge < 0.0:
+		var m := get_tree().get_first_node_in_group("main")
+		_edge = float(m.chart_edge()) if m != null and m.has_method("chart_edge") else 0.0
+	if _edge > 0.0 and Vector2(_escort.global_position.x,
+			_escort.global_position.z).length() > _edge:
+		end_escort()
+
+
+func _escort_station() -> Vector3:
+	# Just off the player's shoulder, behind the nose. Deliberately AT
+	# PATROL_SPEED, which is well under the player's 5.75: a picket is a presence,
+	# not a pursuer, so a player running loops outruns their own escort. That is
+	# the pacing valve as much as it is the characterisation.
+	var back := _escort.global_transform.basis.z    # +z is behind the nose
+	var at := _escort.global_position + Vector3(back.x, 0.0, back.z).normalized() * ESCORT_FOLLOW
+	return Vector3(at.x, 0.0, at.z)
 
 
 func provoke(who: Node3D) -> void:
@@ -390,6 +576,12 @@ func _walk_beat(delta: float) -> void:
 		if away.length() < 0.01:
 			away = Vector3(1, 0, 0)
 		goal = target.global_position + away.normalized() * (ENGAGE_RANGE * 0.8)
+	elif escorting():
+		# The one case where a picket's goal is not on its route. It is still the
+		# same two positions the comment above names -- standing off something it
+		# is fighting, or walking to where it is meant to be -- and for the length
+		# of an escort where it is meant to be is beside the player.
+		goal = _escort_station()
 	else:
 		goal = patrol[_patrol_i]
 		if global_position.distance_to(goal) <= PATROL_ARRIVE:
@@ -441,7 +633,13 @@ func _worth_leaving_the_beat(target: Node3D) -> bool:
 	if _edge > 0.0 and Vector2(target.global_position.x,
 			target.global_position.z).length() > _edge:
 		return false
-	var post: Vector3 = patrol[_patrol_i]
+	# AN ESCORT'S ANCHOR IS THE PLAYER, and that is the whole of what an escort
+	# changes here. Everything above still applies unchanged -- a standoff raider
+	# is still the player's conversation, and the chart edge still stops the
+	# Cordon dead -- so the reach moves without any of the rules moving.
+	var post: Vector3 = _escort.global_position if escorting() else patrol[_patrol_i]
+	if escorting():
+		return post.distance_to(target.global_position) <= ESCORT_GUARD_RANGE
 	# A GRUDGE WIDENS THE REACH AND NEVER MOVES THE ANCHOR. Measuring from the
 	# picket instead of from the route is the defect this whole function exists
 	# to prevent, so a provoked picket asks the same question about the same
@@ -539,6 +737,35 @@ func _pick_target(delta: float) -> Node3D:
 	if _targetable(_target) and _retarget_t > 0.0:
 		return _target
 	_retarget_t = RETARGET_INTERVAL
+
+	# FIGHTS WHAT FIGHTS THE PLAYER, literally. A picket's own enemy list is the
+	# matrix's answer to "who does this flag oppose", which is not the same
+	# question -- a raider that the GSA is merely WARY of can be shooting at the
+	# player all day and never appear in it. So an escort asks the dispatcher
+	# instead, about the ships near the ship it is escorting.
+	#
+	# Sits after the aggro check on purpose: something shooting AT the picket
+	# still outranks something shooting at the player, because a picket that
+	# ignored its own attacker to cover somebody else would be a machine that
+	# cannot defend itself. Runs on the retarget cadence like every other scan.
+	if escorting():
+		var guard: Node3D = null
+		var guard_d := INF
+		for e_v in get_tree().get_nodes_in_group("hostiles"):
+			var e := e_v as Node3D
+			if e == self or not _targetable(e) or not GameState.hostile_to_player(e):
+				continue
+			# The parley again: an escort must not answer a demand that was put to
+			# the player. Same exclusion, same reason, as _worth_leaving_the_beat.
+			if e.is_in_group("raider") and float(e.get("standoff")) > 0.0:
+				continue
+			var ed := _escort.global_position.distance_to(e.global_position)
+			if ed <= ESCORT_GUARD_RANGE and ed < guard_d:
+				guard_d = ed
+				guard = e
+		if guard != null:
+			_target = guard
+			return guard
 
 	var best: Node3D = null
 	var best_d := INF
