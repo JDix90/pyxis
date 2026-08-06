@@ -834,6 +834,27 @@ func _physics_process(delta: float) -> void:
 		# an EMP the cheapest way out of it. Ticked on this path too so the pull
 		# is spent as it arrives rather than banked and dumped on recovery.
 		global_position += (velocity + _tick_tether(delta)) * delta
+		# RESOLVED ON THIS PATH TOO, as of v20's storms. This branch used to
+		# return before Obstacles.resolve, and sweep_arm.gd's HUB_CRUSH note
+		# named the latent hazard exactly: "any future mover that skips
+		# Obstacles.resolve (the EMP integrator already skips it, though nothing
+		# pushes far enough during a stun today)". A storm is the thing that
+		# pushes far enough — 1.4 u/s across a 3.4s pulse is 4.8u, comfortably
+		# through the single-digit spheres asteroids and station hulls register,
+		# so a stunned hull was about to start passing through rock.
+		#
+		# The normal-kill is the powered path's, verbatim and for its reason: a
+		# drag that pins a stunned ship against a surface would otherwise grind
+		# into it for the rest of the window instead of sliding along it.
+		var stunned_resolved := Obstacles.resolve(global_position, HULL_RADIUS)
+		if not stunned_resolved.is_equal_approx(global_position):
+			var stun_normal := global_position - stunned_resolved
+			stun_normal.y = 0.0
+			if stun_normal.length() > 0.0001:
+				stun_normal = stun_normal.normalized()
+				velocity -= stun_normal * minf(velocity.dot(stun_normal), 0.0)
+				_tether_vel -= stun_normal * minf(_tether_vel.dot(stun_normal), 0.0)
+			global_position = stunned_resolved
 		rotation.y += delta * (1.4 + _emp)      # tumbling, unpowered
 		if _engine_mat:
 			_engine_mat.emission_energy_multiplier = 0.15

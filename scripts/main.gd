@@ -100,6 +100,7 @@ const HARNESS_VARS := [
 	"PYXIS_SPILLTEST",
 	"PYXIS_STATIONTEST",
 	"PYXIS_STORETEST",
+	"PYXIS_STORMTEST",
 	"PYXIS_STREAMTEST",
 	"PYXIS_TITLETEST",
 	"PYXIS_TORPTEST",
@@ -360,6 +361,27 @@ const PROCESSION_DEF := {
 
 # Unstable rifts: roughly one per twenty minutes of play, never two at once,
 # always in the current system at a depth reachable within the rift's own life.
+# --- storms (v20) ------------------------------------------------------------
+# Weather in THE UNSOUNDED. Session weather like a rift and for the same reason:
+# a system_root child that dies with the system, placed on the unsalted global
+# randf(), never a cell, never a fingerprint, never a saved byte.
+#
+# STORM_LEAD is why storms only exist where somebody is. A storm nobody is near
+# is a _physics_process and a particle system burning frames for no one; 17
+# makes band 6 a place only while you are standing in it; and the 400u lead-in
+# means you ARRIVE in the Unsounded to find weather already standing three
+# thousand units off, rather than watching one appear around you.
+const STORM_ROLL_INTERVAL := 150.0
+const STORM_CHANCE := 0.30
+const STORM_MAX := 2
+const STORM_LEAD := 400.0
+# Legibility, NOT safety. Two overlapping pull rings are perfectly safe —
+# apply_tether's limit_length re-clamps per call, so N storms still cannot exceed
+# the ceiling — but they are two prompts and two pulse cadences on one ship.
+# TWO STORMS CANNOT BUILD A CAGE asserts where the safety actually lives, so
+# nobody reads this constant as the thing holding the promise up.
+const MIN_STORM_SEPARATION := 600.0
+
 const RIFT_ROLL_INTERVAL := 240.0
 const RIFT_CHANCE := 0.20
 const RIFT_DEPTH_MIN := 90.0
@@ -420,6 +442,8 @@ var _raid_cooldown := 0.0
 var _raid_active := false
 var _parley_toll := 0
 var _parley_until := 0.0
+var _storm_timer := STORM_ROLL_INTERVAL
+var live_storms: Array[Storm] = []
 var _rift_timer := RIFT_ROLL_INTERVAL
 var live_rift: Rift = null
 
@@ -960,6 +984,14 @@ func _ready() -> void:
 		_run_access_test()
 		return
 
+	if OS.get_environment("PYXIS_STORMTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_storm_test()
+		return
+
 	if OS.get_environment("PYXIS_FRONTIERTEST") != "":
 		GameState.lock_saving()
 		state = State.PLAYING
@@ -1273,6 +1305,8 @@ func _load_system(id: String) -> void:
 	# The rift died with system_root. Cleared explicitly rather than trusting
 	# that a freed reference compares equal to null — it does, and relying on
 	# that subtlety is how the next bug hides.
+	# Storms die with system_root too, and are cleared for the same reason.
+	live_storms.clear()
 	live_rift = null
 	# The convoy died with it too, same rule. _tick_procession will re-seat it
 	# if this window's system is the one being loaded.
@@ -2051,6 +2085,12 @@ func interdiction_eligible() -> bool:
 	# harness can force a raid without gambling on a dice roll, and two suites
 	# call it directly.
 	#
+	# A STORM COUNTS TOO, and it is the sharpest case on this list. Inside the
+	# eye the ship is EMP-stunned up to 86% of the time, which means a raid
+	# landing there is 13's "an attack you cannot answer with movement" — a
+	# damage tax, not a mechanic. The console exclusion below makes the same
+	# argument about a player whose hands are elsewhere.
+	#
 	# Consoles count too. They do not pause the game, so a raid could begin while
 	# the player was reading the refit list — the klaxon fires behind a sheet
 	# that covers two thirds of the screen, and the first thing they see on
@@ -2064,6 +2104,7 @@ func interdiction_eligible() -> bool:
 		and (not console_open() or console_camping()) \
 		and not _raid_active \
 		and not muster_active() \
+		and not storm_has_player() \
 		and _raid_cooldown <= 0.0 \
 		and GameState.faction_band(FactionDB.SURVEYOR, "tithe") >= FactionDB.Band.WARY
 
@@ -2763,6 +2804,96 @@ func lair_def(def: Dictionary) -> Dictionary:
 	return ((def.get("apex", {}) as Dictionary).get("lair", {}) as Dictionary)
 
 
+func spawn_storm() -> Storm:
+	# PUBLIC so the harness forces one instead of gambling on a 30% roll — the
+	# shape spawn_rift already uses for exactly that reason.
+	#
+	# THE DEPTH GATE IS THE FEATURE, not an optimisation: weather exists where
+	# somebody is standing in it. Read against Storm's own band floor rather than
+	# a literal, so a seventh band moves the weather with it.
+	if live_storms.size() >= STORM_MAX:
+		return null
+	if state != State.PLAYING or warping or tutorial_active():
+		return null
+	if deep_space == null:
+		return null
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	if player == null:
+		return null
+	if deep_depth() < Storm.band_floor() - STORM_LEAD:
+		return null
+
+	var lo := Storm.band_floor() + Storm.PULL_RADIUS
+	var hi := Storm.band_floor() + Storm.DRIFT_DEPTH_SPAN * 0.8
+	var bounds := SystemDB.bounds_of(system_id)
+	var at := Vector3.ZERO
+	var placed := false
+	# Bounded rejection, the shear's 24 attempts. Two rules, and only one of them
+	# is about safety: a storm may never appear inside the ring where it would
+	# already be announcing itself (14 — being jumped must be something you could
+	# have reacted to), and two storms stay legibly apart.
+	for attempt in range(24):
+		var bearing := randf() * TAU
+		var radius := bounds + randf_range(lo, hi)
+		at = Vector3(cos(bearing) * radius, 0.0, sin(bearing) * radius)
+		if at.distance_to(player.global_position) < Storm.WARN_RADIUS * 1.5:
+			continue
+		var clear := true
+		for other_v in live_storms:
+			var other: Storm = other_v
+			if is_instance_valid(other) and at.distance_to(other.global_position) < MIN_STORM_SEPARATION:
+				clear = false
+				break
+		if clear:
+			placed = true
+			break
+	if not placed:
+		# The shear's constructive antipode. Distance is then r_storm + r_player,
+		# which past the band floor is over ten thousand units — guaranteed by
+		# arithmetic rather than by a twenty-fifth hope.
+		var away := -player.global_position
+		away.y = 0.0
+		if away.length() < 0.001:
+			away = Vector3.RIGHT
+		at = away.normalized() * (bounds + lo)
+
+	var storm := Storm.new()
+	system_root.add_child(storm)
+	storm.global_position = at
+	live_storms.append(storm)
+	return storm
+
+
+func forget_storm(storm: Storm) -> void:
+	live_storms.erase(storm)
+
+
+func storm_has_player() -> bool:
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	if player == null:
+		return false
+	for s_v in live_storms:
+		var s: Storm = s_v
+		if is_instance_valid(s) and s.has_player(player):
+			return true
+	return false
+
+
+func _tick_storm_teardown() -> void:
+	# The spawn gate read the other way round. By the time this fires the player
+	# is at least 400u inside the band edge and every storm is past the floor, so
+	# nothing is ever seen vanishing.
+	if live_storms.is_empty():
+		return
+	if deep_space != null and deep_depth() >= Storm.band_floor() - STORM_LEAD:
+		return
+	for s_v in live_storms.duplicate():
+		var s: Storm = s_v
+		if is_instance_valid(s):
+			s.queue_free()
+	live_storms.clear()
+
+
 func spawn_rift() -> Rift:
 	# Public so the harness forces one instead of gambling on the roll. Session
 	# weather: a system_root child at a random bearing, at a depth the ship can
@@ -3040,6 +3171,16 @@ func _tick_market(delta: float) -> void:
 			hud.show_toast("%s ENDS — %s" % [
 				Market.event_label(ev), CommodityDB.short_name(String(ev["good"]))],
 				Palette.AMBER_DIM)
+
+	# Storms roll beside the shear, the established home for ambient weather.
+	# spawn_storm refuses on its own terms, including the depth gate, so this
+	# stays three lines.
+	_storm_timer -= delta
+	if _storm_timer <= 0.0:
+		_storm_timer = STORM_ROLL_INTERVAL
+		if randf() < STORM_CHANCE:
+			spawn_storm()
+	_tick_storm_teardown()
 
 	_rift_timer -= delta
 	if _rift_timer <= 0.0:
@@ -20198,10 +20339,19 @@ func _run_frontier_test() -> void:
 			gf_found += 1
 			if int(pl["band"]) < 6:
 				gf_inner += 1
-			if (pl["hulk"] as Dictionary).is_empty():
-				gf_bad += "orphan@%d,%d " % [cell.x, cell.y]
 			if not (h2["trap"] as Dictionary).is_empty():
 				gf_bad += "trapped@%d,%d " % [cell.x, cell.y]
+			# THE ORPHAN CASE RECORDS AND THEN STOPS. The first draft noted the
+			# orphan and fell straight through to the gap arithmetic below, which
+			# reads ["pos"] off the hull that is missing — so the assertion
+			# ABORTED on the exact defect it was written to report, taking the
+			# two clauses after it and the quit() with it. A red-verify found it:
+			# the run did not fail, it HUNG, which under a sweep is a timeout
+			# rather than a red line. An assertion that crashes on its own
+			# subject is worth less than one that is merely wrong.
+			if (pl["hulk"] as Dictionary).is_empty():
+				gf_bad += "orphan@%d,%d " % [cell.x, cell.y]
+				continue
 			var gap: float = (h2["pos"] as Vector3).distance_to((pl["hulk"] as Dictionary)["pos"])
 			if gap < DeepSpace.GRAVE_GAP_MIN - 0.01 or gap > DeepSpace.GRAVE_GAP_MAX + 0.01:
 				gf_bad += "gap %.1f@%d,%d " % [gap, cell.x, cell.y]
@@ -20225,5 +20375,295 @@ func _run_frontier_test() -> void:
 		deepest_rift, rift_band, stands_in, CommodityDB.base_price(stands_in),
 		pays, CommodityDB.base_price(pays),
 		"PASS" if not_worse and Rift.GRADE_CEILING <= rift_band else "FAIL"])
+
+	get_tree().quit()
+
+
+# --- storms ------------------------------------------------------------------
+
+func _run_storm_test() -> void:
+	# A SUITE OF ITS OWN, not a FRONTIERTEST extension. FRONTIERTEST is a data
+	# suite — tables, curves, glyph sets — that runs with generation off and
+	# finishes fast. A storm needs live nodes, staged fits and physics frames,
+	# which is APEXTEST's shape and APEXTEST's runtime.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	await get_tree().create_timer(0.4).timeout
+	_wave_timer = 1.0e9
+	_rift_timer = 1.0e9
+	_storm_timer = 1.0e9
+	_muster_timer = 1.0e9
+	_apex_wake_timer = -1.0
+	set_deep_generation(false)
+	player.invulnerable = true
+
+	var storm := Storm.new()
+	system_root.add_child(storm)
+	# STAGED AT A REAL BAND-6 DEPTH. The first draft parked it at 900u, where the
+	# band clamp fires every frame and steers radially — so the drift test
+	# measured the clamp fighting the heading rather than the standoff, and the
+	# storm moved perpendicular to the ship it was supposed to be closing on.
+	var storm_depth := SystemDB.bounds_of(system_id) + Storm.band_floor() + 600.0
+	storm.global_position = Vector3(0, 0, -storm_depth)
+	await get_tree().process_frame
+
+	# --- S1. the pull goes through the ship's own channel --------------------
+	# Two halves, because either alone is fooled. If the storm wrote
+	# global_position or velocity directly, clearing the tether every frame would
+	# change nothing and both halves would agree.
+	#
+	# CLOSURE ON THE CENTRE, not displacement from the park: 40 records that
+	# measuring distance-from-start counts an outward shove as success, which is
+	# the opposite failure.
+	player.global_position = storm.global_position + Vector3(Storm.PULL_RADIUS * 0.5, 0, 0)
+	player.has_move_target = false
+	player.velocity = Vector3.ZERO
+	player.clear_tether()
+	var open_a := player.global_position.distance_to(storm.global_position)
+	for i in range(180):
+		await get_tree().physics_frame
+	var closed_a := open_a - player.global_position.distance_to(storm.global_position)
+
+	player.global_position = storm.global_position + Vector3(Storm.PULL_RADIUS * 0.5, 0, 0)
+	player.velocity = Vector3.ZERO
+	player.clear_tether()
+	var open_b := player.global_position.distance_to(storm.global_position)
+	for i in range(180):
+		player.clear_tether()
+		await get_tree().physics_frame
+	var closed_b := open_b - player.global_position.distance_to(storm.global_position)
+	print("[storm] THE PULL GOES THROUGH THE SHIP'S OWN CHANNEL idle ship closed %.1fu in 3s; with the tether channel cleared every frame it closed %.1fu -> %s" % [
+		closed_a, closed_b, "PASS" if closed_a > 2.0 and absf(closed_b) < 0.5 else "FAIL"])
+
+	# --- S1b. two storms cannot build a cage ---------------------------------
+	# Deliberately violating MIN_STORM_SEPARATION, because the point is that the
+	# separation constant is NOT what keeps this safe. apply_tether's
+	# limit_length re-clamps per call, so N storms still cannot exceed the
+	# ceiling — and somebody who believes the separation is load-bearing will
+	# eventually delete the assertion that actually proves it.
+	var storm_b := Storm.new()
+	system_root.add_child(storm_b)
+	storm_b.global_position = storm.global_position + Vector3(120, 0, 0)
+	await get_tree().process_frame
+	player.global_position = storm.global_position + Vector3(60, 0, 0)
+	player.velocity = Vector3.ZERO
+	player.clear_tether()
+	for i in range(120):
+		await get_tree().physics_frame
+	var caged: float = (player._tether_vel as Vector3).length()
+	var floor_speed := float(ModuleDB.enforce_floors({"max_speed": 0.0, "accel": 0.0,
+		"turn_rate": 0.0, "shield_max": 0.0, "weapon_range_bonus": 0.0})["max_speed"])
+	print("[storm] TWO STORMS CANNOT BUILD A CAGE overlapping rings drove the drag channel to %.3f u/s against the %.2f ceiling and the %.2f max_speed floor -> %s" % [
+		caged, PlayerShip.TETHER_DRAG_CEILING, floor_speed,
+		"PASS" if caged <= PlayerShip.TETHER_DRAG_CEILING + 0.001 and caged < floor_speed else "FAIL"])
+	storm_b.queue_free()
+	await get_tree().process_frame
+
+	# --- S2. the weakest legal fit escapes from outside the eye --------------
+	# Staged against ModuleDB's FLOORS rather than a named fit, for APEXTEST's
+	# stated reason: the floors are what the promise is made of, so a ship that
+	# escapes on them means every fit does — and a named fit quietly stops
+	# meaning anything the next time the catalog moves.
+	var kept := GameState.stats.duplicate(true)
+	var weak := GameState.stats.duplicate(true)
+	weak["max_speed"] = 1.6
+	weak["accel"] = 3.0
+	player._apply_fit(weak)
+	player.global_position = storm.global_position + Vector3(Storm.EYE_RADIUS + 1.0, 0, 0)
+	player.velocity = Vector3.ZERO
+	player.clear_tether()
+	# Let it latch BEFORE burning — the order the mechanic is actually played in.
+	for i in range(40):
+		await get_tree().physics_frame
+	var gap_open: float = (player._tether_vel as Vector3).length()
+	var start_out := player.global_position.distance_to(storm.global_position)
+	for i in range(240):
+		player.has_move_target = true
+		player.move_target = storm.global_position + Vector3(4000, 0, 0)
+		await get_tree().physics_frame
+	var gained := player.global_position.distance_to(storm.global_position) - start_out
+	player.has_move_target = false
+	player._apply_fit(kept)
+	var latched := gap_open > 0.01
+	print("[storm] THE WEAKEST LEGAL FIT ESCAPES FROM OUTSIDE THE EYE 1.6 u/s at the eyewall gained %.1fu against a live pull%s -> %s" % [
+		gained, "" if latched else " (NO TETHER EVER LATCHED)",
+		"PASS" if gained > 1.0 and latched else "FAIL"])
+
+	# --- S3. the ceiling is the promise, and it is derived -------------------
+	# Every number read from the live catalog. A Mk III drive turns this red and
+	# makes somebody re-decide the boundary, instead of silently moving it.
+	var best_t1 := 0.0
+	var best_t2 := 0.0
+	for mid_v in ModuleDB.MODULES:
+		var m: Dictionary = ModuleDB.get_module(String(mid_v))
+		if String(m.get("category", "")) != "drive":
+			continue
+		var total := float(ModuleDB.BASE["max_speed"]) + float((m["stats"] as Dictionary).get("max_speed", 0.0))
+		if int(m.get("tier", 1)) == 1:
+			best_t1 = maxf(best_t1, total)
+		elif int(m.get("tier", 1)) == 2:
+			best_t2 = maxf(best_t2, total)
+	var ceiling_ok: bool = Storm.DRAG_MAX < PlayerShip.TETHER_DRAG_CEILING \
+		and PlayerShip.TETHER_DRAG_CEILING < floor_speed \
+		and Storm.CENTRE_THRESHOLD > best_t1 and Storm.CENTRE_THRESHOLD < best_t2
+	print("[storm] THE CEILING IS THE PROMISE drag max %.2f < ceiling %.2f < max_speed floor %.2f; centre threshold %.2f sits between the best tier-1 drive %.2f and the best tier-2 %.2f -> %s" % [
+		Storm.DRAG_MAX, PlayerShip.TETHER_DRAG_CEILING, floor_speed,
+		Storm.CENTRE_THRESHOLD, best_t1, best_t2, "PASS" if ceiling_ok else "FAIL"])
+
+	# --- S4. nothing in a storm out-hits the chart --------------------------
+	# Four-sided and all derived. The chart's hardest gun is read from the
+	# authored systems, never restated.
+	var chart_alpha := 0.0
+	for sid_v in SystemDB.ids():
+		var sys: Dictionary = SystemDB.get_system(String(sid_v))
+		chart_alpha = maxf(chart_alpha, Hostile.DAMAGE * float(sys.get("difficulty", 1.0)))
+	var storm_tick := Storm.EYE_DPS_MAX * Storm.TICK
+	var deep_emp := float(DeepSpace.TRAP_EMP[DeepSpace.TRAP_EMP.size() - 1])
+	var guard_dps := Hostile.DAMAGE \
+		* float(DeepSpace.GUARD_DIFFICULTY[DeepSpace.GUARD_DIFFICULTY.size() - 1]) \
+		/ Hostile.FIRE_INTERVAL
+	var outhit_ok: bool = storm_tick < chart_alpha and Storm.EYE_DPS_MAX < guard_dps \
+		and Storm.EMP_LEN_MAX < deep_emp
+	print("[storm] NOTHING IN A STORM OUT-HITS THE CHART per-tick %.2f vs the chart's hardest shot %.1f; sustained %.1f/s vs an Unsounded post's %.1f/s; EMP %.1fs vs a rigged hulk's %.1fs -> %s" % [
+		storm_tick, chart_alpha, Storm.EYE_DPS_MAX, guard_dps,
+		Storm.EMP_LEN_MAX, deep_emp, "PASS" if outhit_ok else "FAIL"])
+
+	# --- S6. it never closes the last 520u ----------------------------------
+	# Two-sided, and the second half IS the non-vacuity: a one-sided version
+	# passes perfectly on a storm that never moves at all.
+	player.global_position = storm.global_position + Vector3(Storm.WARN_RADIUS - 20.0, 0, 0)
+	player.velocity = Vector3.ZERO
+	player.clear_tether()
+	storm._heading = Vector2(1, 0)          # straight at the ship
+	var near_before := storm.global_position.distance_to(player.global_position)
+	for i in range(600):
+		storm._heading = Vector2(1, 0)
+		await get_tree().physics_frame
+	var near_after := storm.global_position.distance_to(player.global_position)
+
+	player.global_position = storm.global_position + Vector3(Storm.WARN_RADIUS + 200.0, 0, 0)
+	storm._heading = Vector2(1, 0)
+	var far_before := storm.global_position.distance_to(player.global_position)
+	for i in range(600):
+		storm._heading = Vector2(1, 0)
+		await get_tree().physics_frame
+	var far_after := storm.global_position.distance_to(player.global_position)
+	print("[storm] IT NEVER CLOSES THE LAST %.0fu inside the ring it moved %+.1fu (must not close); outside it closed %+.1fu (must) -> %s" % [
+		Storm.WARN_RADIUS, near_after - near_before, far_after - far_before,
+		"PASS" if near_after - near_before >= -0.5 and far_after - far_before < -0.5 else "FAIL"])
+
+	# --- S7. it holds station while it has you ------------------------------
+	# Deliberately redundant with S6 — S6's clamp is at 520, but the escape
+	# arithmetic rests on the centre being FIXED, which is this one. 41's
+	# backstop idiom: the assertion that matters gets its own line.
+	player.global_position = storm.global_position + Vector3(Storm.PULL_RADIUS * 0.5, 0, 0)
+	var held_from := storm.global_position
+	for i in range(300):
+		await get_tree().physics_frame
+	var held_move := held_from.distance_to(storm.global_position)
+	player.global_position = storm.global_position + Vector3(Storm.WARN_RADIUS * 3.0, 0, 0)
+	var free_from := storm.global_position
+	for i in range(300):
+		await get_tree().physics_frame
+	var free_move := free_from.distance_to(storm.global_position)
+	print("[storm] IT HOLDS STATION WHILE IT HAS YOU latched it moved %.2fu in 5s, released it moved %.2fu -> %s" % [
+		held_move, free_move, "PASS" if held_move < 0.05 and free_move > 1.0 else "FAIL"])
+
+	# --- S12. a docked ship is safe -----------------------------------------
+	# 14 makes docking the one safe state, and it must not rest on an early
+	# return in another file.
+	player.global_position = storm.global_position
+	player.clear_tether()
+	player.shield = player.shield_max
+	player.docked = true
+	for i in range(300):
+		await get_tree().physics_frame
+	var docked_safe: bool = is_equal_approx(player.shield, player.shield_max) \
+		and not player.is_emp_stunned() and (player._tether_vel as Vector3).length() < 0.01
+	player.docked = false
+	print("[storm] A DOCKED SHIP IS SAFE 5s at the centre left shield %.0f/%.0f, stunned=%s, drag %.3f -> %s" % [
+		player.shield, player.shield_max, str(player.is_emp_stunned()),
+		(player._tether_vel as Vector3).length(), "PASS" if docked_safe else "FAIL"])
+
+	# --- S8. a storm is session weather -------------------------------------
+	# THE BACK DOOR, CHECKED IN THE SOURCE. 53's rule is that anything ambient
+	# which LOGS, saves — note_log queues a write, and that is how a convoy's
+	# arrival once overwrote a SAVETEST fixture. A storm is ambient and
+	# long-lived, so the temptation is real and the check has to be too. Read
+	# out of the file the way THE PINNING LIST IS COMPLETE reads main.gd, because
+	# there is no runtime signal for "this never happens".
+	var storm_src := FileAccess.get_file_as_string("res://scripts/storm.gd")
+	# THE CALL FORM, NOT THE WORD. The first draft searched for "note_log" and
+	# went red on storm.gd's own header comment promising it never calls it —
+	# an assertion defeated by the sentence written to explain it. Matching
+	# "GameState.note_log(" cannot be satisfied by prose.
+	var logs := storm_src.contains("GameState.note_log(") \
+		or storm_src.contains("GameState.note_ledger(")
+	var save_leak := storm_src.contains("_queue_save(") or storm_src.contains("save_game(")
+	spawn_storm()
+	var before_load := live_storms.size()
+	_load_system(system_id)
+	await get_tree().process_frame
+	var after_load := get_tree().get_nodes_in_group("storm").size()
+	print("[storm] A STORM IS SESSION WEATHER %d live before a rebuild, %d nodes after, live list %d; storm.gd logs=%s saves=%s, format still v%d -> %s" % [
+		before_load, after_load, live_storms.size(), str(logs), str(save_leak),
+		GameState.SAVE_VERSION,
+		"PASS" if after_load == 0 and live_storms.is_empty() and not logs and not save_leak
+			and GameState.SAVE_VERSION == 20 and storm_src.length() > 0 else "FAIL"])
+
+	# --- S10. the roll lands where the band is, and the refusals -------------
+	var pl2: PlayerShip = get_tree().get_first_node_in_group("player")
+	pl2.global_position = Vector3(SystemDB.bounds_of(system_id) + Storm.band_floor() + 100.0, 0, 0)
+	pl2.invulnerable = true
+	await get_tree().process_frame
+	var placed_ok := true
+	var too_near := 0
+	var made := 0
+	for i in range(60):
+		live_storms.clear()
+		for n in get_tree().get_nodes_in_group("storm"):
+			(n as Node3D).queue_free()
+		var st := spawn_storm()
+		if st == null:
+			placed_ok = false
+			continue
+		made += 1
+		var d := deep_space.depth_at(st.global_position)
+		if d < Storm.band_floor() + Storm.PULL_RADIUS or d > Storm.band_floor() + Storm.DRIFT_DEPTH_SPAN:
+			placed_ok = false
+		if st.global_position.distance_to(pl2.global_position) < Storm.WARN_RADIUS * 1.5:
+			too_near += 1
+		st.queue_free()
+	live_storms.clear()
+	# The identity, not the number: a seventh band moves the weather with it.
+	var band_ok: bool = Storm.band_floor() == float(DeepSpace.BAND_EDGES[DeepSpace.BAND_EDGES.size() - 1]) \
+		and Storm.band_index() == DeepSpace.BAND_NAMES.size() - 1
+	print("[storm] THE ROLL LANDS WHERE THE BAND IS %d/60 placed, all inside [%.0f, %.0f] depth=%s, none within %.0fu of the ship (%d), band floor derived=%s -> %s" % [
+		made, Storm.band_floor() + Storm.PULL_RADIUS, Storm.band_floor() + Storm.DRIFT_DEPTH_SPAN,
+		str(placed_ok), Storm.WARN_RADIUS * 1.5, too_near, str(band_ok),
+		"PASS" if placed_ok and made == 60 and too_near == 0 and band_ok else "FAIL"])
+
+	# And the refusals, each named — including one ALLOWED case, so the gate is
+	# proven to be a gate rather than a wall.
+	var refusals := {}
+	pl2.global_position = Vector3(SystemDB.bounds_of(system_id) + Storm.band_floor() - STORM_LEAD - 10.0, 0, 0)
+	await get_tree().process_frame
+	refusals["too shallow"] = spawn_storm() == null
+	pl2.global_position = Vector3(SystemDB.bounds_of(system_id) + Storm.band_floor() - STORM_LEAD + 10.0, 0, 0)
+	await get_tree().process_frame
+	var allowed := spawn_storm()
+	refusals["allowed just inside the lead"] = allowed != null
+	if allowed:
+		allowed.queue_free()
+	live_storms.clear()
+	warping = true
+	refusals["warping"] = spawn_storm() == null
+	warping = false
+	var bad := ""
+	for k in refusals:
+		if not bool(refusals[k]):
+			bad += "%s " % String(k)
+	print("[storm] THE GATE IS A GATE %d conditions checked (%s) -> %s %s" % [
+		refusals.size(), str(refusals.keys()),
+		"PASS" if bad == "" else "FAIL", bad])
 
 	get_tree().quit()
