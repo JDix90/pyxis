@@ -2298,9 +2298,19 @@ func buy(id: String) -> bool:
 	return true
 
 
-func upgrade_reactor() -> bool:
+func upgrade_reactor(cap := ModuleDB.REACTOR_CAP_DEFAULT) -> bool:
+	# THE CAP ARRIVES AS AN ARGUMENT, the way drop_beacon's depth does: GameState
+	# cannot read the world, and a rule it cannot be handed is a rule it cannot
+	# enforce. The caller is the counter, and the counter knows what it stocks.
+	#
+	# Defaulted so every existing call site keeps the shipped ceiling. Before
+	# this the function checked nothing but the price, which would have put the
+	# Mk V — the deepest purchase in the game, meant to be bought at the far end
+	# of the Unsounded — on sale at the Waypoint Anchor.
 	var next := reactor_tier + 1
 	if next >= ModuleDB.REACTOR_TIERS.size():
+		return false
+	if next > cap:
 		return false
 	if not spend_salvage(int(ModuleDB.REACTOR_TIERS[next]["price"])):
 		return false
@@ -2314,9 +2324,13 @@ func reactor_name() -> String:
 	return ModuleDB.REACTOR_TIERS[reactor_tier]["name"]
 
 
-func next_reactor_price() -> int:
+func next_reactor_price(cap := ModuleDB.REACTOR_CAP_DEFAULT) -> int:
+	# -1 means "nothing to sell you here", and it now covers two different
+	# reasons: the ladder is finished, or this counter does not go that high. The
+	# row reads the reason off reactor_tier rather than off this number, so the
+	# player is told which.
 	var next := reactor_tier + 1
-	if next >= ModuleDB.REACTOR_TIERS.size():
+	if next >= ModuleDB.REACTOR_TIERS.size() or next > cap:
 		return -1
 	return int(ModuleDB.REACTOR_TIERS[next]["price"])
 

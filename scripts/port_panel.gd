@@ -452,8 +452,15 @@ func _module_price(id: String) -> int:
 	return int(round(base * float(_port_def.get("outfit_mult", 1.0))))
 
 
+func _reactor_cap() -> int:
+	# What this counter is allowed to sell. One reader, so the row and the button
+	# cannot disagree about it — a button that offers what the row says is not
+	# stocked is the shape of bug this pair invites.
+	return int(_port_def.get("reactor_cap", ModuleDB.REACTOR_CAP_DEFAULT))
+
+
 func _upgrade_reactor() -> void:
-	if GameState.upgrade_reactor():
+	if GameState.upgrade_reactor(_reactor_cap()):
 		Sfx.play("equip", -4.0, 0.7)
 	else:
 		_reject()
@@ -1856,10 +1863,17 @@ func _reactor_row() -> Control:
 	sub.add_theme_color_override("font_color", Palette.AMBER_DIM)
 	left.add_child(sub)
 
-	var next_price := GameState.next_reactor_price()
+	var cap := _reactor_cap()
+	var next_price := GameState.next_reactor_price(cap)
 	if next_price < 0:
 		var tag := Label.new()
-		tag.text = "MAX"
+		# TWO REASONS, AND THE PLAYER IS TOLD WHICH. "MAX" on a counter that
+		# simply does not stock the next reactor would be a lie about the ship
+		# rather than a fact about the shop — and it would hide the one thing
+		# worth knowing, which is that the rack exists somewhere else. 58's rule:
+		# say what to do about it.
+		var finished: bool = GameState.reactor_tier >= ModuleDB.REACTOR_TIERS.size() - 1
+		tag.text = "MAX" if finished else "NOT SOLD HERE"
 		tag.add_theme_font_size_override("font_size", 11)
 		tag.add_theme_color_override("font_color", Palette.AMBER_DIM)
 		box.add_child(tag)
