@@ -150,7 +150,7 @@ const GOODS := {
 		"base": 150, "space": 2, "color": Color(0.78, 0.80, 0.84),
 		"desc": "Sacrificial hull layer, still scorched from whatever it stopped.",
 		"parent": "alloys", "no_retail": true,
-		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch"],
+		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch", "deep_lantern"],
 		"interdiction_weight": 1.1,
 	},
 	"cell_fuel": {
@@ -158,7 +158,7 @@ const GOODS := {
 		"base": 190, "space": 2, "color": Color(0.50, 0.96, 0.66),
 		"desc": "Sealed, pressurised, and older than it should be.",
 		"parent": "volatiles", "no_retail": true,
-		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch"],
+		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch", "deep_lantern"],
 		"interdiction_weight": 1.2,
 	},
 	"rod_decay": {
@@ -166,7 +166,7 @@ const GOODS := {
 		"base": 300, "space": 2, "color": Color(0.40, 0.94, 0.98),
 		"desc": "Spent, mostly. The rest is why it is still warm.",
 		"parent": "isotopes", "no_retail": true,
-		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch"],
+		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch", "deep_lantern"],
 		"interdiction_weight": 1.4,
 	},
 	"sink_thermal": {
@@ -174,7 +174,7 @@ const GOODS := {
 		"base": 360, "space": 2, "color": Color(0.32, 0.82, 0.92),
 		"desc": "Drinks heat and gives nothing back. Shrugs off an EMP wash.",
 		"parent": "isotopes", "no_retail": true,
-		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch"],
+		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch", "deep_lantern"],
 		"interdiction_weight": 1.3,
 	},
 	"lattice_data": {
@@ -182,7 +182,7 @@ const GOODS := {
 		"base": 400, "space": 2, "color": Color(0.70, 0.60, 1.0),
 		"desc": "One layer of an archive core, prised out intact.",
 		"parent": "cores", "no_retail": true,
-		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch"],
+		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch", "deep_lantern"],
 		"interdiction_weight": 1.4,
 	},
 	"index_cartographic": {
@@ -190,7 +190,7 @@ const GOODS := {
 		"base": 560, "space": 3, "color": Color(0.55, 0.70, 1.0),
 		"desc": "Somebody else's chart, of somewhere nobody has been. Stations answer it.",
 		"parent": "cores", "no_retail": true,
-		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch"],
+		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch", "deep_lantern"],
 		"interdiction_weight": 1.6,
 	},
 	"servo_prewar": {
@@ -198,7 +198,7 @@ const GOODS := {
 		"base": 480, "space": 3, "color": Color(1.0, 0.76, 0.34),
 		"desc": "Still holds torque. Nothing built since comes close.",
 		"parent": "relics", "no_retail": true,
-		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch"],
+		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch", "deep_lantern"],
 		"interdiction_weight": 1.6,
 	},
 	"heart_reliquary": {
@@ -206,7 +206,7 @@ const GOODS := {
 		"base": 700, "space": 3, "color": Color(1.0, 0.62, 0.28),
 		"desc": "Warm, and unpowered for an age. Rigged hulls hum near it.",
 		"parent": "relics", "no_retail": true,
-		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch"],
+		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch", "deep_lantern"],
 		"interdiction_weight": 1.9,
 	},
 	# v20 THE FRONTIER, and it exists because READING PAYS demanded it rather
@@ -235,7 +235,7 @@ const GOODS := {
 		"base": 900, "space": 2, "color": Color(0.58, 0.94, 0.72),
 		"desc": "Ground by nothing, to a figure nobody chose. It focuses something.",
 		"parent": "relics", "no_retail": true,
-		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch"],
+		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch", "deep_lantern"],
 		"interdiction_weight": 2.2,
 	},
 	"manifest_forged": {
@@ -243,7 +243,7 @@ const GOODS := {
 		"base": 320, "space": 2, "color": Color(0.92, 0.40, 0.48),
 		"desc": "Says the hold is empty. Says it very convincingly.",
 		"parent": "stolen", "no_retail": true,
-		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch"],
+		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch", "deep_lantern"],
 		"interdiction_weight": 0.5,
 	},
 	"charge_unstable": {
@@ -251,7 +251,7 @@ const GOODS := {
 		"base": 420, "space": 1, "color": Color(0.62, 1.0, 0.50),
 		"desc": "Live. Reads hot to anyone scanning, and everyone out here scans.",
 		"parent": "volatiles", "no_retail": true,
-		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch"],
+		"trade_only_at": ["void", "cantina", "deep_haven", "deep_watch", "deep_lantern"],
 		"interdiction_weight": 3.5,
 	},
 

@@ -20049,4 +20049,110 @@ func _run_frontier_test() -> void:
 		"PASS" if is_equal_approx(snappedf(hasted_cd, 0.01), snappedf(want_cd, 0.01))
 			and hasted_cd < bare_cd and ring > 0.99 else "FAIL"])
 
+	# --- 16. every authored weights row is the width its band will be read at -
+	# weighted_index falls back to the UNIFORM pick whenever a row's size does not
+	# match the list being picked from, silently and by design — so a row authored
+	# one entry short does not error, it switches that system's whole accent off.
+	# Adding an archetype changes for_band's output length for every band at or
+	# past its min_band, which is exactly when this goes wrong and exactly when
+	# nobody is looking at system_db.
+	var width_bad := ""
+	var rows_checked := 0
+	for sid_v in SystemDB.ids():
+		for band in range(1, DeepSpace.BAND_NAMES.size()):
+			var row: Array = SystemDB.station_weights(String(sid_v), band)
+			if row.is_empty():
+				continue
+			rows_checked += 1
+			var want_w: int = DeepPortDB.for_band(band).size()
+			if row.size() != want_w:
+				width_bad += "%s b%d is %d wide, for_band gives %d " % [
+					String(sid_v), band, row.size(), want_w]
+	# And the same for the landmark rows, whose list did NOT grow — the pairing is
+	# the point: one of these two lists changed width this horizon and the other
+	# deliberately did not, and both have to be checked by the same rule.
+	for sid_v in SystemDB.ids():
+		for band in range(1, DeepSpace.BAND_NAMES.size()):
+			var row: Array = SystemDB.landmark_weights(String(sid_v), band)
+			if row.is_empty():
+				continue
+			rows_checked += 1
+			if row.size() != DeepSpace.LANDMARK_KINDS.size():
+				width_bad += "%s b%d landmark row is %d wide, kinds is %d " % [
+					String(sid_v), band, row.size(), DeepSpace.LANDMARK_KINDS.size()]
+	# THE NON-VACUITY GUARD IS A RULE, NOT A COUNT. "17 rows" is just today's
+	# number and would go stale the first time anybody authors another; what has
+	# to be true is that the frontier's two bands are actually WEIGHTED somewhere
+	# rather than left to the uniform default, because a sweep over zero rows
+	# passes perfectly.
+	var frontier_authored := false
+	for sid_v in SystemDB.ids():
+		if not SystemDB.station_weights(String(sid_v), 5).is_empty() \
+				and not SystemDB.station_weights(String(sid_v), 6).is_empty():
+			frontier_authored = true
+	print("[frontier] EVERY AUTHORED ROW IS THE RIGHT WIDTH %d station and landmark rows across %d systems match the list they weight; bands 5 and 6 are authored=%s -> %s %s" % [
+		rows_checked, SystemDB.ids().size(), str(frontier_authored),
+		"PASS" if width_bad == "" and rows_checked > 0 and frontier_authored else "FAIL",
+		width_bad])
+
+	# --- 17. the deep repair bays stay a mercy -------------------------------
+	# A property that held across all five shipped deep bays and was nearly broken
+	# by this stage: every one of them is CHEAPER than the charted full price, and
+	# the tail from the Reaches outward gets kinder with distance. The first draft
+	# of THE BREAKWATER charged 1600 — the only repair in the game above the
+	# chart's own 1400, at the band with the highest PACK_HP in the game.
+	var dear := ""
+	var deep_tail: Array = []
+	for arch_v in DeepPortDB.ARCHETYPES:
+		var a: Dictionary = arch_v
+		var rp := int(a.get("repair_price", PortPanel.REPAIR_FULL_PRICE))
+		if rp >= PortPanel.REPAIR_FULL_PRICE:
+			dear += "%s %d " % [String(a["id"]), rp]
+		if int(a["min_band"]) >= 3:
+			deep_tail.append(rp)
+	var kinder := true
+	for i in range(1, deep_tail.size()):
+		if int(deep_tail[i]) > int(deep_tail[i - 1]):
+			kinder = false
+	print("[frontier] THE DEEP BAYS STAY A MERCY %d archetypes all under the charted %d; the band-3-outward tail %s never rises -> %s %s" % [
+		DeepPortDB.ARCHETYPES.size(), PortPanel.REPAIR_FULL_PRICE, str(deep_tail),
+		"PASS" if dear == "" and kinder else "FAIL", dear])
+
+	# --- 18. one shape, one counter, at any band you can meet them ----------
+	# A port's NAME only reaches the player at DOCK_RANGE 5.0, so the silhouette is
+	# the whole of what a marker says before the flight. Two archetypes sharing a
+	# `kind` at a band where both can spawn means committing to a long approach to
+	# learn which counter you picked — the same argument the landmarks make for
+	# having six shapes instead of one shape in six colours.
+	var shape_clash := ""
+	for band in range(1, DeepSpace.BAND_NAMES.size()):
+		var seen_kinds := {}
+		for arch_v in DeepPortDB.for_band(band):
+			var k := String((arch_v as Dictionary)["kind"])
+			if seen_kinds.has(k):
+				shape_clash += "band %d: %s and %s are both '%s' " % [
+					band, String(seen_kinds[k]), String((arch_v as Dictionary)["id"]), k]
+			seen_kinds[k] = String((arch_v as Dictionary)["id"])
+	print("[frontier] ONE SHAPE, ONE COUNTER no two archetypes share a silhouette at any band -> %s %s" % [
+		"PASS" if shape_clash == "" else "FAIL", shape_clash])
+
+	# --- 19. the fence sells nothing the market hides ------------------------
+	# THE DEFECT THIS STAGE WAS ABOUT TO SHIP. trades_at short-circuits on
+	# components BEFORE the deep-port exemption, so a component is restricted to
+	# its own trade_only_at list however deep the counter is. Give a new port a
+	# fence list naming eleven components without naming the port on the eleven
+	# goods, and its fence tab sells what its market tab does not list — with the
+	# two data sources disagreeing and nothing going red. 11's rule, pointing the
+	# other way: declared tradeable must mean actually tradeable.
+	var hidden := ""
+	for arch_v in DeepPortDB.ARCHETYPES:
+		var a: Dictionary = arch_v
+		var pid := String(a["id"])
+		for g_v in a.get("fence_goods", []):
+			var gid := String(g_v)
+			if not CommodityDB.trades_at(gid, pid):
+				hidden += "%s fences %s but it does not trade there " % [pid, gid]
+	print("[frontier] THE FENCE SELLS NOTHING THE MARKET HIDES every fence_goods entry trades at the desk that fences it -> %s %s" % [
+		"PASS" if hidden == "" else "FAIL", hidden])
+
 	get_tree().quit()

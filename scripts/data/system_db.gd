@@ -273,7 +273,7 @@ const SYSTEMS := {
 		# DeepSpace.weighted_index only engages when a row exists, so the system
 		# with no block plans exactly the cells it always did and WORLD
 		# FINGERPRINT cannot move. Weight rows are authored against
-		# DeepPortDB.for_band's OUTPUT length per band (1/3/4/5 for bands 1-4),
+		# DeepPortDB.for_band's OUTPUT length per band (1/3/4/5/6/7 for bands 1-6),
 		# never against ARCHETYPES — for_band filters by min_band in declaration
 		# order, and a row sized to the wrong list would silently misweight.
 		#
@@ -282,11 +282,22 @@ const SYSTEMS := {
 		# unfinished construction — is the monument you meet most.
 		"deep": {
 			# band -> weights over for_band(band): b1 [relay], b2 [relay, haven,
-			# forge], b3 [+blackwatch], b4 [+last watch].
+			# forge], b3 [+blackwatch], b4 [+last watch], b5 [+breakwater],
+			# b6 [+far lantern]. Widths 1/3/4/5/6/7 — a row of the wrong length is
+			# silently ignored by weighted_index, which falls back to the uniform
+			# pick and switches this system's whole accent off without a word.
 			"station_weights": {
 				2: [1.0, 1.0, 2.5],
 				3: [1.0, 1.0, 2.5, 0.8],
 				4: [1.0, 1.0, 2.2, 0.8, 1.0],
+				# The Forge keeps its pull outward, but the Breakwater is what a
+				# player past 2600u is actually looking for, so it is not buried:
+				# 1.6 of 7.6 total, roughly one station in five.
+				5: [1.0, 1.0, 2.2, 0.8, 1.0, 1.6],
+				# And the Lantern is the rarest thing on the list without being a
+				# lottery: 1.4 of 9.0, about one in six, which at band 6's station
+				# density is a window or two of flying.
+				6: [1.0, 0.8, 1.8, 0.8, 1.0, 2.2, 1.4],
 			},
 			# band -> weights over ["pylon", "frame", "monolith", "marker"].
 			"landmark_weights": {
@@ -415,9 +426,17 @@ const SYSTEMS := {
 		# markers — things that say somebody measured this place and left.
 		# Same authoring rules as pyx02's block above.
 		"deep": {
+			# Widths 4/5/6/7 for bands 3-6, against for_band's output.
 			"station_weights": {
 				3: [1.0, 0.8, 0.8, 2.6],
 				4: [1.0, 0.8, 0.8, 2.4, 1.2],
+				# PYX-03 reads military, so its frontier leans the same way: the
+				# Breakwater is an armoury and this is the system that posts
+				# armouries. 2.0 of 7.8.
+				5: [1.0, 0.8, 0.8, 2.4, 1.2, 2.0],
+				# Band 6 tilts hardest of anywhere toward the last light: 2.0 of
+				# 9.2. The mute system is where the lit place matters most.
+				6: [1.0, 0.6, 0.6, 2.0, 1.0, 2.0, 2.0],
 			},
 			"landmark_weights": {
 				1: [2.0, 0.5, 1.2, 0.8],
