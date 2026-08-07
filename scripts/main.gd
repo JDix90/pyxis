@@ -17513,6 +17513,10 @@ func _run_contact_test() -> void:
 	wild.global_position = player.global_position + Vector3(-6, 0, 0)
 	var trader := SwarmHostile.new()
 	trader.faction = "league"
+	# Neutral, so nothing acquires it -- until the player's own splash provokes it
+	# (§62: any damage provokes), which is exactly what was observed happening to
+	# this ship. It has to survive to the trade assertion either way.
+	trader.hp_scale = 1000.0
 	system_root.add_child(trader)
 	trader.global_position = player.global_position + Vector3(0, 0, 6)
 	await get_tree().process_frame
@@ -17569,6 +17573,10 @@ func _run_contact_test() -> void:
 	muster_ship.global_position = player.global_position + Vector3(8, 0, 8)
 	var held := SwarmHostile.new()
 	held.faction = "tithe"
+	# Durable for the same reason as `demand` below: a Tithe dart is HOSTILE, the
+	# player's mounts fire on their own, and this file writes `standoff` on it
+	# after several awaits. 34hp is not a fixture, it is a countdown.
+	held.hp_scale = 1000.0
 	system_root.add_child(held)
 	held.global_position = player.global_position + Vector3(-8, 0, 8)
 	held.add_to_group("raider")
@@ -17599,8 +17607,9 @@ func _run_contact_test() -> void:
 	# A HOSTILE BAND IS NOT A CONVERSATION, asked through the band rather than
 	# through a fixture: the Tithe is HOSTILE at baseline and left-click already
 	# engages it.
-	held.standoff = 0.0
-	held.remove_from_group("raider")
+	if is_instance_valid(held):
+		held.standoff = 0.0
+		held.remove_from_group("raider")
 	await get_tree().process_frame
 	var hostile_refused: bool = not contact_menu_eligible(held)
 	print("[contact] A HOSTILE BAND IS NOT A CONVERSATION tithe dart out of standoff eligible=%s (want false) -> %s" % [
@@ -17946,24 +17955,37 @@ func _run_contact_test() -> void:
 	# the feet and the skirmish clock -- gets its pointer.
 	var demand := SwarmHostile.new()
 	demand.faction = "tithe"
+	# UNKILLABLE FOR THE LENGTH OF THE ASSERTION, and set before add_child because
+	# _ready reads it. A Tithe dart is HOSTILE to the surveyor, so the player's
+	# mounts acquire and fire on it without being told to, and 34hp does not
+	# survive being parked ten units from the ship. When it died mid-assertion the
+	# `standoff` write below hit a freed object, the script error killed the
+	# coroutine, and the harness never reached quit() -- so the suite did not fail,
+	# it HUNG for the full 1500s timeout. A fixture that can be destroyed by the
+	# thing it is measuring is not a fixture.
+	demand.hp_scale = 1000.0
 	system_root.add_child(demand)
 	demand.global_position = picket.global_position + Vector3(2, 0, 0)
 	demand.add_to_group("raider")
 	await get_tree().process_frame
 	_reset_picket_clocks(picket)
 	var without_standoff := picket._pick_target(0.0)
-	demand.standoff = 6.0
+	var demand_lived := is_instance_valid(demand)
+	if demand_lived:
+		demand.standoff = 6.0
 	_reset_picket_clocks(picket)
 	var with_standoff := picket._pick_target(0.0)
-	var parley_safe: bool = without_standoff == demand and with_standoff != demand
+	var parley_safe: bool = demand_lived and without_standoff == demand \
+		and with_standoff != demand
 	print("[contact] NOBODY ELSE ANSWERS YOUR PARLEY a Tithe raider 2u from a GSA picket is taken=%s, the same raider under a standoff is taken=%s (want false) -> %s" % [
 		str(without_standoff == demand), str(with_standoff == demand),
 		"PASS" if parley_safe else "FAIL"])
 
 	# AND A RAID RELEASES THE ESCORT OUTRIGHT, so the picket is not standing in
 	# the middle of a demand it could answer by accident.
-	demand.standoff = 0.0
-	demand.queue_free()
+	if is_instance_valid(demand):
+		demand.standoff = 0.0
+		demand.queue_free()
 	await get_tree().process_frame
 	_escort_cd = 0.0
 	request_escort(picket)
