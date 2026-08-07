@@ -9,6 +9,11 @@ signal continue_pressed
 # control to the game. The manual opens on top and the title stays exactly where
 # it was, because reading it is not a decision to start playing.
 signal manual_pressed
+# SETTINGS FROM THE TITLE. The slider that fixes unreadable text used to live
+# behind: start a run, open the pause sheet, find SETTINGS -- three steps of
+# reading the very text the player cannot read. A legibility control the player
+# has to already be able to read is not a control.
+signal settings_pressed
 
 const FADE_TIME := 0.5
 
@@ -156,6 +161,10 @@ func _build() -> void:
 	var manual_button := _make_button("PILOT'S MANUAL", Palette.TEAL)
 	manual_button.pressed.connect(func() -> void: manual_pressed.emit())
 	_buttons.add_child(manual_button)
+
+	var settings_button := _make_button("SETTINGS", Palette.TEAL)
+	settings_button.pressed.connect(func() -> void: settings_pressed.emit())
+	_buttons.add_child(settings_button)
 
 	_mute_button = _make_button("AUDIO ON", Palette.TEAL)
 	_mute_button.pressed.connect(_toggle_mute)

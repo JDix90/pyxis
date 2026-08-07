@@ -43,7 +43,13 @@ const DEFAULT_SETTINGS := {
 	"music_vol": 0.75,
 	"sfx_vol": 0.90,
 	"shake": true,
-	"ui_scale": 1.0,
+	# 1.15 since v21. This multiplier divides BOTH the portrait and the wide
+	# logical heights, so it cancels out of the desktop/phone ratio the 1.8x chrome
+	# assertion measures -- which makes it the one lever here that costs that
+	# assertion nothing, and the only one that reaches phones as well as desktop.
+	# Existing saves keep whatever they stored: a preference a player expressed is
+	# not ours to overwrite because we changed our minds about the default.
+	"ui_scale": 1.15,
 	# On by default: this is a phone game whose loudest moments (a hull giving
 	# way, a claim at a dock) are otherwise carried by colour and a camera lurch,
 	# both of which someone may have turned off or be unable to use.
@@ -453,7 +459,7 @@ func apply_settings() -> void:
 	# game disagree about the volume.
 	Sfx.set_bus_volume(Sfx.BUS_MUSIC, float(setting("music_vol")))
 	Sfx.set_bus_volume(Sfx.BUS_SFX, float(setting("sfx_vol")))
-	UILayout.user_scale = clampf(float(setting("ui_scale")), 0.7, 1.6)
+	UILayout.user_scale = clampf(float(setting("ui_scale")), UILayout.USER_SCALE_MIN, UILayout.USER_SCALE_MAX)
 	var want_vision := clampi(int(setting("colorblind")), 0, Palette.Vision.size() - 1)
 	var vision_changed: bool = want_vision != Palette.vision
 	Palette.vision = want_vision
@@ -2673,7 +2679,7 @@ func load_game() -> bool:
 	settings["music_vol"] = clampf(float(settings["music_vol"]), 0.0, 1.0)
 	settings["sfx_vol"] = clampf(float(settings["sfx_vol"]), 0.0, 1.0)
 	settings["shake"] = bool(settings["shake"])
-	settings["ui_scale"] = clampf(float(settings["ui_scale"]), 0.7, 1.6)
+	settings["ui_scale"] = clampf(float(settings["ui_scale"]), UILayout.USER_SCALE_MIN, UILayout.USER_SCALE_MAX)
 	settings["colorblind"] = clampi(int(settings["colorblind"]), 0, Palette.Vision.size() - 1)
 	if not (settings["bindings"] is Dictionary):
 		settings["bindings"] = {}

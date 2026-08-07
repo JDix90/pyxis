@@ -493,6 +493,17 @@ size and asserts desktop stays within 1.8× the phone's. Nothing was watching
 that axis before, which is how a scale rule drifted this far without failing
 anything.
 
+**Superseded at v21 — see §73.** `DESKTOP_REFERENCE` is 760 and the button is
+~8.9%. Two things changed the reasoning rather than just the number. The 820
+above was derived against a window height in DEVICE pixels, which on a HiDPI
+browser is twice the height the player is looking at, so it was answering a
+different question than the one it asks; §73's dpr term fixes the units, leaving
+this constant to do only its original job. And the 1.8× bound turns out to have a
+closed form — every portrait probe resolves to a logical height of 1280 and every
+wide probe with `y >= R` clamps to exactly `R`, so the assertion reduces to
+`1280/R <= 1.8`, i.e. **`R >= 711.12`**. 760 keeps 6.4% margin against a floor
+that is now derived rather than felt for.
+
 ## 16. Ship specialisation, and the guards around it
 
 The five fitting slots became six: `UTILITY_B`. Deliberately a **second utility**
@@ -5987,6 +5998,16 @@ same commit.**
 
 ### Outstanding
 
+**Two colour-vision remap entries fail WCAG AA as text** (open 2026-08-07, §73).
+`PROTAN[3]` measures 3.50:1 and `DEUTAN[3]` 3.80:1 against `SPACE_BG`, and band
+colours are rendered as text in the system readout, deep broadcasts and storm
+toasts. NOT hand-edited, deliberately: `palette.gd` records that `BAND_SETS` came
+from a 60,000-candidate grid search and that hand-picking entries is how a
+palette "meets the standard" and ships unreadable. Fixing this means re-running
+that search with a WCAG constraint added, which is its own piece of work and does
+not belong inside a legibility pass. `ACCESSTEST` REPORTS the per-mode numbers
+with no PASS/FAIL so the measurement is on the record while the fix waits.
+
 **Should an ALLIED ship be spared the player's area weapons?** (open 2026-08-07,
 §72). Splash catching a flag is deliberate and measured — `WITNESS_RANGE` is
 dimensioned by `OVERCHARGE_RADIUS` — so this is not a bug to fix but a line to
@@ -7176,6 +7197,82 @@ careless area fire strictly safer exactly as the stakes rise, and it leaves a
 torpedo-only fit unable to open on an ALLIED ship at all. The escort fix removes
 the systematic harm without paying any of that, so the question can wait for
 somebody who wants to answer it on purpose.
+
+### The HUD nobody could read, and the two bugs under it
+
+A player on a Retina laptop, in a browser: *"it's impossible to read... I feel
+blind trying to squint."* Two independent defects, compounding, neither of them a
+matter of taste.
+
+**The scale rule had no DPI term.** `UILayout` derived scale from window height
+against a fixed design size, and Godot's web canvas reports DEVICE pixels while
+the player sees CSS ones. On a 2x display a 2000x1082 canvas is a ~1000x541
+window, so the rule computed `1082/820 = 1.32x`, believed it had scaled the
+interface UP, and rendered it at **0.66x of authored size** because every one of
+those pixels was half-size. A 12px label arrived at 7.9 CSS px. **The rule was
+right by its own metric and wrong in the eye, which is exactly why nothing
+failed.** The term belongs only in the wide branch: `stretch_scale` is a
+PROPORTIONAL mapping and proportional mappings are dpr-invariant by construction,
+so a phone browser at dpr 3 already matched the native build; the desktop path
+compares an absolute pixel count against a fixed number, and absolute pixel
+counts are what dpr corrupts. Gated on `OS.has_feature("web")` alone --
+`DisplayServer.screen_get_scale()` returns 2.0 on a native Retina Mac, where
+`Window.size` is already logical points, so trusting it there would double the
+interface on every Mac desktop build to fix a bug that only exists in a browser.
+
+**`AMBER_DIM` was AMBER at alpha 0.28**, which composites to **1.67:1** -- a
+fifth of what WCAG AA asks of body text. It was the DEFAULT argument of
+`UIKit.label()`, so it was most of the copy in the game, across 65 sites in 15
+files. It is opaque now at 5.50:1, and opaque rather than merely less
+transparent: these labels are drawn over the LIVE SCENE as often as over a panel,
+and an alpha text colour has no contrast guarantee against a starfield or an
+explosion. The de-emphasis survives -- 10.12 against 5.48 is a 1.84x step, CIE
+L* 74 -> 55; the old value's step was 74 -> 22, which is not hierarchy but an
+unreadable label. `hud.gd`'s deep-band system tag lost its 0.75 alpha for the
+same reason: it composited DEEP_FATHOMS to 3.03:1 on the one line that answers
+"where am I".
+
+**The guard that would have caught it.** `ACCESSTEST` section 7 computes WCAG
+contrast for every `Color` constant in `palette.gd` against `SPACE_BG` -- sRGB to
+linear longhand (NOT `Color.get_luminance()`, which applies the Rec.709 weights
+without linearising and reads AMBER as 0.66 instead of 0.467, optimistic in
+exactly the direction that hides a failure), with alpha composited first, because
+measuring a token's RGB and ignoring its alpha is the mistake that let this ship.
+Enumeration is by reflection and **every colour is in by default**; exemption is
+an opt-out that must be named in writing with a reason, and a companion assertion
+checks the exemptions still name real constants so the allowlist cannot rot into
+a comment. `DEEP_COLD` was the only addition, verified by grep to be a 3D tint
+with zero font_color sites. `HIERARCHY HOLDS` guards the other side, because the
+obvious wrong fix for a failing floor is to set the secondary colour to the
+primary one, which passes and destroys the thing the token exists for.
+
+**What the sweep exposed on the way.** Raising the UI-scale ceiling to 2.0 made
+`BANDS CLEAR` fail at `broadcast/bluff, 720x1280, scale 2.00` with a gap of 1px
+against a required 6 -- and the shipped 1.6 ceiling was already at 1px. The
+assertion could not see it because it ran at whatever `ui_scale` the developer's
+save happened to hold: **the result depended on a file that is not in the
+repository**, and the one configuration that matters least was the only one ever
+measured. It sweeps `[MIN, 1.0, default, MAX]` now. The band geometry is
+NON-MONOTONIC in canvas height -- a top-anchored broadcast against a
+bottom-anchored stack that marches up as the canvas shortens -- so no pair of
+authored constants fixes it, and the clamp lives where the height is known,
+recomputed from the constants every pass so a dragged browser window cannot
+accumulate drift.
+
+Numbers: `DESKTOP_REFERENCE` 820 -> 760 (the 1.8x chrome assertion permits an
+exact floor of 711.12, from `1280/R <= 1.8`; 760 keeps 6.4% margin where the
+floor keeps 0.02%, which is not a margin but a coincidence waiting to be edited).
+Default `ui_scale` 1.0 -> 1.15, which costs the chrome assertion nothing because
+the multiplier divides both sides of the ratio it measures. `USER_SCALE_MAX`
+1.6 -> 2.0, bounded by `A FINGER FITS` and not by `SHEET FITS`: the smallest hold
+cell measures 48.3 against a 42px floor at 2.0, and 42.5 at 2.2. `SHEET FITS` was
+never a constraint -- it is structurally incapable of failing above 216 logical
+rows, as §25 already recorded.
+
+And the settings slider is reachable from the TITLE now. It used to require
+starting a run, opening the pause sheet and finding SETTINGS -- three steps of
+reading the very text the player cannot read. **A legibility control that the
+player has to already be able to read is not a control.**
 
 ### The pacing band, measured rather than argued
 

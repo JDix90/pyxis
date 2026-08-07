@@ -27,6 +27,9 @@ var _panel: PanelContainer
 var _scroll: ScrollContainer
 var _body: VBoxContainer
 var _page := "root"
+# Opened from the TITLE, where there is no run to pause and no root page worth
+# returning to. Only affects where BACK and the cancel ladder go.
+var _standalone := false
 var _confirming_abandon := false
 # Action awaiting a key press on the controls page, "" when not capturing.
 var _capturing := ""
@@ -135,6 +138,7 @@ func resume() -> void:
 	if not is_open:
 		return
 	is_open = false
+	_standalone = false
 	# Unpause immediately, fade the sheet out after. The game has to be running
 	# again on the frame the player asked for it -- a menu that stays modal
 	# through its own exit animation is the single most common way a pause screen
@@ -292,6 +296,12 @@ func _build_log() -> void:
 	UIKit.reveal_list(entries, GameState.reduce_motion())
 	_body.add_child(_spacer(4))
 	_body.add_child(_action("BACK", Palette.TEAL, func() -> void:
+		# From the title there IS no root page to go back to -- landing a player
+		# on a paused menu offering ABANDON TO TITLE, from the title, would be
+		# nonsense. Close instead.
+		if _standalone:
+			resume()
+			return
 		_page = "root"
 		_refresh()))
 
@@ -303,6 +313,19 @@ func show_log() -> void:
 	if not is_open:
 		open()
 	_page = "log"
+	_refresh()
+
+
+func show_settings_standalone() -> void:
+	# The settings page reached from the TITLE screen. Same page, same widgets,
+	# same GameState writes -- a second copy of _build_settings would be the same
+	# defect twice, and this is specifically the screen a player goes looking for
+	# BECAUSE they cannot read the other ones. show_log above is the precedent for
+	# opening a page directly.
+	if not is_open:
+		open()
+	_standalone = true
+	_page = "settings"
 	_refresh()
 
 
@@ -324,7 +347,7 @@ func _build_settings() -> void:
 	_body.add_child(_heading("SETTINGS"))
 	_body.add_child(_slider("MUSIC", "music_vol", 0.0, 1.0, 0.05))
 	_body.add_child(_slider("EFFECTS", "sfx_vol", 0.0, 1.0, 0.05))
-	_body.add_child(_slider("UI SCALE", "ui_scale", 0.7, 1.6, 0.05))
+	_body.add_child(_slider("UI SCALE", "ui_scale", UILayout.USER_SCALE_MIN, UILayout.USER_SCALE_MAX, 0.05))
 	_body.add_child(_toggle("SCREEN SHAKE", "shake"))
 	_body.add_child(_toggle("REDUCE MOTION", "reduce_motion"))
 	_body.add_child(_toggle("HAPTICS", "haptics"))

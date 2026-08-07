@@ -5,7 +5,35 @@ extends Object
 
 const SPACE_BG := Color(0.012, 0.014, 0.022)
 const AMBER := Color(0.96, 0.65, 0.14)
-const AMBER_DIM := Color(0.96, 0.65, 0.14, 0.28)
+# THE SECONDARY TEXT COLOUR, AND IT IS OPAQUE ON PURPOSE.
+#
+# This was AMBER at alpha 0.28, which composites over SPACE_BG to 1.67:1 -- a
+# fifth of what WCAG AA asks of body text. It is the DEFAULT argument of
+# UIKit.label(), so that was most of the copy in the game, and a player finally
+# said so: "impossible to read... I feel blind trying to squint."
+#
+# Opaque rather than a higher alpha, which was the first instinct and is the
+# weaker fix. These labels are drawn over the LIVE SCENE at least as often as
+# over a panel -- a starfield, a planet glow, an explosion -- and an alpha text
+# colour has no contrast guarantee against any of that. Against a panel fill it
+# measures ~1.6% worse than against SPACE_BG, so even the sheltered case is
+# below the number an alpha calculation promises. A token should state its
+# colour rather than borrow one from whatever happens to be behind it.
+#
+# 5.50:1, which is 22% of headroom over the 4.5 floor and not the 4.59 that a
+# minimal edit would have reached -- see the BAND_SETS note below, which already
+# records that passing a threshold by 0.014 is how a palette that "meets the
+# standard" ships unreadable.
+#
+# The de-emphasis it exists for survives: 10.11 against 5.50 is a 1.84x step,
+# CIE L* 74 -> 55, the distance a design system puts between primary and
+# secondary text. The old value's step was 74 -> 22, which is not hierarchy.
+# PYXIS_ACCESSTEST asserts both the floor and the step.
+const AMBER_DIM := Color(0.70, 0.47, 0.12)
+# The old value, kept for DECORATION ONLY -- fills, rules, inactive indicators.
+# Never a font_color: it measures 1.67:1, and ACCESSTEST exempts it BY NAME so
+# the exemption is a sentence somebody had to write rather than a silent skip.
+const AMBER_FAINT := Color(0.96, 0.65, 0.14, 0.28)
 const GOLD := Color(1.0, 0.84, 0.35)
 const THREAT := Color(1.0, 0.13, 0.45)
 const TEAL := Color(0.15, 0.9, 0.85)

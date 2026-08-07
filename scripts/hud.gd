@@ -56,6 +56,10 @@ const PARLEY_HEIGHT := 44.0
 const PARLEY_BOTTOM := -252.0
 const REFUSE_BOTTOM := -304.0
 const BLUFF_BOTTOM := -356.0    # was -296, four px off PARLEY at the old height.
+# How far the bottom stack must stay clear of the broadcast plate when a short
+# canvas brings them together. 8 rather than the 6 BANDS CLEAR demands, so the
+# clamp lands with margin instead of exactly on the bar it is judged by.
+const STACK_CLEAR := 8.0
                                 # -252 is the tutorial card's slot, and the two
                                 # are provably exclusive: interdiction_eligible()
                                 # excludes tutorial_active(). BANDS CLEAR asserts
@@ -709,6 +713,45 @@ func _apply_layout() -> void:
 	# chrome(), not column(): the corner controls belong at the screen's corners.
 	# See UILayout.chrome for why the sheets still get the column treatment.
 	UILayout.chrome(_root)
+	_clamp_parley_stack()
+
+
+func _clamp_parley_stack() -> void:
+	# THE BOTTOM STACK CANNOT CLIMB INTO THE BROADCAST.
+	#
+	# The three parley plates are anchored to the bottom edge, so their absolute
+	# y falls as the logical canvas shortens, while the broadcast plate is
+	# anchored to the top and does not move. Past a certain height the top of the
+	# stack arrives at the bottom of the broadcast. That is not a tuning error in
+	# any one constant -- the geometry is NON-MONOTONIC, and both a taller and a
+	# shorter canvas are fine -- so no pair of authored offsets fixes it. It has
+	# to be resolved where the height is known.
+	#
+	# It went unseen because BANDS CLEAR ran at whatever ui_scale the developer's
+	# save held and never at the ceiling; the shipped 1.6 maximum already put the
+	# gap at 1px. Raising the ceiling to 2.0 did not cause this, it exposed it.
+	#
+	# Recomputed from the constants every pass rather than adjusted in place, so
+	# repeated layouts (a browser window being dragged) cannot accumulate a drift
+	# -- the resize-storm lesson, applied to geometry instead of to signals.
+	if _parley_button == null or _broadcast_box == null or _root == null:
+		return
+	var canvas_h := _root.size.y
+	if canvas_h <= 0.0:
+		return
+	var bc_extent: float = maxf(
+		_broadcast_box.get_combined_minimum_size().y, _broadcast_box.size.y)
+	var want_top := BROADCAST_TOP + bc_extent + STACK_CLEAR
+	var bluff_top := canvas_h + BLUFF_BOTTOM - PARLEY_HEIGHT
+	var push := maxf(0.0, want_top - bluff_top)
+	for pair in [[_parley_button, PARLEY_BOTTOM], [_refuse_button, REFUSE_BOTTOM],
+			[_bluff_button, BLUFF_BOTTOM]]:
+		var b := pair[0] as Button
+		if b == null:
+			continue
+		var base := float(pair[1]) + push
+		b.offset_top = base - PARLEY_HEIGHT
+		b.offset_bottom = base
 
 
 func _build_tutorial_card() -> void:
@@ -908,7 +951,12 @@ func _build_boss_bar() -> void:
 	for i in range(5):
 		var pip := ColorRect.new()
 		pip.custom_minimum_size = Vector2(46, 5)
-		pip.color = Palette.AMBER_DIM
+		# AMBER_FAINT, not AMBER_DIM: this is a ColorRect fill rather than text,
+		# and it is also dead -- set_boss_status overwrites all five pips before
+		# the plate is ever visible. Repointed anyway, because a decoration
+		# reading from the text token is how the text token gets argued down to a
+		# decoration's contrast.
+		pip.color = Palette.AMBER_FAINT
 		_boss_plates.add_child(pip)
 
 
@@ -1441,7 +1489,14 @@ func _apply_system_tag() -> void:
 		# will otherwise wonder what a double suffix reads like.
 		_system_label.text += Storm.COPY["tag"]
 	var c: Color = Palette.band_color(band)
-	_system_label.add_theme_color_override("font_color", Color(c.r, c.g, c.b, 0.75))
+	# AT FULL ALPHA, because this label names WHERE THE PLAYER IS. The 0.75 it
+	# carried composited DEEP_FATHOMS down to 3.03:1 -- under AA on the one line
+	# that answers "where am I", and the deepest bands are exactly where a player
+	# most needs to read it. At 1.0 the same band measures 4.71:1. Nothing is
+	# lost by the change: the band is already distinguished by its glyph and its
+	# hue, so the alpha was spending legibility on an emphasis the line did not
+	# need. ACCESSTEST reports every band's ratio.
+	_system_label.add_theme_color_override("font_color", c)
 
 
 func show_broadcast(from_line: String, body: String, color: Color) -> void:

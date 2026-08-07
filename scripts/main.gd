@@ -634,6 +634,7 @@ func _ready() -> void:
 	title_screen.new_game_pressed.connect(start_new_game)
 	title_screen.continue_pressed.connect(continue_game)
 	title_screen.manual_pressed.connect(manual_screen.open)
+	title_screen.settings_pressed.connect(pause_menu.show_settings_standalone)
 
 	Sfx.set_muted(GameState.audio_muted)
 
@@ -5469,7 +5470,7 @@ func _run_log_test() -> void:
 	#     — with the boss and abandon-confirm branches BOTH forced on, because
 	#     nothing clears _confirming_abandon when a boss wakes.
 	get_window().size = Vector2i(1440, 900)
-	GameState.set_setting("ui_scale", 1.6)
+	GameState.set_setting("ui_scale", UILayout.USER_SCALE_MAX)
 	await get_tree().process_frame
 	await get_tree().process_frame
 	var boss_was := boss_active
@@ -5491,8 +5492,9 @@ func _run_log_test() -> void:
 	pause_menu._confirming_abandon = false
 	pause_menu._page = "root"
 	pause_menu.resume()
-	print("[log] SHEET FITS worst page '%s' is %.0f rows against %.0f available (1440x900 at 1.6 scale) -> %s" % [
-		worst_page, worst, avail, "PASS" if worst <= avail else "FAIL"])
+	print("[log] SHEET FITS worst page '%s' is %.0f rows against %.0f available (1440x900 at %.2f scale) -> %s" % [
+		worst_page, worst, avail, UILayout.USER_SCALE_MAX,
+		"PASS" if worst <= avail else "FAIL"])
 	get_tree().quit()
 
 
@@ -5919,7 +5921,7 @@ func _run_hold_test() -> void:
 	#     min(content, room) independently and demands equality within a pixel,
 	#     so too tall fails and so does collapsed.
 	var saved_scale: float = UILayout.user_scale
-	UILayout.user_scale = 1.6
+	UILayout.user_scale = UILayout.USER_SCALE_MAX
 	var clamp_line := ""
 	var clamp_ok := true
 	for probe in [Vector2i(1440, 900), Vector2i(1100, 800), Vector2i(720, 1280)]:
@@ -5942,7 +5944,8 @@ func _run_hold_test() -> void:
 			if absf(got - want) > 1.0 or got <= 0.0:
 				clamp_ok = false
 				clamp_line += "%dx%d@%d want %.0f got %.0f; " % [probe.x, probe.y, cap2, want, got]
-	print("[hold] THE CLAMP HOLDS scroll viewport == min(content, room) at 3 windows x 2 capacities, 1.6 scale%s -> %s" % [
+	print("[hold] THE CLAMP HOLDS scroll viewport == min(content, room) at 3 windows x 2 capacities, %.2f scale%s -> %s" % [
+		UILayout.USER_SCALE_MAX,
 		"" if clamp_ok else " MISMATCH " + clamp_line, "PASS" if clamp_ok else "FAIL"])
 
 	# 4h. A FINGER FITS. GENUINELY NEW COVERAGE: nothing in this project asserts
@@ -5962,7 +5965,7 @@ func _run_hold_test() -> void:
 	var worst_where := ""
 	var finger_ok := true
 	for probe2 in [Vector2i(720, 1280), Vector2i(414, 736), Vector2i(1440, 900)]:
-		for uscale in [0.7, 1.0, 1.6]:
+		for uscale in [UILayout.USER_SCALE_MIN, 1.0, UILayout.USER_SCALE_MAX]:
 			UILayout.user_scale = uscale
 			get_window().size = probe2
 			await get_tree().process_frame
@@ -11649,6 +11652,39 @@ func _run_layout_test() -> void:
 		worst, "PASS" if worst >= 1.0 else "FAIL"])
 
 	var phone := Vector2(1170, 2532)
+	# THE RULE IS DPR-INVARIANT, which is the entire claim of the DPI fix and the
+	# one part of it a headless run can check without a browser. A canvas of k
+	# times the device pixels at k times the ratio describes the SAME physical
+	# screen, so it must resolve to the same logical canvas. Before the fix it did
+	# not: at dpr 2 the rule was handed twice the height it should have been,
+	# computed a larger scale, and rendered the interface at 0.66x of authored
+	# size -- while every number it printed looked correct.
+	var dpi_saved := UILayout.dpi_scale
+	var dpi_worst := 0.0
+	var dpi_where := ""
+	for base_v in [Vector2(1440, 900), Vector2(1000, 541), Vector2(1920, 1080)]:
+		var base: Vector2 = base_v
+		UILayout.dpi_scale = 1.0
+		var native: Vector2 = base / UILayout.effective_scale(base)
+		for k in [2.0, 3.0]:
+			UILayout.dpi_scale = k
+			var scaled: Vector2 = base * k
+			var logical: Vector2 = scaled / UILayout.effective_scale(scaled)
+			var drift: float = (logical - native).length()
+			if drift > dpi_worst:
+				dpi_worst = drift
+				dpi_where = "%dx%d at dpr %.0f" % [base.x, base.y, k]
+	UILayout.dpi_scale = dpi_saved
+	print("[layout] ASSERT DPI INVARIANT logical canvas identical at dpr 1/2/3, worst drift %.2fpx (%s) -> %s" % [
+		dpi_worst, dpi_where if dpi_where != "" else "none",
+		"PASS" if dpi_worst <= 1.0 else "FAIL"])
+	# And off the web the probe is exactly 1.0, so native, desktop and every
+	# harness run are bit-identical to what shipped. A fix for a browser bug that
+	# moved a native build would be a second bug.
+	var probe_native := UILayout.probe_dpi()
+	print("[layout] ASSERT DPI IS 1.0 OFF WEB probe=%.2f -> %s" % [
+		probe_native, "PASS" if is_equal_approx(probe_native, 1.0) else "FAIL"])
+
 	print("[layout] ASSERT phone factor is exactly 1.0 (unchanged): %.3f -> %s" % [
 		UILayout.content_factor(phone),
 		"PASS" if is_equal_approx(UILayout.content_factor(phone), 1.0) else "FAIL"])
@@ -11773,24 +11809,44 @@ func _run_layout_test() -> void:
 		var worst_gap := 9999.0
 		var worst_pair := ""
 		var gap_report := ""
-		for probe2 in [Vector2i(720, 1280), Vector2i(1100, 800),
-				Vector2i(1440, 900), Vector2i(3440, 1440)]:
-			get_window().size = probe2
-			await get_tree().process_frame
-			await get_tree().process_frame
-			var rects := hud.band_rects()
-			for pr in pairs:
-				var a := String(pr[0])
-				var b := String(pr[1])
-				if not rects.has(a) or not rects.has(b):
-					continue
-				var ra: Vector2 = rects[a]
-				var rb: Vector2 = rects[b]
-				# Gap between the two spans, negative when they overlap.
-				var gap: float = maxf(ra.x, rb.x) - minf(ra.y, rb.y)
-				if gap < worst_gap:
-					worst_gap = gap
-					worst_pair = "%s/%s at %dx%d" % [a, b, probe2.x, probe2.y]
+		# AND THE UI SCALE IS SWEPT, not inherited. This block used to run at
+		# whatever ui_scale the developer's save happened to hold -- so the result
+		# depended on a file that is not in the repository, and the one
+		# configuration that matters least (someone's personal preference) was the
+		# only one ever measured. The band geometry is NON-MONOTONIC in logical
+		# height: the top-anchored broadcast sits at a fixed offset while the
+		# bottom-anchored parley stack marches up as the canvas shortens, so there
+		# is a window of heights where they collide and taller AND shorter are both
+		# fine. A probe that samples one scale can sit either side of that hole and
+		# report nothing. This is what SHEET FITS' comment already claims to do --
+		# measure the worst configuration the settings allow -- and now it is true
+		# here as well.
+		var band_saved := UILayout.user_scale
+		for uscale in [UILayout.USER_SCALE_MIN, 1.0,
+				float(GameState.DEFAULT_SETTINGS["ui_scale"]), UILayout.USER_SCALE_MAX]:
+			UILayout.user_scale = uscale
+			for probe2 in [Vector2i(720, 1280), Vector2i(1100, 800),
+					Vector2i(1440, 900), Vector2i(3440, 1440)]:
+				get_window().size = probe2
+				UILayout.apply_scale(get_window())
+				await get_tree().process_frame
+				await get_tree().process_frame
+				var rects := hud.band_rects()
+				for pr in pairs:
+					var a := String(pr[0])
+					var b := String(pr[1])
+					if not rects.has(a) or not rects.has(b):
+						continue
+					var ra: Vector2 = rects[a]
+					var rb: Vector2 = rects[b]
+					# Gap between the two spans, negative when they overlap.
+					var gap: float = maxf(ra.x, rb.x) - minf(ra.y, rb.y)
+					if gap < worst_gap:
+						worst_gap = gap
+						worst_pair = "%s/%s at %dx%d, scale %.2f" % [
+							a, b, probe2.x, probe2.y, uscale]
+		UILayout.user_scale = band_saved
+		UILayout.apply_scale(get_window())
 		gap_report = "worst %.1f design px (%s)" % [worst_gap, worst_pair]
 		print("[layout] ASSERT BANDS CLEAR %s, want >= 6 -> %s" % [
 			gap_report, "PASS" if worst_gap >= 6.0 else "FAIL"])
@@ -11829,6 +11885,29 @@ func _run_title_test() -> void:
 	Input.action_release("move_up")
 	print("[title] input locked: ship moved %.2f units (expect ~0)" % \
 		before.distance_to(player.global_position))
+
+	# THE SETTINGS ROUTE EXISTS, AND IT IS PRESSED RATHER THAN CALLED. The whole
+	# point of this route is that a player who cannot read the HUD can reach the
+	# UI SCALE slider without starting a run first, so the thing worth asserting
+	# is the path from the title button -- not that PauseMenu has a method. §54's
+	# rule: assert the path the player takes, not the function it wraps.
+	title_screen.settings_pressed.emit()
+	await get_tree().process_frame
+	var reached: bool = pause_menu.is_open and pause_menu._page == "settings"
+	# And it must write through to the live layout, or it is a slider that moves
+	# a number nobody reads.
+	var scale_before := UILayout.user_scale
+	GameState.set_setting("ui_scale", 1.4)
+	var wrote: bool = is_equal_approx(UILayout.user_scale, 1.4)
+	GameState.set_setting("ui_scale", scale_before)
+	# Closing from the title must not leave the tree paused -- there is no run to
+	# return to, and a paused attract screen is a dead game.
+	pause_menu.resume()
+	await get_tree().process_frame
+	var unpaused: bool = not get_tree().paused
+	print("[title] SETTINGS REACHED FROM THE TITLE opened on the settings page=%s, slider writes UILayout=%s, closes without leaving the tree paused=%s -> %s" % [
+		str(reached), str(wrote), str(unpaused),
+		"PASS" if reached and wrote and unpaused else "FAIL"])
 
 	# Starting a survey must hand over to the tutorial cleanly.
 	start_new_game()
@@ -14293,7 +14372,7 @@ func _run_ui_test() -> void:
 	var strip_where := ""
 	var saved_ui_scale: float = UILayout.user_scale
 	for probe_size in [Vector2i(720, 1280), Vector2i(414, 736)]:
-		for uscale in [0.7, 1.0, 1.6]:
+		for uscale in [UILayout.USER_SCALE_MIN, 1.0, UILayout.USER_SCALE_MAX]:
 			UILayout.user_scale = uscale
 			get_window().size = probe_size
 			refit_panel.open()
@@ -14672,6 +14751,61 @@ func _gsa_fixture(overrides: Dictionary) -> Dictionary:
 
 # --- accessibility -----------------------------------------------------------
 
+# --- WCAG contrast, for ACCESSTEST section 7 ---------------------------------
+# The floor is AA for body text. See the section itself for why AA-large is not
+# offered as an alternative.
+const CONTRAST_FLOOR := 4.5
+# Colours that are genuinely not text. Exemption is an OPT-OUT that has to be
+# named here in writing with a reason -- every Color in palette.gd is in the
+# assertion by default. A hand-maintained list of the tokens that ARE text goes
+# stale the moment somebody adds a colour, which is exactly how AMBER_DIM sat at
+# 1.67:1 through 63 assertions without anything noticing.
+const CONTRAST_NOT_TEXT := {
+	"SPACE_BG": "the background itself -- it is what everything is measured against",
+	"AMBER_FAINT": "the decoration half of the old AMBER_DIM; fills and rules only",
+	# Checked rather than assumed, because an exemption written on a hunch is how
+	# a real failure gets waved through: its only uses are deep_space's _cold_mat
+	# (a 3D emissive) and atmosphere's background_color / ambient lerps. Zero
+	# font_color, label or toast sites.
+	"DEEP_COLD": "a 3D haze and ambient tint on the deep sky; never a font_color",
+}
+
+
+static func _srgb_to_linear(c: float) -> float:
+	# Written out rather than Color.srgb_to_linear(), and DEFINITELY not
+	# Color.get_luminance(): that applies the Rec.709 weights to the sRGB values
+	# WITHOUT linearising, which yields numbers that look plausible and are wrong
+	# -- AMBER reads 0.66 instead of 0.467, and every ratio built on it is
+	# optimistic in the direction that hides a failure. This is the WCAG 2.x
+	# definition verbatim so a reader can check it against the spec rather than
+	# against an engine helper.
+	return c / 12.92 if c <= 0.04045 else pow((c + 0.055) / 1.055, 2.4)
+
+
+static func _relative_luminance(c: Color) -> float:
+	return 0.2126 * _srgb_to_linear(c.r) \
+		+ 0.7152 * _srgb_to_linear(c.g) \
+		+ 0.0722 * _srgb_to_linear(c.b)
+
+
+static func _contrast_ratio(fg: Color, bg: Color) -> float:
+	# ALPHA IS COMPOSITED FIRST, source-over, which is what a canvas_items blend
+	# into an sRGB framebuffer actually does. A token's alpha is part of what the
+	# player sees: measuring the RGB and ignoring it would have called the shipped
+	# AMBER_DIM a 10:1 colour, which is precisely the mistake that let it ship.
+	var a := clampf(fg.a, 0.0, 1.0)
+	var over := Color(fg.r * a + bg.r * (1.0 - a),
+		fg.g * a + bg.g * (1.0 - a),
+		fg.b * a + bg.b * (1.0 - a))
+	var l1 := _relative_luminance(over)
+	var l2 := _relative_luminance(bg)
+	if l1 < l2:
+		var t := l1
+		l1 = l2
+		l2 = t
+	return (l1 + 0.05) / (l2 + 0.05)
+
+
 func _run_access_test() -> void:
 	# Colour vision and rebinding. The interesting assertions here are the two
 	# that check a PROPERTY rather than a value: that mode 0 is byte-identical to
@@ -14844,6 +14978,74 @@ func _run_access_test() -> void:
 	GameState.set_setting("reduce_motion", false)
 	print("[access] REDUCE MOTION stops shake and punch with shake ON: %s -> %s" % [
 		str(still), "PASS" if still else "FAIL"])
+
+	# --- 7. text contrast ----------------------------------------------------
+	# AMBER_DIM shipped at 1.67:1 -- a fifth of what WCAG AA asks of body text --
+	# and it was the DEFAULT argument of UIKit.label(), so it was most of the copy
+	# in the game. It survived 63 harness runs and every screenshot review,
+	# because nothing here measured contrast and an eye that knows what a label
+	# says can read a label nobody else can. A player finally reported it.
+	#
+	# The floor is 4.5, WCAG AA for body text. AA-large (3.0) is deliberately not
+	# offered as an escape hatch: UIKit.SIZE_FINE is 10 and SIZE_SMALL is 11, far
+	# under the 18.66px large-text threshold, and these tokens are used at both.
+	var worst_ratio := 999.0
+	var worst_token := ""
+	var ratio_lines: Array = []
+	var pal_consts: Dictionary = (load("res://scripts/palette.gd") as GDScript) \
+		.get_script_constant_map()
+	for key_v in pal_consts:
+		var cname := String(key_v)
+		var cv: Variant = pal_consts[key_v]
+		if typeof(cv) != TYPE_COLOR or CONTRAST_NOT_TEXT.has(cname):
+			continue
+		var cr := _contrast_ratio(cv as Color, Palette.SPACE_BG)
+		ratio_lines.append("%s %.2f" % [cname, cr])
+		if cr < worst_ratio:
+			worst_ratio = cr
+			worst_token = cname
+	ratio_lines.sort()
+	print("[access] TEXT CONTRAST %s (floor %.1f) worst %s %.2f -> %s" % [
+		str(ratio_lines), CONTRAST_FLOOR, worst_token, worst_ratio,
+		"PASS" if worst_ratio >= CONTRAST_FLOOR else "FAIL"])
+
+	# The allowlist has to keep naming real constants, or a renamed token leaves a
+	# line exempting nothing and the exemption rots into a comment.
+	var stale_exempt: Array = []
+	for k_v in CONTRAST_NOT_TEXT:
+		if not pal_consts.has(String(k_v)):
+			stale_exempt.append(String(k_v))
+	print("[access] CONTRAST EXEMPTIONS ALL REAL stale=%s -> %s" % [
+		str(stale_exempt), "PASS" if stale_exempt.is_empty() else "FAIL"])
+
+	# AND THE HIERARCHY SURVIVES THE FLOOR. The obvious wrong fix for a failing
+	# contrast assertion is to set the secondary colour to the primary one, which
+	# passes and destroys the de-emphasis the token exists for. Guarding only one
+	# side of a trade is how the other side gets spent.
+	var primary_c := _contrast_ratio(Palette.AMBER, Palette.SPACE_BG)
+	var secondary_c := _contrast_ratio(Palette.AMBER_DIM, Palette.SPACE_BG)
+	var step := primary_c / maxf(secondary_c, 0.001)
+	print("[access] HIERARCHY HOLDS AMBER %.2f vs AMBER_DIM %.2f, step %.2fx (want >= 1.5) -> %s" % [
+		primary_c, secondary_c, step,
+		"PASS" if step >= 1.5 and secondary_c >= CONTRAST_FLOOR else "FAIL"])
+
+	# The colour-vision remaps are REPORTED, not asserted. Two entries measure
+	# under AA as text (PROTAN/DEUTAN band 3), and palette.gd already records that
+	# these sets came from a 60,000-candidate search and that hand-picking entries
+	# is how a palette "meets the standard" and ships unreadable. Re-running that
+	# search is its own piece of work; the measurement belongs on the record now
+	# rather than waiting for it. STRATEGY.md 64 carries the item.
+	var remap_report: Array = []
+	var vis_saved := Palette.vision
+	for mode in range(Palette.Vision.size()):
+		Palette.vision = mode
+		var thin := 99.0
+		for bi in range(Palette.DEEP_BANDS.size()):
+			thin = minf(thin, _contrast_ratio(Palette.band_color(bi), Palette.SPACE_BG))
+		remap_report.append("%d:%.2f" % [mode, thin])
+	Palette.vision = vis_saved
+	print("[access] REPORT band text contrast per vision mode (thinnest) %s" % [
+		str(remap_report)])
 
 	get_tree().quit()
 
@@ -15178,7 +15380,7 @@ func _run_manual_test() -> void:
 	# readout beside it, and it is only meaningful at all when the thing it
 	# measures has been laid out.
 	get_window().size = Vector2i(1440, 900)
-	GameState.set_setting("ui_scale", 1.6)
+	GameState.set_setting("ui_scale", UILayout.USER_SCALE_MAX)
 	manual.open()
 	await get_tree().process_frame
 	await get_tree().process_frame
