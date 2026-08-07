@@ -45,6 +45,23 @@ else is negotiable.
    derelicts, and asteroids. Cheap to build, huge atmospheric payoff.
 6. **Cohesion** — one palette, one type ramp, one VFX language. Polish here
    beats adding any feature.
+7. **Unwatched** — the further out you go, the better it pays and the less
+   anyone is watching. Isolation is not atmosphere here, it is the *economic*
+   structure: §17's raid gradient makes it a term in the payout, §18's beacons
+   narrate it, and §68's Quiet is the band about having no colour left. Anything
+   that puts a second person in the frame — presence, spectatorship, rivalry in
+   the present tense — spends this, and must say what it is buying.
+
+   **Added 2026-08-07, retroactively, and the reason is the finding.** This was
+   the load-bearing property of the design for seventy-two sections and was never
+   written down: §17:624 states the trade, §18:794 states the mechanism, and
+   neither was ever promoted to a pillar. The Horizon 5 review went looking for
+   it because that horizon leans on it in its first paragraph — and found that
+   `solitude` appears once in this file, at §49, meaning elbow room. §7 names the
+   pillar list as "the contract for saying no," so the one value most exposed to
+   the next horizon was the only one with no entry in the contract. It has one
+   now. **Nothing about the game changes; what changes is that the argument can
+   be had.**
 
 ## 4. Reference analysis summary
 
@@ -101,6 +118,45 @@ feature. Colonies (§64's stage 6, and the horizon that builds it) remains
 **claim-and-travel**: you find a structure, clear its wardens, and it becomes a
 fast-travel anchor. Nothing is constructed there yet. Base building, if it is
 built, is its own horizon with its own spec and its own economic argument.
+
+### The server exclusions: NARROWED (2026-08-07, Horizon 5 review)
+
+The list above still opens with *"Real-time MMO backend; alliance/social systems;
+timer or energy monetization."* `docs/HORIZON-5-THE-CLAIM.md` crosses part of
+that, and the crossing is recorded here rather than argued around — the
+base-building amendment above is the shape this follows.
+
+**What is lifted.** A **thin, severable, read-mostly server** may exist: it may
+record what the playerbase has collectively charted and hand that number back.
+Nothing more. §2:25's rationale — *"MMO/live-ops scope is a 50-person operation.
+Ours is not"* — is untouched by a service with no accounts, no simulation, no
+presence and no session state, and that sentence remains the test any future
+server feature has to pass.
+
+**The boundary that survives, and it is the whole point of writing this down:**
+
+- **The single-player game is the game.** No connection, no account, no
+  degradation: the world, the sweep and the save are exactly what they are today.
+  A server that is switched off forever costs the player nothing.
+- **Still excluded, by name:** shared simulation, synchronous presence, netcode
+  in the flight loop, anything in the world whose position or contents come from
+  a server, and anything that rewards logging in rather than flying.
+- **Timers remain excluded.** The game has never asked what day it is — there is
+  no `get_unix_time` call anywhere in `scripts/` — and a server providing wall
+  clock does not license a daily loop. Decay, dailies and freshness windows are
+  the thing §5 forbids above, and a server does not change that.
+- **No value may leave the client and come back.** Nothing purchased, no
+  currency, no prize, no identity. The moment any of those exist this section is
+  wrong again and needs re-amending, deliberately.
+- **The number is a mood, never a gate.** If anything in the game ever reads the
+  server's answer to decide what a player gets, it has become worth attacking,
+  and the whole compliance and anti-automation surface the Horizon 5 review
+  mapped arrives with it.
+
+**What is NOT authorised.** Accounts, etched names, leaderboards, currency,
+capsules, prizes. Those are Horizon 5's Stage 0 and beyond; the review approved
+none of them, and the first build is deliberately smaller than the plan's own
+first stage. See `docs/HORIZON-5-COUNTER.md`.
 
 **And that argument is the open question, stated now so it is not discovered
 late.** `PACING_LOOP` sits at ~97% of its ceiling with `MIDTIER` at 2.90 against
@@ -5986,6 +6042,30 @@ repo, and it is load-bearing: if you build or defer something, update it in the
 same commit.**
 
 ### Outstanding
+
+**The Tally — Horizon 5 Stage 0−, SPECCED, NOT BUILT** (open 2026-08-07,
+`docs/HORIZON-5-COUNTER.md`). The decided next build, and it is smaller than
+Horizon 5's own first stage: **one anonymous global count of how much of the
+frontier the playerbase has collectively sounded**, and nothing else. No
+accounts, no names, no leaderboards — so no auth, no KYC, no age gate, no
+moderation surface, and four of the review's nine blockers do not arise. The
+unit is a landmark keyed `(system_id, supercell_x, supercell_z)`; the
+denominator counts to where THE UNSOUNDED begins, because past 5,200u the bands
+have no far edge. Save v21 (`soundings`, the `beacons` precedent), one new tag
+`PYXIS_TALLYTEST` with eight assertions, one new `SAVE_MODES` leg —
+**the sweep goes 63 runs → 65, and the README baseline moves with it in the same
+commit.**
+
+The load-bearing rule, recorded here because it is what keeps the rest cheap:
+**the tally is a mood, never a gate.** Nothing in the game may read it to decide
+what a player gets. The world is enumerable offline, so the number can be
+inflated by anyone patient; that costs nothing while it grants nothing, and
+costs everything the moment it grants something.
+
+Why this and not Stage 0: a filling frontier is a reason to *arrive*, and a
+leaderboard is a reason to *stay*. A game with no players does not yet have a
+retention problem. Prerequisite for all of it: **a web export, which has never
+been produced — there is no `export_presets.cfg` in this repo.**
 
 **Horizon 5, "The Claim" — SPECCED, reviewed, and approved only as far as Stage
 0** (open 2026-08-07). `docs/HORIZON-5-THE-CLAIM.md` proposes a thin claims

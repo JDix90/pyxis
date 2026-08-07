@@ -11,6 +11,21 @@ Reviewed against `766c5fe` (main). Date: 2026-08-07.
 > pass reached a conclusion the actual document refutes, the retraction is
 > recorded in §7 rather than quietly dropped, because a reviewer who silently
 > revises is no better than a baseline with an age on it.
+>
+> **What was decided afterwards (2026-08-07), so this does not read as the
+> current plan.** The owner took the verdict and went one step smaller: the next
+> build is **`docs/HORIZON-5-COUNTER.md` — the Tally**, an anonymous global count
+> of how much of the frontier the playerbase has collectively sounded. No
+> accounts, no names, no leaderboards, which removes **D-1**, **E-3**, **E-4**
+> and most of **A-1** by construction rather than by mitigation. Stage 0 as
+> specced is deferred until that has players in front of it.
+>
+> `HORIZON-5-THE-CLAIM.md` was amended in the same commit against **C-1**
+> (dossier reuse), **C-2** (private-region seed), **C-3** (the vacuous derby
+> assertion), **A-1**/**A-2** (granularity and seasonality), **E-1** (the
+> dominant-factor claim), **E-3** (minors), **E-4** (the counsel gate) and
+> **C-4** (the stale run count). The findings below are the record of *why*;
+> the plan is now the record of *what*.
 
 ---
 

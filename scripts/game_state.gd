@@ -1981,6 +1981,45 @@ func add_apex_hint(system_id: String, hint: Dictionary) -> bool:
 	# from the same spot. Refused rather than stacked — otherwise parking on a
 	# mast and re-triggering it would narrow the estimate for free, and the
 	# whole design is that precision is bought.
+	#
+	# DEDUP ON THE SAME KEY THE BEARING WAS SEEDED WITH, which is the rounded
+	# integer position -- `Hunt.bearing_hint` seeds on
+	# `int(round(from.x)), int(round(from.z))` (hunt.gd:258). This used to compare
+	# ox/oz with is_equal_approx, i.e. exact floats, and the two keys disagreed in
+	# BOTH directions:
+	#
+	#   move 0.3u -> new dedup key, SAME seed. A bit-identical bearing filed
+	#                twice, counted twice by Hunt._scan's `score`, and `strength`
+	#                is what gates the radar ghost (hud.gd:221). Free agreement.
+	#   move 1.0u -> new dedup key, NEW seed. A fresh independent draw of the same
+	#                true bearing. Stack K of them and the honest-containment
+	#                interval shrinks as 4e/(K+1) -- 19 readings turn an 8 deg
+	#                cone into 0.8 deg with no new information, only more samples.
+	#
+	# So "precision is bought" was false in the comment above: precision was
+	# bought with 1.0u of walking. Rounding here makes the dedup key and the seed
+	# key the same fact, which is the only way the sentence can be true.
+	#
+	# Found 2026-08-07 by the Horizon 5 review (docs/HORIZON-5-REVIEW.md, D-3 and
+	# D-10) while asking whether a server-issued rumour could be an oracle. It can,
+	# and this is the client-side half of why.
+	#
+	# COLLATERAL, CHECKED ON PAPER because the sweep could not be run: this dedup
+	# is now STRICTER for same-kind hints inside one rounded unit, so a fixture
+	# whose origins sit closer than that would lose a reading and change a count.
+	# The two that could have cared do not. INTEL NARROWS AND NEVER LIES
+	# (main.gd:18868) files six origins of six DIFFERENT kinds -- the two at
+	# (0,0,0) are "rumor" and "mast", and kind is compared before origin.
+	# BUYING INTEL NEVER WIDENS THE SEARCH (main.gd:19240) files five "mast"
+	# readings per trial on a circle; the closest two origins across all six
+	# trials are 404.3u apart. Both clear the 1u radius by three orders of
+	# magnitude.
+	#
+	# NOT RED-VERIFIED. The session that wrote this had no Godot binary. Before
+	# trusting it, run PYXIS_HUNTTEST and PYXIS_SAVETEST, and add the two
+	# assertions this wants: A SUB-UNIT REPOSITION IS THE SAME READING (0.3u and
+	# 1.0u both refused, strength unchanged) and A READING IS NOT A REROLL
+	# extended past its current same-exact-position case.
 	for h_v in list:
 		var h: Dictionary = h_v
 		if String(h.get("kind", "")) != String(hint.get("kind", "")):
@@ -1989,8 +2028,8 @@ func add_apex_hint(system_id: String, hint: Dictionary) -> bool:
 			if int(h.get("band", -1)) == int(hint.get("band", -2)) \
 					and String(h.get("quadrant", "")) == String(hint.get("quadrant", "")):
 				return false
-		elif is_equal_approx(float(h.get("ox", 0.0)), float(hint.get("ox", 0.0))) \
-				and is_equal_approx(float(h.get("oz", 0.0)), float(hint.get("oz", 0.0))):
+		elif int(round(float(h.get("ox", 0.0)))) == int(round(float(hint.get("ox", 0.0)))) \
+				and int(round(float(h.get("oz", 0.0)))) == int(round(float(hint.get("oz", 0.0)))):
 			return false
 
 	list.append(hint)

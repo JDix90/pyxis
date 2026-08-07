@@ -49,7 +49,8 @@ These are the load-bearing walls. Each records *why*, because every one of
 them will someday look like it is in the way of a good idea.
 
 - **I-1 — The single-player core stays deterministic and playable offline.**
-  The whole test culture (61 runs, WORLD FINGERPRINT, pinned seeds) depends on
+  The whole test culture (63 runs, 634 assertions, WORLD FINGERPRINT, pinned
+  seeds) depends on
   a client whose world is a pure function of the seed. Server features are
   additive overlays. A player with no account and no connection gets today's
   complete game.
@@ -100,18 +101,66 @@ them will someday look like it is in the way of a good idea.
   not an assertion; a green check on a world where the defect cannot express
   itself is worth nothing; a baseline is a measurement with an age on it.
 
-- **I-8 — Counsel gates money.** No stage that moves real money ships without
-  a review of the official rules and structure by a gaming/promotions
-  attorney, and payouts are geo-gated to jurisdictions where the structure is
-  clean. One review per structure, not per event — the point of using
-  recognized legal categories is that the review is bounded.
+- **I-8 — Counsel gates money, and a scoping call gates the account model.**
+  No stage that moves real money ships without a review of the official rules
+  and structure by a gaming/promotions attorney, and payouts are geo-gated to
+  jurisdictions where the structure is clean.
+
+  **Amended 2026-08-07 (review E-4).** A *scoping* consultation happens before
+  **Stage 0**, not before Stage 3. §13's own first open question — how little
+  can Stage 0 ask for and still support KYC later without a migration — proves
+  Stage 0's identity design is already constrained by a Stage 3 requirement.
+  Age assurance (§10), lawful basis, retention, and the permanence-vs-erasure
+  decision are all frozen in Stage 0 and cannot be retrofitted without
+  re-consenting an existing userbase.
+
+  And "one review per structure, not per event" needs a **re-trigger list**, or
+  it reads as "scaling the prize needs no new review" — which §6 then does.
+  Re-trigger on: prize magnitude, jurisdiction set, entry mechanism (free →
+  paid), any transferability or redeemability, any new purchasable that touches
+  a prize event, and an annual re-check.
 
 ---
 
 ## 2. Stage 0 — The Registry (the thin claims server)
 
+**Preceded by Stage 0− (2026-08-07). Build that first; see
+`docs/HORIZON-5-COUNTER.md`.** The review found something cheaper than this
+stage that tests more of the thesis: an anonymous global tally of what the
+playerbase has collectively sounded, with no accounts, no names and no
+leaderboards — and therefore no auth, no KYC, no age gate and no moderation
+surface. It drops four of this review's nine blockers outright and it is the
+part of Stage 0 that actually recruits, because a filling frontier is a reason
+to arrive rather than a reason to stay. Everything below is deferred until that
+has players in front of it.
+
 **The cheapest test of the whole thesis.** Before any economy or prize work,
 prove that shared stakes change how long people play.
+
+**Two corrections before this is built (review A-1, A-2):**
+
+- **Claim granularity is decided, not open.** §13 used to defer it and this
+  stage's gate metric is a function of it. The unit is a **landmark**, keyed
+  `(system_id, supercell_x, supercell_z)` — three integers, a pure function of
+  `DeepSpace.landmark_cell`, so client and server agree with no synchronisation.
+  Per-system, which this section's own example implied, is **three claims in the
+  entire game, forever**, and the rivalry signal reads zero for everyone who
+  arrives after day one.
+- **Claims are SEASONAL, not permanent.** The claimable set is ≤3,955 landmark
+  sites — roughly 30–50 player-hours of transit at 5.75 u/s over 256u spacing,
+  or under an hour each for fifty players. A permanent claim on a finite,
+  rapidly-exhausted resource means a new player's whole experience of the
+  headline feature is reading somebody else's name. Names reset with the season;
+  the **record** is what is permanent ("KESTREL-9 held 47 first-charts in Season
+  3"), which is a better trophy and also the only version that survives an
+  erasure request. This is the same change that makes the most grinder-skewed
+  mechanic in the horizon into a renewing one, and it needs at least one
+  non-volume leaderboard axis beside it.
+- **And this stage needs a retraction path**, because it is the one stage §9's
+  defences do not cover and it mints the permanent artifact. The world is
+  enumerable offline, so six headless accounts flying a genuine physics envelope
+  take every name in a day. If a name cannot be un-etched, the first confirmed
+  farm is a permanent scar on every player's chart.
 
 Scope:
 
@@ -155,9 +204,34 @@ Scope:
   via an interactive sequence (a human-paced challenge, one more bot hurdle),
   paying tiered closed-loop currency. Placement density is a server dial, not
   a client constant — rarity tuning must never require a client patch.
-- **The rumor layer.** Reuse the Hunt dossier machinery — the estimator, the
-  search circle that narrows and never lies, purchasable readings — pointed at
-  capsules. Rumors decay; derelicts yield partial coordinates; ports sell
+- **The rumor layer.** Reuse what is actually reusable of the Hunt dossier:
+  `Hunt._scan` and `Hunt._satisfies` (~110 lines of opaque-hint polar
+  point-location, no globals) and the chart cone renderer.
+
+  **Corrected 2026-08-07 (review C-1, D-3).** The rest does not carry over and
+  the reason is I-2. `Hunt.bearing_hint` derives its cone from
+  `SystemDB.lair_pos(system_id, run_seed)` — it *takes ground truth and adds a
+  seeded error* — so it cannot serve a target the client is not allowed to
+  know. `Hunt.estimate`'s search domain **is** the lair's authored annulus
+  ("the hints choose WHERE in the annulus; they never get to choose the
+  annulus"), and a server-placed capsule has no annulus. Storage is
+  `{system → [hints]}` and needs `{system → {target → [hints]}}`. **Expiry does
+  not exist at all** — no timestamp, no sweep, no clock — so "rumors decay" is
+  a from-scratch subsystem. Cost this as *larger* than the original dossier
+  (§42: 14 assertions, one save bump, one stage), because it adds authority and
+  expiry, which the original did not have.
+
+  **And the honesty guarantee is an attack surface, not only a promise.**
+  Bounded-honest hints *compose*: K readings shrink the containment interval as
+  `4e/(K+1)`, so 19 readings turn an 8° cone into 0.8° with no new information.
+  `Hunt.estimate` is a pure static function the attacker compiles from our own
+  source, and the hint seed rounds observer position to integers, so one unit of
+  walking buys a fresh independent draw. Rate limits scale K with time; they do
+  not bound it. **Before this is built, pick one:** a single per-(capsule,
+  account) nonce so readings refine one draw instead of sampling many; or the
+  server returns an already-intersected, radius-floored `{center, radius}`
+  rather than cone parameters. The rumor layer is a pacing device and cannot be
+  load-bearing anti-cheat. Rumors decay; derelicts yield partial coordinates; ports sell
   stale whispers cheap and fresh ones dear. The existing `INTEL NARROWS AND
   NEVER LIES` discipline carries over as a server contract: intel may be
   vague, never false.
@@ -185,10 +259,31 @@ Currency purchase and the sinks that keep the loop hungry.
   No app stores (deferred by design). Purchases are one-way (I-3).
 - **Sinks, in priority order:**
   1. **Private PYX regions** — the flagship sink. Spend currency to spin up an
-     invite-only region with its own seed, its own capsule seeding (in-game
-     currency prizes only — a paid-entry private region with prizes is
+     invite-only region with **its own system id**, its own capsule seeding
+     (in-game currency prizes only — a paid-entry private region with prizes is
      hosting gambling, recorded here so it is never "discovered" as a
-     feature), configurable rarity, and a private leaderboard. This is the
+     feature), **server-fixed** rarity, and a private leaderboard.
+
+     **Corrected 2026-08-07 (review C-2, B-2, E-7).** This said "its own seed",
+     and a seed does not generate the world. `DeepSpace.plan_cell(cx, cz)` takes
+     no seed; all ten of its salted streams key on `(system_id, cx, cz)`, and
+     `run_seed` moves only the apex lair and the hyper-structures. A private
+     region with a fresh seed is *the same rocks, hulks, seams, landmarks and
+     stations* as the public world with the boss relocated. A synthetic **system
+     id** gives a genuinely fresh world for free, with no generator change and no
+     disturbance to `WORLD FINGERPRINT`; the real work is synthesising a
+     `SystemDB` row (bounds, lair depth, the `deep` block, station and landmark
+     weights).
+
+     **Rarity is server-fixed, not purchaser-set**, and that is a correction too:
+     a buyer-controlled dial on a currency faucet is a self-service faucet, in
+     the one arena nobody else observes. §9's accepted residual risk is scoped to
+     "the open world" and does not reach it. Private regions grant **no salvage
+     income** — otherwise a real-money purchase buys progression speed, which
+     this same section forbids four bullets down. And seeding must be
+     **deterministic and buyer-specified** (N capsules of tier T at density D),
+     never a roll: paying real money for a randomized distribution of fungible
+     currency is the exact shape §10 bullet 3 names. This is the
      casual player's winnable pond and the friend-group party mode.
   2. **Liveries and cosmetics** — the accent system already in the game grows
      a premium tier. Winner-exclusive liveries exist but are never
@@ -358,8 +453,43 @@ any shipped money structure.)
 - **Why free-entry sweepstakes work:** removing consideration removes the
   lottery structure; equal-dignity free entry is the load-bearing element,
   which is why I-5 is an invariant and not a preference.
+- **Minors and age assurance — the gap, named (added 2026-08-07, review E-3).**
+  This ledger was meticulous about money *out* — KYC, geo-gating, 1099 — and had
+  **no chokepoint at all on money in**. Browser-first (§0) means no store age
+  gate; §2 asks only for email or OAuth; §4 sells currency to anyone with a card.
+  Four surfaces for counsel at the I-8 scoping call: a prize-eligibility age
+  floor in §5's rules; COPPA/GDPR-K **at account creation, i.e. Stage 0**;
+  age-appropriate-design regimes, which attach to services likely to be accessed
+  by children whether or not money exists; and parental chargebacks on Stage 2.
+  **This is a Stage 0 account-model decision** — it cannot be retrofitted without
+  re-consenting an existing userbase.
+- **Data protection** (added 2026-08-07): controller posture, lawful basis,
+  notice, retention, deletion. Note the tension the plan creates with itself —
+  §2 promises names are *permanent* and erasure rights are not. The reconciliation
+  is to etch the **handle** and sever the account link, and that is a Stage 0
+  schema decision. Note also that Stage 1's near-miss logging is a **posture
+  change** from the shipped game, not an extension: `telemetry.gd` is opt-in,
+  local-only, and says "there is no network code here and there will not be".
+- **Loot-box adjacency** (added 2026-08-07, review E-7): open-world capsules are
+  clean — free to find, so nothing is purchased, and the crack is skill-gated.
+  Private-region seeding is the exposed case and is why §4 sink 1 now specifies
+  deterministic, buyer-specified seeding rather than a rarity roll.
+- **The dominant-factor argument is weaker than this ledger claimed** (corrected
+  2026-08-07, review E-1). Mirroring converts *independent* draws into a *common*
+  draw: it equalises the distribution facing each entrant **ex ante**, and it
+  removes seed-mining and gear advantage. It does **not** remove chance from the
+  realization that separates them — two identically-skilled entrants facing the
+  identical hidden capsule are still separated by who searched the right quadrant
+  first. §7 says this correctly ("equalized … rather than argued away") and this
+  ledger used to assert the stronger claim. **Stages 3–4 do not need it** — free
+  entry removes consideration and the analysis ends there. **Stage 5 rests on
+  nothing else**, so skill-predominance is now an explicit *precondition* on any
+  Stage 5 unpark, not a property Stage 3 already has.
 - **Winners' tax paperwork** (US: 1099-MISC territory at ≥$600/year to one
-  winner) and geo-gating live in the official rules; revisit annually.
+  winner) and geo-gating live in the official rules; revisit annually. Note the
+  periodicity clash: I-4 calls this "per-event paperwork", the threshold is
+  per-payer **annual and per-identity**, and §6's monthly cadence crosses it
+  quickly. §10 is also US-only for an internationally geo-gated promotion.
 
 ---
 
@@ -397,8 +527,19 @@ The house rules extend to the new surface:
   cannot mutate state.
 - **`PYXIS_DERBYTEST`**: spec loadout is actually pinned (assert the fit
   cannot drift from the spec — the `MINING COSTS A MOUNT` stale-name lesson
-  applies: pin to named constants, not list-ends); mirrored instances are
-  bit-identical across entrants (WORLD FINGERPRINT, repointed); the crack
+  applies: pin to named constants, not list-ends — **and note that
+  `breach_speed` is a fitted module stat feeding the crack rate directly
+  (`derelict.gd:332`, Breaching Torch `+50%`), so in a "fastest crack wins"
+  event that one stat is a prize-odds multiplier and wants its own named
+  assertion**); the server's instance MANIFEST is byte-equal across entrants and
+  the objective coordinate matches a recorded fixture (**corrected 2026-08-07,
+  review C-3:** this said "mirrored instances are bit-identical across entrants
+  (WORLD FINGERPRINT, repointed)", which asserts a tautology — `plan_cell`
+  depends only on `(system_id, cx, cz)`, so terrain is already identical for
+  every player today with no derby code written, and the server-placed capsule
+  is by definition outside the fingerprint. It measured the one thing that
+  cannot vary and could not see the one thing that can, which is exactly what
+  I-7 forbids); the crack
   sequence cannot complete in fewer than its designed human-paced steps.
 - **Economy assertions**: no code path grants transferable or redeemable
   premium currency — an `ATTRIBUTION IS EXPLICIT`-style source-reading
