@@ -5987,6 +5987,33 @@ same commit.**
 
 ### Outstanding
 
+**Horizon 5, "The Claim" — reviewed, NOT approved, and the document is not in
+this repo** (open 2026-08-07). A five-stage plan to add a thin claims server,
+server-placed capsules, a premium currency, a daily rumour economy,
+subscriptions and real-money prize derbies was sent out for consultant review.
+`docs/HORIZON-5-REVIEW.md` is the result and its verdict is **do not proceed**.
+The first finding is that `docs/HORIZON-5-THE-CLAIM.md` **does not exist here** —
+not in the tree, not in any branch, not in any commit, not in any of the 40 PRs —
+so the review could not read the plan and covers the thesis and the codebase
+claims instead. That is this section's own failure mode recurring: the Hunt's
+back half went missing for a horizon because it was specced in
+`~/.claude/plans/`, and this is the same shape.
+
+Three things the review found that are true of the repo regardless of what
+happens to the horizon, listed here because they are debts rather than opinions:
+
+- **The MIDTIER re-derivation (§41, due since §65) now blocks something
+  concrete.** §51:4484 puts real headroom at **0.04 modules against a hard 3.00**
+  — ~232 credits per 8-minute loop — and any new faucet has to fit inside it.
+- **Solitude is never stated as a pillar.** §3's six pillars do not name it; the
+  word appears once in this file, at §49, meaning elbow room. The game's payout
+  gradient rests on it (§17:624, §18:794) and *"the contract for saying no"*
+  (§7:216) has no entry for it.
+- **`game_state.gd:268-270` is false.** It says a save file cannot leak the
+  lair, but the save carries `run_seed` (`:2458`) and `SystemDB.lair_pos` is a
+  pure function of it. The dossier's 19 assertions all start from that same
+  function, so none of them can see it.
+
 **Should an ALLIED ship be spared the player's area weapons?** (open 2026-08-07,
 §72). Splash catching a flag is deliberate and measured — `WITNESS_RANGE` is
 dimensioned by `OVERCHARGE_RADIUS` — so this is not a bug to fix but a line to
@@ -6020,19 +6047,38 @@ playtest; stage 1 shipped as §68). The full plan is in
 | 1 | bands 5/6 (THE FATHOMS, THE UNSOUNDED): edges, every band table, threats, commodities, landmarks, palette, `PYXIS_FRONTIERTEST` | none | **BUILT** — §68 |
 | 2 | the Mk III line: 4 Mk III weapons, 3 Mk III utilities, Breaching Torch / Surge Capacitors / Expedition Frame, **Reactor Mk V** (24 power), `reactor_cap` port-def gating | none | **BUILT** — §69 |
 | 3 | **THE BREAKWATER** (band 5) and **THE FAR LANTERN** (band 6): the first deep ports that sell what the chart cannot, plus `station_weights` rows for pyx02/pyx03 and two new silhouettes | none | **BUILT** — §70 |
-| 4 | deep weather (optional): band-6 grave-fields on a `"\|hulk2"` salted stream, pyx03 rift depth extension, `LANDMARK_KINDS` growth **with every authored row widened in the same commit** | none | **not built** |
+| 4 | deep weather (optional): band-6 grave-fields on a `"\|hulk2"` salted stream, pyx03 rift depth extension, `LANDMARK_KINDS` growth **with every authored row widened in the same commit** | none | **BUILT** — `5bbf69c`, merged in PR #37 2026-08-05 |
 
-**The commissioned loop is closed** (2026-08-05): stages 1-3 shipped as §68,
-§69 and §70. Only stage 4 remains, and it is optional polish rather than a
-missing pillar — the playtest's actual complaint is answered.
+**The commissioned loop is closed** (2026-08-05): all four stages shipped —
+§68, §69, §70 and stage 4 in `5bbf69c`.
 
-**One piece of debt is now due and is the reason to do stage 4 carefully.**
-§41's re-derivation of the `MIDTIER` bar has been outstanding since §65, and
-stage 4 is the first frontier work that would add INCOME (a rift depth
-extension) rather than sinks. Stages 1-3 could be measured against a bar nobody
-had re-derived because none of them could move it; stage 4 cannot. **No save bump is
-expected anywhere in this horizon**: deep space persists nothing, and module and
-commodity ids flow through the existing generic `owned`/`fit`/cargo paths.
+**Stage 4's row said "not built" for two days after it shipped**, corrected
+2026-08-07 by the Horizon 5 review, which found it while checking something
+else. The prose above the table said "Stages 1–4 shipped" the whole time, so
+this section contradicted itself, and README:29 believed the table. **That is
+this section's own discipline failing on this section**, inside 48 hours, on the
+one list in the repo that is load-bearing — which is worth more as a data point
+about the discipline than the row was worth as information. The instinct to make
+it an assertion is answered below and the answer has not changed; what this
+argues for is a *reader*, not a check.
+
+**One piece of debt is now due, and it now blocks more than stage 4.**
+§41's re-derivation of the `MIDTIER` bar has been outstanding since §65. Stage 4
+was the first frontier work that would add INCOME (a rift depth extension)
+rather than sinks; stages 1-3 could be measured against a bar nobody had
+re-derived because none of them could move it, and stage 4 could not. **Any
+Horizon 5 faucet is in the same position and has less room**: §51:4484 puts real
+headroom at **0.04 modules against a hard 3.00** once you budget against a good
+roll rather than the mean, which is ~232 credits per 8-minute loop.
+
+**No save bump was needed anywhere in the frontier**: its *generated* deep-space
+content persists nothing, and module and commodity ids flow through the existing
+generic `owned`/`fit`/cargo paths. **Do not read that as "deep space persists
+nothing" in general — it stopped being true at §66.** `beacons` (dropped at
+depth) and `colonies` (claimed past 1600u) are deep-space *player state*, they
+are both in the save at `game_state.gd:2478-2480`, and they cost save v20. The
+line is between generated content and player state, and anything Horizon 5
+claims, holds or names falls on the `beacons` side of it.
 
 The Hunt's stages 4–6 shipped as §65, §66 and §67 (2026-08-04). The table below
 is kept as the record of what was outstanding and how it resolved; **the

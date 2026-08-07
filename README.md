@@ -26,9 +26,13 @@ anyone is watching — which is the trade the whole game rests on.
 **Before asking "what is left to build", read `docs/STRATEGY.md` §64.** Every
 other section of that file records what SHIPPED, so searching it for gaps returns
 nothing — the outstanding work is not in the numbered record, by construction.
-§64 is the inventory: today it holds the frontier's stage 4 (optional polish)
-and one named piece of debt — §41's re-derivation of the `MIDTIER` bar, which
-stage 4 is the first work in a while that could actually move.
+§64 is the inventory: today it holds the Horizon 5 review's verdict, two open
+design questions from §72, and one named piece of debt — §41's re-derivation of
+the `MIDTIER` bar, outstanding since §65 and now blocking any new income
+anywhere. **It also held "frontier stage 4: not built" for two days after stage
+4 shipped**, while its own prose four lines above said the opposite; the Horizon
+5 review found it. Read the prose and the table against each other, and trust
+`git log` over both.
 
 **Read the relevant `docs/STRATEGY.md` section before touching an adjacent
 system.** Most sections record a defect and explain why the current shape
@@ -44,9 +48,15 @@ behind a `PYXIS_*` environment variable and run headless:
 PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 ```
 
-Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 44 of them —
-the 44 tags in `run_harness.sh`'s `TAGS` (`SAVETEST` among them is one harness
-with 17 modes rather than 17 harnesses), which is why 44 suites make **61 runs**.
+Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are **46** of them —
+the 46 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is one harness
+with **17** modes rather than 17 harnesses and is driven from `SAVE_MODES`
+instead. 46 + 17 is why the sweep makes **63 runs**.
+
+**Count these out of `run_harness.sh` rather than trusting this paragraph.** It
+said "44 tags… 61 runs" until 2026-08-07, having missed `STORMTEST` and
+`CONTACTTEST` going in, and it disagreed with the baseline four paragraphs down,
+which said 62. Neither number was ever right at the same time as the other.
 
 **Before running one, check that it parses** — 0.6 seconds against a 7-minute
 silent hang:
@@ -116,8 +126,19 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **616 PASS / 0 FAIL / 0 script errors** across 62 runs, save
-format **v20** — measured on Godot 4.6.stable, headless. The frontier's stage 1
+Current baseline: **634 PASS / 0 FAIL / 0 script errors** across **63 runs**, save
+format **v20** — the 634 is STRATEGY §72's own figure, and 63 is
+`len(TAGS) + len(SAVE_MODES)` counted out of `tools/run_harness.sh` (46 + 17).
+
+**This line read "616 PASS across 62 runs" until 2026-08-07 and was stale by
+exactly one horizon** — correct as of §71 (62 runs, 612 PASS, plus the
+instruments' four), and never updated when §72 added `PYXIS_CONTACTTEST`'s 19
+assertions and its tag. Meanwhile §72:7206 said 634. Two canonical documents,
+eighteen assertions apart, same week. The Horizon 5 review found it by counting
+the runner instead of reading either one. **A baseline is a measurement with an
+age on it, and so is the sentence that quotes the baseline** — which is why the
+run count above says how it was derived. The 634 itself is still uncounted here;
+the next sweep should print it. The frontier's stage 1
 (STRATEGY §68) added bands 5 and 6 past THE QUIET and a `FRONTIERTEST` tag of 14
 assertions, and needed no save bump: deep space persists nothing, and new module
 and commodity ids ride the existing generic `owned`/`fit`/cargo paths. Its sweep

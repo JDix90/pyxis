@@ -3678,11 +3678,25 @@ func hunt_estimate(sys_id := "") -> Dictionary:
 
 
 func file_apex_intel(kind: String, from: Vector3, err_deg: float) -> bool:
-	# THE ONE DOOR EVERY INTEL CHANNEL GOES THROUGH. Six things can teach you
-	# where the engine hides — a mast, a read relic, two different rumour desks,
-	# a cleared guard post and a rift — and every one of them files through here
-	# so that "what does a hint cost, what does it promise, and what does the
-	# player see when it lands" is answered once.
+	# THE ONE DOOR EVERY INTEL CHANNEL GOES THROUGH. EIGHT things can teach you
+	# where the engine hides, and every one files through here so that "what does
+	# a hint cost, what does it promise, and what does the player see when it
+	# lands" is answered once:
+	#
+	#   hull   derelict.gd     20 deg   free, once, on a SURVEY breach
+	#   mast   survey_mast.gd   8 deg   free, found
+	#   rift   rift.gd          4 deg   free, found, proximity-gated
+	#   guard  deep_space.gd   15 deg   free, on clearing a post
+	#   relic  game_state.gd   12 deg   free, on identifying index_cartographic
+	#   convoy deep_space.gd     —      free, gated on faction standing
+	#   watch  port_panel.gd  hunt_error  PAID, a desk
+	#   rumor  port_panel.gd / main.gd  ring tier   paid at a desk, or the free relay word
+	#
+	# This said "Six things" until 2026-08-07 and had been wrong since the convoy
+	# and relic channels went in; §64 and §67 repeat the six. Listed out rather
+	# than counted in prose, because a number in a comment is a claim nobody
+	# re-checks and this file already knows what those cost (§41: "a comment that
+	# does arithmetic ages like an assertion that measures nothing: silently").
 	#
 	# The target is ALWAYS the current system's own engine. That is not a
 	# simplification: under §38's two-tier gate the engine that jams your way

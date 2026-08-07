@@ -265,10 +265,24 @@ var seams_cut := {}
 #   {"kind": "ring", "band": int, "quadrant": String}
 #       A rumour. No origin and no bearing: an annulus and a compass sector.
 #
-# NOTHING here is ground truth. `SystemDB.lair_pos` is, and it is never written
-# down: every hint is derived from it at the moment it is earned and then stands
-# on its own, so a save file cannot leak the answer and a contradictory dossier
-# stays contradictory. `Hunt.estimate` does the intersecting, live, from these.
+# NOTHING here is ground truth. `SystemDB.lair_pos` is, and no COORDINATE is
+# ever written down: every hint is derived from it at the moment it is earned
+# and then stands on its own, so a contradictory dossier stays contradictory.
+# `Hunt.estimate` does the intersecting, live, from these.
+#
+# THIS COMMENT USED TO END "so a save file cannot leak the answer", AND THAT WAS
+# FALSE. `run_seed` is three hundred lines down in this same save (see the
+# save_game() dict), and `SystemDB.lair_pos(id, run_seed)` is a pure function of
+# it with no hidden state -- so the file leaks the lair in four lines of
+# arithmetic, and the sentence naming the function that does it was sitting in
+# the same paragraph. The dossier's ~19 assertions cannot see this: every one of
+# them STARTS from `SystemDB.lair_pos(isys, GameState.run_seed)` as its own
+# ground truth, so they verify the veil and never the claim that the veil is the
+# only path. Found 2026-08-07 by the Horizon 5 review, which was asking whether
+# anything in this game can be hidden from the client. Nothing can.
+#
+# What is actually true, and it is still worth having: the dossier does not
+# SHORTCUT the answer. A player reading their save gets a seed, not a bearing.
 #
 # The entry is DELETED on the kill (mark_apex_killed): the hunt is over, the
 # hints are worthless, and a dossier that outlives its quarry is just clutter
