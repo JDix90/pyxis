@@ -108,6 +108,14 @@ const ESCORT_FOLLOW := 4.0
 # escort IS -- and nothing else about _worth_leaving_the_beat changes, including
 # the chart-edge rule.
 const ESCORT_GUARD_RANGE := 15.0
+# How far inside the marker the station is held. The same 3u the muster line
+# carries, and for the same reason it was given one: THE LINE IS THE EDGE was
+# written after the outermost muster picket sat 0.4u past the marker once the
+# wander was added, and _process adds that same wander here. An escort is the
+# one Cordon ship the player can invite anywhere, so the promise the band-1
+# beacon has been making since v13 has to be kept against the STATION, not only
+# against the player's own position.
+const ESCORT_EDGE_INSET := 3.0
 
 var _escort: Node3D = null
 var _escort_t := 0.0
@@ -158,6 +166,9 @@ var _retarget_t := 0.0
 # stayed angry until it died or the player docked — unbounded in the field, and
 # nothing said so. This is the release that was missing.
 var _grudge := 0.0
+# WHO the grudge is about. Held so _release_grudge can let go of the right ship:
+# the clock alone cannot say, and _aggro may have moved on to a later attacker.
+var _grudge_at: Node3D = null
 # The system's chart edge, resolved on first use and never again — a picket dies
 # with SystemRoot, so it cannot outlive the number it cached. -1 means "not
 # asked yet"; 0 means "asked, and there was no main to ask", which disables the
@@ -514,7 +525,22 @@ func _escort_station() -> Vector3:
 	# the pacing valve as much as it is the characterisation.
 	var back := _escort.global_transform.basis.z    # +z is behind the nose
 	var at := _escort.global_position + Vector3(back.x, 0.0, back.z).normalized() * ESCORT_FOLLOW
-	return Vector3(at.x, 0.0, at.z)
+	var flat := Vector3(at.x, 0.0, at.z)
+	# AND THE STATION IS INSIDE THE MARKER, NOT JUST THE PLAYER. _tick_escort
+	# ends the escort when the PLAYER crosses the edge, which leaves the case it
+	# does not cover: a player sitting just inside the line with their nose
+	# pointed inward puts the station up to ESCORT_FOLLOW beyond it, and
+	# _process adds its 0.4 wander on top. THE LINE IS THE EDGE was written
+	# about a muster line bulging 0.4u past the marker; this could put a Cordon
+	# ship 4.4u over. Clamped with the same 3u inset the muster line carries,
+	# for the same reason -- the wander has to fit inside the promise too.
+	if _edge > 0.0:
+		var r := Vector2(flat.x, flat.z)
+		var lim := maxf(_edge - ESCORT_EDGE_INSET, 0.0)
+		if r.length() > lim:
+			var keep := r.normalized() * lim
+			flat = Vector3(keep.x, 0.0, keep.y)
+	return flat
 
 
 func provoke(who: Node3D) -> void:
@@ -532,6 +558,7 @@ func provoke(who: Node3D) -> void:
 	if _dying or who == null or not is_instance_valid(who):
 		return
 	_aggro = who
+	_grudge_at = who
 	_grudge = FactionDB.GRUDGE_TIME
 
 
@@ -543,12 +570,25 @@ func _release_grudge() -> void:
 	# with it. Zeroing the timer without clearing the pointers reproduces that
 	# one layer down, because fights_the_player() reads _aggro and _target, not
 	# the clock. The machine would stay a live enemy with nothing left saying why.
-	var p := get_tree().get_first_node_in_group("player")
-	if p == null:
-		return
-	if _aggro == p:
+	# WHATEVER THE GRUDGE POINTED AT, not the player specifically. Every caller
+	# was Main.witness_attack until the contact menu arrived, and that always
+	# passes the player -- so "release the player" and "release what the grudge
+	# named" were the same sentence and the narrower one was written. MARK MY
+	# TARGET points an ALLY at an NPC, and under the old test the clock ran out
+	# while _aggro kept pointing: a thirty-second favour became a permanent
+	# vendetta that survived until one of them died. That is exactly the
+	# unbounded latch this function exists to prevent, reached from the one
+	# direction it did not cover.
+	var who: Node3D = _grudge_at
+	_grudge_at = null
+	if who == null or not is_instance_valid(who):
+		# The ship it was angry at is gone; the pointers cannot outlive it.
+		who = get_tree().get_first_node_in_group("player")
+		if who == null:
+			return
+	if _aggro == who:
 		_aggro = null
-	if _target == p:
+	if _target == who:
 		_target = null
 
 
@@ -787,6 +827,20 @@ func _pick_target(delta: float) -> Node3D:
 			if n == self or not _targetable(n):
 				continue
 			if not _enemies.has(n.faction):
+				continue
+			# THE PARLEY EXCLUSION BELONGS ON THE GUN, NOT ONLY ON THE FEET.
+			# _worth_leaving_the_beat has refused to WALK to a raider under a
+			# standoff since finding A3, but _weapon fires at whatever
+			# _combat_target returns on distance alone and never asks that
+			# question -- so a picket that happened to be within ENGAGE_RANGE
+			# shot into the player's parley and break_parley deleted their
+			# PAY / BLUFF / REFUSE choice. It was reachable by luck before; the
+			# escort made it reachable on demand, by parking a GSA picket 4u
+			# from a pack that orbits the player at 3.2u, and the GSA is
+			# HOSTILE to the Tithe at baseline so the raiders are already in
+			# this list. Excluded at the SOURCE, so every consumer of the
+			# pointer -- movement, the gun, the skirmish clock -- inherits it.
+			if n.is_in_group("raider") and float(n.get("standoff")) > 0.0:
 				continue
 			var d := global_position.distance_to(n.global_position)
 			if d < best_d:

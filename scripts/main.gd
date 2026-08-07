@@ -2169,7 +2169,12 @@ func hail_contact(ship) -> void:
 	var flag := String((ship as Node3D).faction)
 	var band: int = GameState.faction_band(flag, FactionDB.SURVEYOR)
 	var line := "%s — %s" % [FactionDB.display_name(flag), FactionDB.BAND_NAMES[band]]
-	var desig := String((ship as Node3D).get("designation"))
+	# ASKED WITH `in` FIRST. `designation` is declared on Hostile and NOT on
+	# SwarmHostile, and Object.get() on a property a script does not have returns
+	# null -- which String() renders as "<null>" and would have hung that on the
+	# end of every hail to a convoy dart.
+	var desig := String((ship as Node3D).designation) \
+		if "designation" in (ship as Node3D) else ""
 	if desig != "":
 		line += " · %s" % desig
 	_contact_toast(line, FactionDB.tint_of(flag))
@@ -3295,6 +3300,13 @@ func spawn_interdiction() -> void:
 	var player: PlayerShip = get_tree().get_first_node_in_group("player")
 	if player == null:
 		return
+	# THE THIRD SET PIECE THAT OWNS THE SHIPS AROUND THE PLAYER. A muster and a
+	# boss fight both release an escort already; a raid is the one that actually
+	# NEEDS to, because the parley is a conversation held at knifepoint four
+	# units from where an escort stations itself, and the whole point of the
+	# demand is that answering it is the player's decision. An escorting picket
+	# standing in the middle of it is a third party to a two-party negotiation.
+	end_escort()
 	_raid_active = true
 
 	var value := GameState.hold_value(true)
@@ -17451,12 +17463,13 @@ func _run_contact_test() -> void:
 	_wave_timer = 1.0e9
 	_apex_wake_timer = -1.0
 	# AND THE EVENTS ARE PINNED TOO, which the wave timer alone does not do. A
-	# muster or a raid landing mid-run calls end_escort -- correctly, since two
-	# spawn systems must not argue over one ship -- and the escort assertions
-	# below then read "the picket is not covering you" when what happened is that
-	# the Cordon was called to the line. It failed about one run in six before
-	# this line existed, which is exactly the kind of intermittent green §33's
-	# pinning list was written about.
+	# muster landing mid-run calls end_escort -- correctly, since two spawn
+	# systems must not argue over one ship -- and the escort assertions below
+	# then read "the picket is not covering you" when what happened is that the
+	# Cordon was called to the line. It failed about one run in six before this
+	# line existed, which is exactly the kind of intermittent green §33's
+	# pinning list was written about. The raid cooldown is pinned for the same
+	# reason now that spawn_interdiction releases an escort too.
 	_muster_cooldown = 1.0e9
 	_raid_cooldown = 1.0e9
 	_clear_faction_matrix()
@@ -17874,6 +17887,108 @@ func _run_contact_test() -> void:
 	print("[contact] THE ESCORT STOPS AT THE MARKER player %.0fu out (edge %.0f) -> escorting=%s -> %s" % [
 		chart_edge() + 30.0, chart_edge(), str(picket.escorting()),
 		"PASS" if let_go else "FAIL"])
+
+	# --- 7b. WHAT THE REVIEW FOUND -------------------------------------------
+	# Four defects that the feature harness above was green through, because
+	# every one of them lives at a seam between the new code and a rule that was
+	# already written down somewhere else.
+
+	# THE ESCORT DOES NOT ANSWER THE PLAYER'S PARLEY, ON THE GUN AS WELL AS THE
+	# FEET. The guard scan excluded a standoff raider from the day it was
+	# written; the ORDINARY enemy scan below it did not, and the GSA is HOSTILE
+	# to the Tithe at baseline, so a picket parked 4u off the player had the
+	# whole pack inside its 9u ENGAGE_RANGE and one shot called break_parley.
+	# Asserted against _pick_target, which is where every consumer -- the gun,
+	# the feet and the skirmish clock -- gets its pointer.
+	var demand := SwarmHostile.new()
+	demand.faction = "tithe"
+	system_root.add_child(demand)
+	demand.global_position = picket.global_position + Vector3(2, 0, 0)
+	demand.add_to_group("raider")
+	await get_tree().process_frame
+	_reset_picket_clocks(picket)
+	var without_standoff := picket._pick_target(0.0)
+	demand.standoff = 6.0
+	_reset_picket_clocks(picket)
+	var with_standoff := picket._pick_target(0.0)
+	var parley_safe: bool = without_standoff == demand and with_standoff != demand
+	print("[contact] NOBODY ELSE ANSWERS YOUR PARLEY a Tithe raider 2u from a GSA picket is taken=%s, the same raider under a standoff is taken=%s (want false) -> %s" % [
+		str(without_standoff == demand), str(with_standoff == demand),
+		"PASS" if parley_safe else "FAIL"])
+
+	# AND A RAID RELEASES THE ESCORT OUTRIGHT, so the picket is not standing in
+	# the middle of a demand it could answer by accident.
+	demand.standoff = 0.0
+	demand.queue_free()
+	await get_tree().process_frame
+	_escort_cd = 0.0
+	request_escort(picket)
+	var riding_again: bool = picket.escorting()
+	spawn_interdiction()
+	var raid_released: bool = not picket.escorting()
+	for r_v in get_tree().get_nodes_in_group("raider"):
+		if is_instance_valid(r_v):
+			(r_v as Node).queue_free()
+	_raid_active = false
+	_raid_cooldown = 1.0e9
+	await get_tree().process_frame
+	print("[contact] A RAID TAKES THE ESCORT BACK escorting before=%s, after the klaxon=%s (want false) -> %s" % [
+		str(riding_again), str(picket.escorting()),
+		"PASS" if riding_again and raid_released else "FAIL"])
+
+	# THE STATION IS INSIDE THE MARKER, NOT JUST THE PLAYER. _tick_escort ends an
+	# escort when the PLAYER crosses; a player sitting just inside the line with
+	# their nose pointed inward put the station up to ESCORT_FOLLOW past it.
+	_escort_cd = 0.0
+	request_escort(picket)
+	var edge_r := chart_edge()
+	# Just inside the line, facing inward, so the station falls outside it.
+	player.global_position = Vector3(0, 0, -(edge_r - 1.0))
+	player.look_at(Vector3(0, 0, -(edge_r + 40.0)), Vector3.UP)
+	await get_tree().process_frame
+	var station: Vector3 = picket._escort_station()
+	var station_r := Vector2(station.x, station.z).length()
+	var station_in: bool = station_r <= edge_r
+	player.global_position = home
+	print("[contact] THE STATION IS INSIDE THE MARKER TOO station at %.1fu against an edge of %.0f -> %s" % [
+		station_r, edge_r, "PASS" if station_in else "FAIL"])
+
+	# A HAIL DOES NOT READ A PROPERTY THE SHIP HAS NOT GOT. `designation` is
+	# declared on Hostile and not on SwarmHostile, and Object.get() answers null
+	# for a missing one -- which String() renders as "<null>".
+	var dart := SwarmHostile.new()
+	dart.faction = "league"
+	system_root.add_child(dart)
+	dart.global_position = player.global_position + Vector3(4, 0, 0)
+	dart.add_to_group("deep_convoy")
+	await get_tree().process_frame
+	var toast_before := hud.toast_text()
+	hail_contact(dart)
+	await get_tree().process_frame
+	var hailed := hud.toast_text()
+	var clean_hail: bool = hailed != toast_before and not hailed.contains("<null>") \
+		and not hailed.contains("null")
+	print("[contact] A HAIL NAMES ONLY WHAT IS THERE dart with no designation -> '%s' -> %s" % [
+		hailed, "PASS" if clean_hail else "FAIL"])
+
+	# A FAVOUR IS NOT A VENDETTA. MARK MY TARGET points an ALLY at an NPC, and
+	# _release_grudge used to let go of the PLAYER specifically -- every caller
+	# before the contact menu passed the player, so the narrower test read as
+	# the same sentence. The clock ran out and the pointer did not, which is the
+	# unbounded latch that function exists to prevent.
+	player.command_attack(dart)
+	mark_target_for(picket)
+	var pointed: bool = picket._aggro == dart
+	picket._grudge = 0.0
+	picket._release_grudge()
+	var favour_ended: bool = picket._aggro == null
+	player.clear_target()
+	_reset_picket_clocks(picket)
+	dart.queue_free()
+	await get_tree().process_frame
+	print("[contact] A FAVOUR IS NOT A VENDETTA ally pointed at an NPC=%s, and lets go when the grudge lapses=%s -> %s" % [
+		str(pointed), str(favour_ended),
+		"PASS" if pointed and favour_ended else "FAIL"])
 
 	# --- 8. THE MENU CLOSES ITSELF -------------------------------------------
 	# Four ways a conversation ends without the player ending it. Each one leaves

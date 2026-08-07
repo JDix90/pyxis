@@ -70,6 +70,8 @@ var _skirmish_rest := 0.0
 # hauler is a SwarmHostile, and a convoy is the commonest thing an OVERCHARGE
 # discharge catches by accident.
 var _grudge := 0.0
+# See Hostile._grudge_at: who the grudge is about, so it can be let go of.
+var _grudge_at: Node3D = null
 
 # --- the march (v18, stage 4) ------------------------------------------------
 # WHERE THIS SHIP IS GOING, if it is going anywhere. Vector3.ZERO means "not
@@ -409,18 +411,23 @@ func provoke(who: Node3D) -> void:
 	if _dying or who == null or not is_instance_valid(who):
 		return
 	_aggro = who
+	_grudge_at = who
 	_grudge = FactionDB.GRUDGE_TIME
 
 
 func _release_grudge() -> void:
 	# The pointers, not just the clock — see Hostile._release_grudge for what
-	# clearing one without the other reproduces.
-	var p := get_tree().get_first_node_in_group("player")
-	if p == null:
-		return
-	if _aggro == p:
+	# clearing one without the other reproduces, and for why this lets go of
+	# WHATEVER the grudge named rather than of the player specifically.
+	var who: Node3D = _grudge_at
+	_grudge_at = null
+	if who == null or not is_instance_valid(who):
+		who = get_tree().get_first_node_in_group("player")
+		if who == null:
+			return
+	if _aggro == who:
 		_aggro = null
-	if _target == p:
+	if _target == who:
 		_target = null
 
 
@@ -502,6 +509,13 @@ func _pick_target(delta: float) -> Node3D:
 			if n == self or not _targetable(n):
 				continue
 			if not _enemies.has(n.faction):
+				continue
+			# The parley exclusion, mirroring Hostile._pick_target, which carries
+			# the reasoning: a standoff is the PLAYER's conversation and an NPC
+			# that fires into it calls break_parley and deletes their choice.
+			# A dart reaches this the same way a sentry does -- a convoy escort
+			# flying a flag that hates the Tithe, passing a live interdiction.
+			if n.is_in_group("raider") and float(n.get("standoff")) > 0.0:
 				continue
 			var d := global_position.distance_to(n.global_position)
 			if d < best_d:

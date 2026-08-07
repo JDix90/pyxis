@@ -7110,6 +7110,58 @@ was a real property stated badly:
    pinning list exists for exactly this and the wave timer alone does not cover
    it.
 
+### What an adversarial review found that 634 green assertions did not
+
+The sweep was green and the feature harness was green, and a five-lens review of
+the diff still found four real defects. Every one of them lives at a **seam**
+between the new code and a rule written down somewhere else — which is precisely
+where a harness written by the author of the change does not look, because the
+author is asserting the thing they just built.
+
+**1. The parley exclusion was on the feet and not on the gun.** (critical)
+`_worth_leaving_the_beat` has refused to WALK to a raider under a standoff since
+finding A3. `_weapon` fires at whatever `_combat_target` returns on distance
+alone and never asks that question. The guard scan added for the escort
+carefully excluded standoff raiders — and then fell through to the ORDINARY
+enemy scan, which did not, and the GSA is HOSTILE to the Tithe at baseline. So:
+take an escort, get interdicted, and a GSA picket parked 4.0u off the player has
+a pack orbiting at 3.2u well inside its 9.0u `ENGAGE_RANGE`. One shot calls
+`break_parley` and **an NPC deletes the player's PAY / BLUFF / REFUSE choice.**
+The hole was reachable by luck before; the escort made it reachable on demand.
+Fixed at the SOURCE — the exclusion is now in `_pick_target` in both hostile
+classes, so movement, the gun and the skirmish clock all inherit it — and
+`spawn_interdiction` now releases an escort outright, which is the third set
+piece that owns the ships around the player.
+
+**2. The station was clamped against the player, not against the marker.**
+(high) `_tick_escort` ends an escort when the PLAYER crosses `chart_edge()`. A
+player sitting just inside the line with their nose pointed inward put the
+station up to `ESCORT_FOLLOW` **past** it, plus `_process`'s 0.4 wander on top.
+THE LINE IS THE EDGE was written after a muster picket sat 0.4u over; this could
+put a Cordon ship 4.4u over. The station now carries the same 3u inset the
+muster line does.
+
+**3. `hail_contact` read a property half the eligible ships do not have.** (high)
+`designation` is declared on `Hostile` and not on `SwarmHostile`. `Object.get()`
+answers null for a property a script does not have, and `String(null)` renders
+`"<null>"` — so every hail to a convoy dart would have ended in `· <null>`.
+Asked with `in` now.
+
+**4. A favour became a vendetta.** (high) `_release_grudge` let go of the
+PLAYER specifically. Every caller before the contact menu was
+`Main.witness_attack`, which always passes the player, so "release the player"
+and "release what the grudge named" were the same sentence and the narrower one
+got written. MARK MY TARGET points an ALLY at an NPC: the thirty-second clock
+ran out, the pointer did not, and a bounded favour became permanent until one of
+them died — **the exact unbounded latch that function exists to prevent, reached
+from the one direction it did not cover.** Both classes now remember what the
+grudge was about and let go of that.
+
+The lesson is §54's, arrived at from the other side. That section says *assert
+the path the player takes, not the function it wraps*; this adds **assert the
+seams you did not write**. All four defects are now assertions in
+`PYXIS_CONTACTTEST`, and each was confirmed to go red with its fix removed.
+
 **Moving a station-keeper does not move it** — `Hostile._process` assigns
 `global_position` from `_home` every frame, so a fixture shoved aside is back on
 its post next frame. That is also why a station-keeper cannot be offered an
