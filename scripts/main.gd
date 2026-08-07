@@ -11255,6 +11255,16 @@ func _run_pacing_test() -> void:
 	# INCLUDING A 3.00 FAIL, exonerating both the rift and the stage. The
 	# excursion is the distribution under machine load, §65 records it, and the
 	# §41 re-derivation of this bar is now due.
+	#
+	# THE INSTRUMENT FOR THAT RE-DERIVATION IS `tools/derive_midtier.sh` (added
+	# 2026-08-07). It runs this harness N times as separate PROCESSES and pools
+	# the readings, because the obvious alternative -- sampling k times inside
+	# this function and averaging -- is wrong: `_pacing_derelict_yield()` is not
+	# idempotent (`while not derelict.is_cracked()` exits at once on a second
+	# call), so k samples in one process would be one real reading and k-1 zeros
+	# on the term §51 records as MOST OF THE SPREAD. Averaging is still the right
+	# fix for the statistic; the sampling unit just has to be a process, which is
+	# also what §41 did. DO NOT move the bar without running it first.
 	_rift_timer = 1.0e9
 	contracts.active = []
 	await get_tree().create_timer(0.4).timeout

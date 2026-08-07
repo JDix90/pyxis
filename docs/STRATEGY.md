@@ -6095,11 +6095,34 @@ unfixable once players exist:
 Four things the review found that are true of the repo regardless of what happens
 to the horizon — debts rather than opinions:
 
-- **The MIDTIER re-derivation (§41, due since §65) is still owed.** §51:4484 puts
-  real headroom at **0.04 modules against a hard 3.00** — ~232 credits per
-  8-minute loop. The horizon's *currency* design does not threaten it (capsules
-  pay closed-loop, and MIDTIER is income-only), but intel priced in salvage
-  credits competes with the module ladder and the plan states no price.
+- **The MIDTIER re-derivation (§41, due since §65) — INSTRUMENTED, not yet run.**
+  `tools/derive_midtier.sh` (2026-08-07) is the derivation pass: N standalone
+  runs, pooled, reporting the distribution, a per-term variance decomposition,
+  and the failure rate at each candidate sample count. **The number is still
+  unpinned and must not be pasted without running it.** §51:4484 puts real
+  headroom at 0.04 modules against a hard 3.00 — ~232 credits per 8-minute loop.
+
+  **Why it is a script and not a loop inside the harness**, recorded because the
+  obvious implementation is wrong and looks right: `_pacing_derelict_yield()` is
+  **not idempotent** — its loop is `while not derelict.is_cracked()`, so a second
+  call in the same process returns at once with ~0. Sampling k times in-process
+  would be one real reading and k−1 zeros on the term §51 records as *"most of
+  the spread"*, `per_derelict` would land at a quarter of its value, and the
+  FLOOR clause at 0.60 would start failing for a reason unrelated to the economy.
+  So the sampling unit is a **process** — which is also exactly what §41 did:
+  *"five standalone runs on a pristine worktree, 30 fresh samples, pooled."*
+
+  Averaging is still the right fix for the statistic, and this case is genuinely
+  unlike §41's: `PHASE INTEGRITY`'s bar sat on the distribution's own centre
+  (hence *"no sample count fixes a bar placed on the statistic's own center"*),
+  where MIDTIER's sits ~1.8 sd out. More sampling helps here and did not there.
+  **If the run shows the mean has drifted up against the bar rather than the
+  spread being wide, the honest fix is content, not statistics** — a bigger job,
+  and the one this pass exists to detect early.
+
+  The horizon's *currency* design does not threaten the bar at all (capsules pay
+  closed-loop, and MIDTIER is income-only), but intel priced in salvage credits
+  competes with the module ladder and the plan states no price.
 - **Solitude is never stated as a pillar.** §3's six pillars do not name it; the
   word appears once in this file, at §49, meaning elbow room. The game's payout
   gradient rests on it (§17:624, §18:794) and *"the contract for saying no"*
