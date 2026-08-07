@@ -15239,6 +15239,31 @@ func _run_manual_test() -> void:
 	print("[manual] THE MANUAL IS TRUE TO THE DEVICE AND TO THE HUD gestures a desktop cannot make: %s; readouts and tiers with no entry: %s -> %s" % [
 		taps if taps != "" else "none", undocumented if undocumented != "" else "none",
 		"PASS" if taps == "" and undocumented == "" else "FAIL"])
+
+	# AND TRUE TO THE ESCAPE LADDER, which the sweep above does not cover because
+	# it checks vocabulary and coverage rather than a count. The FLYING page
+	# numbers CameraRig._cancel's rungs in prose, and a rung was added at the top
+	# of that function while the page went on saying "1. a console is open" --
+	# false about the first thing Escape now does, and green through a full
+	# sweep. Counted from the page rather than asserted as a literal, so the next
+	# rung added to _cancel fails here instead of shipping a wrong number.
+	manual.open()
+	manual._page = "flying"
+	manual._refresh()
+	await get_tree().process_frame
+	var ladder := 0
+	for i in range(1, 9):
+		if _panel_text_contains(manual, "%d.  " % i):
+			ladder = i
+	# The device decides the length: the contact menu's rung exists only where a
+	# right-click can raise one, which is the same question ManualScreen asks.
+	var want_rungs := 3 if DisplayServer.is_touchscreen_available() else 4
+	var menu_rung := _panel_text_contains(manual, "a contact menu is open")
+	var want_menu: bool = not DisplayServer.is_touchscreen_available()
+	manual.close_panel()
+	print("[manual] THE MANUAL IS TRUE TO THE CANCEL LADDER %d rungs on this device (want %d), names the contact menu=%s (want %s) -> %s" % [
+		ladder, want_rungs, str(menu_rung), str(want_menu),
+		"PASS" if ladder == want_rungs and menu_rung == want_menu else "FAIL"])
 	get_tree().quit()
 
 

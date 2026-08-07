@@ -234,9 +234,20 @@ func _build_flying() -> void:
 	_body.add_child(_row("HOLD", "Fly close and hold on a derelict, a survey mast or an ore seam to work it. Cracking, reading and cutting are all the same gesture."))
 	_body.add_child(_spacer(6))
 	_body.add_child(_para("CANCEL backs out exactly one step, never two:"))
-	_body.add_child(_para("1.  a console is open, so it closes"))
-	_body.add_child(_para("2.  a target is locked, so the lock drops"))
-	_body.add_child(_para("3.  otherwise the game pauses"))
+	# ASKED OF THE DEVICE, like the gestures above, because the ladder is not the
+	# same length on both. CameraRig._cancel puts the contact menu on the top
+	# rung, and the only way to raise one is a right-click -- so on touch that
+	# rung is unreachable and naming it would describe a step the player cannot
+	# be standing on. The numbering has to shift with it, which is the whole
+	# reason this is built rather than written: a fourth rung was added above a
+	# hard-coded list of three and the page went quietly false.
+	var rung := 1
+	if not _touch():
+		_body.add_child(_para("%d.  a contact menu is open, so it closes" % rung))
+		rung += 1
+	_body.add_child(_para("%d.  a console is open, so it closes" % rung))
+	_body.add_child(_para("%d.  a target is locked, so the lock drops" % (rung + 1)))
+	_body.add_child(_para("%d.  otherwise the game pauses" % (rung + 2)))
 	_body.add_child(_back())
 
 
