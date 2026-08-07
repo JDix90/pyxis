@@ -5987,32 +5987,56 @@ same commit.**
 
 ### Outstanding
 
-**Horizon 5, "The Claim" — reviewed, NOT approved, and the document is not in
-this repo** (open 2026-08-07). A five-stage plan to add a thin claims server,
-server-placed capsules, a premium currency, a daily rumour economy,
-subscriptions and real-money prize derbies was sent out for consultant review.
-`docs/HORIZON-5-REVIEW.md` is the result and its verdict is **do not proceed**.
-The first finding is that `docs/HORIZON-5-THE-CLAIM.md` **does not exist here** —
-not in the tree, not in any branch, not in any commit, not in any of the 40 PRs —
-so the review could not read the plan and covers the thesis and the codebase
-claims instead. That is this section's own failure mode recurring: the Hunt's
-back half went missing for a horizon because it was specced in
-`~/.claude/plans/`, and this is the same shape.
+**Horizon 5, "The Claim" — SPECCED, reviewed, and approved only as far as Stage
+0** (open 2026-08-07). `docs/HORIZON-5-THE-CLAIM.md` proposes a thin claims
+server, server-placed capsules, a closed-loop premium currency, a rumour economy,
+purchasable private regions, subscriptions, and free-entry sweepstakes derbies,
+in five gated stages plus a parked Stage 5. `docs/HORIZON-5-REVIEW.md` is the
+independent review. **Verdict: proceed to Stage 0 with seven conditions; nothing
+past Stage 0's gate is approved.** Nine blockers, all recorded there.
 
-Three things the review found that are true of the repo regardless of what
-happens to the horizon, listed here because they are debts rather than opinions:
+The four that decide whether Stage 0 ships at all, because each is cheap now and
+unfixable once players exist:
 
-- **The MIDTIER re-derivation (§41, due since §65) now blocks something
-  concrete.** §51:4484 puts real headroom at **0.04 modules against a hard 3.00**
-  — ~232 credits per 8-minute loop — and any new faucet has to fit inside it.
+- **Stage 0's gate metric cannot be computed.** §2 gates on *"% who return within
+  48h of being beaten to a claim"*; §13 leaves claim granularity open. §2's own
+  example is per-system, and there are **three systems** — so the metric reads
+  zero forever. Per-landmark is ≤3,955 sites and is the only tractable answer.
+- **The claimable frontier is ~30–50 player-hours wide** at 5.75 u/s over 256u
+  supercell spacing, and §2 makes claims permanent while every other layer
+  resets. Fifty players exhaust it in under an hour each.
+- **Stage 0 mints that permanent artifact in the one stage §9's defences skip.**
+  The world is enumerable offline (`plan_cell` takes no seed), so six headless
+  accounts flying a real envelope can take every first-charted name in a day.
+- **Counsel and age assurance are gated at Stage 3 and needed at Stage 0.** The
+  plan's own §13 first open question proves it: Stage 0's account model is
+  already constrained by Stage 3's KYC requirement.
+
+Four things the review found that are true of the repo regardless of what happens
+to the horizon — debts rather than opinions:
+
+- **The MIDTIER re-derivation (§41, due since §65) is still owed.** §51:4484 puts
+  real headroom at **0.04 modules against a hard 3.00** — ~232 credits per
+  8-minute loop. The horizon's *currency* design does not threaten it (capsules
+  pay closed-loop, and MIDTIER is income-only), but intel priced in salvage
+  credits competes with the module ladder and the plan states no price.
 - **Solitude is never stated as a pillar.** §3's six pillars do not name it; the
   word appears once in this file, at §49, meaning elbow room. The game's payout
   gradient rests on it (§17:624, §18:794) and *"the contract for saying no"*
-  (§7:216) has no entry for it.
-- **`game_state.gd:268-270` is false.** It says a save file cannot leak the
-  lair, but the save carries `run_seed` (`:2458`) and `SystemDB.lair_pos` is a
-  pure function of it. The dossier's 19 assertions all start from that same
-  function, so none of them can see it.
+  (§7:216) has no entry for it. Horizon 5's §0 opens by leaning on it.
+- **`game_state.gd:268-270` was false** and is corrected: it said a save file
+  cannot leak the lair, but the save carries `run_seed` (`:2458`) and
+  `SystemDB.lair_pos` is a pure function of it. The dossier's 19 assertions all
+  start from that same function, so none of them can see it.
+- **A live defect in the intel dossier, not yet fixed.** The hint's RNG seed
+  rounds observer position to integers (`hunt.gd:258-259`) while the dedup
+  compares exact floats (`game_state.gd:1992-1993`). Moving 1.0u buys a fresh
+  independent draw of the same bearing; moving 0.3u files a bit-identical bearing
+  twice, which `Hunt._scan` then counts twice in `strength` — and `strength`
+  gates the radar ghost (`hud.gd:221`). One-line fix: dedup on the rounded key.
+  **Left unfixed here because it is behavioural and this session had no Godot
+  binary to red-verify it.** It wants an assertion that a sub-unit reposition
+  yields the same hint and does not raise `strength`.
 
 **Should an ALLIED ship be spared the player's area weapons?** (open 2026-08-07,
 §72). Splash catching a flag is deliberate and measured — `WITNESS_RANGE` is
