@@ -5987,6 +5987,26 @@ same commit.**
 
 ### Outstanding
 
+**Should an ALLIED ship be spared the player's area weapons?** (open 2026-08-07,
+§72). Splash catching a flag is deliberate and measured — `WITNESS_RANGE` is
+dimensioned by `OVERCHARGE_RADIUS` — so this is not a bug to fix but a line to
+draw: sparing the two positive bands would honour HORIZON-4:234-236's *"allied
+ships are emphatically not in `hostiles`"*, at the cost of a band-shaped hole in
+a group six systems read as uniform, area fire getting safer as the stakes rise,
+and a torpedo-only fit unable to open on an ALLIED ship (a torpedo's only damage
+vector is that sweep). The concrete harm that prompted the question — an escort
+parked inside the blast — is fixed independently by moving the station.
+
+**The contact menu has no touch gesture** (deferred 2026-08-06, §72). Right-click
+opens it; a phone has no way in. This is the one place in the game where a verb
+is desktop-only, and it is deferred rather than dropped because the reason is a
+gesture-vocabulary problem rather than a scoping one: tap-on-ship already means
+two things (arm an engage, and fall through to a move order) and press-and-hold
+already means "work this" against a four-group pick ladder, so a third meaning
+on either needs an audit of the whole touch grammar, not a branch. **What a
+touch player is not missing today is the information** — the first tap's toast
+already names the flag and the band. What they are missing are the verbs.
+
 **Nothing outstanding from the frontier.** Stages 1–4 shipped as §68–§70 plus
 stage 4's own commit; §71 adds storms on top. The historical table is kept below
 as the record of how it resolved.
@@ -6964,3 +6984,278 @@ One adjacent fix, found on the way: **`FX.vortex` had never honoured
 `reduce_motion()`** — every other effect in that file does. §30's rule is
 gate-at-the-function, and it is gated there now; both callers already discarded
 the return.
+
+---
+
+## 72. The ships that were red for no reason
+
+Asked for as *"some friendly forces appear as if they are hostile… let's also
+allow the player to right click on the friendly units to display a list of
+options to help them interact. Each reputation level with the factions should
+dictate the options available."*
+
+Two complaints, and the first one was written down in this file two horizons
+ago. §47's own text, on why `hostiles` could not be derived from faction:
+
+> An allied picket in it would be painted red, blasted by the player's own area
+> weapons, and counted as a live raid.
+
+The fix chosen there was a SECOND group, `combatants`, leaving `hostiles`
+untouched — which resolved the counting and the targeting, and left the
+**painting** exactly as described. A GSA picket cannot fire on the surveyor at
+any standing (`GSA_SURVEYOR_FLOOR`), patrols charted space specifically so it
+reads as patrolled, and drew the same THREAT red as the thing hunting you. The
+player reported it as a bug three horizons later. It was a documented,
+predicted, unbuilt half of a fix.
+
+### The rule is one sentence
+
+**Red means it shoots at you. Any other colour is a flag.**
+
+`marker_color()` on both hostile classes, routed through
+`GameState.hostile_to_player()` — not through the band. The distinction is the
+whole reason the ramp still works: a neutral you pick a fight with turns red the
+frame it *answers*, which is the same test `cycle_target`, the music and the
+selection ladder already use. Three surfaces now ask it and cannot disagree:
+
+| surface | was | is |
+|---|---|---|
+| radar marker | `Palette.THREAT` for everything in `hostiles` | `marker_color()`, via the per-node override that already existed at `hud.gd:372` and had one implementor |
+| target reticle | one THREAT material, always | recoloured on change; goes red when the ship answers, not when you give the order |
+| HP bar (fill **and** backing) | THREAT fill on a red backing | both from `marker_color()`, refreshed per frame against a cached colour |
+
+**Faction tint rather than a new "friendly" swatch**, against HORIZON-4 finding
+A2's warning that the colour channel is already double-booked (band tint, raid
+tint, faction tint). A fourth booking would have been the easy answer. The
+convoy clusters and the muster marker already speak faction tint *on this very
+instrument*, so this spends a booking that was already made rather than making
+one.
+
+**And a fourth instrument had already drifted.** `Main._threat_near_player()`
+carries the comment *"the same question Music asks, asked once here and handed
+to both — the lighting and the score must never disagree"*. Music's copy grew
+the IFF filter when a neutral convoy was found raising the combat layer; this
+one did not. The lighting had been calling a GSA picket a fight ever since. Same
+defect as the radar, one instrument over, found by the repair verb's combat gate
+refusing to fire beside a friendly ship — and then caught twice more by the new
+harness before the fixture was right.
+
+### What a flag will discuss (the contact menu)
+
+The second complaint is the larger one: fourteen flags, a full attitude matrix,
+and exactly one verb the player could aim at any of them. Right-click a flagged
+ship that is not shooting at you and it says what it will discuss.
+
+**The band opens a door; the world decides what is behind it.** An ALLIED ship
+with no circumstances offers exactly what a NEUTRAL one does plus its bearings —
+asserted, because a ladder that reads as a reward list is a ladder that promises
+things the situation cannot deliver.
+
+| band | options |
+|---|---|
+| HOSTILE | *none — it is not taking questions, and left-click already engages it* |
+| WARY / NEUTRAL | HAIL · ENGAGE |
+| FRIENDLY | + BEARINGS · SELL HOLD *(convoys, non-empty quote)* |
+| ALLIED | + REQUEST REPAIRS *(damaged, out of combat)* · REQUEST ESCORT *(route pickets, off cooldown)* · MARK MY TARGET *(live locked target)* |
+
+**GATES, NEVER PRICES.** `NO PRICE MOVES WITH STANDING` is asserted against
+Market's own functions, and the brief's "free or discounted at ALLIED" would
+have broken it. What a band buys is whether a line is on the menu at all; every
+figure is flat. A field repair costs `missing * PortPanel.REPAIR_FULL_PRICE` —
+the dock's own const, so the two can never drift and the deep mercies' authored
+discount is never undercut.
+
+**The escort is the only verb that puts a second gun on the board**, and it
+needed no new rules to stay honest:
+
+* it **cannot deplete the world** (§51) — `SKIRMISH_HP_FLOOR` already clamps
+  damage from any combatant at half hull, and every payout in `_die` is gated on
+  player attribution. It softens; you still have to land the kill. *(2000 damage
+  from an ally leaves a 120hp machine on exactly 60, alive — asserted.)*
+* it **does not strip the beat** — `unmanned_routes()` counts a route manned by
+  its picket's `route_i` meta, which an escorting picket keeps, so the cordon
+  tick spawns no relief and the Cordon never doubles.
+* it **stops at the marker** — the band-1 beacon has promised since v13 that
+  patrols do not operate past the chart edge. An escort is the first Cordon ship
+  that could ever have been invited across it, so crossing the line is how you
+  say goodbye to your escort.
+* it **does not answer the player's parley** — finding A3's exclusion, applied to
+  the guard scan as well as to the beat.
+
+Movement is at `PATROL_SPEED` 3.2 against the player's 5.75, deliberately: a
+player running farming loops outruns their own escort. That is the pacing valve
+and the characterisation at once — *a patrol is a presence, not a pursuer*.
+
+**A plate, not a console.** `console_open()` gates interdiction and muster
+eligibility, so a right-click on a passing convoy that registered as a console
+would quietly hold the world's events off for as long as it stood. Asserted
+directly. It is also deliberately absent from `band_controls()`: that inventory
+is every centre-anchored plate, and this one is positioned over a moving ship.
+
+### What the harness caught
+
+`PYXIS_CONTACTTEST`, 19 assertions. Four of them found nothing wrong with the
+game and everything wrong with the test, which is worth recording because each
+was a real property stated badly:
+
+1. **The reticle assertion raced the mounts.** It ordered an attack and checked
+   the colour one frame later. But `fights_the_player()` reads `_aggro` and
+   `_target`, and an *order* sets neither — the first shot landing does. The
+   test was asserting the wrong moment of a mechanism the code describes
+   correctly. It now asserts the answer, through the path a player's shot
+   actually takes.
+2. **The skirmish clock broke off mid-assertion.** Six seconds of fire and a
+   machine stands down for twelve, nulling `_target`. A sub-assertion landing in
+   that window read "the escort did not take the target" when what happened was
+   "the escort had already fought it". Reported opposite results on consecutive
+   runs.
+3. **The parley exclusion was tested with a ship the exclusion never saw.** The
+   GSA is HOSTILE to the Tithe at baseline, so a Tithe raider is picked up by the
+   ordinary enemy scan whatever the escort thinks. The test proved nothing and
+   looked like it proved something. It uses a League sentry now — FRIENDLY to the
+   GSA, in no enemy list — so the guard scan is the only thing that can select
+   it.
+4. **The events were not pinned.** A muster firing mid-run calls `end_escort()`,
+   correctly, and the escort assertions then failed about one run in six. §33's
+   pinning list exists for exactly this and the wave timer alone does not cover
+   it.
+
+### The half of §47 that turned out not to be a defect
+
+§47's sentence named three consequences of leaving allies in `hostiles`: painted
+red, blasted by the player's own area weapons, counted as a live raid. The first
+is fixed above. The third was never live — raid counting reads the `raider`
+group, which no ally joins. The second was put to an evidence pass before
+anything was changed, and **the evidence says it is deliberate**:
+
+* `FactionDB.WITNESS_RANGE` is 25.0 and its own comment dimensions it as *"3.6x
+  OVERCHARGE_RADIUS (7.0), which is the case this feature exists for: the whole
+  blast fits inside it"*. You cannot call a case an oversight when its radius
+  set the constant.
+* `SwarmHostile` carries the grudge because *"a convoy is the commonest thing an
+  OVERCHARGE discharge catches by accident"*.
+* §62: *"Any damage provokes, including one point of splash."*
+
+So splash catching a flag is a measured mechanic, and the price of the accident
+was deliberately set at half a minute of aggro rather than a faction. It stays.
+
+**And the blanket filter that looked like the fix would have broken something
+else.** A torpedo has no direct-hit path at all — `_detonate`'s sweep of
+`hostiles` is its ONLY damage vector, and the shell carries a position and a
+shooter, never an intended target. Gating that sweep on `hostile_to_player()`
+would make a torpedo-only fit unable to ever damage a neutral, because a neutral
+becomes hostile-to-player only by first being damaged. §56 states the rule that
+would have broken in as many words: *"Attacking a neutral deliberately still
+works and has to."*
+
+### What was actually wrong was the escort, and it was ours
+
+`OVERCHARGE_RADIUS` is 7.0. `ESCORT_FOLLOW` was written at 4.0. Nobody put those
+two numbers beside each other, so REQUEST ESCORT stationed an **ALLIED** Cordon
+picket permanently inside the player's own blast radius, taking **69% of full
+burst** on every discharge — from the starter core, on the one ability button
+the game gives away free, which cannot be declined. `take_damage` then sets
+`_aggro` to whoever fired and `_pick_target` returns `_aggro` above every other
+branch, so the game sold the player a bodyguard and had it turn and shoot them.
+
+The escort is the new thing, so the escort is what moves: `ESCORT_FOLLOW` is 8.0
+and `THE ESCORT STANDS CLEAR OF YOUR OWN BLAST` asserts the RELATIONSHIP between
+the two constants rather than either literal — the failure was not a wrong
+number, it was two right numbers in different files that nothing compared. It is
+deliberately not written as `OVERCHARGE_RADIUS + 1.0`: that is a compile-time
+edge from `Hostile` to `PlayerShip`, and §39's class-cycle lesson is why this
+file does not reach for one. `BASE_HP`'s comment established the pattern — let
+the harness compute what the constant should be.
+
+**Still open, and it is a design call rather than a defect** (see §64): whether
+an ALLIED ship should be spared the player's area weapons at all. Sparing only
+the positive bands is defensible — HORIZON-4:234-236 already asserts *"allied
+ships are emphatically not in `hostiles`"*, a rule the code never implemented —
+but it puts a band-shaped hole in a group six systems read as uniform, it makes
+careless area fire strictly safer exactly as the stakes rise, and it leaves a
+torpedo-only fit unable to open on an ALLIED ship at all. The escort fix removes
+the systematic harm without paying any of that, so the question can wait for
+somebody who wants to answer it on purpose.
+
+### The pacing band, measured rather than argued
+
+The escort is the only thing in this change that could move money: it puts a
+second gun on the board, and §51 records `MIDTIER` sitting at 2.91 against a
+hard 3.00 with about 0.04 of real headroom. One post-change run came back at
+2.96, which is close enough to the bar to be worth stopping for — and §41's
+standing instruction is that this number takes **four samples, not one**.
+
+Five samples on each side of the change, same machine, same binary:
+
+| | samples | mean | sd | range |
+|---|---|---|---|---|
+| before (fda5150) | 5 | 2.898 | 0.016 | 2.88 – 2.92 |
+| after (escort + fixes) | 5 | 2.910 | 0.025 | 2.88 – 2.94 |
+
+A shift of **+0.012** against a documented noise band of ±0.05, Welch t = 0.88 —
+not significant, and the two ranges overlap almost entirely. The 2.96 was
+scatter. The escort's duty cycle (60s of escort against a 240s cooldown, walking
+at PATROL_SPEED 3.2 against the player's 5.75, with SKIRMISH_HP_FLOOR meaning it
+can never land a killing blow) costs the pacing band nothing measurable.
+
+Worth stating what this does NOT do: it is ten samples of one metric, not the
+re-derivation of the `MIDTIER` bar that §64 still lists as outstanding debt. The
+bar is still un-re-derived. This says only that the escort did not move the
+measurement against it.
+
+### What an adversarial review found that 634 green assertions did not
+
+The sweep was green and the feature harness was green, and a five-lens review of
+the diff still found four real defects. Every one of them lives at a **seam**
+between the new code and a rule written down somewhere else — which is precisely
+where a harness written by the author of the change does not look, because the
+author is asserting the thing they just built.
+
+**1. The parley exclusion was on the feet and not on the gun.** (critical)
+`_worth_leaving_the_beat` has refused to WALK to a raider under a standoff since
+finding A3. `_weapon` fires at whatever `_combat_target` returns on distance
+alone and never asks that question. The guard scan added for the escort
+carefully excluded standoff raiders — and then fell through to the ORDINARY
+enemy scan, which did not, and the GSA is HOSTILE to the Tithe at baseline. So:
+take an escort, get interdicted, and a GSA picket parked 4.0u off the player has
+a pack orbiting at 3.2u well inside its 9.0u `ENGAGE_RANGE`. One shot calls
+`break_parley` and **an NPC deletes the player's PAY / BLUFF / REFUSE choice.**
+The hole was reachable by luck before; the escort made it reachable on demand.
+Fixed at the SOURCE — the exclusion is now in `_pick_target` in both hostile
+classes, so movement, the gun and the skirmish clock all inherit it — and
+`spawn_interdiction` now releases an escort outright, which is the third set
+piece that owns the ships around the player.
+
+**2. The station was clamped against the player, not against the marker.**
+(high) `_tick_escort` ends an escort when the PLAYER crosses `chart_edge()`. A
+player sitting just inside the line with their nose pointed inward put the
+station up to `ESCORT_FOLLOW` **past** it, plus `_process`'s 0.4 wander on top.
+THE LINE IS THE EDGE was written after a muster picket sat 0.4u over; this could
+put a Cordon ship 4.4u over. The station now carries the same 3u inset the
+muster line does.
+
+**3. `hail_contact` read a property half the eligible ships do not have.** (high)
+`designation` is declared on `Hostile` and not on `SwarmHostile`. `Object.get()`
+answers null for a property a script does not have, and `String(null)` renders
+`"<null>"` — so every hail to a convoy dart would have ended in `· <null>`.
+Asked with `in` now.
+
+**4. A favour became a vendetta.** (high) `_release_grudge` let go of the
+PLAYER specifically. Every caller before the contact menu was
+`Main.witness_attack`, which always passes the player, so "release the player"
+and "release what the grudge named" were the same sentence and the narrower one
+got written. MARK MY TARGET points an ALLY at an NPC: the thirty-second clock
+ran out, the pointer did not, and a bounded favour became permanent until one of
+them died — **the exact unbounded latch that function exists to prevent, reached
+from the one direction it did not cover.** Both classes now remember what the
+grudge was about and let go of that.
+
+The lesson is §54's, arrived at from the other side. That section says *assert
+the path the player takes, not the function it wraps*; this adds **assert the
+seams you did not write**. All four defects are now assertions in
+`PYXIS_CONTACTTEST`, and each was confirmed to go red with its fix removed.
+
+**Moving a station-keeper does not move it** — `Hostile._process` assigns
+`global_position` from `_home` every frame, so a fixture shoved aside is back on
+its post next frame. That is also why a station-keeper cannot be offered an
+escort: one that ended anywhere else would teleport home.
