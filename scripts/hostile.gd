@@ -101,8 +101,28 @@ var _patrol_i := 0
 # resumes that same beat when the clock runs out.
 const ESCORT_TIME := 60.0
 # How far off the player's shoulder it stations. Far enough not to sit inside
-# the ship's silhouette, near enough to read as company.
-const ESCORT_FOLLOW := 4.0
+# the ship's silhouette, near enough to read as company -- and, since this
+# number was first written at 4.0, OUTSIDE THE PLAYER'S OWN BLAST RADIUS.
+#
+# PlayerShip.OVERCHARGE_RADIUS is 7.0, so a station at 4.0 parked an ALLIED
+# picket permanently inside the discharge, taking 69% of full burst every time
+# the player pressed the one ability button the starter core gives them for
+# free. take_damage then sets _aggro to whoever fired, and _pick_target returns
+# _aggro above every other branch -- so the game sold the player a bodyguard and
+# then had it turn and shoot them, on a button press that is not optional.
+#
+# The alternative was to exempt allies from the player's area weapons, and the
+# design record refuses it: FactionDB.WITNESS_RANGE is dimensioned at 3.6x
+# OVERCHARGE_RADIUS "which is the case this feature exists for", so splash
+# catching a flag is a mechanic somebody measured, not an oversight. The escort
+# is the new thing here and the escort is what moves.
+#
+# NOT derived from OVERCHARGE_RADIUS as an expression, deliberately: that is a
+# compile-time edge from this class to PlayerShip, and §39's class-cycle lesson
+# is why this file does not reach for one. THE ESCORT STANDS CLEAR asserts the
+# relationship instead, which is BASE_HP's pattern -- let the harness compute
+# what the constant SHOULD be from the same number the other class uses.
+const ESCORT_FOLLOW := 8.0
 # How far from THE PLAYER it will answer something. The anchor moves from the
 # route to the player for exactly as long as the escort lasts -- that is what an
 # escort IS -- and nothing else about _worth_leaving_the_beat changes, including

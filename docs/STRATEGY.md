@@ -5987,6 +5987,16 @@ same commit.**
 
 ### Outstanding
 
+**Should an ALLIED ship be spared the player's area weapons?** (open 2026-08-07,
+§72). Splash catching a flag is deliberate and measured — `WITNESS_RANGE` is
+dimensioned by `OVERCHARGE_RADIUS` — so this is not a bug to fix but a line to
+draw: sparing the two positive bands would honour HORIZON-4:234-236's *"allied
+ships are emphatically not in `hostiles`"*, at the cost of a band-shaped hole in
+a group six systems read as uniform, area fire getting safer as the stakes rise,
+and a torpedo-only fit unable to open on an ALLIED ship (a torpedo's only damage
+vector is that sweep). The concrete harm that prompted the question — an escort
+parked inside the blast — is fixed independently by moving the station.
+
 **The contact menu has no touch gesture** (deferred 2026-08-06, §72). Right-click
 opens it; a phone has no way in. This is the one place in the game where a verb
 is desktop-only, and it is deferred rather than dropped because the reason is a
@@ -7109,6 +7119,63 @@ was a real property stated badly:
    correctly, and the escort assertions then failed about one run in six. §33's
    pinning list exists for exactly this and the wave timer alone does not cover
    it.
+
+### The half of §47 that turned out not to be a defect
+
+§47's sentence named three consequences of leaving allies in `hostiles`: painted
+red, blasted by the player's own area weapons, counted as a live raid. The first
+is fixed above. The third was never live — raid counting reads the `raider`
+group, which no ally joins. The second was put to an evidence pass before
+anything was changed, and **the evidence says it is deliberate**:
+
+* `FactionDB.WITNESS_RANGE` is 25.0 and its own comment dimensions it as *"3.6x
+  OVERCHARGE_RADIUS (7.0), which is the case this feature exists for: the whole
+  blast fits inside it"*. You cannot call a case an oversight when its radius
+  set the constant.
+* `SwarmHostile` carries the grudge because *"a convoy is the commonest thing an
+  OVERCHARGE discharge catches by accident"*.
+* §62: *"Any damage provokes, including one point of splash."*
+
+So splash catching a flag is a measured mechanic, and the price of the accident
+was deliberately set at half a minute of aggro rather than a faction. It stays.
+
+**And the blanket filter that looked like the fix would have broken something
+else.** A torpedo has no direct-hit path at all — `_detonate`'s sweep of
+`hostiles` is its ONLY damage vector, and the shell carries a position and a
+shooter, never an intended target. Gating that sweep on `hostile_to_player()`
+would make a torpedo-only fit unable to ever damage a neutral, because a neutral
+becomes hostile-to-player only by first being damaged. §56 states the rule that
+would have broken in as many words: *"Attacking a neutral deliberately still
+works and has to."*
+
+### What was actually wrong was the escort, and it was ours
+
+`OVERCHARGE_RADIUS` is 7.0. `ESCORT_FOLLOW` was written at 4.0. Nobody put those
+two numbers beside each other, so REQUEST ESCORT stationed an **ALLIED** Cordon
+picket permanently inside the player's own blast radius, taking **69% of full
+burst** on every discharge — from the starter core, on the one ability button
+the game gives away free, which cannot be declined. `take_damage` then sets
+`_aggro` to whoever fired and `_pick_target` returns `_aggro` above every other
+branch, so the game sold the player a bodyguard and had it turn and shoot them.
+
+The escort is the new thing, so the escort is what moves: `ESCORT_FOLLOW` is 8.0
+and `THE ESCORT STANDS CLEAR OF YOUR OWN BLAST` asserts the RELATIONSHIP between
+the two constants rather than either literal — the failure was not a wrong
+number, it was two right numbers in different files that nothing compared. It is
+deliberately not written as `OVERCHARGE_RADIUS + 1.0`: that is a compile-time
+edge from `Hostile` to `PlayerShip`, and §39's class-cycle lesson is why this
+file does not reach for one. `BASE_HP`'s comment established the pattern — let
+the harness compute what the constant should be.
+
+**Still open, and it is a design call rather than a defect** (see §64): whether
+an ALLIED ship should be spared the player's area weapons at all. Sparing only
+the positive bands is defensible — HORIZON-4:234-236 already asserts *"allied
+ships are emphatically not in `hostiles`"*, a rule the code never implemented —
+but it puts a band-shaped hole in a group six systems read as uniform, it makes
+careless area fire strictly safer exactly as the stakes rise, and it leaves a
+torpedo-only fit unable to open on an ALLIED ship at all. The escort fix removes
+the systematic harm without paying any of that, so the question can wait for
+somebody who wants to answer it on purpose.
 
 ### The pacing band, measured rather than argued
 

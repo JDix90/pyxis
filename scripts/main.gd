@@ -18015,6 +18015,17 @@ func _run_contact_test() -> void:
 		str(pointed), str(favour_ended),
 		"PASS" if pointed and favour_ended else "FAIL"])
 
+	# THE ESCORT STANDS CLEAR OF YOUR OWN BLAST. Asserted as a RELATIONSHIP
+	# between two constants that live in different classes, rather than as either
+	# literal, because the failure was not a wrong number -- it was two right
+	# numbers nobody had put beside each other. A station inside
+	# OVERCHARGE_RADIUS meant the free starter core turned the player's bodyguard
+	# into an enemy on a button press that cannot be declined.
+	var clear_of_blast: bool = Hostile.ESCORT_FOLLOW > PlayerShip.OVERCHARGE_RADIUS
+	print("[contact] THE ESCORT STANDS CLEAR OF YOUR OWN BLAST station %.1fu against OVERCHARGE_RADIUS %.1fu -> %s" % [
+		Hostile.ESCORT_FOLLOW, PlayerShip.OVERCHARGE_RADIUS,
+		"PASS" if clear_of_blast else "FAIL"])
+
 	# --- 8. THE MENU CLOSES ITSELF -------------------------------------------
 	# Four ways a conversation ends without the player ending it. Each one leaves
 	# the plate pointing at something that is no longer what it described.
