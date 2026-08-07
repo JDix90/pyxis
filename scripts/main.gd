@@ -17858,6 +17858,25 @@ func _run_contact_test() -> void:
 	# holding the very ship the second half is trying to prove is ignored. The
 	# rule under test IS this function, so it is called with the clocks pinned and
 	# nothing in flight, which answers the same question the same way every run.
+	# THE NEIGHBOURHOOD IS CLEARED FIRST, and the reason is the mechanic this
+	# whole feature spent a day establishing is deliberate. The guard scan takes
+	# the NEAREST ship fighting the player, so the assertion only means what it
+	# says if the bystander is the nearest one -- and earlier sections leave a
+	# league trader 6u out that the player's own splash has by then provoked
+	# (§62: "any damage provokes, including one point of splash"). It read as
+	# "the escort ignored the bystander" about one run in six, when what happened
+	# was the escort correctly covering a closer ship.
+	# EVERY OTHER SHIP, NOT JUST THE ONES THAT ARE HOSTILE RIGHT NOW -- and that
+	# distinction is the whole fix. Filtering on hostile_to_player at this instant
+	# missed a League trader sitting 6u out that was still NEUTRAL when the loop
+	# ran and had been provoked by the time _pick_target was called one frame
+	# later, because the player's mounts fire on their own and §62's rule is that
+	# any damage provokes. A fixture that asks "who is hostile now" races a world
+	# that is still deciding.
+	for n_v in get_tree().get_nodes_in_group("hostiles"):
+		var n4 := n_v as Node3D
+		if is_instance_valid(n4) and n4 != picket:
+			_park_hostile(n4, player.global_position + Vector3(400, 0, 0))
 	var bystander := Hostile.new()
 	bystander.faction = "league"
 	system_root.add_child(bystander)
