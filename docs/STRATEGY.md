@@ -7110,6 +7110,32 @@ was a real property stated badly:
    pinning list exists for exactly this and the wave timer alone does not cover
    it.
 
+### The pacing band, measured rather than argued
+
+The escort is the only thing in this change that could move money: it puts a
+second gun on the board, and §51 records `MIDTIER` sitting at 2.91 against a
+hard 3.00 with about 0.04 of real headroom. One post-change run came back at
+2.96, which is close enough to the bar to be worth stopping for — and §41's
+standing instruction is that this number takes **four samples, not one**.
+
+Five samples on each side of the change, same machine, same binary:
+
+| | samples | mean | sd | range |
+|---|---|---|---|---|
+| before (fda5150) | 5 | 2.898 | 0.016 | 2.88 – 2.92 |
+| after (escort + fixes) | 5 | 2.910 | 0.025 | 2.88 – 2.94 |
+
+A shift of **+0.012** against a documented noise band of ±0.05, Welch t = 0.88 —
+not significant, and the two ranges overlap almost entirely. The 2.96 was
+scatter. The escort's duty cycle (60s of escort against a 240s cooldown, walking
+at PATROL_SPEED 3.2 against the player's 5.75, with SKIRMISH_HP_FLOOR meaning it
+can never land a killing blow) costs the pacing band nothing measurable.
+
+Worth stating what this does NOT do: it is ten samples of one metric, not the
+re-derivation of the `MIDTIER` bar that §64 still lists as outstanding debt. The
+bar is still un-re-derived. This says only that the escort did not move the
+measurement against it.
+
 ### What an adversarial review found that 634 green assertions did not
 
 The sweep was green and the feature harness was green, and a five-lens review of
