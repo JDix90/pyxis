@@ -1,6 +1,6 @@
 # Horizon 6 — The Known Frontier
 
-**Status: commit 0 BUILT (§73). Commits 1–6 specced, not built.** When any of
+**Status: commits 0 and 1 BUILT (§73, §74). Commits 2–6 specced, not built.** When any of
 them is adopted, record it in `docs/STRATEGY.md` §64 in the same commit, per the
 house rule.
 
@@ -122,7 +122,7 @@ Two departures from the obvious order, both load-bearing:
 | # | commit | save | status |
 |---|---|---|---|
 | 0 | preconditions | none | **BUILT** — §73 |
-| 1 | hotkeys | none | not built |
+| 1 | hotkeys | none | **BUILT** — §74 |
 | 2 | pilot profiles + prefs split | none | not built |
 | 3 | per-Pyx identity + signature content | none | not built |
 | 4 | chart legibility | none | not built |
@@ -133,7 +133,8 @@ Two departures from the obvious order, both load-bearing:
 
 ## 4. Commit 1 — hotkeys
 
-`chart` (C), `beacon` (B), `pause` (P). Ids are chosen to read as UI copy,
+`chart` (C), `drop_beacon` (B), `pause` (P) — **BUILT, §74**. Ids are chosen to
+read as UI copy,
 because `pause_menu.gd` upper-cases the action id verbatim into the settings row.
 
 Rejected: `refit` (a dock-context surface), `recall` (a one-key teleport with no

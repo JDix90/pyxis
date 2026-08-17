@@ -689,8 +689,34 @@ func shake_enabled() -> bool:
 # move_up to I and end up with two live actions on one key -- which is exactly
 # what NO SHARED KEY forbids, arriving through the one door that assertion
 # cannot see.
+#
+# The same reasoning is why `chart`, `drop_beacon` and `pause` join it the day
+# they enter the InputMap rather than later: each is a real key a player may
+# want moved, and each is a key another action could otherwise be stacked on
+# top of. ACCESSTEST asserts this list plus `cancel` IS the InputMap, so the
+# omission cannot survive a sweep either -- but the conflict loop is the reason
+# that assertion is worth having.
 const REBINDABLE := ["move_up", "move_down", "move_left", "move_right",
-	"ability", "cycle_target", "toggle_hold"]
+	"ability", "cycle_target", "toggle_hold", "chart", "drop_beacon", "pause"]
+
+
+func binding_name(action: String) -> String:
+	# What key is on this action RIGHT NOW, for anything that prints a key to the
+	# player. It reads the live InputMap rather than the saved dict on purpose:
+	# an action still on its project.godot default has no entry in `settings`
+	# (apply_bindings skips it, and that is what leaves the default in place), so
+	# the dict would answer "—" for six of the ten actions on a fresh install.
+	#
+	# It lives here rather than on PauseMenu, where it was written, because the
+	# manual prints keys too and had been printing them as HAND-TYPED LITERALS
+	# since it shipped -- "W A S D", "SPACE", "I" -- which were simply false for
+	# any player who had used the rebinding page the settings screen advertises.
+	# One reader, one answer.
+	for ev in InputMap.action_get_events(action):
+		var k := ev as InputEventKey
+		if k != null:
+			return OS.get_keycode_string(DisplayServer.keyboard_get_keycode_from_physical(k.physical_keycode))
+	return "—"
 
 
 func apply_bindings() -> void:

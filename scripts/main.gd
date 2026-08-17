@@ -1196,6 +1196,35 @@ func tutorial_active() -> bool:
 	return tutorial != null and tutorial.is_active()
 
 
+# --- console doors ----------------------------------------------------------
+
+func toggle_chart() -> void:
+	# The chart hotkey's wrapper, and the reason the key does not call
+	# chart_panel.open() itself. The panel lock is enforced on the BUTTON --
+	# HUD.set_panels_locked flips chart_button.enabled -- so a second door that
+	# skipped it would reopen the chart while docked or mid-apex fight, and
+	# disengage_apex's comment says out loud that the fight is survivable
+	# partly BECAUSE the chart is shut ("had to stand there").
+	#
+	# The lock is asked of the HUD rather than re-derived from docked_port and
+	# boss_active here. Those two are what SET it today; a third place spelling
+	# out the same condition is a copy that is free to drift the next time a
+	# caller is added, and set_panels_locked already has three.
+	if chart_panel == null:
+		return
+	if chart_panel.is_open:
+		chart_panel.close_panel()
+		return
+	# The same two toggle_pause refuses on, for the same reasons: there is
+	# nothing to chart from the title, and the warp sequence is a chain of
+	# awaited timers a panel would open on top of.
+	if state != State.PLAYING or warping:
+		return
+	if hud != null and hud.panels_locked:
+		return
+	chart_panel.open()
+
+
 # --- pause ------------------------------------------------------------------
 
 func toggle_pause() -> void:
@@ -12155,23 +12184,91 @@ func _run_input_test() -> void:
 	print("[input] THE HOLD HAS A SECOND DOOR i opens=%s, i closes again=%s, refused behind the title=%s -> %s" % [
 		str(opened), str(closed), str(attract_ignored),
 		"PASS" if opened and closed and attract_ignored else "FAIL"])
+
+	# THE CHART KEY OBEYS THE LOCK. The chart's lock has always lived on the
+	# BUTTON -- set_panels_locked flips chart_button.enabled and nothing else --
+	# which was sufficient while a Button was the only door. A hotkey is a
+	# second door, and one that called chart_panel.open() would reopen the chart
+	# while docked or mid-apex fight; disengage_apex's comment says the fight is
+	# survivable partly BECAUSE the chart is shut.
+	#
+	# Asserted in BOTH directions, because "the key never opens the chart" would
+	# satisfy the refusal clause perfectly and ship a dead key.
+	# set_panels_locked is called directly here rather than through a staged
+	# boss fight: it is the same one call docking and _set_boss_active both make,
+	# and it is the thing the key has to obey.
+	chart_panel.close_panel()
+	await get_tree().process_frame
+	await _press_key(KEY_C)
+	var chart_opened := chart_panel.is_open
+	await _press_key(KEY_C)
+	var chart_closed := not chart_panel.is_open
+	hud.set_panels_locked(true)
+	await _press_key(KEY_C)
+	var chart_locked_out := not chart_panel.is_open
+	hud.set_panels_locked(false)
+	await _press_key(KEY_C)
+	var chart_clear_again := chart_panel.is_open
+	chart_panel.close_panel()
+	await get_tree().process_frame
+	print("[input] THE CHART KEY OBEYS THE LOCK opens=%s, closes=%s, refused while panels locked=%s, opens again once clear=%s -> %s" % [
+		str(chart_opened), str(chart_closed), str(chart_locked_out),
+		str(chart_clear_again),
+		"PASS" if chart_opened and chart_closed and chart_locked_out
+			and chart_clear_again else "FAIL"])
+
+	# THE BEACON KEY CARRIES THE FUNCTION'S REFUSAL. drop_beacon_here already
+	# refuses inside the charted volume -- §66's rule, that the chart already
+	# remembers every place in it -- so the key must reach that refusal rather
+	# than carry a copy of it. Standing at the spawn point, depth is 0 and the
+	# rack must not move.
+	player.global_position = PlayerShip.SPAWN_POINT
+	await get_tree().process_frame
+	var stock_before := GameState.beacon_stock_left()
+	var depth_here := deep_depth()
+	await _press_key(KEY_B)
+	var beacon_refused: bool = GameState.beacon_stock_left() == stock_before
+	print("[input] THE BEACON KEY REFUSES THE CHART depth=%.1f, stock %d -> %d -> %s" % [
+		depth_here, stock_before, GameState.beacon_stock_left(),
+		"PASS" if beacon_refused and depth_here <= 0.0 else "FAIL"])
+
+	# PAUSE IS ONE KEY, AND IT TAKES TWO NODES TO BE ONE. CameraRig is
+	# PROCESS_MODE_INHERIT, so it stops receiving input the instant the tree
+	# pauses and can only ever open; PauseMenu is ALWAYS but drops every event
+	# behind `if not is_open`, so it can only ever close. Escape is split down
+	# the same seam. Either half alone is a key that pauses and cannot unpause,
+	# which is why both directions are measured here.
+	await _press_key(KEY_P)
+	var pause_on: bool = get_tree().paused and pause_menu.is_open
+	await _press_key(KEY_P)
+	var pause_off: bool = not get_tree().paused and not pause_menu.is_open
+	print("[input] PAUSE IS ONE KEY p pauses=%s, p unpauses from the same key=%s -> %s" % [
+		str(pause_on), str(pause_off), "PASS" if pause_on and pause_off else "FAIL"])
 	get_tree().quit()
 
 
-func _press_hold_key() -> bool:
-	# One press-and-release of the physical I key, through Input itself, and
-	# the resulting state of the manifest. Two frames: Godot buffers input by
-	# one, and the sheet's visibility settles on the next.
+func _press_key(code: int) -> void:
+	# One press-and-release on a real physical keycode, pushed through Input
+	# itself so the whole dispatcher runs -- project.godot's action, the binding,
+	# CameraRig's ladder and the wrapper at the end of it. Two frames: Godot
+	# buffers input by one, and panel visibility settles on the next.
+	#
+	# Works while the tree is PAUSED, which the pause key needs: process_frame
+	# still emits, and PROCESS_MODE_ALWAYS nodes still receive.
 	var down := InputEventKey.new()
-	down.physical_keycode = KEY_I
+	down.physical_keycode = code
 	down.pressed = true
 	Input.parse_input_event(down)
 	await get_tree().process_frame
 	var up := InputEventKey.new()
-	up.physical_keycode = KEY_I
+	up.physical_keycode = code
 	up.pressed = false
 	Input.parse_input_event(up)
 	await get_tree().process_frame
+
+
+func _press_hold_key() -> bool:
+	await _press_key(KEY_I)
 	return hold_screen.is_open
 
 
