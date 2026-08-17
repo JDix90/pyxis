@@ -1,6 +1,6 @@
 # Horizon 6 — The Known Frontier
 
-**Status: commits 0, 1 and 2 BUILT (§73, §74, §75). Commits 3–6 specced, not built.** When any of
+**Status: commits 0–3 BUILT (§73, §74, §75, §76). Commits 4–6 specced, not built.** When any of
 them is adopted, record it in `docs/STRATEGY.md` §64 in the same commit, per the
 house rule.
 
@@ -127,7 +127,7 @@ Two departures from the obvious order, both load-bearing:
 | 0 | preconditions | none | **BUILT** — §73 |
 | 1 | hotkeys | none | **BUILT** — §74 |
 | 2 | pilot profiles + prefs split | none | **BUILT** — §75 |
-| 3 | per-Pyx identity + signature content | none | not built |
+| 3 | per-Pyx identity + signature content | none | **BUILT** — §76 |
 | 4 | chart legibility | none | not built |
 | 5 | beacon navigation | none | not built |
 | 6 | persistent survey coverage | **v21** | not built |
