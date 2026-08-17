@@ -13145,17 +13145,21 @@ func _run_profile_test() -> void:
 	GameState.save_game()
 	var b_id := Profiles.create("PILOT B", 3000.0)
 	GameState.switch_profile(b_id)
-	var bled := ""
+	# ACCUMULATED, not first-wins: an if/elif chain names one field and hides the
+	# rest, so a run that leaked three of them would be fixed one commit at a
+	# time. All five were leaking when this was written.
+	var leaks: Array = []
 	if GameState.ship_name == "PILOT A":
-		bled = "ship_name"
-	elif GameState.commissioned:
-		bled = "commissioned"
-	elif int(GameState.livery.get("accent", 0)) != 0:
-		bled = "livery"
-	elif GameState.salvage >= 9000:
-		bled = "salvage"
-	elif GameState.breached.has("pyx01"):
-		bled = "breached"
+		leaks.append("ship_name")
+	if GameState.commissioned:
+		leaks.append("commissioned")
+	if int(GameState.livery.get("accent", 0)) != 0:
+		leaks.append("livery")
+	if GameState.salvage >= 9000:
+		leaks.append("salvage")
+	if GameState.breached.has("pyx01"):
+		leaks.append("breached")
+	var bled := ", ".join(leaks)
 	print("[profile] NO BLEED BETWEEN PILOTS B sees salvage=%d name='%s' commissioned=%s accent=%d; leaked=%s -> %s" % [
 		GameState.salvage, GameState.ship_name, str(GameState.commissioned),
 		int(GameState.livery.get("accent", 0)), "none" if bled == "" else bled,
@@ -13250,6 +13254,39 @@ func _run_profile_test() -> void:
 	print("[profile] THE RACK HAS A CEILING capped at %d, folder removed on delete=%s, room after a delete=%s -> %s" % [
 		Profiles.list_profiles().size(), str(gone), str(room_again),
 		"PASS" if capped and gone and room_again else "FAIL"])
+
+	# 9. A FRESH INSTALL STILL GETS A PILOT. The mirror of leg 1, and the case
+	#    every new player is in: no legacy save and no registry must still end
+	#    with somewhere to write, or the first NEW SURVEY runs into the old
+	#    single-save path and is stranded there the moment a pilot is made.
+	_rm_rf(root)
+	_profile_test_redirect()
+	var fresh_id := Profiles.migrate_legacy(6000.0)
+	var fresh_none: bool = fresh_id == "" and Profiles.list_profiles().is_empty()
+	var adopted := Profiles.create("", 6100.0)
+	var fresh_has_home: bool = adopted != "" and Profiles.active_id() == adopted
+	print("[profile] A FRESH INSTALL STILL GETS A PILOT nothing to migrate=%s, a pilot exists to write into=%s -> %s" % [
+		str(fresh_none), str(fresh_has_home),
+		"PASS" if fresh_none and fresh_has_home else "FAIL"])
+
+	# 10. A SAVE THAT MOVED BUT WAS NEVER RECORDED IS STILL A PILOT. The window
+	#     between the rename and the registry write: the folder holds a real run
+	#     and nothing names it. Re-derived from disk rather than mistaken for a
+	#     fresh install, because the alternative loses the run.
+	_rm_rf(root)
+	_profile_test_redirect()
+	var orphan := "%s/profiles/p_orphan" % root
+	DirAccess.make_dir_recursive_absolute(orphan)
+	var of := FileAccess.open("%s/save.json" % orphan, FileAccess.WRITE)
+	of.store_string(JSON.stringify({"version": GameState.SAVE_VERSION, "salvage": 777}, "\t"))
+	of.close()
+	Profiles.migrate_legacy(7000.0)
+	var adopted_rows := Profiles.list_profiles()
+	var orphan_kept: bool = adopted_rows.size() == 1 \
+		and String((adopted_rows[0] as Dictionary)["id"]) == "p_orphan"
+	print("[profile] AN UNRECORDED SAVE IS STILL A PILOT rebuilt %d row(s) from disk, active=%s -> %s" % [
+		adopted_rows.size(), Profiles.active_id(),
+		"PASS" if orphan_kept and Profiles.active_id() == "p_orphan" else "FAIL"])
 
 	_rm_rf(root)
 	get_tree().quit()

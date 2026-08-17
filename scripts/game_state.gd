@@ -484,6 +484,20 @@ func _ready() -> void:
 		if Profiles.needs_migration():
 			Profiles.migrate_legacy(Time.get_unix_time_from_system())
 		var id := Profiles.active_id()
+		# A FRESH INSTALL MUST STILL HAVE A PILOT. With no legacy save there is
+		# nothing to migrate, so the registry is written empty and active_id is
+		# "" -- which left save_path on the old single-save path. The player then
+		# pressed NEW SURVEY, played a whole run into user://save.json, and the
+		# first time they opened PILOTS and made one, switch_profile moved the
+		# path to the new folder with `active_profile` still empty, so the
+		# outgoing save was skipped and the entire run was stranded in a file
+		# nothing would ever read again. The migration cannot rescue it either:
+		# it is keyed on the registry's absence, and the registry now exists.
+		#
+		# So a player always has a pilot from the first boot, and every run is
+		# written inside one from the start.
+		if id == "":
+			id = Profiles.create("", Time.get_unix_time_from_system())
 		if id != "":
 			active_profile = id
 			save_path = Profiles.save_path_for(id)
@@ -494,6 +508,17 @@ func _ready() -> void:
 	# whatever load_game just read and writes them where they now belong. After
 	# that prefs.json exists and always wins.
 	if not _prefs_loaded:
+		# AND THE ONE FIELD THE SAVE CANNOT SEED BY ITSELF. tutorial_seen has no
+		# home in the old format, so an upgrading player who finished onboarding
+		# months ago would be stamped as never having seen it -- and it cannot
+		# self-correct, because the only writer is set_tutorial_step(-1) and
+		# load_game assigns tutorial_step directly rather than through the
+		# setter, so the step is already -1 and the setter early-returns. Their
+		# second pilot would then be walked through six steps of a tutorial they
+		# finished before this build existed. A save that arrives finished IS the
+		# device having seen it.
+		if tutorial_step == -1:
+			tutorial_seen = true
 		_save_prefs()
 	_recompute()
 	apply_settings()
@@ -549,8 +574,17 @@ func _load_prefs() -> void:
 	var data: Dictionary = parsed
 	# Key-by-key onto the defaults, the same merge load_game does, so a prefs
 	# file written before a later setting existed still gets that default.
-	var saved: Dictionary = data.get("settings", {})
-	if saved is Dictionary:
+	# UNTYPED FIRST, THEN CHECKED. `var saved: Dictionary = data.get(...)` looks
+	# like it is guarded by the `is Dictionary` under it and is not: the typed
+	# declaration converts on assignment, so a prefs.json whose "settings" key
+	# is a number or a string raises a runtime error ON THAT LINE and the guard
+	# below it never runs. This file is hand-editable by definition, and the
+	# whole read would abort -- taking audio_muted and tutorial_seen with it, and
+	# then letting _ready overwrite the file with defaults. profiles.gd already
+	# does this in the right order; so does this now.
+	var saved_v: Variant = data.get("settings", {})
+	if saved_v is Dictionary:
+		var saved: Dictionary = saved_v
 		for key in DEFAULT_SETTINGS:
 			if saved.has(key):
 				settings[key] = saved[key]
@@ -607,6 +641,11 @@ func setting(key: String) -> Variant:
 func set_setting(key: String, value: Variant) -> void:
 	if not DEFAULT_SETTINGS.has(key):
 		push_warning("Pyxis: unknown setting '%s'" % key)
+		return
+	# Unchanged is not a write. apply_settings runs on every step of a volume
+	# slider, and prefs.json is now a real file on the other side of it -- so
+	# without this, dragging one slider is a few hundred synchronous writes.
+	if settings.has(key) and settings[key] == value:
 		return
 	settings[key] = value
 	apply_settings()
@@ -2766,12 +2805,28 @@ func save_game() -> void:
 		})
 
 
+func can_switch_profile() -> bool:
+	# Public so the pilots page can REFUSE BEFORE IT CREATES. Profiles.create
+	# stamps the new id as active, so asking afterwards leaves an empty folder
+	# holding the active flag every time the answer is no.
+	return not newer_save_refused
+
+
 func switch_profile(id: String) -> bool:
 	# THE ONE FUNCTION, because `save_path = X; load_game()` is not a switch.
 	# load_game no-ops on a missing file and returns false, which would leave the
 	# OUTGOING pilot fully loaded in memory under the incoming pilot's name --
 	# the first thing that then saved would write one run into another's folder.
-	if id == "" or not save_enabled:
+	if id == "":
+		return false
+	# GATED ON THE REFUSAL, NOT ON save_enabled. lock_saving() is one-way and
+	# process-wide, and load_game takes it whenever it meets a save from a newer
+	# build -- which was fine when there was one save and is wrong now that there
+	# are five. One future-dated pilot would otherwise make EVERY row on the
+	# pilots page a dead button for the rest of the session, with four perfectly
+	# readable runs behind them. The lock is about the FILE it refused, and this
+	# is moving away from that file.
+	if not can_switch_profile():
 		return false
 	# The outgoing pilot is written FIRST and synchronously, because _queue_save's
 	# one-second debounce is pending on almost every switch and the run would
@@ -2789,6 +2844,18 @@ func switch_profile(id: String) -> bool:
 		# A pilot with no file yet -- the row exists, the run does not. Starter
 		# state, and `tutorial_seen` decides whether they are walked through it.
 		reset_to_starter()
+		# AND THE THREE reset_to_starter WILL NOT TOUCH. Its comments call
+		# ship_name, livery and commissioned things that "outlive the run", and
+		# they are right about the run -- they are wrong about the PILOT, which
+		# is the distinction this horizon settled. Left alone, a brand-new pilot
+		# boots wearing the outgoing pilot's paint, under their ship's name,
+		# already commissioned, and their first save writes all three into the
+		# new file permanently. reset_to_starter is not changed, because a NEW
+		# SURVEY on one pilot should still keep that pilot's identity; the
+		# difference belongs here, where the pilot itself changes.
+		ship_name = DEFAULT_SHIP_NAME
+		livery = DEFAULT_LIVERY.duplicate()
+		commissioned = false
 		tutorial_step = -1 if tutorial_seen else 0
 	# Nothing below is in the save and none of it is cleared by reset_to_starter,
 	# so without these three the new pilot inherits the old one's derived stats,

@@ -7660,6 +7660,71 @@ Telemetry rows carry the opaque pilot id. Without it, up to five runs interleave
 in one file with nothing to tell them apart, which destroys the file's stated
 purpose: every question it exists to answer is asked of one run.
 
+
+### What the adversarial pass found, and the shape of it
+
+Four verifiers went over this commit before it merged. They returned five
+blockers, and the pattern is worth more than the list: **every one was a rule
+that had exactly one instance until this commit gave it a second.**
+
+**The feature's own decision was not implemented.** `switch_profile` called
+`reset_to_starter()` and stopped — and `reset_to_starter` deliberately preserves
+`ship_name`, `livery` and `commissioned`, because for a NEW SURVEY on one pilot
+that is right. A brand-new pilot therefore booted wearing the outgoing pilot's
+paint, under their ship's name, already commissioned, and wrote all three into
+their own file on the first save. The settle recorded above was in the doc and in
+the commit message and nowhere in the code. `reset_to_starter` is unchanged; the
+three lines belong where the PILOT changes, not where the run does.
+
+**A fresh install never got a pilot at all.** With no legacy save there is
+nothing to migrate, so the registry was written empty, `active_id` was `""`, and
+`save_path` stayed on the old single-save path. The player pressed NEW SURVEY,
+played a whole run into `user://save.json`, and the first time they opened PILOTS
+and made one, `switch_profile` moved the path with `active_profile` still empty —
+so the outgoing save was skipped and the run was stranded in a file nothing would
+read again. The migration could not rescue it either: it is keyed on the
+registry's absence, and the registry existed. A player now has a pilot from the
+first boot.
+
+**A second file needed the rule the first one had.** `_save_prefs` is reached
+from `set_setting`, and SAVETEST's `write` leg sets three settings while
+ACCESSTEST rebinds a dozen keys — so the sweep would have rewritten the
+developer's real bindings and volumes on every run. `lock_saving()` is not the
+fix, because the three suites most likely to trip it deliberately do not lock:
+the file layer is what they test. Prefs are off under a harness instead, with an
+empty path as the switch, checked before `save_enabled` for exactly that reason.
+Off rather than pointed at a shared scratch file, which is cross-run coupling by
+another name — and which would have taken `migrate5` (asserts
+`settings == DEFAULT_SETTINGS`) and `partial6` (whose whole subject is the
+key-by-key settings merge) down with it.
+
+**One future-dated pilot locked all five.** `lock_saving()` is one-way and
+process-wide, and `switch_profile` gated on `save_enabled` — so a single save
+from a newer build made every row on the pilots page a dead button for the
+session, with four readable runs behind them. The lock is about the FILE it
+refused; switching is moving away from that file. It gates on the refusal now,
+and the page asks `can_switch_profile()` BEFORE creating, because
+`Profiles.create` stamps the new id active and discovering the refusal afterwards
+left an empty folder holding the active flag.
+
+**The migration recorded itself before it moved anything.** Writing the registry
+first makes `needs_migration()` false forever — it IS "the registry exists" — so
+a rename that failed could never be retried, and the player kept a registry
+naming an empty folder while their run sat in `save.json`. The file moves first
+now, and a failure leaves the disk clean enough that the next boot tries again.
+The window that remains — moved, not yet recorded — is covered by rebuilding the
+registry from the folders on disk, because a folder holding a real save is a
+pilot whatever the registry says.
+
+Three smaller ones worth naming. Deleting the pilot you are standing in left
+`save_path` pointing into a removed folder while the session played on, every
+save failing silently against a missing directory. `_refresh_pilots` measured its
+own container in the same frame it `queue_free`d the old rows, so the page laid
+out at roughly double height and hung off the bottom of the screen permanently.
+And the pilots page had no scroll and no Escape: five pilots want ~480px of a
+band that is ~250px on the project's own default desktop window, which pushed
+BACK — the only exit — off the screen.
+
 ### The sweep's guard had to grow with the thing it guards
 
 `run_harness.sh` md5'd `save.json` before and after, and after this change that

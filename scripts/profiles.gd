@@ -160,12 +160,22 @@ static func delete(id: String) -> void:
 	# The folder goes after the registry, never before: a crash between the two
 	# leaves an orphan folder, which load_registry ignores, rather than a row
 	# pointing at nothing, which it would have to clean up.
-	var dir := "%s/%s" % [base_dir, id]
+	_rm_dir("%s/%s" % [base_dir, id])
+
+
+static func _rm_dir(dir: String) -> void:
+	# Recursive, because a folder that ever gains a subdirectory would otherwise
+	# refuse to be removed and leave a row-less husk behind -- which
+	# load_registry then treats as a real pilot's folder if an id ever collided
+	# with it.
 	var d := DirAccess.open(dir)
-	if d != null:
-		for file in d.get_files():
-			DirAccess.remove_absolute("%s/%s" % [dir, file])
-		DirAccess.remove_absolute(dir)
+	if d == null:
+		return
+	for file in d.get_files():
+		DirAccess.remove_absolute("%s/%s" % [dir, file])
+	for sub in d.get_directories():
+		_rm_dir("%s/%s" % [dir, sub])
+	DirAccess.remove_absolute(dir)
 
 
 static func touch(id: String, now: float, summary: Dictionary) -> void:
@@ -183,13 +193,30 @@ static func touch(id: String, now: float, summary: Dictionary) -> void:
 		save_registry(reg)
 
 
-static func rename(id: String, name: String) -> void:
-	var reg := load_registry()
-	for row_v in reg.get("profiles", []):
-		var row: Dictionary = row_v
-		if String(row["id"]) == id:
-			row["name"] = _clean_name(name)
-	save_registry(reg)
+static func _rebuilt_from_disk() -> Dictionary:
+	# The registry re-derived from what is actually there. Only reachable when
+	# there is no registry at all, so it cannot overwrite a good one; it exists
+	# so a pilot folder holding a real save is never orphaned by a registry
+	# write that did not happen.
+	var out := {"schema": SCHEMA, "active": "", "profiles": []}
+	var d := DirAccess.open(base_dir)
+	if d == null:
+		return out
+	var found: Array = d.get_directories()
+	found.sort()
+	for sub_v in found:
+		var sub := String(sub_v)
+		if not FileAccess.file_exists("%s/%s/save.json" % [base_dir, sub]):
+			continue
+		out["profiles"].append({
+			"id": sub, "name": "SURVEYOR",
+			"created": 0.0, "last_played": 0.0, "summary": {},
+		})
+		if out["profiles"].size() >= MAX_PROFILES:
+			break
+	if not (out["profiles"] as Array).is_empty():
+		out["active"] = String((out["profiles"][0] as Dictionary)["id"])
+	return out
 
 
 # --- the one-time migration -------------------------------------------------
@@ -211,17 +238,41 @@ static func migrate_legacy(now: float) -> String:
 	if not needs_migration():
 		return ""
 	if not FileAccess.file_exists(legacy_path):
-		save_registry({"schema": SCHEMA, "active": "", "profiles": []})
+		# No legacy save. Usually a fresh install and the registry is simply
+		# empty -- but it is also the state left behind if a previous migration
+		# moved the file and then failed to record it, so the folders are read
+		# before that conclusion is drawn. A pilot whose save is on disk is a
+		# pilot, whatever the registry does or does not say about it.
+		save_registry(_rebuilt_from_disk())
 		return ""
-	var id := create(_legacy_ship_name(), now)
-	if id == "":
+	# THE FILE MOVES BEFORE THE REGISTRY RECORDS IT. The other order looks
+	# equivalent and is not: writing the row first makes `needs_migration()`
+	# false forever -- it is exactly "the registry exists" -- so a rename that
+	# failed could never be retried by any later boot. The player was left with
+	# a registry naming an EMPTY folder, their whole run still sitting in
+	# user://save.json, and a migration that would never look at it again.
+	#
+	# Moving first means a failure leaves the disk untouched apart from an empty
+	# directory, `needs_migration()` stays true, and the next boot tries again.
+	var id := _new_id(load_registry())
+	var dir := "%s/%s" % [base_dir, id]
+	if DirAccess.make_dir_recursive_absolute(dir) != OK:
+		push_warning("Pyxis: could not create a pilot folder for the existing save")
 		return ""
+	var ship := _legacy_ship_name()
 	var moved := DirAccess.rename_absolute(legacy_path, save_path_for(id))
 	if moved != OK:
-		# The registry row is left in place deliberately: the pilot exists, the
-		# folder exists, and the save simply did not move. That is recoverable by
-		# hand; a registry rolled back under a save that DID move is not.
 		push_warning("Pyxis: could not move the existing save into a pilot folder (%d)" % moved)
+		DirAccess.remove_absolute(dir)
+		return ""
+	save_registry({
+		"schema": SCHEMA,
+		"active": id,
+		"profiles": [{
+			"id": id, "name": _clean_name(ship),
+			"created": now, "last_played": now, "summary": {},
+		}],
+	})
 	return id
 
 
