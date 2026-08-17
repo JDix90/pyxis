@@ -12,7 +12,7 @@ const SHEET_RATIO := 0.55
 const SLIDE_TIME := 0.28
 const NODE_RADIUS := 17.0
 
-# v21. THE PLOT'S OWN GEOMETRY. 190 rather than 150 because the plot now carries
+# v21. THE PLOT'S OWN GEOMETRY. 180 rather than 150 because the plot now carries
 # band rings, a legend and a scale bar under the picture; the arithmetic that
 # says this still fits the 0.55 sheet at 720x1280 is asserted in PLOTTEST rather
 # than trusted, because everything else in this column is a minimum too and the
@@ -24,6 +24,15 @@ const PLOT_PAD := 10.0
 # taller than it is deep, so a legend laid on top would sit across the outer
 # band rings, which are exactly the ones a reader is squinting at.
 const FURNITURE_H := 26.0
+
+# The column's own dimensions, named because PLOTTEST budgets against them and a
+# budget built from retyped literals is a budget that goes stale silently -- it
+# did, by 28px, in the direction that made the check pass. Every one of these is
+# read by _build below; nothing may hard-code them in two places.
+const COL_SEP := 8.0
+const MAP_MIN_H := 150.0
+const COLONY_ROW_H := 42.0
+const COLONY_ROW_SEP := 4.0
 # Breathing room around whatever the fit radius turned out to be, so the
 # outermost thing is INSIDE the rect rather than drawn on its edge.
 const FIT_MARGIN := 1.10
@@ -97,7 +106,7 @@ func _build() -> void:
 	_sheet.add_child(margin)
 
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 8)
+	col.add_theme_constant_override("separation", int(COL_SEP))
 	margin.add_child(col)
 
 	var header := HBoxContainer.new()
@@ -118,7 +127,13 @@ func _build() -> void:
 
 	_map = Control.new()
 	_map.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_map.custom_minimum_size = Vector2(0, 170)
+	# 150, down from 170, and it is the plot that bought the 20px. This column's
+	# minimums have to fit the 0.55 sheet WITH two colony rows in it, and the map
+	# is the one child here that expands -- it takes every spare pixel whenever
+	# there is one, so lowering its FLOOR costs nothing except in the crowded case
+	# this is about. The plot cannot do the same: it is the dense picture, and a
+	# ring diagram that shrinks is a ring diagram you cannot read.
+	_map.custom_minimum_size = Vector2(0, MAP_MIN_H)
 	_map.mouse_filter = Control.MOUSE_FILTER_STOP
 	_map.draw.connect(_draw_map)
 	_map.gui_input.connect(_on_map_input)
@@ -153,6 +168,19 @@ func _build() -> void:
 	_plot = Control.new()
 	_plot.custom_minimum_size = Vector2(0, PLOT_HEIGHT)
 	_plot.mouse_filter = Control.MOUSE_FILTER_STOP
+	# CLIPPED, AND NOT OPTIONALLY. Godot does NOT scissor a CanvasItem's own draw
+	# calls to its rect -- `clip_contents` defaults to false and nothing else in
+	# this project sets it, so every arc this Control draws past its own edge
+	# renders straight over its siblings. The band rings make that unmissable: at
+	# 720x1280 in pyx01 the band-4 ring is 183px in a rect 180px tall, so its top
+	# arc lands across _detail, _title and the bottom of the system map, in the
+	# DEFAULT view of the starting system.
+	#
+	# The culls below are visibility heuristics -- "is this ring worth drawing at
+	# all" -- and were doing double duty as containment, which they cannot do:
+	# _pan is unbounded and _zoom reaches 8, so any layer can be pushed
+	# arbitrarily far outside the rect. Containment is this one line.
+	_plot.clip_contents = true
 	_plot.draw.connect(_draw_plot)
 	_plot.gui_input.connect(_on_plot_input)
 	col.add_child(_plot)
@@ -168,7 +196,7 @@ func _build() -> void:
 	# entirely inside a system rather than disabled — an always-present button
 	# that is dead 95% of the time teaches players to stop reading the row.
 	_recall_button = Button.new()
-	_recall_button.custom_minimum_size = Vector2(0, 42)
+	_recall_button.custom_minimum_size = Vector2(0, COLONY_ROW_H)
 	_recall_button.add_theme_font_size_override("font_size", 14)
 	_recall_button.add_theme_color_override("font_color", Palette.TEAL)
 	_recall_button.visible = false
@@ -182,11 +210,11 @@ func _build() -> void:
 	# makes. Retained as a field because rows come and go as colonies are founded;
 	# `col` above is a local and cannot be rebuilt into.
 	_colony_rows = VBoxContainer.new()
-	_colony_rows.add_theme_constant_override("separation", 4)
+	_colony_rows.add_theme_constant_override("separation", int(COLONY_ROW_SEP))
 	col.add_child(_colony_rows)
 
 	_travel_button = Button.new()
-	_travel_button.custom_minimum_size = Vector2(0, 42)
+	_travel_button.custom_minimum_size = Vector2(0, COLONY_ROW_H)
 	_travel_button.add_theme_font_size_override("font_size", 14)
 	_travel_button.pressed.connect(_on_travel)
 	col.add_child(_travel_button)
@@ -235,7 +263,9 @@ func fit_radius_for(id: String, ship := Vector2.ZERO) -> float:
 	# drawn outside the rect. The old scale came off the apex band's outer edge
 	# (`bounds + band[1]`), which is not a bound on anything the player owns: a
 	# beacon dropped past it -- in pyx01 that is only 340u out -- projected past
-	# the plot's corner and simply was not there.
+	# the plot's corner. NOT into nothing: until clip_contents was set in _build
+	# it was drawn over whatever sibling occupied that pixel, so the symptom was a
+	# mark in the wrong place rather than a missing one.
 	#
 	# SHIP IS AN ARGUMENT, not a scene lookup, for the reason drop_beacon takes
 	# depth as one: this has to be checkable without a world, and a function that
@@ -664,12 +694,20 @@ func _on_plot_input(event: InputEvent) -> void:
 	# there is a world-space Vector3 on a 3D camera, and reusing them would mean
 	# making the chart depend on the rig. Fifteen lines of logic, re-derived in
 	# two dimensions.
+	# EVERY BRANCH THAT ACTS CALLS accept_event(). The sheet behind this Control is
+	# MOUSE_FILTER_STOP and probably absorbs what is not consumed here, but
+	# "probably absorbs" is not a thing to leave a wheel event resting on when
+	# CameraRig._unhandled_input also binds the wheel -- project.godot's own note
+	# records a bug from exactly that shape, an input reaching two handlers because
+	# nobody marked it handled. round_button.gd sets the precedent.
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
 			_zoom_about(mb.position, ZOOM_STEP)
+			_plot.accept_event()
 		elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN and mb.pressed:
 			_zoom_about(mb.position, 1.0 / ZOOM_STEP)
+			_plot.accept_event()
 		elif mb.button_index == MOUSE_BUTTON_LEFT:
 			if mb.pressed and mb.double_click:
 				reset_view()
@@ -678,14 +716,26 @@ func _on_plot_input(event: InputEvent) -> void:
 				_drag_last = mb.position
 			else:
 				_drag_id = -1
+			_plot.accept_event()
 	elif event is InputEventMouseMotion and _drag_id == 0:
 		var mm := event as InputEventMouseMotion
 		_pan += mm.position - _drag_last
 		_drag_last = mm.position
 		_plot.queue_redraw()
+		_plot.accept_event()
 	elif event is InputEventScreenTouch:
 		var st := event as InputEventScreenTouch
 		if st.pressed:
+			# DOUBLE-TAP IS ITS OWN EVENT ON TOUCH, and this is the platform that
+			# matters. project.godot sets emulate_mouse_from_touch=false on
+			# purpose, so a finger raises NO InputEventMouseButton at all -- the
+			# double_click branch above is desktop-only, and without this line the
+			# reset gesture simply did not exist on a phone. Checked before the
+			# bookkeeping so a double-tap resets rather than starting a drag.
+			if st.double_tap:
+				reset_view()
+				_plot.accept_event()
+				return
 			_touches[st.index] = st.position
 			if _touches.size() == 1:
 				_drag_id = st.index
@@ -702,6 +752,15 @@ func _on_plot_input(event: InputEvent) -> void:
 				_drag_last = _touches[_drag_id]
 			elif _touches.is_empty():
 				_drag_id = -1
+			else:
+				# RE-REFERENCE ON EVERY CHANGE OF PAIR. _pinch_ref is a distance
+				# between two specific fingers; going from three down to two leaves
+				# it measured against a pair that no longer exists, and the next
+				# drag divides the new pair's span by that stale number and jumps
+				# the zoom. Re-taking it costs one distance and makes the ratio
+				# mean what the next frame assumes it means.
+				_pinch_ref = _pinch_span()
+		_plot.accept_event()
 	elif event is InputEventScreenDrag:
 		var sd := event as InputEventScreenDrag
 		_touches[sd.index] = sd.position
@@ -714,6 +773,7 @@ func _on_plot_input(event: InputEvent) -> void:
 			_pan += sd.position - _drag_last
 			_drag_last = sd.position
 			_plot.queue_redraw()
+		_plot.accept_event()
 
 
 func _pinch_span() -> float:
@@ -758,8 +818,17 @@ func reset_view() -> void:
 	# Back to the fit. Public because the selection change and the open both
 	# want it, and because a reader who has panned into the dark needs one
 	# gesture that always works.
+	#
+	# The gesture bookkeeping goes with it. A panel closed mid-drag never
+	# delivers the matching touch-up, so _touches keeps an entry and _drag_id
+	# keeps an index -- and the next open starts with a phantom finger down,
+	# which reads as a pan that follows the first touch from wherever it lands.
+	# open() and close_panel() both come through here.
 	_zoom = 1.0
 	_pan = Vector2.ZERO
+	_touches.clear()
+	_drag_id = -1
+	_pinch_ref = 0.0
 	_plot.queue_redraw()
 
 
@@ -891,6 +960,10 @@ func close_panel() -> void:
 	if not is_open:
 		return
 	is_open = false
+	# Drop any half-finished gesture here rather than on the way back in, so the
+	# state cannot survive even if the panel is reopened by a path that does not
+	# reset. See reset_view.
+	reset_view()
 	Sfx.play("equip", -13.0, 0.9)
 	var tw := create_tween()
 	tw.tween_method(_set_slide, 0.0, _sheet_height(), SLIDE_TIME).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_CUBIC)
@@ -932,7 +1005,7 @@ func _refresh_colonies() -> void:
 		var parts := key.split(":")
 		var idx: int = int(String(parts[1])) if parts.size() == 2 else 0
 		var b := Button.new()
-		b.custom_minimum_size = Vector2(0, 42)
+		b.custom_minimum_size = Vector2(0, COLONY_ROW_H)
 		b.add_theme_font_size_override("font_size", 13)
 		b.add_theme_color_override("font_color", Palette.GOLD)
 		var cooling: float = float(main.colony_jump_ready_in())

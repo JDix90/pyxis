@@ -8062,8 +8062,11 @@ Only the surface is always drawn.
 **The scale fits the content, not the hunt.** The old scale was
 `(half the rect) / (bounds + band[1])` — derived from the apex band's outer
 edge, which is not a bound on anything the player owns. A beacon dropped past it
-projected outside the rect and simply was not drawn; in pyx01 that edge is 340u
-out, which is not far at all. `fit_radius_for` now takes the maximum over
+projected outside the rect; in pyx01 that edge is 340u out, which is not far at
+all. It was not *missing*, which is how this was first written up and is worth
+correcting here: a Control does not clip its own draw calls, so the beacon was
+painted over whatever sibling widget occupied that pixel. See the clipping note
+below. `fit_radius_for` now takes the maximum over
 `bounds`, every beacon, every colony, the ship, and the hunt band when it is
 live. **The ship is an argument rather than a scene lookup**, for the reason
 `drop_beacon` takes depth as one: a function that reaches into the tree for half
@@ -8189,6 +8192,73 @@ defect the first time any minimum in that column moved by a pixel. 180 leaves
 78. The arithmetic is now asserted rather than done once in my head, and it
 carries the two-row floor as its reason: a founded colony must not be the thing
 that pushes WARP off the bottom of the sheet.
+
+### What an adversarial pass found after all of that
+
+Five independent lenses over the finished commit, each finding handed to a
+separate agent whose instruction was to REFUTE it: 24 candidates, 16 confirmed,
+8 refuted. After collapsing duplicates — four lenses independently found the
+same sheet-arithmetic bug — it is six real defects, in code that had already
+been self-reviewed twice and had a green suite.
+
+**Nothing clipped the plot.** The worst of them, and it invalidates a sentence
+written twice in this file. `Control.clip_contents` defaults to false, Godot does
+NOT scissor a CanvasItem's own draw calls to its rect, and nothing anywhere in
+this project sets it. At the design resolution pyx01's band-4 ring is 183px
+across in a rect 180px tall — so the ring was painting over `_detail`, `_title`
+and the bottom of the system map, **in the default view of the starting
+system.** The culls in the draw loop are visibility heuristics and were silently
+doing duty as containment, which they cannot do now that `_pan` is unbounded and
+`_zoom` reaches 8. One line fixes it and one assertion pins it.
+
+It also corrects the claim this section opened with. A beacon past the old scale
+was never "simply not drawn" — it was drawn on top of the title bar. The
+difference matters, because "missing" reads as a scale problem and "painted over
+the header" is a containment problem, and only the second one explains what a
+player was actually looking at.
+
+**THE PLOT STILL FITS ITS SHEET could not fail.** Both of its numbers were wrong
+in the direction that made it pass. `col` has nine children, so a VBoxContainer
+inserts eight 8px gaps, not the seven budgeted; and a colony row is a 42px Button
+with 4px of container separation, so two rows are 88px, not the 68 asserted. The
+check understated the column by 28px — and its stated purpose was "a founded
+colony must not push WARP off the bottom of the sheet", which is exactly what two
+colonies then did while it printed PASS. The fix is not just the arithmetic:
+`COL_SEP`, `MAP_MIN_H`, `COLONY_ROW_H` and `COLONY_ROW_SEP` are now named
+constants that `_build` reads, so the budget cannot drift from the layout again,
+and the map's floor drops 170 → 150 to buy the room the plot needs. The map is
+the only child in that column that expands, so lowering its minimum costs nothing
+except in the crowded case this is about.
+
+**The reset gesture did not exist on the platform this game is for.**
+`project.godot` sets `emulate_mouse_from_touch=false` deliberately, so a finger
+raises no `InputEventMouseButton` at all — the `double_click` branch is
+desktop-only. On a phone there was no way back to the fit. `InputEventScreenTouch`
+carries its own `double_tap`, which is now handled.
+
+**And three smaller ones**: no branch called `accept_event()`, leaving a
+wheel-zoom resting on the assumption that an ancestor's `MOUSE_FILTER_STOP`
+absorbed it, while `CameraRig._unhandled_input` also binds the wheel — the exact
+shape `project.godot`'s own comment records a bug from; `_pinch_ref` was left
+measured against a pair of fingers that no longer existed when going from three
+touches to two, so the next drag divided by a stale reference and jumped; and a
+panel closed mid-drag never receives the matching touch-up, so `_touches` kept an
+entry and the next open began with a phantom finger down.
+
+**One of the twelve assertions was tautological.** `THE PLOT FITS ITS CONTENT`
+checked `old_r < far` with `far := old_r * 2.0` — which is `old_r < 2 * old_r`,
+true for any positive radius. The clause the comment called load-bearing asserted
+nothing, and the leg rested entirely on its other half. It now fits the system
+twice, with the beacon and without, and requires the beacon to be what moved the
+scale: a `fit_radius_for` that ignored beacons would return the same number twice
+and go red.
+
+The lesson is not "run more passes". It is that **this commit's three worst
+defects were all invisible to the thing that was supposed to catch them** — the
+ring off-by-one drew a convincing picture, the legend closure would have compiled
+and smeared, and the containment bug was hidden behind a check whose own numbers
+were wrong. Drawing code has more surface than an assertion suite can reach, and
+the honest response is to say so rather than to treat green as finished.
 
 ### What is deliberately not here
 

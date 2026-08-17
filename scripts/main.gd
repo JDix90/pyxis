@@ -13292,13 +13292,22 @@ func _run_plot_test() -> void:
 	#    The far beacon is placed at TWICE that radius, and the assertion needs
 	#    BOTH halves: the new fit covers it, and the old rule did not -- without
 	#    the second clause this passes on a scale that never changed.
+	#    THE SECOND CLAUSE WAS TAUTOLOGICAL AND IS NOW NOT. It read
+	#    `old_r < far` with `far := old_r * 2.0` -- which is `old_r < 2 * old_r`,
+	#    true for any positive radius, so it asserted nothing and the leg rested
+	#    entirely on `covers`. What has to be shown is that THE BEACON IS WHAT
+	#    MOVED THE SCALE: fit it with the beacon and without, and require the
+	#    difference. A fit that ignored beacons entirely would return the same
+	#    number twice and go red here, which is the bug this exists for.
 	var far := old_r * 2.0
+	GameState.beacons[sid] = []
+	var fit_bare := cp.fit_radius_for(sid)
 	GameState.beacons[sid] = [{"x": far, "z": 0.0}]
 	var fit := cp.fit_radius_for(sid)
 	var covers := fit >= far
-	var old_missed := old_r < far
-	print("[plot] THE PLOT FITS ITS CONTENT beacon at %.0fu, fit %.0fu (old rule %.0fu) -> %s" % [
-		far, fit, old_r, "PASS" if covers and old_missed else "FAIL"])
+	var beacon_drove := fit > fit_bare and fit_bare < far
+	print("[plot] THE PLOT FITS ITS CONTENT beacon at %.0fu, fit %.0fu vs %.0fu without it (old rule %.0fu) -> %s" % [
+		far, fit, fit_bare, old_r, "PASS" if covers and beacon_drove else "FAIL"])
 
 	# 2. THE SHIP IS PART OF THE PICTURE. Same question for the other thing that
 	#    can be anywhere: a ship 3x past the band must not fall off the plot.
@@ -13474,27 +13483,54 @@ func _run_plot_test() -> void:
 		str(dead_words), str(live_words), "PASS" if moved else "FAIL"])
 	GameState.beacons[sid] = []
 
-	# 10. THE PLOT TAKES INPUT. It was MOUSE_FILTER_IGNORE, which is why it had no
+	# 10. THE PLOT IS CONTAINED. Godot does not scissor a CanvasItem's own draw
+	#     calls to its rect; clip_contents defaults to false, and nothing else in
+	#     this project sets it. So the band rings -- the band-4 ring is 183px in a
+	#     rect 180px tall at the design resolution -- were painting across the
+	#     detail line, the title and the system map in the DEFAULT view of the
+	#     starting system. Every cull in the draw is a visibility heuristic and
+	#     none of them can be containment, because _pan is unbounded and _zoom
+	#     reaches 8. One property, so one assertion.
+	print("[plot] THE PLOT IS CONTAINED clip_contents=%s, zoom ceiling %.1fx, pan unbounded -> %s" % [
+		cp._plot.clip_contents, ChartPanel.ZOOM_MAX,
+		"PASS" if cp._plot.clip_contents else "FAIL"])
+
+	# 11. THE PLOT TAKES INPUT. It was MOUSE_FILTER_IGNORE, which is why it had no
 	#    gestures -- and IGNORE would also drop a drag through to the sheet
 	#    behind it. Cheap to assert and the thing every gesture above depends on.
 	print("[plot] THE PLOT TAKES INPUT filter=%d (STOP=%d) -> %s" % [
 		cp._plot.mouse_filter, Control.MOUSE_FILTER_STOP,
 		"PASS" if cp._plot.mouse_filter == Control.MOUSE_FILTER_STOP else "FAIL"])
 
-	# 11. THE PLOT STILL FITS ITS SHEET. The plot grew by 30px to carry rings, a
+	# 12. THE PLOT STILL FITS ITS SHEET. The plot grew by 30px to carry rings, a
 	#    legend and a bar, and the sheet cannot grow -- it is 0.55 of the screen
 	#    by contract. Measured at the design resolution against the column's
 	#    other minimums, with room kept for two colony rows, because a founded
 	#    colony must not be what pushes WARP off the bottom.
-	# Margins 32, header 30, map 170, title 20, detail 30, plot, note 24, recall
-	# 42, warp 42, and seven 8px separations. Two colony rows at 34 is the floor:
-	# a founded colony must not be what pushes WARP off the bottom of the sheet.
+	#     BOTH OF ITS NUMBERS WERE WRONG, in the direction that made it pass.
+	#     `col` holds NINE children -- header, map, title, detail, plot, note,
+	#     recall, colony rows, warp -- so a VBoxContainer inserts EIGHT 8px gaps,
+	#     not seven. And a colony row is a Button at custom_minimum_size 42 with
+	#     the container's own separation 4 between rows, so two rows are
+	#     42 + 4 + 42 = 88px, not 68. Budgeting 7 gaps and 68px understated the
+	#     column by 28px, which is precisely how a check whose stated purpose is
+	#     "a founded colony must not push WARP off the sheet" reported PASS on a
+	#     layout where two colonies do exactly that.
+	#
+	#     Read off ChartPanel's own constants where they exist rather than
+	#     retyped, so the next change to a button height moves this with it. The
+	#     four estimated rows -- header, title, detail, note -- have no
+	#     custom_minimum_size and are font-derived, so they stay estimates and
+	#     this stays a MODEL of the column; it is a model that now matches the
+	#     code's own numbers everywhere the code states one.
 	var sheet_h := UILayout.BASE.y * ChartPanel.SHEET_RATIO
-	var fixed := 32.0 + 30.0 + 170.0 + 20.0 + 30.0 + ChartPanel.PLOT_HEIGHT \
-		+ 24.0 + 42.0 + 42.0 + 8.0 * 7.0
+	var rows := ChartPanel.COLONY_ROW_H * 2.0 + ChartPanel.COLONY_ROW_SEP
+	var fixed := 32.0 + 30.0 + ChartPanel.MAP_MIN_H + 20.0 + 30.0 \
+		+ ChartPanel.PLOT_HEIGHT + 24.0 + ChartPanel.COLONY_ROW_H \
+		+ ChartPanel.COLONY_ROW_H + ChartPanel.COL_SEP * 8.0
 	var colony_room := sheet_h - fixed
-	print("[plot] THE PLOT STILL FITS ITS SHEET sheet %.0fpx, minimums %.0fpx, spare %.0fpx (2 rows = 68) -> %s" % [
-		sheet_h, fixed, colony_room, "PASS" if colony_room >= 68.0 else "FAIL"])
+	print("[plot] THE PLOT STILL FITS ITS SHEET sheet %.0fpx, minimums %.0fpx, spare %.0fpx (2 rows = %.0f) -> %s" % [
+		sheet_h, fixed, colony_room, rows, "PASS" if colony_room >= rows else "FAIL"])
 
 	get_tree().quit()
 
