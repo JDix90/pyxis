@@ -5997,7 +5997,7 @@ commits, none built yet:
 | 1 | hotkeys: `chart` / `drop_beacon` / `pause`, each behind a guarded wrapper | none | **BUILT** — §74 |
 | 2 | pilot profiles: per-profile save paths, a registry, and device settings split into `prefs.json` | none | **BUILT** — §75 |
 | 3 | per-PYX deep identity + one signature content class per system | none | **BUILT** — §76 |
-| 4 | chart legibility: fit-to-content scale, ship marker, band rings, legend, pan/zoom | none | **not built** |
+| 4 | chart legibility: fit-to-content scale, ship marker, band rings, legend, pan/zoom | none | **BUILT** — §78 |
 | 5 | beacon navigation: set-course autopilot and a depth-capped paid jump, same-PYX only | none | **not built** |
 | 6 | persistent per-PYX survey coverage | **v21** | **not built** |
 | — | a static parse pre-flight that runs without the Godot binary | none | **BUILT** — §77 |
@@ -8035,3 +8035,95 @@ carries those numbers already warns that it has been wrong before and tells the
 reader to check `run_harness.sh` instead. It was wrong again anyway. Numbers
 that must be maintained by hand will drift; the only durable fix is to derive
 them, which is filed in §64 rather than done here.
+
+## 78. The chart was mostly not there
+
+The third playtest note: *"the Chart needs enhancement — the surveys show but
+are extremely hard to understand."* Read as written, that is a request for
+better labels. It is not. The plot was drawn behind a gate that closed most of
+the time, and the largest legibility win available was to open it.
+
+`_refresh_plot` set `_plot.visible = _hunt_is_live(_selected)`, and
+`_hunt_is_live` requires the system to be charted, to have an `apex` block, AND
+for that engine to still be alive. So the picture of the deep was absent for any
+system whose engine you had killed — which is every system you have finished —
+and absent again for any system without an authored apex. A player who had done
+the thing the game asks them to do opened the chart and found the deep
+represented by nothing at all. "Hard to understand" was, more often than not,
+"hard to understand because it is not there."
+
+### Four things a reader needs, in the order they need them
+
+**The canvas is unconditional.** The bar is now CHARTED, which is the bar the
+rest of the sheet already uses. Everything the hunt owns — the band, the cones,
+the estimate ring, the caption — still gates on `_hunt_is_live` inside the draw.
+Only the surface is always drawn.
+
+**The scale fits the content, not the hunt.** The old scale was
+`(half the rect) / (bounds + band[1])` — derived from the apex band's outer
+edge, which is not a bound on anything the player owns. A beacon dropped past it
+projected outside the rect and simply was not drawn; in pyx01 that edge is 340u
+out, which is not far at all. `fit_radius_for` now takes the maximum over
+`bounds`, every beacon, every colony, the ship, and the hunt band when it is
+live. **The ship is an argument rather than a scene lookup**, for the reason
+`drop_beacon` takes depth as one: a function that reaches into the tree for half
+its answer cannot be handed a case, and this one has to be checkable without a
+world.
+
+**The rings say what the depths are.** `BAND_EDGES` drawn at `bounds + edge`,
+because depth is measured from the charted edge and `depth_at` subtracts
+`bounds`. Each is labelled through `band_name_in`, so a system that renamed its
+bands in §76 says its own names here, and through `band_glyph`, so the ring is
+identified by shape as well as hue. That conversion lives in one function,
+`band_ring_radius`, because a ring drawn at the wrong radius is a lie the reader
+cannot detect — every other layer would still agree with itself.
+
+**You are on it.** Nothing in `chart_panel.gd` referenced the player node at
+all. The ship is now a triangle pointing where the ship points, drawn last so
+nothing buries it. A dot would have been easier and would have thrown away the
+heading, which is the half of "where am I" that makes the plot flyable — the
+orientation contract at the top of `_draw_plot` is what lets a bearing be read
+off this picture and flown, and the marker is now the thing that demonstrates it.
+
+### The legend is shapes, not a colour key
+
+§30's redundancy rule says a new layer needs a glyph or a shape, never only a
+colour. Beacons and colonies deliberately share the livery accent, because
+"mine" is what that colour means here — so the distinction between them is
+carried entirely by outline: a square for a colony, a ringed dot for a beacon, a
+triangle for the ship, a hollow circle for the estimate. The legend draws those
+same primitives rather than describing them, so an entry cannot drift from the
+layer it labels.
+
+No new glyph vocabulary was invented, which was the first instinct and the wrong
+one. `BAND_GLYPHS` and `FAMILY_GLYPHS` already carry a rule that one shape must
+not mean two things in this game, and a third text alphabet would have had to be
+checked against both forever. Drawn shapes are outside that namespace entirely.
+
+### Two bugs found by writing the assertions
+
+**The zoom disagreed with the drawing about where the centre was.** The plot
+reserves `FURNITURE_H` off its bottom for the bar and legend, so the picture's
+origin sits above the rect's centre. `_zoom_about` was computing the origin as
+`size * 0.5` while the draw used the reserved-height version — thirteen pixels
+apart, which is not a wrong picture but a zoom that slides the map a little
+further every step, with no cause a player could see. Both now call
+`plot_home()`, and the assertion calls it too rather than recomputing the centre
+locally: a test that made the same mistake would have agreed with the bug.
+
+**The sheet fitted by exactly zero pixels.** The first plot height was 190,
+which left `704 - 636 = 68px` for colony rows — precisely two rows, precisely
+zero margin. That is not a design, it is a coincidence that would have become a
+defect the first time any minimum in that column moved by a pixel. 180 leaves
+78. The arithmetic is now asserted rather than done once in my head, and it
+carries the two-row floor as its reason: a founded colony must not be the thing
+that pushes WARP off the bottom of the sheet.
+
+### What is deliberately not here
+
+Survey coverage is not fitted to and not drawn. It is session-only until the
+persistence commit, and fitting the scale to something that vanishes on every
+warp would make the picture jump for a reason the player cannot see. A tap on
+the plot pans and zooms and nothing else — there is no verb to attach to a
+world position until beacon navigation lands, and a tap that selects something
+with nothing to do about it is worse than a tap that moves the map.

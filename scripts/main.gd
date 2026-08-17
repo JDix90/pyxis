@@ -99,6 +99,7 @@ const HARNESS_VARS := [
 	"PYXIS_SAVETEST",
 	"PYXIS_SHIPTEST",
 	"PYXIS_SIGTEST",
+	"PYXIS_PLOTTEST",
 	"PYXIS_SMUGTEST",
 	"PYXIS_SPILLTEST",
 	"PYXIS_STATIONTEST",
@@ -998,6 +999,13 @@ func _ready() -> void:
 		_load_system(GameState.current_system)
 		_enter_playing()
 		_run_sig_test()
+		return
+	if OS.get_environment("PYXIS_PLOTTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_plot_test()
 		return
 	if OS.get_environment("PYXIS_PROFILETEST") != "":
 		# NOT lock_saving, and this is the second harness after SAVETEST that
@@ -13260,6 +13268,158 @@ func _run_sig_test() -> void:
 
 	for pv in probes.values():
 		(pv as DeepSpace).free()
+	get_tree().quit()
+
+
+# --- survey plot test -------------------------------------------------------
+
+func _run_plot_test() -> void:
+	# The plot answers the loudest of the five playtest notes, so what it is
+	# asserted on is legibility rather than pixels: does the scale contain what
+	# the player owns, is the picture there at all outside a hunt, do the rings
+	# mean the depth they claim, and does a gesture leave the reader where they
+	# were looking.
+	var cp := chart_panel
+	var sid := GameState.current_system
+	var s := SystemDB.get_system(sid)
+	var bounds := float(s.get("bounds", 40.0))
+	var lair: Dictionary = (s.get("apex", {}) as Dictionary).get("lair", {})
+	var band: Array = lair.get("depth", [200.0, 300.0])
+	var old_r := bounds + float(band[1])
+
+	# 1. THE PLOT FITS ITS CONTENT. The old scale came off the apex band's outer
+	#    edge, so a beacon past it drew outside the rect and was simply missing.
+	#    The far beacon is placed at TWICE that radius, and the assertion needs
+	#    BOTH halves: the new fit covers it, and the old rule did not -- without
+	#    the second clause this passes on a scale that never changed.
+	var far := old_r * 2.0
+	GameState.beacons[sid] = [{"x": far, "z": 0.0}]
+	var fit := cp.fit_radius_for(sid)
+	var covers := fit >= far
+	var old_missed := old_r < far
+	print("[plot] THE PLOT FITS ITS CONTENT beacon at %.0fu, fit %.0fu (old rule %.0fu) -> %s" % [
+		far, fit, old_r, "PASS" if covers and old_missed else "FAIL"])
+
+	# 2. THE SHIP IS PART OF THE PICTURE. Same question for the other thing that
+	#    can be anywhere: a ship 3x past the band must not fall off the plot.
+	#    Passed as an ARGUMENT, which is the whole reason fit_radius_for takes
+	#    one -- a scene lookup could not be handed this case.
+	var ship_far := Vector2(0.0, old_r * 3.0)
+	var fit_ship := cp.fit_radius_for(sid, ship_far)
+	print("[plot] THE SHIP IS PART OF THE PICTURE ship at %.0fu -> fit %.0fu -> %s" % [
+		ship_far.length(), fit_ship,
+		"PASS" if fit_ship >= ship_far.length() and fit_ship > fit else "FAIL"])
+	GameState.beacons[sid] = []
+
+	# 3. THE PLOT DRAWS WITHOUT A HUNT. The reversal itself. A charted system
+	#    whose engine is dead still gets a picture -- that is where most of
+	#    "extremely hard to understand" came from, because the plot was absent
+	#    far more often than it was confusing. Asserted in both directions so a
+	#    gate that simply returns true cannot pass it.
+	var was_killed := GameState.apex_killed.duplicate()
+	if not GameState.apex_killed.has(sid):
+		GameState.apex_killed.append(sid)
+	var useful_dead := cp._plot_is_useful(sid)
+	var hunt_dead := cp._hunt_is_live(sid)
+	GameState.apex_killed.assign(was_killed)
+	var useful_unknown := cp._plot_is_useful("pyx99")
+	print("[plot] THE PLOT DRAWS WITHOUT A HUNT engine dead: drawn=%s hunt=%s; unknown system drawn=%s -> %s" % [
+		useful_dead, hunt_dead, useful_unknown,
+		"PASS" if useful_dead and not hunt_dead and not useful_unknown else "FAIL"])
+
+	# 4. THE RINGS MEAN DEPTH. A ring is drawn at band_ring_radius, and the
+	#    reader is told it is the start of that band. Tie that claim to the
+	#    function the WORLD uses to answer the same question -- depth_at
+	#    subtracts bounds, band_of maps depth to band -- so the label and the
+	#    place agree by construction rather than by a matching constant.
+	var ring_bad := ""
+	for i in range(1, DeepSpace.BAND_EDGES.size()):
+		var rr: float = ChartPanel.band_ring_radius(bounds, i)
+		var depth_there := rr - bounds
+		if not is_equal_approx(depth_there, float(DeepSpace.BAND_EDGES[i])):
+			ring_bad = "band %d radius %.1f is depth %.1f" % [i, rr, depth_there]
+		elif DeepSpace.band_of(depth_there) != i:
+			ring_bad = "band %d ring reads as band %d" % [i, DeepSpace.band_of(depth_there)]
+	print("[plot] THE RINGS MEAN DEPTH %d rings against band_of: %s -> %s" % [
+		DeepSpace.BAND_EDGES.size() - 1, "agree" if ring_bad == "" else ring_bad,
+		"PASS" if ring_bad == "" else "FAIL"])
+
+	# 5. THE BAR IS A ROUND NUMBER. Swept rather than spot-checked, because the
+	#    property is "for every scale", and a bar that is round at 1,000u and
+	#    ragged at 1,347u is a bar nobody can read at the zoom they are at.
+	var bar_bad := ""
+	var want := 3.0
+	while want < 200000.0:
+		var u: float = ChartPanel.scale_bar_units(want)
+		var lead := u / pow(10.0, floor(log(u) / log(10.0)))
+		if not (is_equal_approx(lead, 1.0) or is_equal_approx(lead, 2.0)
+				or is_equal_approx(lead, 5.0)):
+			bar_bad = "%.1f -> %.1f is not 1/2/5" % [want, u]
+		elif u > want:
+			bar_bad = "%.1f -> %.1f overflows" % [want, u]
+		want *= 1.37
+	print("[plot] THE BAR IS A ROUND NUMBER swept 3u..200000u: %s -> %s" % [
+		"all 1/2/5 and none overflow" if bar_bad == "" else bar_bad,
+		"PASS" if bar_bad == "" else "FAIL"])
+
+	# 6. ZOOM HOLDS THE POINT UNDER THE FINGER. Zooming toward the centre while
+	#    the reader is looking at a beacon in the corner drags that beacon away
+	#    -- the gesture and the thing it is for fight each other. The invariant
+	#    is that the world point under the anchor is the same point after.
+	cp._plot.size = Vector2(320.0, ChartPanel.PLOT_HEIGHT)
+	cp.reset_view()
+	var anchor := Vector2(250.0, 40.0)
+	# Through plot_home(), which is what the DRAWING uses. Recomputing the origin
+	# here as `size * 0.5` would make this assertion agree with a zoom that
+	# drifts, since it would be making the same mistake -- the bug this catches
+	# is precisely the two disagreeing.
+	var before_pt := (anchor - (cp.plot_home() + cp._pan)) / cp._zoom
+	cp._zoom_about(anchor, 2.0)
+	var after_pt := (anchor - (cp.plot_home() + cp._pan)) / cp._zoom
+	var held := before_pt.distance_to(after_pt)
+	print("[plot] ZOOM HOLDS THE POINT UNDER THE FINGER zoom %.2f, anchor drift %.4fu -> %s" % [
+		cp._zoom, held, "PASS" if held < 0.001 and cp._zoom > 1.5 else "FAIL"])
+
+	# 7. A NEW SYSTEM GETS A FRESH VIEW. pyx03's fit radius is an order of
+	#    magnitude past pyx01's, so carrying a zoom across lands the reader in
+	#    featureless dark with nothing on screen to explain why.
+	cp._pan = Vector2(40.0, -20.0)
+	# Pinned to a real system first: with _selected still "" the reset would fire
+	# on the ""-to-pyx01 change and the assertion would pass without ever testing
+	# a system-to-system switch, which is the case it exists for.
+	cp._selected = sid
+	var other := ""
+	for id_v in SystemDB.ids():
+		if String(id_v) != sid:
+			other = String(id_v)
+			break
+	cp._select(other)
+	print("[plot] A NEW SYSTEM GETS A FRESH VIEW %s -> zoom %.2f pan %s -> %s" % [
+		other, cp._zoom, str(cp._pan),
+		"PASS" if is_equal_approx(cp._zoom, 1.0) and cp._pan == Vector2.ZERO else "FAIL"])
+
+	# 8. THE PLOT TAKES INPUT. It was MOUSE_FILTER_IGNORE, which is why it had no
+	#    gestures -- and IGNORE would also drop a drag through to the sheet
+	#    behind it. Cheap to assert and the thing every gesture above depends on.
+	print("[plot] THE PLOT TAKES INPUT filter=%d (STOP=%d) -> %s" % [
+		cp._plot.mouse_filter, Control.MOUSE_FILTER_STOP,
+		"PASS" if cp._plot.mouse_filter == Control.MOUSE_FILTER_STOP else "FAIL"])
+
+	# 9. THE PLOT STILL FITS ITS SHEET. The plot grew by 40px to carry rings, a
+	#    legend and a bar, and the sheet cannot grow -- it is 0.55 of the screen
+	#    by contract. Measured at the design resolution against the column's
+	#    other minimums, with room kept for two colony rows, because a founded
+	#    colony must not be what pushes WARP off the bottom.
+	# Margins 32, header 30, map 170, title 20, detail 30, plot, note 24, recall
+	# 42, warp 42, and seven 8px separations. Two colony rows at 34 is the floor:
+	# a founded colony must not be what pushes WARP off the bottom of the sheet.
+	var sheet_h := UILayout.BASE.y * ChartPanel.SHEET_RATIO
+	var fixed := 32.0 + 30.0 + 170.0 + 20.0 + 30.0 + ChartPanel.PLOT_HEIGHT \
+		+ 24.0 + 42.0 + 42.0 + 8.0 * 7.0
+	var colony_room := sheet_h - fixed
+	print("[plot] THE PLOT STILL FITS ITS SHEET sheet %.0fpx, minimums %.0fpx, spare %.0fpx (2 rows = 68) -> %s" % [
+		sheet_h, fixed, colony_room, "PASS" if colony_room >= 68.0 else "FAIL"])
+
 	get_tree().quit()
 
 
