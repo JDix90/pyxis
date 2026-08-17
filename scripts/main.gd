@@ -5322,9 +5322,15 @@ func _run_log_test() -> void:
 		await get_tree().process_frame
 		await get_tree().process_frame
 	var bands := GameState.log_lines()
+	# Same derivation as DEEPTEST's SYSTEM TAG, for the same reason: the two
+	# pinned literals were pyx01's shipped band names, and pyx01 authors its own
+	# now. What this leg tests is ONCE PER BAND, OUTWARD ONLY -- two lines, in
+	# order -- not what those bands happen to be called.
 	var band_ok := bands.size() == 2 \
-		and String(bands[0]).contains("THE SHOALS") \
-		and String(bands[1]).contains("THE DRIFT")
+		and String(bands[0]).contains(
+			SystemDB.band_name_of(system_id, 1, DeepSpace.BAND_NAMES[1])) \
+		and String(bands[1]).contains(
+			SystemDB.band_name_of(system_id, 2, DeepSpace.BAND_NAMES[2]))
 	print("[log] ONCE PER BAND out/out/back/out logged %d lines %s -> %s" % [
 		bands.size(), str(bands), "PASS" if band_ok else "FAIL"])
 	player.global_position = Vector3.ZERO
@@ -8380,9 +8386,16 @@ func _run_deep_test() -> void:
 	player.global_position = Vector3(edge_radius + 300.0, 0, 0)
 	await get_tree().process_frame
 	var tag_out := hud.system_tag_text()
-	print("[deep] SYSTEM TAG inside '%s' / outside '%s' -> %s" % [tag_home, tag_out,
+	# DERIVED, NOT PINNED. This used to look for the literal "THE DRIFT", which
+	# was safe only while pyx01 was forbidden a deep block -- it now names band 2
+	# THE ORRERY DRIFT, and the substring does not match. The clause was never
+	# about the copy: it is that the readout names the band you are standing in,
+	# so it asks SystemDB what that is and keeps working for any system.
+	var want_band2 := SystemDB.band_name_of(system_id, 2, DeepSpace.BAND_NAMES[2])
+	print("[deep] SYSTEM TAG inside '%s' / outside '%s' (band 2 here is '%s') -> %s" % [
+		tag_home, tag_out, want_band2,
 		"PASS" if not tag_home.contains("OUT") and tag_out.contains("OUT")
-			and tag_out.contains("THE DRIFT") else "FAIL"])
+			and tag_out.contains(want_band2) else "FAIL"])
 
 	# 23. The home marker: present outside, absent inside, and NEVER dropped by
 	#     the 12-marker cap. That last clause is the whole point of the tier —
@@ -8662,8 +8675,10 @@ func _run_deep_test() -> void:
 	var band_after_return := _broadcast_band
 	print("[deep] BEACONS silent inside=%s, first crossing says '%s...', no replay on the way home=%s -> %s" % [
 		str(quiet_at_home), first.substr(0, 44), str(band_after_return == 1),
-		"PASS" if quiet_at_home and first.contains("charted space")
-			and first.contains("own risk") and band_after_return == 1 else "FAIL"])
+		"PASS" if quiet_at_home and first != ""
+			and first == String(DeepSpace.broadcast_for(
+				1, GameState.commissioned, system_id).get("body", ""))
+			and band_after_return == 1 else "FAIL"])
 
 	# 32. Deep station ids stay ARCHETYPE-scoped. If they ever became per-cell,
 	#     every station traded at would add a permanent market-pressure key to the
@@ -13154,17 +13169,38 @@ func _run_sig_test() -> void:
 	# 4. IT ANSWERS TO THE KEEP-OUTS. built_plan is the arena filter every other
 	#    placed thing passes through; a signature that ignored it could stand on
 	#    a dock ring or inside the apex arena.
+	# THROUGH built_plan, which is the half the first draft missed: it was named
+	# for the keep-outs and then only ever called plan_cell, so the "signature"
+	# entries added to both of built_plan's subtraction loops were never once
+	# exercised. It also could not fail -- plan_cell already refuses a site under
+	# CONTENT_MIN_DEPTH, so the clause was re-checking a guard one line away.
+	#
+	# Three properties now, all of them things plan_cell alone cannot answer:
+	# nothing inside the charted volume, nothing close enough to a station to
+	# cover its dock ring, and built_plan actually removing sites in the arena.
 	var inside := 0
+	var too_close := 0
 	var pr1: DeepSpace = probes[GameState.current_system]
+	var planned := 0
+	var survived := 0
 	for cz_k in range(-3, 30):
 		for cx_k in range(-3, 30):
-			var sg2: Dictionary = pr1.plan_cell(cx_k, cz_k)["signature"]
+			if not (pr1.plan_cell(cx_k, cz_k)["signature"] as Dictionary).is_empty():
+				planned += 1
+			var bp := pr1.built_plan(cx_k, cz_k)
+			var sg2: Dictionary = bp["signature"]
 			if sg2.is_empty():
 				continue
+			survived += 1
 			if float(pr1.depth_at(sg2["pos"])) < DeepSpace.CONTENT_MIN_DEPTH:
 				inside += 1
-	print("[sig] NOTHING STANDS IN THE CHARTED VOLUME %d site(s) inside CONTENT_MIN_DEPTH (want 0) -> %s" % [
-		inside, "PASS" if inside == 0 else "FAIL"])
+			var st2: Dictionary = bp["station"]
+			if not st2.is_empty() and (sg2["pos"] as Vector3).distance_to(
+					st2["pos"] as Vector3) < SignatureSite.SLAG_RANGE + Port.DOCK_RANGE:
+				too_close += 1
+	print("[sig] IT ANSWERS TO THE KEEP-OUTS %d planned, %d survive built_plan; %d inside the charted volume, %d within reach of a dock ring (want 0/0) -> %s" % [
+		planned, survived, inside, too_close,
+		"PASS" if inside == 0 and too_close == 0 and planned > 0 else "FAIL"])
 
 	# 5. EVERY SYSTEM NAMES ITS OWN BANDS, and the fallback still answers for a
 	#    def that authors none — which is what every harness-built system is.
@@ -13184,11 +13220,21 @@ func _run_sig_test() -> void:
 	# 6. THE RADAR KNOWS WHAT IT IS. A new tier is only real if TIER_NAMES grew
 	#    with it — MANUALTEST sweeps that list against the manual's HUD page, so
 	#    a tier without a name is a legend row nobody wrote.
-	var tier_named: bool = HUD.RadarLayer.TIER_NAMES.size() > HUD.RadarLayer.TIER_SIGNATURE \
-		and String(HUD.RadarLayer.TIER_NAMES[HUD.RadarLayer.TIER_SIGNATURE]) != ""
-	print("[sig] THE RADAR KNOWS WHAT IT IS tier %d named '%s' -> %s" % [
-		HUD.RadarLayer.TIER_SIGNATURE,
-		String(HUD.RadarLayer.TIER_NAMES[HUD.RadarLayer.TIER_SIGNATURE]) if tier_named else "",
+	# INDEXED +1, because TIER_HOME is -1 and TIER_NAMES leads with "HOME".
+	# The first draft indexed by the tier directly, so it read TIER_NAMES[8] --
+	# "STORM" -- printed a false name in the log, and was fully vacuous: both
+	# clauses were already true BEFORE "ODDITY" was appended, so deleting the row
+	# it exists to police would not have failed it. BEACONTEST had the convention
+	# right; this now matches it, checks the name by EQUALITY, and pins the
+	# array's length so the next appended tier cannot leave it short.
+	var sig_name := ""
+	if HUD.RadarLayer.TIER_NAMES.size() > HUD.RadarLayer.TIER_SIGNATURE + 1:
+		sig_name = String(HUD.RadarLayer.TIER_NAMES[HUD.RadarLayer.TIER_SIGNATURE + 1])
+	var tier_named: bool = sig_name == "ODDITY" \
+		and HUD.RadarLayer.TIER_NAMES.size() == HUD.RadarLayer.TIER_SIGNATURE + 2
+	print("[sig] THE RADAR KNOWS WHAT IT IS tier %d named '%s', %d names for %d tiers -> %s" % [
+		HUD.RadarLayer.TIER_SIGNATURE, sig_name,
+		HUD.RadarLayer.TIER_NAMES.size(), HUD.RadarLayer.TIER_SIGNATURE + 2,
 		"PASS" if tier_named else "FAIL"])
 
 	# 7. IT JOINS NOTHING ELSE. The class comment claims a signature is not
@@ -20480,7 +20526,13 @@ func _run_beacon_test() -> void:
 	var below_beacon: Array = []
 	for t in range(hud._radar.TIER_BEACON + 1, hud._radar.TIER_NAMES.size() - 1):
 		below_beacon.append(String(hud._radar.TIER_NAMES[t + 1]))
-	var tier_last: bool = below_beacon == ["STORM"]
+	# ODDITY JOINED, AND THE ARGUMENT IS THE POINT. This clause exists to make
+	# somebody justify every tier appended below the beacon rather than let one
+	# arrive quietly. §76's signature sites qualify on the same grounds STORM
+	# does and then some: a site does not move, does not shoot, and will be in
+	# exactly the same place next pass, so it is the cheapest thing on a full
+	# board to shed. The beacon still outranks both, which is the property.
+	var tier_last: bool = below_beacon == ["STORM", "ODDITY"]
 	print("[beacon] THE BOARD CARRIES IT, AND SHEDS IT FIRST full board %d markers with the beacon shed=%s; thinned to %d the beacon stands=%s; the only tier shed before it is %s -> %s" % [
 		full_count, str(not beacon_on_full), thin_count, str(beacon_on_thin),
 		str(below_beacon),
@@ -20659,6 +20711,7 @@ func _run_mine_test() -> void:
 	# Landmark KINDS are expected to differ -- that is the weights working -- so
 	# they are counted like archetypes rather than compared like placements.
 	var mark_diffs := 0
+	var storage_diffs := 0
 	var stream_bad := ""
 	for cz_p in range(4, 14):
 		for cx_p in range(4, 14):
@@ -20670,12 +20723,22 @@ func _run_mine_test() -> void:
 				stream_same = false
 				stream_bad = "station presence @(%d,%d)" % [cx_p, cz_p]
 			elif not sa.is_empty():
-				if (sa["pos"] as Vector3) != (sb["pos"] as Vector3) \
-						or bool(sa["storage"]) != bool(sb["storage"]):
+				if (sa["pos"] as Vector3) != (sb["pos"] as Vector3):
 					stream_same = false
-					stream_bad = "station pos/storage @(%d,%d)" % [cx_p, cz_p]
+					if stream_bad == "":
+						stream_bad = "station pos @(%d,%d)" % [cx_p, cz_p]
 				if String(sa["archetype"]) != String(sb["archetype"]):
 					arch_diffs += 1
+				# STORAGE MOVED SIDES, and it had to. It was compared as a
+				# PLACEMENT, which was right while nothing could scale it -- but
+				# deep_storage is one of the three draw-safe density gates now and
+				# pyx02 authors it at 1.3-1.4x. Same draw, moved bar: any station
+				# whose randf lands between the two thresholds legitimately flips.
+				# It is a SELECTION, like the archetype above it, so it is counted
+				# rather than forbidden. The POSITION stays strict, because a
+				# moved draw is what would shear that.
+				if bool(sa["storage"]) != bool(sb["storage"]):
+					storage_diffs += 1
 			if str(a["rocks"]) != str(b["rocks"]) \
 					or str(a["hulk"]) != str(b["hulk"]) \
 					or str(a["pack"]) != str(b["pack"]):
@@ -20709,9 +20772,9 @@ func _run_mine_test() -> void:
 					mark_diffs += 1
 	real_probe.free()
 	bare_probe.free()
-	print("[mine] THE DRAW COUNT DID NOT MOVE 100 pyx02 cells weighted vs stripped: shared stream + placements identical=%s%s, archetypes differ on %d, landmark kinds on %d (0 = the weights are dead code) -> %s" % [
+	print("[mine] THE DRAW COUNT DID NOT MOVE 100 pyx02 cells weighted vs stripped: shared stream + placements identical=%s%s, archetypes differ on %d, landmark kinds on %d, bonded bays on %d (0 archetypes = dead code) -> %s" % [
 		str(stream_same), "" if stream_bad == "" else " (" + stream_bad + ")",
-		arch_diffs, mark_diffs,
+		arch_diffs, mark_diffs, storage_diffs,
 		"PASS" if stream_same and arch_diffs > 0 else "FAIL"])
 
 	# --- 6c. v21: the density gates, and that they are alive ------------------

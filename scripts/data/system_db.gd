@@ -729,6 +729,27 @@ static func deep_wash(id: String) -> Dictionary:
 	return deep_of(id).get("wash", {})
 
 
+static func density_mult_in(deep: Dictionary, kind: String, band: int) -> float:
+	# TAKES THE RESOLVED BLOCK, NOT AN ID, and that distinction is the whole
+	# reason the harness can strip a def. DeepSpace.configure caches
+	# `_deep = def.get("deep", {})` precisely so a probe configured with a
+	# stripped def generates the stripped world -- station_weights and
+	# landmark_weights have always read that cache. The first draft of this
+	# function took an id and read the static SYSTEMS table instead, so a
+	# "stripped" probe silently kept the authored multipliers, both probes were
+	# the same generator, and DENSITY IS ALIVE compared a number with itself.
+	var by_kind: Dictionary = deep.get("density", {})
+	var rows: Dictionary = by_kind.get(kind, {})
+	return clampf(float(rows.get(band, 1.0)), 0.0, 4.0)
+
+
+static func signature_in(deep: Dictionary) -> Dictionary:
+	# Same contract, same reason: plan_cell must read the def it was configured
+	# with, or a def-strip cannot reach the signature and every assertion built
+	# on stripping one is comparing a thing to itself.
+	return deep.get("signature", {})
+
+
 static func density_mult(id: String, kind: String, band: int) -> float:
 	# ONLY THREE KINDS ARE SAFE TO SCALE, and the list is not a preference. A
 	# chance multiplier spends the same draw only where every draw in the block

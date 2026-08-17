@@ -65,7 +65,13 @@ func _build() -> void:
 			_build_relay(tint)
 		"slag":
 			_build_slag(tint)
+		"sounding":
+			_build_sounding(tint)
 		_:
+			# Named rather than silently defaulted. An unknown kind used to fall
+			# through to a sounding line, so a typo in a system def shipped a
+			# working object of the wrong sort with nothing to notice it.
+			push_warning("Pyxis: unknown signature kind '%s'" % kind)
 			_build_sounding(tint)
 
 
@@ -130,7 +136,9 @@ func _build_slag(tint: Color) -> void:
 		lump.position = Vector3(cos(ang), 0.0, sin(ang)) * (1.6 + 0.5 * float(i))
 		add_child(lump)
 		if i == 0:
-			_lamp = lump.material_override
+			# Cast, like every other material read in this project: material_override
+			# is typed Material and _lamp is the narrower StandardMaterial3D.
+			_lamp = lump.material_override as StandardMaterial3D
 
 
 func _build_sounding(tint: Color) -> void:
@@ -276,6 +284,14 @@ func _nearest_station() -> Vector3:
 	for n in get_tree().get_nodes_in_group("dockable"):
 		var p := n as Node3D
 		if p == null:
+			continue
+		# DEEP STATIONS ONLY. Every charted-system port is in "dockable" too, and
+		# a sounding line at band 3 sits closer to the origin cluster than to
+		# anything out here -- so without this filter most of them pointed the
+		# player HOME, which the HUD's always-on TIER_HOME compass has done for
+		# free since the expanse shipped. A bearing you already have is not a
+		# reward. Deep stations are the ones DeepSpace stamped with a bay key.
+		if String(p.get("bay_key")) == "":
 			continue
 		var d := global_position.distance_to(p.global_position)
 		if d < closest:

@@ -307,7 +307,15 @@ static func broadcast_for(band: int, commissioned := false, system_id := "") -> 
 	# overlay below still applies to the shipped rows, because an authored line
 	# is already this system speaking in its own voice and does not need the
 	# authority's second register on top of it.
-	if system_id != "":
+	# THE AUTHORITY'S ACKNOWLEDGEMENT OUTRANKS LOCAL COLOUR. A per-system line
+	# replaces the shipped one -- except when the player is COMMISSIONED and the
+	# shipped row has something different to say to them. §28's whole payoff is
+	# the GSA changing how it addresses you out here, and pyx01 authors three of
+	# its six bands; silently overriding those would have deleted the
+	# acknowledgement from half the starter system for anyone who earned it.
+	var commissioned_reply: bool = commissioned \
+		and entry.has("body_commissioned")
+	if system_id != "" and not commissioned_reply:
 		var own := SystemDB.broadcast_override(system_id, band)
 		if not own.is_empty():
 			return {"from": String(own.get("from", "")), "body": String(own.get("body", ""))}
@@ -869,7 +877,8 @@ func _mult(kind: String, band: int) -> float:
 	if not SAFE_DENSITY_KINDS.has(kind):
 		push_warning("Pyxis: '%s' is not a draw-safe density kind" % kind)
 		return 1.0
-	return SystemDB.density_mult(_id, kind, band)
+	# THE CACHED BLOCK, not the id: see SystemDB.density_mult_in.
+	return SystemDB.density_mult_in(_deep, kind, band)
 
 
 const SAFE_DENSITY_KINDS := ["convoy", "grave", "deep_storage"]
@@ -1170,7 +1179,7 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 	# The key is set unconditionally, empty or not, for the reason the band-0
 	# early return states: built_plan indexes plan keys with no .get.
 	out["signature"] = {}
-	var sig := SystemDB.signature_of(_id)
+	var sig := SystemDB.signature_in(_deep)
 	var srng := RandomNumberGenerator.new()
 	srng.seed = hash("%s|%d|%d|signature" % [_id, cx, cz])
 	var s_roll := srng.randf()
@@ -1179,11 +1188,29 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 	var s_rot := srng.randf_range(0.0, 360.0)
 	if not sig.is_empty() and (sig.get("bands", []) as Array).has(band) \
 			and s_roll < float(sig.get("chance", 0.0)):
-		var sp2 := base + Vector3(cos(s_ang), 0.0, sin(s_ang)) * s_rad
+		# FROM THE CELL CENTRE, NOT `base`. `base` is the cell's MIN CORNER, so a
+	# polar offset from it put three sites in four inside a NEIGHBOURING cell
+	# while parented to this one's node -- streaming in and out with the wrong
+	# cell, and defeating the cross-boundary clearance argument at the top of
+	# this file, which holds because every placement INSETS from the corner and
+	# a cell can only test its own contents. landmark_at recentres explicitly
+	# for exactly this reason; so does this now.
+	#
+	# The arithmetic, so the next append does not have to re-derive it: the ring
+	# is 0.18-0.42 of CELL, so a site sits at most 26.9u from the centre, i.e.
+	# at least 5.1u inside its own cell, and a neighbour's station (inset 22u)
+	# is therefore at least 27.1u away -- clear of every station radius below.
+	var sp2 := cell_centre(cx, cz) + Vector3(cos(s_ang), 0.0, sin(s_ang)) * s_rad
 		# The same two clearances every other placed thing answers to. A
 		# signature is content, not an exemption.
+		# STATION_SAFE_RADIUS, not STATION_CLEARANCE, and the slag tide is why.
+		# CLEARANCE (14) keeps a static prop out of a dock ring; a slag field
+		# REACHES 22u and ticks damage inside it, so a site at 14u would cover
+		# the ring and burn a ship while it docked. That is the situation
+		# STATION_SAFE_RADIUS (34) was derived for -- its own comment does the
+		# same arithmetic for guard posts -- so a signature answers to it too.
 		if depth_at(sp2) >= CONTENT_MIN_DEPTH \
-				and sp2.distance_to(keep_out) >= STATION_CLEARANCE:
+				and sp2.distance_to(keep_out) >= STATION_SAFE_RADIUS:
 			out["signature"] = {
 				"pos": sp2,
 				"kind": String(sig.get("kind", "")),
