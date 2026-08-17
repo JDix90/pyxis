@@ -20,6 +20,43 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="${PYXIS_HARNESS_OUT:-$(mktemp -d)}"
 mkdir -p "$OUT"
 
+# THE BINARY, BEFORE ANYTHING ELSE. Every run below is `env ... "$GODOT" ...`,
+# and a missing binary makes each one fail instantly with no PASS lines and no
+# FAIL lines -- so the sweep would print "65 runs | 0 PASS | 0 FAIL" and exit 0,
+# which is the worst possible answer: a green-looking summary that measured
+# nothing at all.
+if ! [ -x "$GODOT" ] && ! command -v "$GODOT" >/dev/null 2>&1; then
+	echo "GODOT not found: $GODOT" >&2
+	echo "Set it explicitly, e.g." >&2
+	echo "  GODOT=/Applications/Godot.app/Contents/MacOS/Godot tools/run_harness.sh" >&2
+	exit 2
+fi
+
+# AND THAT IT PARSES, ONCE, BEFORE SPENDING AN HOUR FINDING OUT. A main.gd that
+# fails to parse does not error: the harness never dispatches, the game boots
+# normally and runs forever, so every one of the 65 runs below burns the full
+# TIMEOUT_S before being killed. That is most of a day of wall clock to discover
+# a missing --import pass, and it has happened -- README's own note about a run
+# that sat for four hours is this, found by hand.
+#
+# Cheap enough to be unconditional: ~0.6s against a sweep measured in tens of
+# minutes. It is also the only place the check cannot lie, because the binary
+# was proven to exist three lines up -- run by hand with `godot` unset, the
+# usual `... 2>&1 | grep -c 'Parse Error'` counts zero matches in
+# "command not found" and prints a perfectly convincing 0.
+PARSE_LOG="$OUT/parse_check.log"
+"$GODOT" --headless --path "$ROOT" --check-only --script "$ROOT/scripts/main.gd" \
+	>"$PARSE_LOG" 2>&1
+PARSE_ERRS=$(grep -cE 'Parse Error|Could not find type|Cannot infer the type' "$PARSE_LOG")
+if [ "$PARSE_ERRS" -gt 0 ]; then
+	echo "PARSE CHECK FAILED: $PARSE_ERRS error line(s) before the sweep started." >&2
+	grep -E 'Parse Error|Could not find type|Cannot infer the type' "$PARSE_LOG" \
+		| head -5 | sed 's/^/    /' >&2
+	echo "If this names an unfamiliar type, a new class_name needs the import pass:" >&2
+	echo "  \"$GODOT\" --headless --path . --import" >&2
+	exit 2
+fi
+
 # Every harness that prints PASS/FAIL. Excluded on purpose: PYXIS_WORLDTOUR,
 # DEEPSHOTS, NARROWSHOTS, PHASE2SHOTS, SHOTS, DEMO and ECONDEMO are capture and
 # demo modes -- they assert nothing, and WORLDTOUR never calls quit() unless

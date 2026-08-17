@@ -4,12 +4,15 @@
 them is adopted, record it in `docs/STRATEGY.md` §64 in the same commit, per the
 house rule.
 
-> **Commit 0 is swept and green: 643 PASS / 0 FAIL / 0 script errors across 64
-> runs, save intact, Godot 4.6.stable headless, 2026-08-17.** Commits 1–6 are
-> written in an environment with **no Godot binary**, and `tools/run_harness.sh`
-> is macOS-bound in three places besides (the `GODOT` default, `md5 -q`, and the
-> `~/Library/…` save path) — so each of them must be swept on the owner's machine
-> before its numbers are believed, and the `--check-only` parse gate run first.
+> **Commits 0, 1 and 2 are swept and green: 657 PASS / 0 FAIL / 0 script errors
+> across 65 runs, save intact, Godot 4.6.stable headless, 2026-08-17.** The delta
+> from §73's 643/64 reconciles exactly (§74 +4, §75 +10 in one new run), which is
+> the check worth doing every time: a total that moves by any other amount means
+> an assertion was lost. Commits 3-6 are written in an environment with **no
+> Godot binary**, so each must be swept on the owner's machine before its numbers
+> are believed. `tools/run_harness.sh` now proves the binary exists and
+> parse-checks before it starts, after a run was very nearly launched against a
+> project whose class registry had never been rebuilt (§75's postscript).
 
 This horizon comes from a week of playtesting rather than from a design gap: the
 loop works, three-hour sessions happen, and five specific things got in the way.
