@@ -40,8 +40,12 @@ var kind := ""
 var band := 1
 var system_id := ""
 
+# _spoken gates the per-approach message; _delivered records that this site
+# actually gave its answer, which is the thing that must never repeat.
 var _spoken := false
+var _delivered := false
 var _t := 0.0
+var _damage_acc := 0.0
 var _lamp: StandardMaterial3D
 
 
@@ -106,6 +110,13 @@ func _build_slag(tint: Color) -> void:
 		var lump := MeshInstance3D.new()
 		var lm := SphereMesh.new()
 		lm.radius = 0.9 + 0.35 * float(4 - i)
+		# SQUASHED ON PURPOSE. SphereMesh takes radius and height independently,
+		# and a height under 2*radius gives an oblate blob rather than a ball —
+		# which is what poured spoil looks like once it has settled. The relay's
+		# lamp below uses height == 2*radius for a true sphere, and the sounding
+		# bob uses more than that for a prolate plumb weight; all three are
+		# choices rather than the default, so none of them is an accident to
+		# tidy up later.
 		lm.height = lm.radius * 1.7
 		lm.radial_segments = 9
 		lm.rings = 6
@@ -184,6 +195,14 @@ func _process(delta: float) -> void:
 		_tick_slag(player, d, delta)
 	elif d <= HAIL_RANGE:
 		_speak(player)
+	elif d > HAIL_RANGE * 1.6 and not _delivered:
+		# RE-ARMED ON LEAVING, and only when nothing was actually delivered. A
+		# sounding line asked before the station it would have pointed at has
+		# streamed in answers "no mark" truthfully and would then have been mute
+		# forever — the reward lost to a streaming race the player never saw. A
+		# site that HAS given its answer stays quiet for good, which is what
+		# _delivered separates.
+		_spoken = false
 
 
 func _tick_slag(player: Node, d: float, delta: float) -> void:
@@ -192,11 +211,24 @@ func _tick_slag(player: Node, d: float, delta: float) -> void:
 	# thing "can cost you the run; it cannot trap you in one" — this cannot even
 	# do the first, at 1.4/s against any hull that got this far.
 	if d > SLAG_RANGE:
+		# Left the field. The warning re-arms, because arriving at a second slag
+		# tide an hour later should say so again.
+		_spoken = false
 		return
-	if player.has_method("take_hit"):
-		# The same door storms use (storm.gd ticks player.take_hit), so hull
-		# mitigation, the damage screen and the death path all behave identically.
-		player.take_hit(SLAG_DPS * delta)
+	# ON AN ACCUMULATOR, WHICH IS NOT AN OPTIMISATION. take_hit is not a damage
+	# function, it is a HIT: every call flashes the hull, plays "hit", fires a
+	# haptic and shakes the camera. Called per frame that is sixty flashes, sixty
+	# sounds and sixty haptic pulses a second — on a phone, with the buzzer going
+	# continuously. Storm.gd solved this before us and its constant is the one
+	# borrowed here rather than a second number that would drift from it.
+	_damage_acc += delta
+	while _damage_acc >= Storm.TICK:
+		_damage_acc -= Storm.TICK
+		if player.has_method("take_hit"):
+			# No `source`, deliberately, and for Storm's stated reason: spoil is
+			# not shooting at anybody, so it must never become the ship's threat
+			# and never something the auto-targeter fires back at.
+			player.take_hit(SLAG_DPS * Storm.TICK)
 	if not _spoken:
 		_spoken = true
 		_toast("SPOIL FIELD — STILL HOT", Palette.THREAT)
@@ -207,6 +239,7 @@ func _speak(player: Node) -> void:
 		return
 	_spoken = true
 	if kind == "relay":
+		_delivered = true
 		# One degraded transmission, once, ever. The session dict DeepSpace uses
 		# for post hails is not needed here: a site is despawned with its cell
 		# and rebuilt from the same seed, so `_spoken` on the node is exactly
@@ -218,8 +251,13 @@ func _speak(player: Node) -> void:
 	# to a thing that does not shoot at you.
 	var best := _nearest_station()
 	if best == Vector3.ZERO:
+		# Truthful, and NOT counted as delivered: §42's rule that the dossier
+		# holds claims rather than the answer cuts both ways, and "there is
+		# nothing in reach" is a claim this site may have to revise once the
+		# cells around it finish streaming.
 		_toast("SOUNDING: NO MARK WITHIN REACH", Palette.band_color(band))
 		return
+	_delivered = true
 	var dir := best - global_position
 	# THROUGH THE GLASS. §60: compass_deg is the only converter between the
 	# world's angles and the ones a player reads, and a bearing quoted any other

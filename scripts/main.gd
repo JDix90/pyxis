@@ -13191,6 +13191,27 @@ func _run_sig_test() -> void:
 		String(HUD.RadarLayer.TIER_NAMES[HUD.RadarLayer.TIER_SIGNATURE]) if tier_named else "",
 		"PASS" if tier_named else "FAIL"])
 
+	# 7. IT JOINS NOTHING ELSE. The class comment claims a signature is not
+	#    crackable and not mineable -- that it stays off CameraRig's four-group
+	#    pick ladder so it can never win a tap the player meant for the hulk or
+	#    the seam beside it. That was a comment and nothing more until here.
+	#    Built rather than planned, because group membership happens in _ready
+	#    and a plan cannot be asked about it.
+	var probe_site := SignatureSite.new()
+	probe_site.kind = "relay"
+	probe_site.band = 1
+	add_child(probe_site)
+	var joined := ""
+	for g_v in ["apex", "dockable", "crackable", "hostiles", "mineable", "beacon",
+			"hyper", "storm", "player"]:
+		if probe_site.is_in_group(String(g_v)):
+			joined += "%s " % String(g_v)
+	var own_group: bool = probe_site.is_in_group("signature")
+	probe_site.free()
+	print("[sig] IT JOINS NOTHING ELSE in its own group=%s, leaked into: %s -> %s" % [
+		str(own_group), "none" if joined == "" else joined,
+		"PASS" if own_group and joined == "" else "FAIL"])
+
 	for pv in probes.values():
 		(pv as DeepSpace).free()
 	get_tree().quit()
@@ -20162,7 +20183,7 @@ func _run_colony_test() -> void:
 	await get_tree().physics_frame
 	var built := get_tree().get_nodes_in_group("hyper").size()
 	var leak := ""
-	for g in ["apex", "dockable", "crackable", "hostiles", "mineable", "beacon"]:
+	for g in ["apex", "dockable", "crackable", "hostiles", "mineable", "beacon", "signature"]:
 		for n_v in get_tree().get_nodes_in_group(g):
 			if n_v is HyperStructure:
 				leak += "%s " % g
@@ -22526,7 +22547,7 @@ func _run_storm_test() -> void:
 	player.invulnerable = true
 	player.shield = player.shield_max
 	var leaked := ""
-	for g in ["apex", "dockable", "crackable", "hostiles", "mineable", "beacon", "hyper"]:
+	for g in ["apex", "dockable", "crackable", "hostiles", "mineable", "beacon", "hyper", "signature"]:
 		if storm.is_in_group(g):
 			leaked += "%s " % g
 	var pays_ok: bool = _count_loot_cubes() == loot_before \
