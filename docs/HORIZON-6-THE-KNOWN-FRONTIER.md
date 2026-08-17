@@ -1,14 +1,15 @@
 # Horizon 6 — The Known Frontier
 
-**Status: commit 0 BUILT (§73). Commits 1–6 specced, not built.** When any of
+**Status: commits 0 and 1 BUILT (§73, §74). Commits 2–6 specced, not built.** When any of
 them is adopted, record it in `docs/STRATEGY.md` §64 in the same commit, per the
 house rule.
 
-> **Nothing in this horizon has been swept.** It was written in an environment
-> with no Godot binary, and `tools/run_harness.sh` is macOS-bound in three places
-> besides (the `GODOT` default, `md5 -q`, and the `~/Library/…` save path). See
-> the README's unmeasured-baseline note before trusting any number here, and run
-> the `--check-only` parse gate before the first sweep.
+> **Commit 0 is swept and green: 643 PASS / 0 FAIL / 0 script errors across 64
+> runs, save intact, Godot 4.6.stable headless, 2026-08-17.** Commits 1–6 are
+> written in an environment with **no Godot binary**, and `tools/run_harness.sh`
+> is macOS-bound in three places besides (the `GODOT` default, `md5 -q`, and the
+> `~/Library/…` save path) — so each of them must be swept on the owner's machine
+> before its numbers are believed, and the `--check-only` parse gate run first.
 
 This horizon comes from a week of playtesting rather than from a design gap: the
 loop works, three-hour sessions happen, and five specific things got in the way.
@@ -121,7 +122,7 @@ Two departures from the obvious order, both load-bearing:
 | # | commit | save | status |
 |---|---|---|---|
 | 0 | preconditions | none | **BUILT** — §73 |
-| 1 | hotkeys | none | not built |
+| 1 | hotkeys | none | **BUILT** — §74 |
 | 2 | pilot profiles + prefs split | none | not built |
 | 3 | per-Pyx identity + signature content | none | not built |
 | 4 | chart legibility | none | not built |
@@ -132,7 +133,8 @@ Two departures from the obvious order, both load-bearing:
 
 ## 4. Commit 1 — hotkeys
 
-`chart` (C), `beacon` (B), `pause` (P). Ids are chosen to read as UI copy,
+`chart` (C), `drop_beacon` (B), `pause` (P) — **BUILT, §74**. Ids are chosen to
+read as UI copy,
 because `pause_menu.gd` upper-cases the action id verbatim into the settings row.
 
 Rejected: `refit` (a dock-context surface), `recall` (a one-key teleport with no

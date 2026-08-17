@@ -265,6 +265,36 @@ func _unhandled_input(event: InputEvent) -> void:
 			var hold := get_tree().get_first_node_in_group("hold_screen")
 			if hold != null and hold.has_method("toggle"):
 				hold.toggle()
+	elif event.is_action_pressed("chart"):
+		# THE VERB, NOT THE PANEL. The chart's lock lives on the BUTTON --
+		# HUD.set_panels_locked flips chart_button.enabled and nothing else --
+		# so a key that called chart_panel.open() would walk straight past it
+		# and reopen the chart mid-apex fight, which disengage_apex's own
+		# comment relies on being impossible ("the player had to stand there").
+		# Main.toggle_chart carries the rule; this is only a door onto it.
+		var main_chart := get_tree().get_first_node_in_group("main")
+		if main_chart != null and main_chart.has_method("toggle_chart"):
+			main_chart.toggle_chart()
+	elif event.is_action_pressed("drop_beacon"):
+		# drop_beacon_here already refuses on the chart, refuses with an empty
+		# rack, and prints the right toast for each -- so the key hands it the
+		# decision rather than re-deriving it here. §59: the rule lives in the
+		# function, not at every door into it.
+		var main_beacon := get_tree().get_first_node_in_group("main")
+		if main_beacon != null and main_beacon.has_method("drop_beacon_here"):
+			main_beacon.drop_beacon_here()
+	elif event.is_action_pressed("pause"):
+		# OPENS ONLY, and that is not an omission. This node is
+		# PROCESS_MODE_INHERIT, so once the tree pauses it stops receiving
+		# input entirely and could not close anything if it tried; PauseMenu is
+		# ALWAYS and owns the close half. Escape is split down exactly this
+		# seam today, for the reason PauseMenu._unhandled_input states at the
+		# top: handling one key in both places closes a console and pauses at
+		# once. toggle_pause is the same wrapper the HUD button uses, and it
+		# holds the PLAYING/warping guard.
+		var main_pause := get_tree().get_first_node_in_group("main")
+		if main_pause != null and main_pause.has_method("toggle_pause"):
+			main_pause.toggle_pause()
 
 
 func _mouse_button(event: InputEventMouseButton) -> void:

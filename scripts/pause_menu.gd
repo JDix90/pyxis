@@ -182,6 +182,24 @@ func _unhandled_input(event: InputEvent) -> void:
 			_refresh()
 			get_viewport().set_input_as_handled()
 		return
+	# THE CLOSE HALF OF THE PAUSE KEY. CameraRig opens (it is INHERIT, so it is
+	# live only while the game runs); this closes (ALWAYS, so it is live only
+	# once the tree is paused). Same seam Escape is split down, and for the
+	# reason at the top of this function.
+	#
+	# It resumes from ANY page rather than backing out one step, which is the
+	# whole difference between it and Escape below: `cancel` means "back out of
+	# what I opened", `pause` means "unpause". A player on the settings page
+	# who presses the pause key is asking for the game, not for the root page.
+	#
+	# Inert while the manual is up, because the guard above returns first. That
+	# is deliberate and matches Escape: the manual owns its own back-out, and a
+	# key that resumed the game out from under an open manual would leave the
+	# player flying with a page in their face.
+	if event.is_action_pressed("pause"):
+		resume()
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("cancel"):
 		if _page != "root":
 			_page = "root"
@@ -459,20 +477,12 @@ func _build_controls() -> void:
 func _binding_row(action: String) -> Button:
 	var b := UIKit.button("", Palette.AMBER, 12)
 	b.custom_minimum_size = Vector2(0, 34)
-	b.text = "%s   %s" % [action.to_upper().replace("_", " "), _binding_name(action)]
+	b.text = "%s   %s" % [action.to_upper().replace("_", " "), GameState.binding_name(action)]
 	b.pressed.connect(func() -> void:
 		_capturing = action
 		b.text = "%s   PRESS A KEY" % action.to_upper().replace("_", " ")
 		b.add_theme_color_override("font_color", Palette.GOLD))
 	return b
-
-
-func _binding_name(action: String) -> String:
-	for ev in InputMap.action_get_events(action):
-		var k := ev as InputEventKey
-		if k != null:
-			return OS.get_keycode_string(DisplayServer.keyboard_get_keycode_from_physical(k.physical_keycode))
-	return "—"
 
 
 func _toggle(label: String, key: String) -> Button:

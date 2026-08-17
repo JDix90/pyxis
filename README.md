@@ -121,13 +121,15 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **UNMEASURED — re-measure before trusting a number here.**
-The last recorded figure was 616 PASS / 0 FAIL / 0 script errors, but it was
-recorded beside a run count that was wrong in two places at once, and it predates
-both the band-0 key fix and the `SAVETEST=future` leg (STRATEGY §73), so it
-cannot be incremented — it has to be taken again. The sweep is **64 runs** and
-the save format is **v20**; the PASS total is whatever the next green sweep on
-Godot 4.6.stable headless says it is, and it goes here in that commit. The frontier's stage 1
+Current baseline: **643 PASS / 0 FAIL / 0 script errors** across **64 runs**,
+save intact, save format **v20** — measured on Godot 4.6.stable, headless
+(2026-08-17), **at STRATEGY §73**. §74 adds assertion lines to existing tags and
+has not been swept, so this number is a floor rather than the current total; it
+is left un-incremented on purpose, because a derived figure written where a
+measured one belongs is the whole mistake §73 records. Taken fresh rather than incremented: the previous figure of 616 sat
+beside a run count that was wrong in two places at once, so it could not be
+adjusted, only re-measured (STRATEGY §73). The gap between 616 and 643 is that
+staleness, not one commit's worth of new assertions. The frontier's stage 1
 (STRATEGY §68) added bands 5 and 6 past THE QUIET and a `FRONTIERTEST` tag of 14
 assertions, and needed no save bump: deep space persists nothing, and new module
 and commodity ids ride the existing generic `owned`/`fit`/cargo paths. Its sweep

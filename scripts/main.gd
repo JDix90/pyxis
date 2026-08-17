@@ -1196,6 +1196,35 @@ func tutorial_active() -> bool:
 	return tutorial != null and tutorial.is_active()
 
 
+# --- console doors ----------------------------------------------------------
+
+func toggle_chart() -> void:
+	# The chart hotkey's wrapper, and the reason the key does not call
+	# chart_panel.open() itself. The panel lock is enforced on the BUTTON --
+	# HUD.set_panels_locked flips chart_button.enabled -- so a second door that
+	# skipped it would reopen the chart while docked or mid-apex fight, and
+	# disengage_apex's comment says out loud that the fight is survivable
+	# partly BECAUSE the chart is shut ("had to stand there").
+	#
+	# The lock is asked of the HUD rather than re-derived from docked_port and
+	# boss_active here. Those two are what SET it today; a third place spelling
+	# out the same condition is a copy that is free to drift the next time a
+	# caller is added, and set_panels_locked already has three.
+	if chart_panel == null:
+		return
+	if chart_panel.is_open:
+		chart_panel.close_panel()
+		return
+	# The same two toggle_pause refuses on, for the same reasons: there is
+	# nothing to chart from the title, and the warp sequence is a chain of
+	# awaited timers a panel would open on top of.
+	if state != State.PLAYING or warping:
+		return
+	if hud != null and hud.panels_locked:
+		return
+	chart_panel.open()
+
+
 # --- pause ------------------------------------------------------------------
 
 func toggle_pause() -> void:
@@ -12155,23 +12184,108 @@ func _run_input_test() -> void:
 	print("[input] THE HOLD HAS A SECOND DOOR i opens=%s, i closes again=%s, refused behind the title=%s -> %s" % [
 		str(opened), str(closed), str(attract_ignored),
 		"PASS" if opened and closed and attract_ignored else "FAIL"])
+
+	# THE CHART KEY OBEYS THE LOCK. The chart's lock has always lived on the
+	# BUTTON -- set_panels_locked flips chart_button.enabled and nothing else --
+	# which was sufficient while a Button was the only door. A hotkey is a
+	# second door, and one that called chart_panel.open() would reopen the chart
+	# while docked or mid-apex fight; disengage_apex's comment says the fight is
+	# survivable partly BECAUSE the chart is shut.
+	#
+	# Asserted in BOTH directions, because "the key never opens the chart" would
+	# satisfy the refusal clause perfectly and ship a dead key.
+	# set_panels_locked is called directly here rather than through a staged
+	# boss fight: it is the same one call docking and _set_boss_active both make,
+	# and it is the thing the key has to obey.
+	chart_panel.close_panel()
+	await get_tree().process_frame
+	await _press_key(KEY_C)
+	var chart_opened := chart_panel.is_open
+	await _press_key(KEY_C)
+	var chart_closed := not chart_panel.is_open
+	hud.set_panels_locked(true)
+	await _press_key(KEY_C)
+	var chart_locked_out := not chart_panel.is_open
+	hud.set_panels_locked(false)
+	await _press_key(KEY_C)
+	var chart_clear_again := chart_panel.is_open
+	chart_panel.close_panel()
+	await get_tree().process_frame
+	print("[input] THE CHART KEY OBEYS THE LOCK opens=%s, closes=%s, refused while panels locked=%s, opens again once clear=%s -> %s" % [
+		str(chart_opened), str(chart_closed), str(chart_locked_out),
+		str(chart_clear_again),
+		"PASS" if chart_opened and chart_closed and chart_locked_out
+			and chart_clear_again else "FAIL"])
+
+	# THE BEACON KEY CARRIES THE FUNCTION'S REFUSAL. drop_beacon_here already
+	# refuses inside the charted volume -- §66's rule, that the chart already
+	# remembers every place in it -- so the key must reach that refusal rather
+	# than carry a copy of it. Standing at the spawn point, depth is 0 and the
+	# rack must not move.
+	# BOTH DIRECTIONS, and the refusal alone was not one. The first draft of this
+	# leg pressed B at depth 0 and asserted the rack had not moved -- which a
+	# missing action, a wrong keycode, a deleted dispatch branch and a typo'd
+	# has_method all satisfy perfectly. It measured that a keypress does nothing,
+	# which was never in doubt. So the key is made to WORK first, out in the
+	# deep, and only then made to refuse.
+	player.global_position = Vector3(SystemDB.bounds_of(system_id) + 240.0, 0.0, 0.0)
+	await get_tree().process_frame
+	var stock_deep := GameState.beacon_stock_left()
+	var depth_deep := deep_depth()
+	await _press_key(KEY_B)
+	var stock_after_drop := GameState.beacon_stock_left()
+	var beacon_dropped: bool = stock_after_drop == stock_deep - 1
+	var beacon_node: bool = not get_tree().get_nodes_in_group("beacon").is_empty()
+
+	player.global_position = PlayerShip.SPAWN_POINT
+	await get_tree().process_frame
+	var stock_before := GameState.beacon_stock_left()
+	var depth_here := deep_depth()
+	await _press_key(KEY_B)
+	var beacon_refused: bool = GameState.beacon_stock_left() == stock_before
+	print("[input] THE BEACON KEY WORKS AND THEN REFUSES at depth %.0f the rack fell %d->%d and a beacon stands=%s; at depth %.1f it held at %d -> %s" % [
+		depth_deep, stock_deep, stock_after_drop, str(beacon_node),
+		depth_here, stock_before,
+		"PASS" if beacon_dropped and beacon_node and beacon_refused
+			and depth_deep > 0.0 and depth_here <= 0.0 else "FAIL"])
+
+	# PAUSE IS ONE KEY, AND IT TAKES TWO NODES TO BE ONE. CameraRig is
+	# PROCESS_MODE_INHERIT, so it stops receiving input the instant the tree
+	# pauses and can only ever open; PauseMenu is ALWAYS but drops every event
+	# behind `if not is_open`, so it can only ever close. Escape is split down
+	# the same seam. Either half alone is a key that pauses and cannot unpause,
+	# which is why both directions are measured here.
+	await _press_key(KEY_P)
+	var pause_on: bool = get_tree().paused and pause_menu.is_open
+	await _press_key(KEY_P)
+	var pause_off: bool = not get_tree().paused and not pause_menu.is_open
+	print("[input] PAUSE IS ONE KEY p pauses=%s, p unpauses from the same key=%s -> %s" % [
+		str(pause_on), str(pause_off), "PASS" if pause_on and pause_off else "FAIL"])
 	get_tree().quit()
 
 
-func _press_hold_key() -> bool:
-	# One press-and-release of the physical I key, through Input itself, and
-	# the resulting state of the manifest. Two frames: Godot buffers input by
-	# one, and the sheet's visibility settles on the next.
+func _press_key(code: int) -> void:
+	# One press-and-release on a real physical keycode, pushed through Input
+	# itself so the whole dispatcher runs -- project.godot's action, the binding,
+	# CameraRig's ladder and the wrapper at the end of it. Two frames: Godot
+	# buffers input by one, and panel visibility settles on the next.
+	#
+	# Works while the tree is PAUSED, which the pause key needs: process_frame
+	# still emits, and PROCESS_MODE_ALWAYS nodes still receive.
 	var down := InputEventKey.new()
-	down.physical_keycode = KEY_I
+	down.physical_keycode = code
 	down.pressed = true
 	Input.parse_input_event(down)
 	await get_tree().process_frame
 	var up := InputEventKey.new()
-	up.physical_keycode = KEY_I
+	up.physical_keycode = code
 	up.pressed = false
 	Input.parse_input_event(up)
 	await get_tree().process_frame
+
+
+func _press_hold_key() -> bool:
+	await _press_key(KEY_I)
 	return hold_screen.is_open
 
 
@@ -14879,8 +14993,36 @@ func _run_access_test() -> void:
 	# Cancel is not rebindable, and that is deliberate: it is the way out of
 	# every console and of the settings page that would fix a bad binding.
 	var cancel_refused: bool = not GameState.rebind("cancel", KEY_K)
-	print("[access] CANCEL IS RESERVED rebind refused=%s -> %s" % [
-		str(cancel_refused), "PASS" if cancel_refused else "FAIL"])
+	# AND THE OTHER DIRECTION, which is the half that was missing. Keeping
+	# `cancel` out of REBINDABLE stops it being moved off Escape; nothing stopped
+	# an action being moved ONTO Escape, and the conflict loop could not see the
+	# collision because it walks REBINDABLE and `cancel` is not in it. The result
+	# was a dead action (CameraRig tests `cancel` first) or, once `pause` existed,
+	# an Escape that resumed from any page instead of backing out one step --
+	# the manual's numbered ladder falsified from the settings screen.
+	GameState.reset_bindings()
+	var esc_refused: bool = not GameState.rebind("pause", KEY_ESCAPE)
+	var esc_intact: bool = _keys_for("cancel").has(KEY_ESCAPE)
+	print("[access] ESCAPE IS RESERVED BOTH WAYS cancel unmovable=%s, pause refused onto escape=%s, escape still cancel's=%s -> %s" % [
+		str(cancel_refused), str(esc_refused), str(esc_intact),
+		"PASS" if cancel_refused and esc_refused and esc_intact else "FAIL"])
+
+	# A DEFAULT IS A BINDING TOO. The conflict loop used to read the saved
+	# overrides dict, which holds only actions the player has already moved -- so
+	# on a fresh install every factory binding was invisible to it, and binding
+	# move_up to C returned true while leaving `chart` on C as well. Two live
+	# actions on one key, from the function written to prevent exactly that.
+	# NO SHARED KEY above cannot see it: its first rebind puts move_up INTO the
+	# dict, so its second one finds it by the old path.
+	GameState.reset_bindings()
+	var chart_default := _keys_for("chart")
+	var stole_default: bool = GameState.rebind("move_up", KEY_C)
+	var chart_after := _keys_for("chart")
+	var no_default_overlap: bool = not (_keys_for("move_up").has(KEY_C) and chart_after.has(KEY_C))
+	print("[access] A DEFAULT IS A BINDING TOO chart began %s, move_up->C returned %s, chart now %s, no overlap=%s -> %s" % [
+		str(chart_default), str(stole_default), str(chart_after), str(no_default_overlap),
+		"PASS" if no_default_overlap else "FAIL"])
+	GameState.reset_bindings()
 
 	GameState.reset_bindings()
 	var restored := _keys_for("move_up")

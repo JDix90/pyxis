@@ -223,10 +223,27 @@ func _build_flying() -> void:
 		_body.add_child(_row("TAP A CONTACT", "Engage it. Your mounts fire on the locked target by themselves."))
 		_body.add_child(_row("TAP OVERCHARGE", "Discharge your fitted core."))
 	else:
-		_body.add_child(_row("W A S D", "Hold to fly."))
-		_body.add_child(_row("CLICK / TAB", "Engage a contact. Your mounts fire on the locked target by themselves."))
-		_body.add_child(_row("SPACE", "Discharge your fitted core."))
-		_body.add_child(_row("I", "Open the manifest. The same sheet the HOLD readout opens, and it works in flight."))
+		# ASKED OF THE INPUT MAP, not typed. Every key on this page used to be a
+		# hand-written literal -- "W A S D", "SPACE", "I" -- which was false for
+		# any player who had used the rebinding page two taps away in settings:
+		# the manual went on saying I while the game answered to something else.
+		# GameState.binding_name is the same reader the settings rows use, so the
+		# page cannot disagree with the page that changed it.
+		_body.add_child(_row("%s %s %s %s" % [
+			GameState.binding_name("move_up"), GameState.binding_name("move_left"),
+			GameState.binding_name("move_down"), GameState.binding_name("move_right")],
+			"Hold to fly."))
+		_body.add_child(_row("CLICK / %s" % GameState.binding_name("cycle_target"),
+			"Engage a contact. Your mounts fire on the locked target by themselves."))
+		_body.add_child(_row(GameState.binding_name("ability"), "Discharge your fitted core."))
+		_body.add_child(_row(GameState.binding_name("toggle_hold"),
+			"Open the manifest. The same sheet the HOLD readout opens, and it works in flight."))
+		_body.add_child(_row(GameState.binding_name("chart"),
+			"Open the chart. Shut while docked and during an apex fight, exactly like the button."))
+		_body.add_child(_row(GameState.binding_name("drop_beacon"),
+			"Drop a beacon where you are standing. Deep space only, eight in stock, and holding on one takes it back."))
+		_body.add_child(_row(GameState.binding_name("pause"),
+			"Pause, and unpause again from any page of the pause menu. This page keeps its own back-out."))
 		# Desktop only, and the manual says so by only appearing here — the same
 		# device question the branch above is asked for. Touch has no gesture for
 		# this yet; a manual that described one would be describing the wrong verb.

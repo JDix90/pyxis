@@ -5994,7 +5994,7 @@ commits, none built yet:
 | # | what | save | status |
 |---|---|---|---|
 | 0 | preconditions: the band-0 key crash, the save-destroying downgrade path, the stale inventory | none | **BUILT** — §73 |
-| 1 | hotkeys: `chart` / `beacon` / `pause`, each behind a guarded wrapper | none | **not built** |
+| 1 | hotkeys: `chart` / `drop_beacon` / `pause`, each behind a guarded wrapper | none | **BUILT** — §74 |
 | 2 | pilot profiles: per-profile save paths, a registry, and device settings split into `prefs.json` | none | **not built** |
 | 3 | per-PYX deep identity + one signature content class per system | none | **not built** |
 | 4 | chart legibility: fit-to-content scale, ship marker, band rings, legend, pan/zoom | none | **not built** |
@@ -7379,3 +7379,174 @@ being careful, and each was falsified by a later change that had no reason to
 look at it. What actually holds is the assertion that derives rather than
 declares, and the discipline of putting the inventory edit in the same commit —
 which is what §64 already said, and what this section is the cost of not doing.
+
+---
+
+## 74. Three keys, and the two doors that were already open
+
+Horizon 6's second commit, and the smallest of the six: `chart` (C),
+`drop_beacon` (B), `pause` (P). Asked for as *"more hot keys / keyboard
+shortcuts so that the player is more easily able to access various actions or
+interface tools."*
+
+The keys themselves are four lines of dispatch. Everything below is what adding
+them found, which is the usual ratio.
+
+### The stance did not change, and that is what picked the list
+
+§30's line still holds: touch is the primary platform and a hotkey is an
+**additive desktop layer, never the advertised door**. So every one of these
+opens something that already has a touch door — the chart button, the hold
+console's DROP A BEACON row, the pause button — and none of them is a new verb.
+
+That rule is also what rejected three candidates. `refit` is a dock-context
+surface and a global key would need docked-state gating to buy what one tap
+already gives. `recall` is a one-keypress teleport with no confirm, and every
+other key on the list is undone by pressing it again. Target-cancel is Escape
+rung 3 already.
+
+The ids are the copy. `pause_menu` renders a settings row as
+`action.to_upper().replace("_", " ")` with no display-name table anywhere, so
+the id IS what the player reads — which is why the beacon action is
+`drop_beacon` ("DROP BEACON") and not `beacon` ("BEACON", which names a thing
+rather than a verb).
+
+### The chart's lock was on the button, not on the chart
+
+`set_panels_locked` flips `refit_button.enabled` and `chart_button.enabled`, and
+that was sufficient for as long as a Button was the only way in. It is called
+from three places — docking, undocking, and `_set_boss_active` — and
+`disengage_apex`'s own comment leans on the result: a player who had bitten off
+more than they could chew **had to stand there**, because the chart was shut.
+
+A hotkey that called `chart_panel.open()` would have walked straight past all of
+that. The fix is not a second copy of the condition in `Main.toggle_chart` —
+`docked_port != null or boss_active` spelled out a fourth time is a copy free to
+drift the next time a caller is added. The HUD now **stores** the lock it was
+already applying, and the wrapper asks for it. One rule, two doors, no
+derivation.
+
+### One key, two nodes, and the seam was already there
+
+P cannot be handled in one place, and the reason is structural rather than
+awkward:
+
+- **CameraRig is `PROCESS_MODE_INHERIT`**, so it stops receiving input the
+  instant the tree pauses. It can open and can never close.
+- **PauseMenu is `PROCESS_MODE_ALWAYS`**, but `_unhandled_input` drops every
+  event behind `if not is_open`. It can close and can never open.
+
+Either half alone ships a key that pauses and cannot unpause. Escape is already
+split down exactly this seam, and PauseMenu's own header says why it must be:
+*"handling it in both places would close a console and pause at once."* So P
+copies Escape's division and nothing new was invented.
+
+Two deliberate differences from Escape, both worth stating because they look
+like oversights:
+
+- **P resumes from any page, rather than backing out one step.** `cancel` means
+  "back out of what I opened"; `pause` means "unpause". A player on the settings
+  page pressing the pause key is asking for the game, not for the root page.
+- **P is inert while the manual is up**, because the manual guard returns first.
+  The manual owns its own back-out, and a key that resumed the game out from
+  under an open page would leave the player flying with a page in their face.
+
+### The manual had been lying since it shipped
+
+The desktop page printed `W A S D`, `SPACE` and `I` as hand-typed strings while
+the settings page two taps away let the player change all three. The manual was
+false for anyone who used the feature the manual describes, and adding three
+more literals would have deepened it by half again.
+
+`_binding_name` — which reads the live InputMap, and which PauseMenu had kept
+private — moved to `GameState.binding_name` and both readers now share it. It
+reads the InputMap rather than the saved `settings` dict on purpose: an action
+still on its project.godot default has no entry in that dict, so the dict would
+answer "—" for most actions on a fresh install.
+
+### What the assertions asked for
+
+`EVERY ACTION IS REBINDABLE OR RESERVED` is exact sorted-array equality between
+the InputMap and `REBINDABLE + ["cancel"]`, so it is **two-sided**: declaring
+the actions without listing them fails, and listing them without declaring them
+fails too. Both halves in one commit, which is the point of writing it that way.
+
+`REBINDABLE` is not bookkeeping. It drives `rebind`'s conflict-stealing loop, so
+an action outside it is invisible to that loop and a player could put two live
+actions on one key — the thing `NO SHARED KEY` forbids, reached through the one
+door it cannot see.
+
+Three legs added to `PYXIS_INPUTTEST`, each measured in both directions because
+a refusal clause alone is satisfied perfectly by a dead key:
+
+- **THE CHART KEY OBEYS THE LOCK** — opens, closes, refuses while panels are
+  locked, and opens again once clear.
+- **THE BEACON KEY REFUSES THE CHART** — standing at depth 0 the rack does not
+  move, because the key reaches `drop_beacon_here`'s refusal rather than
+  carrying a copy of it.
+- **PAUSE IS ONE KEY** — pauses, and unpauses from the same key, which is the
+  assertion that would have caught either half of the two-node split being
+  missing.
+
+`_press_hold_key` became `_press_key(code)` and kept its old caller. §54's rule
+is why these push real `InputEventKey`s through `Input` rather than calling the
+panels: calling `chart_panel.open()` would pass with no action declared, no key
+bound and no dispatch written.
+
+### What the adversarial pass found, after the keys worked
+
+The three keys were written, self-checked and committed before a verification
+sweep ran over the diff. It came back with four defects, and the pattern in them
+is worth more than the fixes: **every one was a rule that had only ever been
+tested through the door that could not violate it.**
+
+**A toggle key is not a button pressed twice.** `ChartPanel.close_panel` ended
+with an unguarded `tween_callback(func(): visible = false)`, and `create_tween`
+does not kill the earlier tween. Close and reopen inside `SLIDE_TIME` and that
+callback fires on a panel that is open again, leaving `is_open` true with
+`visible` false — an invisible chart the next press "closes", read by the player
+as a key that did nothing. It was unreachable for as long as the HUD button was
+the only door, because **a button only ever opens**. PauseMenu has carried the
+guard since it shipped, and its comment says why; it was the one panel that
+already had a toggle. Chart now carries it too.
+
+**A default is a binding.** `rebind`'s conflict-stealing loop read the saved
+overrides dict — which holds only actions the player has *already moved*. An
+action still on its project.godot default has no entry there at all, which is
+precisely what leaves the default in place. So on a fresh install, binding
+`move_up` to C returned true and left `chart` on C as well: two live actions on
+one key, produced by the function written to prevent that, while
+`NO SHARED KEY` stayed green because its first rebind puts the action into the
+dict and its second one therefore finds it. The loop now reads the live
+InputMap, the same source `binding_name` was moved to GameState for.
+
+**Reserved has two directions.** Keeping `cancel` out of REBINDABLE stops it
+being moved *off* Escape. Nothing stopped an action being moved *onto* Escape,
+because the conflict loop walks REBINDABLE and `cancel` is not in it. For
+`chart` and `drop_beacon` the result was a dead key — CameraRig tests `cancel`
+first. For `pause` it was worse: PauseMenu tests `pause` before `cancel`, so
+Escape stopped backing out one step and started resuming from any page, which
+falsifies the manual's numbered ladder **from the settings screen**. `rebind`
+now refuses `KEY_ESCAPE` outright, since the only other repair is taking Escape
+away from `cancel`.
+
+**A refusal clause alone is a dead key's alibi.** This section claimed all three
+new legs were measured in both directions. The beacon leg was not: it pressed B
+at depth 0 and asserted the rack had not moved, which a missing action, a wrong
+keycode, a deleted dispatch branch and a typo'd `has_method` all satisfy
+perfectly. It measured that a keypress does nothing. The leg now flies out past
+the chart edge, drops a beacon, checks the rack fell and a node stands, and only
+then comes home to be refused.
+
+Two smaller things the same pass caught. `OS.get_keycode_string` answers
+`"Space"`, `"Tab"`, `"Escape"` — mixed case, in an all-caps interface — so
+`binding_name` upper-cases. And the commit's own thesis was half-delivered: the
+manual started reading the live map while `tutorial.gd` and `barks.gd` went on
+printing `W A S D`, which left the **first sentence in the game** as the lying
+surface and the two-menus-deep page as the honest one. Both now read the map;
+the bark table carries `{MOVE}` and `{TARGET}` tokens because a `const` cannot
+call anything.
+
+Two new assertions, `ESCAPE IS RESERVED BOTH WAYS` and
+`A DEFAULT IS A BINDING TOO`, each red-verified against the code as it stood
+before this pass.

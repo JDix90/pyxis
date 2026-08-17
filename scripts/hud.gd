@@ -1636,6 +1636,14 @@ func _on_ability_pressed() -> void:
 		player.activate_ability()
 
 
+# THE LOCK, READABLE. It used to exist only as the two `enabled` flags below,
+# which was enough while a Button was the only door onto these panels. The chart
+# hotkey is a second door, and a key that re-derived the rule from docked/
+# boss_active would be a copy free to drift from the thing it copies -- so the
+# state is stored once here and Main.toggle_chart asks for it.
+var panels_locked := false
+
+
 func set_panels_locked(locked: bool) -> void:
 	# THE HOLD IS DELIBERATELY ABSENT FROM THIS, and it is not an oversight to
 	# tidy up later. Two callers reach here -- docking and a boss fight -- and
@@ -1648,6 +1656,7 @@ func set_panels_locked(locked: bool) -> void:
 	# Console access is closed during a boss fight: refitting mid-encounter
 	# would let the player rewrite the fight's premise (and used to be an
 	# outright exploit — see PlayerShip._apply_fit).
+	panels_locked = locked
 	refit_button.enabled = not locked
 	chart_button.enabled = not locked
 

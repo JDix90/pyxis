@@ -689,8 +689,50 @@ func shake_enabled() -> bool:
 # move_up to I and end up with two live actions on one key -- which is exactly
 # what NO SHARED KEY forbids, arriving through the one door that assertion
 # cannot see.
+#
+# The same reasoning is why `chart`, `drop_beacon` and `pause` join it the day
+# they enter the InputMap rather than later: each is a real key a player may
+# want moved, and each is a key another action could otherwise be stacked on
+# top of. ACCESSTEST asserts this list plus `cancel` IS the InputMap, so the
+# omission cannot survive a sweep either -- but the conflict loop is the reason
+# that assertion is worth having.
 const REBINDABLE := ["move_up", "move_down", "move_left", "move_right",
-	"ability", "cycle_target", "toggle_hold"]
+	"ability", "cycle_target", "toggle_hold", "chart", "drop_beacon", "pause"]
+
+
+func _live_keys(action: String) -> Array:
+	# Every physical keycode currently on an action, read from the InputMap so
+	# defaults and overrides answer alike. rebind's conflict loop and
+	# binding_name are the two callers, and both used to have their own idea of
+	# where the truth was.
+	var out: Array = []
+	for ev in InputMap.action_get_events(action):
+		var k := ev as InputEventKey
+		if k != null:
+			out.append(int(k.physical_keycode))
+	return out
+
+
+func binding_name(action: String) -> String:
+	# What key is on this action RIGHT NOW, for anything that prints a key to the
+	# player. It reads the live InputMap rather than the saved dict on purpose:
+	# an action still on its project.godot default has no entry in `settings`
+	# (apply_bindings skips it, and that is what leaves the default in place), so
+	# the dict would answer "—" for six of the ten actions on a fresh install.
+	#
+	# It lives here rather than on PauseMenu, where it was written, because the
+	# manual prints keys too and had been printing them as HAND-TYPED LITERALS
+	# since it shipped -- "W A S D", "SPACE", "I" -- which were simply false for
+	# any player who had used the rebinding page the settings screen advertises.
+	# One reader, one answer.
+	# UPPER-CASED, because every surface that prints a key is all-caps and Godot
+	# is not: get_keycode_string answers "Space", "Tab", "Escape". Left alone,
+	# the manual's control column read "CLICK / Tab" beside "DROP BEACON" and
+	# the settings rows read "ABILITY   Space".
+	for code in _live_keys(action):
+		return OS.get_keycode_string(
+			DisplayServer.keyboard_get_keycode_from_physical(int(code))).to_upper()
+	return "—"
 
 
 func apply_bindings() -> void:
@@ -718,6 +760,21 @@ func rebind(action: String, physical_keycode: int) -> bool:
 	# silently doing nothing so the UI can say why.
 	if not REBINDABLE.has(action) or physical_keycode == 0:
 		return false
+	# ESCAPE IS RESERVED, not merely immovable. `cancel` is kept out of
+	# REBINDABLE so it can never be moved OFF Escape -- but nothing stopped an
+	# action being moved ONTO it, and `cancel` is invisible to the loop below
+	# because that loop walks REBINDABLE. The result was never a shared key the
+	# player could use: CameraRig tests `cancel` before every hotkey branch, so
+	# a chart or beacon action bound to Escape was simply DEAD, and a `pause`
+	# action bound to Escape was worse -- PauseMenu tests pause first, so Escape
+	# stopped backing out one step and started resuming from any page, which is
+	# the manual's numbered ladder made false from the settings screen.
+	#
+	# Refusing is the only coherent answer, because the other repair -- taking
+	# Escape away from `cancel` -- is the thing REBINDABLE's exclusion exists to
+	# prevent.
+	if physical_keycode == KEY_ESCAPE:
+		return false
 	# A key already spoken for is TAKEN AWAY from its old owner rather than
 	# shared. Two actions on one key is not a binding, it is a bug the player
 	# discovers mid-flight.
@@ -725,18 +782,32 @@ func rebind(action: String, physical_keycode: int) -> bool:
 	for other in REBINDABLE:
 		if other == action:
 			continue
-		if binds.has(other):
-			var kept: Array = []
-			for c in binds[other]:
-				if int(c) != physical_keycode:
-					kept.append(int(c))
-			# Never leave an action with nothing bound: an unreachable action is
-			# worse than a shared key, because there is no way to notice it until
-			# the moment it is needed.
-			if not kept.is_empty():
-				binds[other] = kept
-			else:
-				return false
+		# THE LIVE MAP, NOT THE SAVED DICT, and the difference was a real hole.
+		# This used to read `binds`, which holds only actions a player has
+		# ALREADY moved -- an action still on its project.godot default has no
+		# entry there at all (apply_bindings skips it, and that is exactly what
+		# leaves the default in place). So on a fresh install every default was
+		# invisible to this loop: binding move_up to C returned true, wrote the
+		# override, and left `chart` sitting on C as well. Two live actions on
+		# one key, reachable in four taps, by the function written to prevent it.
+		#
+		# InputMap is authoritative because set_setting -> apply_settings ->
+		# apply_bindings runs on every change, so it already reflects both the
+		# saved overrides and the untouched defaults. Same source binding_name
+		# reads, for the same reason.
+		var current: Array = _live_keys(String(other))
+		if not current.has(physical_keycode):
+			continue
+		var kept: Array = []
+		for c in current:
+			if int(c) != physical_keycode:
+				kept.append(int(c))
+		# Never leave an action with nothing bound: an unreachable action is
+		# worse than a shared key, because there is no way to notice it until
+		# the moment it is needed.
+		if kept.is_empty():
+			return false
+		binds[other] = kept
 	binds[action] = [physical_keycode]
 	set_setting("bindings", binds)
 	return true
