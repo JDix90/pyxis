@@ -144,15 +144,25 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **643 PASS / 0 FAIL / 0 script errors** across **64 runs**,
+Current baseline: **657 PASS / 0 FAIL / 0 script errors** across **65 runs**,
 save intact, save format **v20** — measured on Godot 4.6.stable, headless
-(2026-08-17), **at STRATEGY §73**. §74 adds assertion lines to existing tags and
-has not been swept, so this number is a floor rather than the current total; it
-is left un-incremented on purpose, because a derived figure written where a
-measured one belongs is the whole mistake §73 records. Taken fresh rather than incremented: the previous figure of 616 sat
-beside a run count that was wrong in two places at once, so it could not be
-adjusted, only re-measured (STRATEGY §73). The gap between 616 and 643 is that
-staleness, not one commit's worth of new assertions. The frontier's stage 1
+(2026-08-17), at STRATEGY §75.
+
+**The move from §73's 643 across 64 runs reconciles exactly, and that is why
+both numbers are kept.** §74 added four assertion lines to existing tags — three
+`INPUTTEST` legs plus `A DEFAULT IS A BINDING TOO` — while two others were
+*renamed* rather than added (`CANCEL IS RESERVED` became `ESCAPE IS RESERVED
+BOTH WAYS`, and the beacon leg gained a second direction under a new name), so
+those cost nothing. §75 added `PROFILETEST`: one new run carrying ten. So
+643 + 4 + 10 = 657, and 64 + 1 = 65.
+
+**Do that arithmetic on every sweep.** A total that rises by exactly the number
+of assertions you added is evidence you added them; a total that moves by any
+other amount means one was lost somewhere else — and a lost assertion is
+invisible in a green sweep, which is the failure §73 exists to describe. The
+figure before §73 was 616 beside a run count wrong in two places at once, so it
+could not be adjusted, only re-measured; the gap between 616 and 643 was that
+staleness rather than new work. The frontier's stage 1
 (STRATEGY §68) added bands 5 and 6 past THE QUIET and a `FRONTIERTEST` tag of 14
 assertions, and needed no save bump: deep space persists nothing, and new module
 and commodity ids ride the existing generic `owned`/`fit`/cargo paths. Its sweep
