@@ -8673,7 +8673,7 @@ func _run_deep_test() -> void:
 	#      than over the one that broke.
 	var key_rows := ""
 	var keys_ok := true
-	var want_keys := ["band", "depth", "rocks", "hulk", "pack", "station", "convoy"]
+	var key_count := 0
 	for sys_v in ["pyx01", "pyx02", "pyx03"]:
 		var sid := String(sys_v)
 		var probe := DeepSpace.new()
@@ -8685,6 +8685,17 @@ func _run_deep_test() -> void:
 		probe.generating = false
 		add_child(probe)
 		probe.configure(SystemDB.get_system(sid), sid)
+		# THE QUESTIONS ARE ASKED, NOT WRITTEN DOWN. This list used to be seven
+		# literals, and a hand-written list agrees with whatever it is given:
+		# `landmark`, `seams` and `hulk2` were appended to plan_cell's band>0
+		# path across three horizons, none of them reached the early return, and
+		# this assertion stayed green through all of it while PYX-02's four
+		# band-0 cells threw on `hulk2` from v20. A deep cell is the only thing
+		# that knows the real key set, so it is what gets asked. (64,64) is
+		# ~5838u out -- band 6 in every system, and every content key on that
+		# path is set unconditionally before it is filled.
+		var want_keys: Array = (probe.plan_cell(64, 64) as Dictionary).keys()
+		key_count = want_keys.size()
 		var band0 := 0
 		var missing := ""
 		for cz_k in range(-3, 4):
@@ -8701,8 +8712,8 @@ func _run_deep_test() -> void:
 		# free(), not queue_free(): deferred deletion still runs _process on the
 		# way out, which is the other half of the same bug.
 		probe.free()
-	print("[deep] EVERY CELL ANSWERS EVERY QUESTION %s all 7 content keys present on every path -> %s" % [
-		key_rows, "PASS" if keys_ok else "FAIL"])
+	print("[deep] EVERY CELL ANSWERS EVERY QUESTION %s all %d content keys present on every path -> %s" % [
+		key_rows, key_count, "PASS" if keys_ok else "FAIL"])
 	# By hand, and immediately: these have NO leash — left alive they chase
 	# the harness through every assertion that follows.
 	for n_15c in get_tree().get_nodes_in_group("hostiles"):
@@ -13716,6 +13727,48 @@ func _run_save_test() -> void:
 			str(fresh20), GameState.BEACON_STOCK, str(kept20), str(cleaned),
 			str(col_cleaned),
 			"PASS" if ok19 and fresh20 and kept20 and cleaned and col_cleaned
+				else "FAIL"])
+	elif mode == "future":
+		# A SAVE FROM A NEWER BUILD. Refusing to load it was never the hard
+		# part — that clause has always been there. What it did NOT do was stop
+		# the write: _ready calls reset_to_starter() when load_game returns
+		# false, and the debounced save a second later put a starter run on top
+		# of a file this build merely could not read. A rollback, a second
+		# machine or a beta lane cost the player the pilot, and the only notice
+		# was a push_warning, which on a phone is no notice at all.
+		#
+		# BOTH HALVES ARE ASSERTED, because refusing to load while still being
+		# able to write is the bug wearing the fix's clothes — and the file
+		# check is done on the BYTES, since a save that reloads to the same
+		# values would satisfy anything softer.
+		var future_save := {
+			"version": GameState.SAVE_VERSION + 1,
+			"salvage": 123456,
+			"ship_name": "FROM THE FUTURE",
+			"run_seed": 202108,
+			"tutorial_step": -1,
+		}
+		var raw_before := JSON.stringify(future_save, "\t")
+		var ff := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		ff.store_string(raw_before)
+		ff.close()
+
+		GameState.save_enabled = true
+		var loaded_future := GameState.load_game()
+		var flagged: bool = GameState.newer_save_refused
+		var locked: bool = GameState.saving_locked()
+
+		# Exactly what boot does next, and exactly what used to destroy the file.
+		GameState.reset_to_starter()
+		GameState.add_salvage(50)
+		GameState.save_game()
+		var raw_after := FileAccess.get_file_as_string(GameState.save_path)
+		var intact: bool = raw_after == raw_before
+
+		print("[savetest] v%d A NEWER SAVE IS REFUSED, NOT REWRITTEN loaded=%s (expect false), flagged=%s, saving locked=%s, bytes %d -> %d intact=%s -> %s" % [
+			GameState.SAVE_VERSION + 1, str(loaded_future), str(flagged),
+			str(locked), raw_before.length(), raw_after.length(), str(intact),
+			"PASS" if not loaded_future and flagged and locked and intact
 				else "FAIL"])
 	elif mode == "partial6":
 		# A v6 save written before a later setting existed must still get that
@@ -21874,6 +21927,12 @@ func _run_storm_test() -> void:
 	var logs := storm_src.contains("GameState.note_log(") \
 		or storm_src.contains("GameState.note_ledger(")
 	var save_leak := storm_src.contains("_queue_save(") or storm_src.contains("save_game(")
+	# >= 20, NOT == 20. The clause means "the storm cost no save format change",
+	# and it was written the day v20 was current, which quietly made it "no
+	# feature may ever bump the save again" -- the next legitimate bump would
+	# have turned this red and named the storm, which had nothing to do with it.
+	# save_leak above is what actually proves storm.gd writes nothing; the
+	# version only has to show it never went BACKWARDS from where storms shipped.
 	spawn_storm()
 	var before_load := live_storms.size()
 	_load_system(system_id)
@@ -21883,6 +21942,6 @@ func _run_storm_test() -> void:
 		before_load, after_load, live_storms.size(), str(logs), str(save_leak),
 		GameState.SAVE_VERSION,
 		"PASS" if after_load == 0 and live_storms.is_empty() and not logs and not save_leak
-			and GameState.SAVE_VERSION == 20 and storm_src.length() > 0 else "FAIL"])
+			and GameState.SAVE_VERSION >= 20 and storm_src.length() > 0 else "FAIL"])
 
 	get_tree().quit()

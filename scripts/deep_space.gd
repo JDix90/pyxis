@@ -843,8 +843,17 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 	# PYX-02's bounds are 48.0 -- putting all four at depth -2.75. pyx01 (40.0)
 	# and pyx03 (44.0) leave them at band 1, which is why this only ever broke
 	# the second system, and only for a player who reached it.
+	#
+	# THE RULE WAS THEN BROKEN ONCE PER APPEND. `landmark`, `seams` and `hulk2`
+	# were each added to the band>0 path below and to nothing else, and `hulk2`
+	# is in built_plan's OWN keep-out loop, so from v20 every band-0 cell in
+	# PYX-02 threw `Invalid access to key 'hulk2'` -- the identical defect this
+	# comment was written about, reintroduced three feet under it. The
+	# assertion missed it because it asked for the seven keys that existed the
+	# day it was written; it now derives the list from a deep cell instead, so
+	# the next append cannot be silent. Anything added below is added here too.
 	var out := {"band": band, "depth": depth, "rocks": [], "hulk": {}, "pack": {},
-		"station": {}, "convoy": {}}
+		"station": {}, "convoy": {}, "landmark": {}, "seams": [], "hulk2": {}}
 	if band == 0:
 		return out
 

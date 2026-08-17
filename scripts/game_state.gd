@@ -405,6 +405,10 @@ var save_enabled := true:
 var _save_locked := false
 var _save_timer: SceneTreeTimer = null
 
+# Set by load_game when it finds a save written by a NEWER build. Read by the
+# title screen, which must not offer CONTINUE for a run it could not read.
+var newer_save_refused := false
+
 
 func lock_saving() -> void:
 	# One-way. Harnesses used to just assign `save_enabled = false`, but
@@ -2511,11 +2515,34 @@ func load_game() -> bool:
 		return false
 	var data: Dictionary = parsed
 	var version := int(data.get("version", 0))
-	if version <= 0 or version > SAVE_VERSION:
+	if version > SAVE_VERSION:
+		# REFUSING IT IS NOT ENOUGH. _ready calls reset_to_starter() when this
+		# returns false, and the first _queue_save() a second later writes a
+		# starter run straight over the file -- so running an older build once,
+		# after a rollback or on a second machine or a beta lane, DELETED the
+		# run rather than declining to open it. The only notice was a
+		# push_warning, which on a phone is no notice at all.
+		#
+		# lock_saving() is the existing one-way "never write" and is exactly the
+		# right shape: nothing downstream can opt back in, so the newer file
+		# survives the session no matter what the player does next.
+		push_warning("Pyxis: save is v%d, this build reads v%d — not loaded, and saving is locked so it cannot be overwritten" % [version, SAVE_VERSION])
+		newer_save_refused = true
+		lock_saving()
+		return false
+	if version <= 0:
+		# A save with no readable version is not a save from the future, it is
+		# rubbish -- there is nothing here to protect, so this keeps the old
+		# start-fresh behaviour.
 		push_warning("Pyxis: save version %d unsupported, starting fresh" % version)
 		return false
 	# Older saves are migrated, never discarded: any field added after their
 	# version simply falls back to its default below.
+
+	# Cleared on the way past the gate, not left latched: load_game is called
+	# again whenever the save layer is pointed somewhere else, and a stale flag
+	# would keep the title screen refusing a run it had just read fine.
+	newer_save_refused = false
 
 	salvage = int(data.get("salvage", 0))
 	owned = []

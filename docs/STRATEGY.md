@@ -5987,6 +5987,26 @@ same commit.**
 
 ### Outstanding
 
+**Horizon 6 — the known frontier** (opened 2026-08-17 after a week of
+playtesting; specced in `docs/HORIZON-6-THE-KNOWN-FRONTIER.md`). Six feature
+commits, none built yet:
+
+| # | what | save | status |
+|---|---|---|---|
+| 0 | preconditions: the band-0 key crash, the save-destroying downgrade path, the stale inventory | none | **BUILT** — §73 |
+| 1 | hotkeys: `chart` / `beacon` / `pause`, each behind a guarded wrapper | none | **not built** |
+| 2 | pilot profiles: per-profile save paths, a registry, and device settings split into `prefs.json` | none | **not built** |
+| 3 | per-PYX deep identity + one signature content class per system | none | **not built** |
+| 4 | chart legibility: fit-to-content scale, ship marker, band rings, legend, pan/zoom | none | **not built** |
+| 5 | beacon navigation: set-course autopilot and a depth-capped paid jump, same-PYX only | none | **not built** |
+| 6 | persistent per-PYX survey coverage | **v21** | **not built** |
+
+Two of these reverse recorded decisions and neither may be done quietly: commit
+6 reverses §22's session-only survey rule, whose `SESSION RESET` assertion exists
+specifically to force this conversation, and commit 3 rewrites `IDENTITY IS
+ADDITIVE` so PYX-01 may author presentation-only identity. **§41's `MIDTIER`
+re-derivation is now due** — commit 6 is income.
+
 **Should an ALLIED ship be spared the player's area weapons?** (open 2026-08-07,
 §72). Splash catching a flag is deliberate and measured — `WITNESS_RANGE` is
 dimensioned by `OVERCHARGE_RADIUS` — so this is not a bug to fix but a line to
@@ -6020,19 +6040,24 @@ playtest; stage 1 shipped as §68). The full plan is in
 | 1 | bands 5/6 (THE FATHOMS, THE UNSOUNDED): edges, every band table, threats, commodities, landmarks, palette, `PYXIS_FRONTIERTEST` | none | **BUILT** — §68 |
 | 2 | the Mk III line: 4 Mk III weapons, 3 Mk III utilities, Breaching Torch / Surge Capacitors / Expedition Frame, **Reactor Mk V** (24 power), `reactor_cap` port-def gating | none | **BUILT** — §69 |
 | 3 | **THE BREAKWATER** (band 5) and **THE FAR LANTERN** (band 6): the first deep ports that sell what the chart cannot, plus `station_weights` rows for pyx02/pyx03 and two new silhouettes | none | **BUILT** — §70 |
-| 4 | deep weather (optional): band-6 grave-fields on a `"\|hulk2"` salted stream, pyx03 rift depth extension, `LANDMARK_KINDS` growth **with every authored row widened in the same commit** | none | **not built** |
+| 4 | deep weather (optional): band-6 grave-fields on a `"\|hulk2"` salted stream, pyx03 rift depth extension, `LANDMARK_KINDS` growth **with every authored row widened in the same commit** | none | **BUILT** — verified by sentinel, §73 |
 
 **The commissioned loop is closed** (2026-08-05): stages 1-3 shipped as §68,
-§69 and §70. Only stage 4 remains, and it is optional polish rather than a
-missing pillar — the playtest's actual complaint is answered.
+§69 and §70, and stage 4's pieces landed across §70's commit and §71's storms —
+which is why no single section number owns it, and why it was confirmed built by
+its three sentinels in the code rather than by the prose: `GRAVE_CHANCE` and the
+`"|hulk2"` stream, pyx03's rift at `depth_max: 2400.0`, and `LANDMARK_KINDS` at
+six. **Nothing is outstanding from this horizon.** The three paragraphs around
+this one said otherwise for two weeks after it shipped; see §73.
 
-**One piece of debt is now due and is the reason to do stage 4 carefully.**
-§41's re-derivation of the `MIDTIER` bar has been outstanding since §65, and
-stage 4 is the first frontier work that would add INCOME (a rift depth
-extension) rather than sinks. Stages 1-3 could be measured against a bar nobody
-had re-derived because none of them could move it; stage 4 cannot. **No save bump is
-expected anywhere in this horizon**: deep space persists nothing, and module and
-commodity ids flow through the existing generic `owned`/`fit`/cargo paths.
+**One piece of debt survives it.** §41's re-derivation of the `MIDTIER` bar has
+been outstanding since §65 and stage 4 was the work that made it due — a rift
+depth extension is INCOME, not a sink, and stages 1-3 could be measured against a
+bar nobody had re-derived only because none of them could move it. Stage 4 shipped
+without it. **It is still owed, and it is now owed by whatever adds income next**
+— which Horizon 6's survey-coverage persistence does. No save bump was spent
+anywhere in this horizon: deep space persists nothing, and module and commodity
+ids flow through the existing generic `owned`/`fit`/cargo paths.
 
 The Hunt's stages 4–6 shipped as §65, §66 and §67 (2026-08-04). The table below
 is kept as the record of what was outstanding and how it resolved; **the
@@ -6055,9 +6080,12 @@ Hunt plan's own cut order ends *"defer Colonies to their own horizon"* — but
 nothing recorded it, so "v18" pointed at two different features depending on
 which document you were holding.
 
-Stage 6 is **not blocked by 4 and 5**: it needs `run_seed` (stage 1), the
+Stage 6 was **not blocked by 4 and 5**: it needed `run_seed` (stage 1), the
 `lair_pos` salted-placement precedent (stage 2) and the deep-space streamer, all
-of which shipped. Beacons and per-PYX identity can stay unbuilt indefinitely.
+of which shipped. The sentence that stood here — *"beacons and per-PYX identity
+can stay unbuilt indefinitely"* — was true when it was written and stale the day
+§65 and §66 shipped, which is the whole failure mode this section exists to
+prevent. Both are built, and Horizon 6 extends both.
 
 ### Built, despite what the docs said
 
@@ -7259,3 +7287,95 @@ seams you did not write**. All four defects are now assertions in
 `global_position` from `_home` every frame, so a fixture shoved aside is back on
 its post next frame. That is also why a station-keeper cannot be offered an
 escort: one that ended anywhere else would teleport home.
+
+---
+
+## 73. Three things that were true when they were written
+
+Horizon 6 opens with a commit that builds nothing. A week of playtesting
+produced five asks — per-PYX identity past the chart, beacon navigation, a
+legible chart, more hotkeys, multiple pilots — and the reconnaissance pass for
+them turned up a live crash, a save-destroying downgrade path, and an inventory
+that had been contradicting itself for two weeks. None of that is worth carrying
+under a feature commit, so it went first, alone.
+
+The three defects share a shape, and it is the one this document exists to
+catch: **each was correct the day it was written and was made false by something
+that never looked at it.**
+
+### The comment was right, the line under it was not
+
+`plan_cell` has an early return for band 0 and eight lines of comment above it
+explaining that every content key must be present on every path, because
+`built_plan` indexes `plan["convoy"]` with no `.get` — a keep-out filter that
+tolerated a missing key would silently stop filtering. It even records the
+arithmetic: cell centres at `(64i+32, 64k+32)` put the four innermost at 45.25u,
+PYX-02's bounds are 48.0, so those four sit at depth -2.75 and PYX-02 is the only
+system with band-0 cells at all.
+
+Then `landmark`, `seams` and `hulk2` were appended to the band>0 path across
+three horizons, and none of them was added to the early return. `hulk2` is in
+`built_plan`'s **own** keep-out loop, so from v20 onward, flying near the PYX-02
+origin threw `Invalid access to key 'hulk2'` — the identical defect the comment
+was written about, reintroduced three feet underneath it.
+
+**The assertion was the actual failure.** `EVERY CELL ANSWERS EVERY QUESTION`
+swept all three systems and both signs of the boundary, and stayed green through
+all of it, because it asked for the seven keys that existed the day it was
+written. A hand-written expectation agrees with whatever it is given. It now
+derives the key set from a deep cell — `plan_cell(64, 64)`, ~5838u out, band 6 in
+every system — so the next append cannot be silent. That is the general form of
+§54's rule: *a list of what should be there is a claim; asking the thing that
+knows is a measurement.*
+
+### Refusing to load was never the dangerous half
+
+`load_game` has always declined a save whose version is higher than the build's.
+What it did not do was stop the **write**: `_ready` calls `reset_to_starter()`
+when load returns false, and the debounced save a second later put a starter run
+on top of a file this build merely could not read. Run a newer build once and an
+older one after — a rollback, a second machine, a beta lane — and the pilot was
+gone, not locked. The only notice was a `push_warning`, which on a phone is no
+notice at all.
+
+The fix is the existing one-way `lock_saving()`, which is exactly the right
+shape: nothing downstream can opt back in, so the file survives whatever the
+player does next. Two details it forced:
+
+- **A version of 0 is not a version from the future.** An unreadable save is
+  rubbish and there is nothing there to protect, so that case keeps the old
+  start-fresh behaviour. The two are now separate branches saying separate things.
+- **`has_save()` is true for a file that did not load**, so the title screen
+  offered CONTINUE into what was actually a fresh starter run. It now hides
+  CONTINUE and says what happened, because *"your save is fine, this build cannot
+  read it"* is the only part of this a player needs.
+
+`SAVETEST=future` asserts both halves — refused **and** intact, compared on the
+bytes, since a save that reloads to the same values would satisfy anything
+softer. Refusing to load while still being able to write is the bug wearing the
+fix's clothes.
+
+### The inventory that needed the discipline it describes
+
+§64 is the only forward-looking list in the repo and its own opening calls it
+load-bearing: *if you build or defer something, update it in the same commit.*
+Three of its passages were stale — the frontier's stage 4 row read "not built"
+nine lines under a paragraph saying the frontier had nothing outstanding, and a
+sentence still read *"beacons and per-PYX identity can stay unbuilt
+indefinitely"* after both shipped as §65 and §66. Stage 4 was verified built by
+its three sentinels (`GRAVE_CHANCE` and the `"|hulk2"` stream, pyx03's
+`depth_max: 2400.0`, `LANDMARK_KINDS` at six) rather than by reading the prose
+that got it wrong.
+
+The README was wrong in the same direction and twice over: 44 tags and 61 runs in
+one paragraph, 62 in another, against a `TAGS` array of 46 and a `SAVE_MODES` of
+17 — and `SAVETEST` is not in `TAGS` at all, so the arithmetic it implied was
+never the arithmetic the sweep did. It is 46 + 18 = 64 runs now. **The PASS total
+was not incremented, it was retired**: a number measured beside a wrong run count
+cannot be adjusted, only taken again.
+
+The lesson is not "check the docs." Every one of these was written by somebody
+being careful, and each was falsified by a later change that had no reason to
+look at it. What actually holds is the assertion that derives rather than
+declares, and the discipline of putting the inventory edit in the same commit —
+which is what §64 already said, and what this section is the cost of not doing.

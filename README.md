@@ -44,9 +44,14 @@ behind a `PYXIS_*` environment variable and run headless:
 PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 ```
 
-Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 44 of them —
-the 44 tags in `run_harness.sh`'s `TAGS` (`SAVETEST` among them is one harness
-with 17 modes rather than 17 harnesses), which is why 44 suites make **61 runs**.
+Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 46 of them —
+the 46 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
+`TAGS` at all: it is one harness with 18 stateful modes, run as its own
+sequence. So a full sweep is 46 + 18 = **64 runs**.
+
+Those three numbers are derivable from `run_harness.sh` and nothing else, so
+check them there rather than trusting this paragraph — it has been wrong before,
+in two places that disagreed with each other (STRATEGY §73).
 
 **Before running one, check that it parses** — 0.6 seconds against a 7-minute
 silent hang:
@@ -116,8 +121,13 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **616 PASS / 0 FAIL / 0 script errors** across 62 runs, save
-format **v20** — measured on Godot 4.6.stable, headless. The frontier's stage 1
+Current baseline: **UNMEASURED — re-measure before trusting a number here.**
+The last recorded figure was 616 PASS / 0 FAIL / 0 script errors, but it was
+recorded beside a run count that was wrong in two places at once, and it predates
+both the band-0 key fix and the `SAVETEST=future` leg (STRATEGY §73), so it
+cannot be incremented — it has to be taken again. The sweep is **64 runs** and
+the save format is **v20**; the PASS total is whatever the next green sweep on
+Godot 4.6.stable headless says it is, and it goes here in that commit. The frontier's stage 1
 (STRATEGY §68) added bands 5 and 6 past THE QUIET and a `FRONTIERTEST` tag of 14
 assertions, and needed no save bump: deep space persists nothing, and new module
 and commodity ids ride the existing generic `owned`/`fit`/cargo paths. Its sweep

@@ -214,15 +214,27 @@ func _process(delta: float) -> void:
 
 func open(has_save: bool) -> void:
 	visible = true
-	_continue_button.visible = has_save
+	# A save from a NEWER build exists but could not be read, so has_save() is
+	# true while there is nothing to continue INTO: the state in memory is a
+	# fresh starter run. Offering CONTINUE there walks the player into a new
+	# game under a button that promised their pilot back. The file itself is
+	# safe -- load_game locked saving before returning -- and the line below
+	# says so, because "your save is fine, this build just cannot read it" is
+	# the only part of this the player actually needs.
+	var refused := GameState.newer_save_refused
+	_continue_button.visible = has_save and not refused
 	# Hidden with CONTINUE, and for the same reason: with no save there is no run
 	# to summarise, and a row of zeroes on the front door is worse than nothing.
 	_ledger_line.visible = has_save
-	if has_save:
+	if refused:
+		_ledger_line.text = "SAVE WRITTEN BY A NEWER BUILD — NOT LOADED, NOT OVERWRITTEN"
+		_ledger_line.add_theme_color_override("font_color", Palette.THREAT)
+	elif has_save:
 		_ledger_line.text = title_summary()
+		_ledger_line.add_theme_color_override("font_color", Palette.TEAL)
 	# Same has_save rule as the ledger line above, or the registry line renders
 	# over empty space where a summary should have been.
-	_registry_line.visible = has_save and GameState.commissioned
+	_registry_line.visible = has_save and GameState.commissioned and not refused
 	if _registry_line.visible:
 		_registry_line.text = registry_line()
 	_refresh_mute()
