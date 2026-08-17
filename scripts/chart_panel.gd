@@ -266,19 +266,53 @@ func fit_radius_for(id: String, ship := Vector2.ZERO) -> float:
 
 
 static func band_ring_radius(bounds: float, band: int) -> float:
-	# WHERE BAND `band` BEGINS, as a radius from the system origin. BAND_EDGES
-	# are DEPTHS and depth_at subtracts bounds, so the conversion is bounds +
-	# edge and it belongs in one place -- a ring drawn at the wrong radius is a
-	# lie the reader has no way to detect, since every other layer would agree
-	# with itself.
-	var i := clampi(band, 0, DeepSpace.BAND_EDGES.size() - 1)
+	# WHERE BAND `band` BEGINS, as a radius from the system origin.
+	#
+	# BAND_EDGES IS OFF BY ONE FROM THE BAND NUMBER, and this function exists as
+	# much to hold that fact in one place as to add `bounds`. `band_of` returns
+	# `i + 1` for the largest edge it clears, so BAND_EDGES[i] is where band
+	# i+1 STARTS -- BAND_EDGES[4] is 2600, which is the floor of band 5, THE
+	# FATHOMS. Indexing this array with a band number gives you the ring for the
+	# band below the one you asked for, which is a mistake that draws a perfectly
+	# convincing picture: the rings are still evenly nested and still look right.
+	#
+	# The other half, since depth_at subtracts bounds: BAND_EDGES are DEPTHS, so
+	# a ring sits at bounds + edge.
+	var i := clampi(band - 1, 0, DeepSpace.BAND_EDGES.size() - 1)
 	return bounds + float(DeepSpace.BAND_EDGES[i])
+
+
+func ring_label(id: String, band: int) -> String:
+	# THE EXACT STRING DRAWN BESIDE A BAND RING, exposed so the assertion can
+	# read what the plot draws rather than rebuilding it from the same two
+	# accessors. A test that composed band_glyph and band_name_of itself would
+	# agree with a draw that had gone back to keying one of them off the edge
+	# index -- which is the bug that shipped here once already, and it produces a
+	# picture that looks entirely correct because the rings are still nested.
+	#
+	# Both halves keyed by BAND NUMBER. Nothing in this function may take an
+	# index into BAND_EDGES.
+	return "%s %s" % [Palette.band_glyph(band),
+		SystemDB.band_name_of(id, band, DeepSpace.BAND_NAMES[band])]
 
 
 static func scale_bar_units(want: float) -> float:
 	# The largest 1/2/5 x 10^n that fits in `want` world units. A scale bar
 	# reading "1,000u" is one a person can hold; one reading "1,347u" is one
 	# they have to do arithmetic against, which defeats the point of drawing it.
+	#
+	# THE 10.0 IN THAT LIST IS NOT DECORATION, and this is the one thing to know
+	# before touching this function. `log(1000.0) / log(10.0)` is
+	# 2.9999999999999996 in doubles, so `floor` returns 2 and `mag` comes out an
+	# order of magnitude LOW at every exact power of ten. The step list carries a
+	# 10.0 precisely so an underestimated magnitude is recovered: 100 * 10 = 1000
+	# still fits and still wins.
+	#
+	# Do not "fix" this by nudging the log with an epsilon. Underestimating is
+	# harmless because the loop only ever accepts a step that FITS; overestimating
+	# is not, because `units` starts at `mag` and would return a bar wider than
+	# the space it was asked for when no step fits at all. Floor's bias is the
+	# safe direction, and the 10.0 makes it free.
 	var mag := pow(10.0, floor(log(maxf(want, 1.0)) / log(10.0)))
 	var units := mag
 	for step in [1.0, 2.0, 5.0, 10.0]:
@@ -367,17 +401,24 @@ func _draw_plot() -> void:
 	#    they actually begin -- so "my beacon is in THE REACHES" is a thing the
 	#    picture says rather than something you work out.
 	#
-	#    Through band_name_in, so a system that renamed its bands says its own
-	#    names here too, and through band_glyph, so the ring is identified by
-	#    SHAPE as well as by hue (§30: colour is never the only channel).
-	#    BAND_EDGES are DEPTHS, and depth is measured from the charted edge --
-	#    depth_at subtracts bounds -- so every ring sits at bounds + edge.
-	for i in range(1, DeepSpace.BAND_EDGES.size()):
-		var edge := float(DeepSpace.BAND_EDGES[i])
-		var rr := band_ring_radius(bounds, i) * scale
+	#    ITERATED BY BAND NUMBER, NOT BY EDGE INDEX, and everything below is
+	#    keyed off that one number -- the radius through band_ring_radius, the
+	#    name through band_name_of, the glyph and the colour through `b`. The
+	#    first version walked BAND_EDGES and used the edge index for the glyph
+	#    while the name came from the depth, so every ring carried the right word
+	#    beside the wrong mark. §30's whole point is that the glyph is the
+	#    channel that survives a colour-vision mode, so a glyph that disagrees
+	#    with the word is worse than no glyph: it is confidently wrong in the
+	#    mode where it is the only thing left.
+	#
+	#    band_name_of rather than band_name_in for the same reason: the depth
+	#    round-trip is what let the two drift, and band 1's edge is depth 0,
+	#    which band_of maps to CHARTED rather than THE SHOALS.
+	for b in range(1, DeepSpace.BAND_NAMES.size()):
+		var rr := band_ring_radius(bounds, b) * scale
 		if rr < 6.0 or rr > minf(size.x, float(geo["usable"])) * 1.4:
 			continue
-		var bc := Palette.band_color(i)
+		var bc := Palette.band_color(b)
 		_plot.draw_arc(mid, rr, 0.0, TAU, 64,
 			Color(bc.r, bc.g, bc.b, 0.30), 1.0, true)
 		if font != null:
@@ -386,8 +427,7 @@ func _draw_plot() -> void:
 			# for a ring the pan pushed off screen is noise.
 			var lp := mid + Vector2(4.0, -rr - 3.0)
 			if lp.y > 8.0 and lp.y < float(geo["usable"]) and lp.x < size.x - 40.0:
-				_plot.draw_string(font, lp, "%s %s" % [Palette.band_glyph(i),
-					DeepSpace.band_name_in(_selected, edge)],
+				_plot.draw_string(font, lp, ring_label(_selected, b),
 					HORIZONTAL_ALIGNMENT_LEFT, -1, UIKit.SIZE_FINE,
 					Color(bc.r, bc.g, bc.b, 0.75))
 

@@ -13332,31 +13332,61 @@ func _run_plot_test() -> void:
 	#    function the WORLD uses to answer the same question -- depth_at
 	#    subtracts bounds, band_of maps depth to band -- so the label and the
 	#    place agree by construction rather than by a matching constant.
+	#    BAND_EDGES is off by one from the band number -- band_of returns i + 1 --
+	#    so this walks BAND NUMBERS and asks the world, at a point just outside
+	#    each ring, which band it is standing in. Just OUTSIDE rather than on:
+	#    band 1's edge is depth 0 and band_of maps exactly 0 to CHARTED, so the
+	#    boundary itself is the one depth that belongs to neither side.
 	var ring_bad := ""
-	for i in range(1, DeepSpace.BAND_EDGES.size()):
-		var rr: float = ChartPanel.band_ring_radius(bounds, i)
-		var depth_there := rr - bounds
-		if not is_equal_approx(depth_there, float(DeepSpace.BAND_EDGES[i])):
-			ring_bad = "band %d radius %.1f is depth %.1f" % [i, rr, depth_there]
-		elif DeepSpace.band_of(depth_there) != i:
-			ring_bad = "band %d ring reads as band %d" % [i, DeepSpace.band_of(depth_there)]
-	print("[plot] THE RINGS MEAN DEPTH %d rings against band_of: %s -> %s" % [
-		DeepSpace.BAND_EDGES.size() - 1, "agree" if ring_bad == "" else ring_bad,
+	var top := DeepSpace.BAND_NAMES.size() - 1
+	for b in range(1, top + 1):
+		var rr: float = ChartPanel.band_ring_radius(bounds, b)
+		var just_in := rr - bounds + 0.001
+		if DeepSpace.band_of(just_in) != b:
+			ring_bad = "band %d ring reads as band %d" % [b, DeepSpace.band_of(just_in)]
+			break
+		# And THE STRING THE PLOT ACTUALLY DRAWS names that same band, glyph
+		# included. Read out of ring_label rather than recomposed here, because a
+		# test that built the label itself would agree with a draw that had gone
+		# back to keying the glyph off the edge index -- which is the bug this
+		# leg exists for, and it renders a picture that looks entirely correct.
+		var drawn := cp.ring_label(sid, b)
+		var want_label := "%s %s" % [Palette.band_glyph(b),
+			DeepSpace.band_name_in(sid, just_in)]
+		if drawn != want_label:
+			ring_bad = "band %d draws '%s', depth %.0f says '%s'" % [
+				b, drawn, just_in, want_label]
+			break
+	print("[plot] THE RINGS MEAN DEPTH %d rings, radius and name against band_of: %s -> %s" % [
+		top, "agree" if ring_bad == "" else ring_bad,
 		"PASS" if ring_bad == "" else "FAIL"])
 
 	# 5. THE BAR IS A ROUND NUMBER. Swept rather than spot-checked, because the
 	#    property is "for every scale", and a bar that is round at 1,000u and
 	#    ragged at 1,347u is a bar nobody can read at the zoom they are at.
+	#    THE LEADING DIGIT IS PEELED BY DIVISION, NOT BY A LOGARITHM. The first
+	#    version of this leg used floor(log(u) / log(10.0)) to find the exponent
+	#    and called 1000.0 a violation, because that expression is
+	#    2.9999999999999996 in doubles at every exact power of ten. The bar was
+	#    right and the test was wrong -- so it is worth being blunt that this leg
+	#    must not reach for the same function the thing it is checking uses, or a
+	#    shared numerical quirk becomes a shared blind spot instead of a red.
 	var bar_bad := ""
 	var want := 3.0
 	while want < 200000.0:
 		var u: float = ChartPanel.scale_bar_units(want)
-		var lead := u / pow(10.0, floor(log(u) / log(10.0)))
-		if not (is_equal_approx(lead, 1.0) or is_equal_approx(lead, 2.0)
-				or is_equal_approx(lead, 5.0)):
-			bar_bad = "%.1f -> %.1f is not 1/2/5" % [want, u]
-		elif u > want:
+		var lead := u
+		while lead >= 9.999999:
+			lead /= 10.0
+		while lead < 0.999999:
+			lead *= 10.0
+		if absf(lead - 1.0) > 0.0001 and absf(lead - 2.0) > 0.0001 \
+				and absf(lead - 5.0) > 0.0001:
+			bar_bad = "%.1f -> %.1f leads with %.4f, not 1/2/5" % [want, u, lead]
+			break
+		if u > want:
 			bar_bad = "%.1f -> %.1f overflows" % [want, u]
+			break
 		want *= 1.37
 	print("[plot] THE BAR IS A ROUND NUMBER swept 3u..200000u: %s -> %s" % [
 		"all 1/2/5 and none overflow" if bar_bad == "" else bar_bad,

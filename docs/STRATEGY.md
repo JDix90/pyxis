@@ -8100,7 +8100,55 @@ one. `BAND_GLYPHS` and `FAMILY_GLYPHS` already carry a rule that one shape must
 not mean two things in this game, and a third text alphabet would have had to be
 checked against both forever. Drawn shapes are outside that namespace entirely.
 
-### Two bugs found by writing the assertions
+### The rings were one band out, and looked perfect
+
+`BAND_EDGES` is off by one from the band number, and nothing says so: `band_of`
+returns `i + 1` for the largest edge it clears, so `BAND_EDGES[4]` is 2600 —
+the floor of band **5**, THE FATHOMS. The first version of the ring loop walked
+edge indices, drew at `bounds + BAND_EDGES[i]`, took the glyph and colour from
+`i`, and took the name from the depth. So every ring carried the right word
+beside the wrong mark, one band low.
+
+**It renders a completely convincing picture.** The rings are still evenly
+nested, still in the right order, still coloured in the right sequence — there
+is no visual tell at all, which is exactly why a drawing change needs assertions
+and not only eyes. Only the world's own `band_of` could say the marks were
+wrong, and it did, on the first run.
+
+The fix is not just the index. The loop now walks BAND NUMBERS, and the radius,
+name, glyph and colour are all keyed off that one number: `band_ring_radius`
+converts band → radius and holds the off-by-one in one documented place, and
+`ring_label` composes the drawn string so that **the assertion reads what the
+plot draws** rather than rebuilding it from the same two accessors. That
+distinction is the whole value of the leg — a test that composed the label
+itself would agree with a draw that had gone back to keying the glyph off the
+edge index, since both would be making the same mistake. Red-verified against
+both reintroductions: a bad radius and a bad glyph key each go red, on band 1.
+
+The depth round-trip is gone too. `band_name_in` takes a depth, and band 1's
+edge is depth 0, which `band_of` maps to CHARTED rather than THE SHOALS — the
+boundary is the one value that belongs to neither side. Names come from
+`band_name_of` by index; only the assertion crosses the two, deliberately.
+
+### A test that shared a bug with the thing it tested
+
+`THE BAR IS A ROUND NUMBER` failed on `1627.5 -> 1000.0 is not 1/2/5`. 1000 is
+plainly 1×10³. The bar was right; the assertion was wrong — it recovered the
+leading digit with `floor(log(u) / log(10.0))`, and that expression is
+`2.9999999999999996` in doubles at every exact power of ten, so it read 1000 as
+leading with a 10.
+
+Two things came out of it worth keeping. The assertion now peels the leading
+digit by division and **must not reach for the same function the code under test
+uses**, or a shared numerical quirk becomes a shared blind spot instead of a
+red. And `scale_bar_units` turns out to survive that same quirk *by luck*: its
+magnitude comes out an order of magnitude low at every power of ten, and the
+`10.0` in its step list is what recovers it. That is now stated in the function,
+along with the reason not to "fix" it with an epsilon — floor's underestimate is
+harmless because the loop only accepts a step that fits, while an overestimate
+would return a bar wider than the space it was given.
+
+### Two more bugs found by writing the assertions
 
 **The zoom disagreed with the drawing about where the centre was.** The plot
 reserves `FURNITURE_H` off its bottom for the bar and legend, so the picture's
