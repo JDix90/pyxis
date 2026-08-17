@@ -99,6 +99,7 @@ const HARNESS_VARS := [
 	"PYXIS_SAVETEST",
 	"PYXIS_SHIPTEST",
 	"PYXIS_SIGTEST",
+	"PYXIS_PLOTTEST",
 	"PYXIS_SMUGTEST",
 	"PYXIS_SPILLTEST",
 	"PYXIS_STATIONTEST",
@@ -998,6 +999,13 @@ func _ready() -> void:
 		_load_system(GameState.current_system)
 		_enter_playing()
 		_run_sig_test()
+		return
+	if OS.get_environment("PYXIS_PLOTTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_plot_test()
 		return
 	if OS.get_environment("PYXIS_PROFILETEST") != "":
 		# NOT lock_saving, and this is the second harness after SAVETEST that
@@ -13260,6 +13268,270 @@ func _run_sig_test() -> void:
 
 	for pv in probes.values():
 		(pv as DeepSpace).free()
+	get_tree().quit()
+
+
+# --- survey plot test -------------------------------------------------------
+
+func _run_plot_test() -> void:
+	# The plot answers the loudest of the five playtest notes, so what it is
+	# asserted on is legibility rather than pixels: does the scale contain what
+	# the player owns, is the picture there at all outside a hunt, do the rings
+	# mean the depth they claim, and does a gesture leave the reader where they
+	# were looking.
+	var cp := chart_panel
+	var sid := GameState.current_system
+	var s := SystemDB.get_system(sid)
+	var bounds := float(s.get("bounds", 40.0))
+	var lair: Dictionary = (s.get("apex", {}) as Dictionary).get("lair", {})
+	var band: Array = lair.get("depth", [200.0, 300.0])
+	var old_r := bounds + float(band[1])
+
+	# 1. THE PLOT FITS ITS CONTENT. The old scale came off the apex band's outer
+	#    edge, so a beacon past it drew outside the rect and was simply missing.
+	#    The far beacon is placed at TWICE that radius, and the assertion needs
+	#    BOTH halves: the new fit covers it, and the old rule did not -- without
+	#    the second clause this passes on a scale that never changed.
+	#    THE SECOND CLAUSE WAS TAUTOLOGICAL AND IS NOW NOT. It read
+	#    `old_r < far` with `far := old_r * 2.0` -- which is `old_r < 2 * old_r`,
+	#    true for any positive radius, so it asserted nothing and the leg rested
+	#    entirely on `covers`. What has to be shown is that THE BEACON IS WHAT
+	#    MOVED THE SCALE: fit it with the beacon and without, and require the
+	#    difference. A fit that ignored beacons entirely would return the same
+	#    number twice and go red here, which is the bug this exists for.
+	var far := old_r * 2.0
+	GameState.beacons[sid] = []
+	var fit_bare := cp.fit_radius_for(sid)
+	GameState.beacons[sid] = [{"x": far, "z": 0.0}]
+	var fit := cp.fit_radius_for(sid)
+	var covers := fit >= far
+	var beacon_drove := fit > fit_bare and fit_bare < far
+	print("[plot] THE PLOT FITS ITS CONTENT beacon at %.0fu, fit %.0fu vs %.0fu without it (old rule %.0fu) -> %s" % [
+		far, fit, fit_bare, old_r, "PASS" if covers and beacon_drove else "FAIL"])
+
+	# 2. THE SHIP IS PART OF THE PICTURE. Same question for the other thing that
+	#    can be anywhere: a ship 3x past the band must not fall off the plot.
+	#    Passed as an ARGUMENT, which is the whole reason fit_radius_for takes
+	#    one -- a scene lookup could not be handed this case.
+	var ship_far := Vector2(0.0, old_r * 3.0)
+	var fit_ship := cp.fit_radius_for(sid, ship_far)
+	print("[plot] THE SHIP IS PART OF THE PICTURE ship at %.0fu -> fit %.0fu -> %s" % [
+		ship_far.length(), fit_ship,
+		"PASS" if fit_ship >= ship_far.length() and fit_ship > fit else "FAIL"])
+	GameState.beacons[sid] = []
+
+	# 3. THE PLOT DRAWS WITHOUT A HUNT. The reversal itself. A charted system
+	#    whose engine is dead still gets a picture -- that is where most of
+	#    "extremely hard to understand" came from, because the plot was absent
+	#    far more often than it was confusing. Asserted in both directions so a
+	#    gate that simply returns true cannot pass it.
+	var was_killed := GameState.apex_killed.duplicate()
+	if not GameState.apex_killed.has(sid):
+		GameState.apex_killed.append(sid)
+	var useful_dead := cp._plot_is_useful(sid)
+	var hunt_dead := cp._hunt_is_live(sid)
+	GameState.apex_killed.assign(was_killed)
+	var useful_unknown := cp._plot_is_useful("pyx99")
+	print("[plot] THE PLOT DRAWS WITHOUT A HUNT engine dead: drawn=%s hunt=%s; unknown system drawn=%s -> %s" % [
+		useful_dead, hunt_dead, useful_unknown,
+		"PASS" if useful_dead and not hunt_dead and not useful_unknown else "FAIL"])
+
+	# 4. THE RINGS MEAN DEPTH. A ring is drawn at band_ring_radius, and the
+	#    reader is told it is the start of that band. Tie that claim to the
+	#    function the WORLD uses to answer the same question -- depth_at
+	#    subtracts bounds, band_of maps depth to band -- so the label and the
+	#    place agree by construction rather than by a matching constant.
+	#    BAND_EDGES is off by one from the band number -- band_of returns i + 1 --
+	#    so this walks BAND NUMBERS and asks the world, at a point just outside
+	#    each ring, which band it is standing in. Just OUTSIDE rather than on:
+	#    band 1's edge is depth 0 and band_of maps exactly 0 to CHARTED, so the
+	#    boundary itself is the one depth that belongs to neither side.
+	var ring_bad := ""
+	var top := DeepSpace.BAND_NAMES.size() - 1
+	for b in range(1, top + 1):
+		var rr: float = ChartPanel.band_ring_radius(bounds, b)
+		var just_in := rr - bounds + 0.001
+		if DeepSpace.band_of(just_in) != b:
+			ring_bad = "band %d ring reads as band %d" % [b, DeepSpace.band_of(just_in)]
+			break
+		# And THE STRING THE PLOT ACTUALLY DRAWS names that same band, glyph
+		# included. Read out of ring_label rather than recomposed here, because a
+		# test that built the label itself would agree with a draw that had gone
+		# back to keying the glyph off the edge index -- which is the bug this
+		# leg exists for, and it renders a picture that looks entirely correct.
+		var drawn := cp.ring_label(sid, b)
+		var want_label := "%s %s" % [Palette.band_glyph(b),
+			DeepSpace.band_name_in(sid, just_in)]
+		if drawn != want_label:
+			ring_bad = "band %d draws '%s', depth %.0f says '%s'" % [
+				b, drawn, just_in, want_label]
+			break
+	print("[plot] THE RINGS MEAN DEPTH %d rings, radius and name against band_of: %s -> %s" % [
+		top, "agree" if ring_bad == "" else ring_bad,
+		"PASS" if ring_bad == "" else "FAIL"])
+
+	# 5. THE BAR IS A ROUND NUMBER. Swept rather than spot-checked, because the
+	#    property is "for every scale", and a bar that is round at 1,000u and
+	#    ragged at 1,347u is a bar nobody can read at the zoom they are at.
+	#    THE LEADING DIGIT IS PEELED BY DIVISION, NOT BY A LOGARITHM. The first
+	#    version of this leg used floor(log(u) / log(10.0)) to find the exponent
+	#    and called 1000.0 a violation, because that expression is
+	#    2.9999999999999996 in doubles at every exact power of ten. The bar was
+	#    right and the test was wrong -- so it is worth being blunt that this leg
+	#    must not reach for the same function the thing it is checking uses, or a
+	#    shared numerical quirk becomes a shared blind spot instead of a red.
+	var bar_bad := ""
+	var want := 3.0
+	while want < 200000.0:
+		var u: float = ChartPanel.scale_bar_units(want)
+		var lead := u
+		while lead >= 9.999999:
+			lead /= 10.0
+		while lead < 0.999999:
+			lead *= 10.0
+		if absf(lead - 1.0) > 0.0001 and absf(lead - 2.0) > 0.0001 \
+				and absf(lead - 5.0) > 0.0001:
+			bar_bad = "%.1f -> %.1f leads with %.4f, not 1/2/5" % [want, u, lead]
+			break
+		if u > want:
+			bar_bad = "%.1f -> %.1f overflows" % [want, u]
+			break
+		want *= 1.37
+	print("[plot] THE BAR IS A ROUND NUMBER swept 3u..200000u: %s -> %s" % [
+		"all 1/2/5 and none overflow" if bar_bad == "" else bar_bad,
+		"PASS" if bar_bad == "" else "FAIL"])
+
+	# 6. ZOOM HOLDS THE POINT UNDER THE FINGER. Zooming toward the centre while
+	#    the reader is looking at a beacon in the corner drags that beacon away
+	#    -- the gesture and the thing it is for fight each other. The invariant
+	#    is that the world point under the anchor is the same point after.
+	cp._plot.size = Vector2(320.0, ChartPanel.PLOT_HEIGHT)
+	cp.reset_view()
+	var anchor := Vector2(250.0, 40.0)
+	# Through plot_home(), which is what the DRAWING uses. Recomputing the origin
+	# here as `size * 0.5` would make this assertion agree with a zoom that
+	# drifts, since it would be making the same mistake -- the bug this catches
+	# is precisely the two disagreeing.
+	var before_pt := (anchor - (cp.plot_home() + cp._pan)) / cp._zoom
+	cp._zoom_about(anchor, 2.0)
+	var after_pt := (anchor - (cp.plot_home() + cp._pan)) / cp._zoom
+	var held := before_pt.distance_to(after_pt)
+	print("[plot] ZOOM HOLDS THE POINT UNDER THE FINGER zoom %.2f, anchor drift %.4fu -> %s" % [
+		cp._zoom, held, "PASS" if held < 0.001 and cp._zoom > 1.5 else "FAIL"])
+
+	# 7. A NEW SYSTEM GETS A FRESH VIEW. pyx03's fit radius is an order of
+	#    magnitude past pyx01's, so carrying a zoom across lands the reader in
+	#    featureless dark with nothing on screen to explain why.
+	cp._pan = Vector2(40.0, -20.0)
+	# Pinned to a real system first: with _selected still "" the reset would fire
+	# on the ""-to-pyx01 change and the assertion would pass without ever testing
+	# a system-to-system switch, which is the case it exists for.
+	cp._selected = sid
+	var other := ""
+	for id_v in SystemDB.ids():
+		if String(id_v) != sid:
+			other = String(id_v)
+			break
+	cp._select(other)
+	print("[plot] A NEW SYSTEM GETS A FRESH VIEW %s -> zoom %.2f pan %s -> %s" % [
+		other, cp._zoom, str(cp._pan),
+		"PASS" if is_equal_approx(cp._zoom, 1.0) and cp._pan == Vector2.ZERO else "FAIL"])
+
+	# 8. THE LEGEND LAYS ITSELF OUT. Written first as a closure advancing a
+	#    captured `lx` cursor, which cannot work: GDScript lambdas capture locals
+	#    BY VALUE, so `lx += ...` moved the lambda's own copy and every entry drew
+	#    at the same x -- the legend rendered as one smear on top of itself. That
+	#    is invisible in a diff and invisible to any assertion that can only watch
+	#    draw calls, so the layout is a list of numbers now and this checks the
+	#    numbers: strictly increasing, and each gap wide enough for the swatch.
+	var words := PackedStringArray(["YOU", "BEACON", "COLONY", "ESTIMATE"])
+	var xs := cp.legend_layout(words)
+	var lay_bad := ""
+	if xs.size() != words.size():
+		lay_bad = "%d positions for %d words" % [xs.size(), words.size()]
+	else:
+		for i in range(1, xs.size()):
+			if xs[i] - xs[i - 1] < 13.0:
+				lay_bad = "'%s' advances only %.1fpx from '%s'" % [
+					words[i], xs[i] - xs[i - 1], words[i - 1]]
+				break
+	print("[plot] THE LEGEND LAYS ITSELF OUT %d entries at %s -> %s" % [
+		words.size(), str(xs), "PASS" if lay_bad == "" else "FAIL " + lay_bad])
+
+	# 9. AND ONLY FOR LAYERS THAT ARE DRAWN. A legend entry for a layer the
+	#    picture is not drawing is a promise it does not keep. The hunt entry is
+	#    the one that moves, so it is the one asserted in both directions.
+	# Assertion 7 left _selected on the OTHER system, and legend_words reads it.
+	# Pinned back first, or this is asking about a system the fixtures below are
+	# not being written to.
+	cp._selected = sid
+	GameState.beacons[sid] = []
+	var dead_words := cp.legend_words(false, false)
+	GameState.beacons[sid] = [{"x": 100.0, "z": 0.0}]
+	# ESTIMATE needs a reading on file, not just a live hunt -- the ring is drawn
+	# only where evidence agrees, so its legend entry follows the evidence.
+	GameState.add_apex_hint(sid, {"kind": "ring", "quadrant": "EAST"})
+	var live_words := cp.legend_words(true, true)
+	# Named absences rather than "empty": a system with a founded colony legitimately
+	# carries COLONY in both lists, and asserting emptiness would fail on a pilot
+	# who had done nothing wrong. The three that must MOVE are the three under test.
+	var moved := true
+	for w in ["YOU", "BEACON", "ESTIMATE"]:
+		if dead_words.has(w) or not live_words.has(w):
+			moved = false
+	print("[plot] AND ONLY FOR LAYERS THAT ARE DRAWN nothing drawn -> %s; all drawn -> %s -> %s" % [
+		str(dead_words), str(live_words), "PASS" if moved else "FAIL"])
+	GameState.beacons[sid] = []
+
+	# 10. THE PLOT IS CONTAINED. Godot does not scissor a CanvasItem's own draw
+	#     calls to its rect; clip_contents defaults to false, and nothing else in
+	#     this project sets it. So the band rings -- the band-4 ring is 183px in a
+	#     rect 180px tall at the design resolution -- were painting across the
+	#     detail line, the title and the system map in the DEFAULT view of the
+	#     starting system. Every cull in the draw is a visibility heuristic and
+	#     none of them can be containment, because _pan is unbounded and _zoom
+	#     reaches 8. One property, so one assertion.
+	print("[plot] THE PLOT IS CONTAINED clip_contents=%s, zoom ceiling %.1fx, pan unbounded -> %s" % [
+		cp._plot.clip_contents, ChartPanel.ZOOM_MAX,
+		"PASS" if cp._plot.clip_contents else "FAIL"])
+
+	# 11. THE PLOT TAKES INPUT. It was MOUSE_FILTER_IGNORE, which is why it had no
+	#    gestures -- and IGNORE would also drop a drag through to the sheet
+	#    behind it. Cheap to assert and the thing every gesture above depends on.
+	print("[plot] THE PLOT TAKES INPUT filter=%d (STOP=%d) -> %s" % [
+		cp._plot.mouse_filter, Control.MOUSE_FILTER_STOP,
+		"PASS" if cp._plot.mouse_filter == Control.MOUSE_FILTER_STOP else "FAIL"])
+
+	# 12. THE PLOT STILL FITS ITS SHEET. The plot grew by 30px to carry rings, a
+	#    legend and a bar, and the sheet cannot grow -- it is 0.55 of the screen
+	#    by contract. Measured at the design resolution against the column's
+	#    other minimums, with room kept for two colony rows, because a founded
+	#    colony must not be what pushes WARP off the bottom.
+	#     BOTH OF ITS NUMBERS WERE WRONG, in the direction that made it pass.
+	#     `col` holds NINE children -- header, map, title, detail, plot, note,
+	#     recall, colony rows, warp -- so a VBoxContainer inserts EIGHT 8px gaps,
+	#     not seven. And a colony row is a Button at custom_minimum_size 42 with
+	#     the container's own separation 4 between rows, so two rows are
+	#     42 + 4 + 42 = 88px, not 68. Budgeting 7 gaps and 68px understated the
+	#     column by 28px, which is precisely how a check whose stated purpose is
+	#     "a founded colony must not push WARP off the sheet" reported PASS on a
+	#     layout where two colonies do exactly that.
+	#
+	#     Read off ChartPanel's own constants where they exist rather than
+	#     retyped, so the next change to a button height moves this with it. The
+	#     four estimated rows -- header, title, detail, note -- have no
+	#     custom_minimum_size and are font-derived, so they stay estimates and
+	#     this stays a MODEL of the column; it is a model that now matches the
+	#     code's own numbers everywhere the code states one.
+	var sheet_h := UILayout.BASE.y * ChartPanel.SHEET_RATIO
+	var rows := ChartPanel.COLONY_ROW_H * 2.0 + ChartPanel.COLONY_ROW_SEP
+	var fixed := 32.0 + 30.0 + ChartPanel.MAP_MIN_H + 20.0 + 30.0 \
+		+ ChartPanel.PLOT_HEIGHT + 24.0 + ChartPanel.COLONY_ROW_H \
+		+ ChartPanel.COLONY_ROW_H + ChartPanel.COL_SEP * 8.0
+	var colony_room := sheet_h - fixed
+	print("[plot] THE PLOT STILL FITS ITS SHEET sheet %.0fpx, minimums %.0fpx, spare %.0fpx (2 rows = %.0f) -> %s" % [
+		sheet_h, fixed, colony_room, rows, "PASS" if colony_room >= rows else "FAIL"])
+
 	get_tree().quit()
 
 

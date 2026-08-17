@@ -44,10 +44,10 @@ behind a `PYXIS_*` environment variable and run headless:
 PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 ```
 
-Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 48 of them —
-the 48 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
+Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 49 of them —
+the 49 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
 `TAGS` at all: it is one harness with 18 stateful modes, run as its own
-sequence. So a full sweep is 48 + 18 = **66 runs**.
+sequence. So a full sweep is 49 + 18 = **67 runs**.
 
 Those three numbers are derivable from `run_harness.sh` and nothing else, so
 check them there rather than trusting this paragraph — it has been wrong before,
@@ -166,17 +166,35 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **657 PASS / 0 FAIL / 0 script errors** across **65 runs**,
+Current baseline: **667 PASS / 0 FAIL / 0 script errors** across **66 runs**,
 save intact, save format **v20** — measured on Godot 4.6.stable, headless
-(2026-08-17), at STRATEGY §75.
+(2026-08-17), at STRATEGY §77.
 
-**The move from §73's 643 across 64 runs reconciles exactly, and that is why
-both numbers are kept.** §74 added four assertion lines to existing tags — three
-`INPUTTEST` legs plus `A DEFAULT IS A BINDING TOO` — while two others were
-*renamed* rather than added (`CANCEL IS RESERVED` became `ESCAPE IS RESERVED
-BOTH WAYS`, and the beacon leg gained a second direction under a new name), so
-those cost nothing. §75 added `PROFILETEST`: one new run carrying ten. So
-643 + 4 + 10 = 657, and 64 + 1 = 65.
+**This figure is one commit behind the tag count above.** §78 added `PLOTTEST`
+and its twelve assertions, so the next sweep should read **679 across 67**. A
+baseline is a MEASUREMENT and is only written here once somebody has taken it;
+predicting one and typing it in as though it were taken is how the numbers this
+paragraph keeps correcting got wrong in the first place.
+
+**The move from §75's 657 across 65 runs reconciles exactly, and that is why
+both numbers are kept.** §76 added `SIGTEST`, one new run carrying seven, and
+three legs to the existing `MINETEST` — `DENSITY IS ALIVE`,
+`SCALING A THRESHOLD ONLY MOVES THE BAR` and `THE STARTER SYSTEM HAS A
+CHARACTER`. Nothing was renamed or dropped. So 657 + 7 + 3 = 667, and
+65 + 1 = 66.
+
+**This is the sweep where those ten first measured anything.** §76 shipped with
+a mis-indented block that made the whole project fail to parse (§77), so the
+signature site never spawned and the density multipliers never ran — the tags
+existed, went green in review, and were describing code that could not execute.
+The reconciliation above is the check that says otherwise now.
+
+The move before that, from §73's 643 across 64 runs: §74 added four assertion
+lines to existing tags — three `INPUTTEST` legs plus `A DEFAULT IS A BINDING
+TOO` — while two others were *renamed* rather than added (`CANCEL IS RESERVED`
+became `ESCAPE IS RESERVED BOTH WAYS`, and the beacon leg gained a second
+direction under a new name), so those cost nothing. §75 added `PROFILETEST`:
+one new run carrying ten. So 643 + 4 + 10 = 657, and 64 + 1 = 65.
 
 **Do that arithmetic on every sweep.** A total that rises by exactly the number
 of assertions you added is evidence you added them; a total that moves by any
