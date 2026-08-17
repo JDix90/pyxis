@@ -282,6 +282,48 @@ static func band_ring_radius(bounds: float, band: int) -> float:
 	return bounds + float(DeepSpace.BAND_EDGES[i])
 
 
+func legend_words(live: bool, has_ship: bool) -> PackedStringArray:
+	# WHICH LAYERS ARE ON SCREEN, in draw order. A legend entry for a layer the
+	# picture is not drawing is a promise it does not keep, so each one is
+	# conditioned on the same thing its layer is -- which is why this is a
+	# function and not a literal: the conditions have to stay next to each other
+	# to stay in step.
+	var out := PackedStringArray()
+	if has_ship and _selected == GameState.current_system:
+		out.append("YOU")
+	if not GameState.beacons_in(_selected).is_empty():
+		out.append("BEACON")
+	if not GameState.colonies_in(_selected).is_empty():
+		out.append("COLONY")
+	if live and GameState.apex_hint_count(_selected) > 0:
+		out.append("ESTIMATE")
+	return out
+
+
+func legend_layout(words: PackedStringArray) -> PackedFloat32Array:
+	# THE X OF EACH LEGEND ENTRY. Pure and exposed so PLOTTEST can assert the
+	# positions strictly advance -- see the note at the call site: the first
+	# version advanced a cursor captured by a lambda, which GDScript copies by
+	# value, so every entry landed on the same x. Nothing in a diff or an
+	# assertion could see it, because the only symptom is what the pixels look
+	# like. A layout that is a list of numbers can at least be checked.
+	var font := ThemeDB.fallback_font
+	var out := PackedFloat32Array()
+	var lx := 6.0
+	for w in words:
+		out.append(lx)
+		# 13px of swatch and gap, plus the word. The swatches are all drawn
+		# inside that 13 (widest is the 7px colony square at +1.5 stroke).
+		var adv := 13.0
+		if font != null:
+			adv += font.get_string_size(w, HORIZONTAL_ALIGNMENT_LEFT, -1,
+				UIKit.SIZE_FINE).x + 6.0
+		else:
+			adv += 6.0 * w.length()
+		lx += adv
+	return out
+
+
 func ring_label(id: String, band: int) -> String:
 	# THE EXACT STRING DRAWN BESIDE A BAND RING, exposed so the assertion can
 	# read what the plot draws rather than rebuilding it from the same two
@@ -579,35 +621,36 @@ func _draw_plot() -> void:
 		#    Hunt entries appear only while the hunt does, for the same reason
 		#    the note does: a legend for a layer that is not on screen is a
 		#    promise the picture does not keep.
-		var lx := 6.0
+		#    A PLAIN LOOP, NOT A LAMBDA, and the reason is a language rule rather
+		#    than a style preference: GDSCRIPT LAMBDAS CAPTURE LOCALS BY VALUE.
+		#    This was written as a `swatch` closure that advanced a captured `lx`
+		#    cursor, which cannot work -- the `lx += ...` mutates the lambda's own
+		#    copy and the outer variable never moves, so every entry draws at the
+		#    same x and the legend renders as one smear. It is invisible in a diff
+		#    and no assertion can see a draw call, so the layout is computed by
+		#    legend_layout and PLOTTEST checks that the positions actually advance.
 		var ly := size.y - 22.0
-		var swatch := func(kind: String, word: String) -> void:
+		var words := legend_words(live, me != null)
+		var xs := legend_layout(words)
+		for i in words.size():
+			var word := words[i]
+			var lx := xs[i]
 			var c := accent
-			if kind == "ship":
+			if word == "YOU":
 				c = Palette.GOLD
 				_plot.draw_colored_polygon(PackedVector2Array([
 					Vector2(lx + 5.0, ly), Vector2(lx, ly - 3.5),
 					Vector2(lx, ly + 3.5)]), c)
-			elif kind == "colony":
+			elif word == "COLONY":
 				_plot.draw_rect(Rect2(Vector2(lx, ly - 3.5), Vector2(7.0, 7.0)),
 					c, false, 1.5)
-			elif kind == "beacon":
+			elif word == "BEACON":
 				_plot.draw_circle(Vector2(lx + 3.5, ly), 2.5, c)
 			else:
 				c = Palette.TEAL
 				_plot.draw_arc(Vector2(lx + 3.5, ly), 3.5, 0.0, TAU, 12, c, 1.0, true)
 			_plot.draw_string(font, Vector2(lx + 11.0, ly + 3.5), word,
 				HORIZONTAL_ALIGNMENT_LEFT, -1, UIKit.SIZE_FINE, c)
-			lx += 13.0 + font.get_string_size(word, HORIZONTAL_ALIGNMENT_LEFT, -1,
-				UIKit.SIZE_FINE).x
-		if me != null and _selected == GameState.current_system:
-			swatch.call("ship", "YOU")
-		if not GameState.beacons_in(_selected).is_empty():
-			swatch.call("beacon", "BEACON")
-		if not GameState.colonies_in(_selected).is_empty():
-			swatch.call("colony", "COLONY")
-		if live and GameState.apex_hint_count(_selected) > 0:
-			swatch.call("estimate", "ESTIMATE")
 
 
 func _on_plot_input(event: InputEvent) -> void:

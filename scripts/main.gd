@@ -13428,14 +13428,60 @@ func _run_plot_test() -> void:
 		other, cp._zoom, str(cp._pan),
 		"PASS" if is_equal_approx(cp._zoom, 1.0) and cp._pan == Vector2.ZERO else "FAIL"])
 
-	# 8. THE PLOT TAKES INPUT. It was MOUSE_FILTER_IGNORE, which is why it had no
+	# 8. THE LEGEND LAYS ITSELF OUT. Written first as a closure advancing a
+	#    captured `lx` cursor, which cannot work: GDScript lambdas capture locals
+	#    BY VALUE, so `lx += ...` moved the lambda's own copy and every entry drew
+	#    at the same x -- the legend rendered as one smear on top of itself. That
+	#    is invisible in a diff and invisible to any assertion that can only watch
+	#    draw calls, so the layout is a list of numbers now and this checks the
+	#    numbers: strictly increasing, and each gap wide enough for the swatch.
+	var words := PackedStringArray(["YOU", "BEACON", "COLONY", "ESTIMATE"])
+	var xs := cp.legend_layout(words)
+	var lay_bad := ""
+	if xs.size() != words.size():
+		lay_bad = "%d positions for %d words" % [xs.size(), words.size()]
+	else:
+		for i in range(1, xs.size()):
+			if xs[i] - xs[i - 1] < 13.0:
+				lay_bad = "'%s' advances only %.1fpx from '%s'" % [
+					words[i], xs[i] - xs[i - 1], words[i - 1]]
+				break
+	print("[plot] THE LEGEND LAYS ITSELF OUT %d entries at %s -> %s" % [
+		words.size(), str(xs), "PASS" if lay_bad == "" else "FAIL " + lay_bad])
+
+	# 9. AND ONLY FOR LAYERS THAT ARE DRAWN. A legend entry for a layer the
+	#    picture is not drawing is a promise it does not keep. The hunt entry is
+	#    the one that moves, so it is the one asserted in both directions.
+	# Assertion 7 left _selected on the OTHER system, and legend_words reads it.
+	# Pinned back first, or this is asking about a system the fixtures below are
+	# not being written to.
+	cp._selected = sid
+	GameState.beacons[sid] = []
+	var dead_words := cp.legend_words(false, false)
+	GameState.beacons[sid] = [{"x": 100.0, "z": 0.0}]
+	# ESTIMATE needs a reading on file, not just a live hunt -- the ring is drawn
+	# only where evidence agrees, so its legend entry follows the evidence.
+	GameState.add_apex_hint(sid, {"kind": "ring", "quadrant": "EAST"})
+	var live_words := cp.legend_words(true, true)
+	# Named absences rather than "empty": a system with a founded colony legitimately
+	# carries COLONY in both lists, and asserting emptiness would fail on a pilot
+	# who had done nothing wrong. The three that must MOVE are the three under test.
+	var moved := true
+	for w in ["YOU", "BEACON", "ESTIMATE"]:
+		if dead_words.has(w) or not live_words.has(w):
+			moved = false
+	print("[plot] AND ONLY FOR LAYERS THAT ARE DRAWN nothing drawn -> %s; all drawn -> %s -> %s" % [
+		str(dead_words), str(live_words), "PASS" if moved else "FAIL"])
+	GameState.beacons[sid] = []
+
+	# 10. THE PLOT TAKES INPUT. It was MOUSE_FILTER_IGNORE, which is why it had no
 	#    gestures -- and IGNORE would also drop a drag through to the sheet
 	#    behind it. Cheap to assert and the thing every gesture above depends on.
 	print("[plot] THE PLOT TAKES INPUT filter=%d (STOP=%d) -> %s" % [
 		cp._plot.mouse_filter, Control.MOUSE_FILTER_STOP,
 		"PASS" if cp._plot.mouse_filter == Control.MOUSE_FILTER_STOP else "FAIL"])
 
-	# 9. THE PLOT STILL FITS ITS SHEET. The plot grew by 40px to carry rings, a
+	# 11. THE PLOT STILL FITS ITS SHEET. The plot grew by 30px to carry rings, a
 	#    legend and a bar, and the sheet cannot grow -- it is 0.55 of the screen
 	#    by contract. Measured at the design resolution against the column's
 	#    other minimums, with room kept for two colony rows, because a founded

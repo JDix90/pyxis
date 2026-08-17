@@ -8148,6 +8148,29 @@ along with the reason not to "fix" it with an epsilon — floor's underestimate 
 harmless because the loop only accepts a step that fits, while an overestimate
 would return a bar wider than the space it was given.
 
+### The legend was a closure, and closures copy
+
+Found by re-reading rather than by a red: the legend was written as a `swatch`
+lambda advancing a captured `lx` cursor. **GDScript lambdas capture locals by
+value**, so `lx += ...` moved the lambda's own copy and the outer variable never
+went anywhere — every entry would have drawn at the same x, one on top of
+another.
+
+It is worth recording as a shape rather than as a typo. Nothing could see it: it
+is not visible in a diff, it does not fail to compile, and no assertion that can
+only watch draw calls can tell a legend from a smear. The fix was to stop
+needing the closure — `legend_words` returns which layers are on screen and
+`legend_layout` returns their x positions, so the layout is a list of numbers
+and `THE LEGEND LAYS ITSELF OUT` checks that the numbers strictly advance. The
+general move: when the only symptom of a bug is what the pixels look like,
+extract the arithmetic until there is something with a value to assert on.
+
+`AND ONLY FOR LAYERS THAT ARE DRAWN` came out of writing that one. It names the
+three entries that must move — YOU, BEACON, ESTIMATE — rather than asserting the
+legend is empty, because a pilot with a founded colony legitimately carries
+COLONY in both lists and an emptiness check would fail them for having played
+the game.
+
 ### Two more bugs found by writing the assertions
 
 **The zoom disagreed with the drawing about where the centre was.** The plot
