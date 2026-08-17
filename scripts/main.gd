@@ -20635,6 +20635,9 @@ func _run_mine_test() -> void:
 	bare_probe.configure(stripped_def, "pyx02")
 	var stream_same := true
 	var arch_diffs := 0
+	# Landmark KINDS are expected to differ -- that is the weights working -- so
+	# they are counted like archetypes rather than compared like placements.
+	var mark_diffs := 0
 	var stream_bad := ""
 	for cz_p in range(4, 14):
 		for cx_p in range(4, 14):
@@ -20658,22 +20661,36 @@ func _run_mine_test() -> void:
 				stream_same = false
 				if stream_bad == "":
 					stream_bad = "rocks/hulk/pack @(%d,%d)" % [cx_p, cz_p]
-			# v21. THE SALTED APPENDS, POLICED TOO. seams and landmark take their
-			# own streams and read nothing this def can change, so they must be
-			# identical between the two probes as strictly as the shared stream
-			# is. They were outside this comparison until identity grew a fourth
-			# and fifth channel, which meant a per-Pyx key that accidentally
-			# reached one of them would have shipped green.
-			if str(a["seams"]) != str(b["seams"]) \
-					or str(a["landmark"]) != str(b["landmark"]):
+			# v21. THE SALTED APPENDS, POLICED TOO -- but policed for the right
+			# property, which took a red run to get right. `seams` reads nothing
+			# a def can change, so it must be byte-identical.
+			if str(a["seams"]) != str(b["seams"]):
 				stream_same = false
 				if stream_bad == "":
-					stream_bad = "seams/landmark @(%d,%d)" % [cx_p, cz_p]
+					stream_bad = "seams @(%d,%d)" % [cx_p, cz_p]
+			# The LANDMARK is the station case again, and the first draft of this
+			# clause got it backwards: landmark_at reads landmark_weights to pick
+			# its KIND, so a kind that differs between authored and stripped is
+			# §65's feature working, not a stream that moved. What must hold is
+			# that the PLACEMENT is untouched -- position and rotation come off
+			# the salted rng and a weight may not shift them by a millimetre.
+			var ma: Dictionary = a["landmark"]
+			var mb: Dictionary = b["landmark"]
+			if ma.is_empty() != mb.is_empty():
+				stream_same = false
+				stream_bad = "landmark presence @(%d,%d)" % [cx_p, cz_p]
+			elif not ma.is_empty():
+				if (ma["pos"] as Vector3) != (mb["pos"] as Vector3) \
+						or not is_equal_approx(float(ma["rot_y"]), float(mb["rot_y"])):
+					stream_same = false
+					stream_bad = "landmark placement @(%d,%d)" % [cx_p, cz_p]
+				if String(ma["kind"]) != String(mb["kind"]):
+					mark_diffs += 1
 	real_probe.free()
 	bare_probe.free()
-	print("[mine] THE DRAW COUNT DID NOT MOVE 100 pyx02 cells weighted vs stripped: shared stream identical=%s%s, archetypes differ on %d (0 = the weights are dead code) -> %s" % [
+	print("[mine] THE DRAW COUNT DID NOT MOVE 100 pyx02 cells weighted vs stripped: shared stream + placements identical=%s%s, archetypes differ on %d, landmark kinds on %d (0 = the weights are dead code) -> %s" % [
 		str(stream_same), "" if stream_bad == "" else " (" + stream_bad + ")",
-		arch_diffs,
+		arch_diffs, mark_diffs,
 		"PASS" if stream_same and arch_diffs > 0 else "FAIL"])
 
 	# --- 6c. v21: the density gates, and that they are alive ------------------
@@ -20695,17 +20712,25 @@ func _run_mine_test() -> void:
 	probe_bare.generating = false
 	add_child(probe_bare)
 	probe_bare.configure(bare02, "pyx02")
+	# THE WINDOW IS WHERE THE CONVOYS ARE, which the first draft of this got
+	# wrong and the harness caught: cells 20-44 sit at depth 1800-4000, and
+	# CONVOY_MAX_DEPTH is 1000, so both probes returned zero and the comparison
+	# was vacuous. A multiplier cannot be shown alive in a band where the thing
+	# it scales cannot occur. 197 of these 324 cells sit inside
+	# [CONVOY_MIN_DEPTH, CONVOY_MAX_DEPTH], which is bands 2-3, which is where
+	# pyx02 authors 1.6x and 1.7x. Widening the sweep adds none of them: that
+	# window is bounded by RADIUS, so 0-18 already contains all of it.
 	var convoys_hi := 0
 	var convoys_bare := 0
-	for cz_d in range(20, 44):
-		for cx_d in range(20, 44):
+	for cz_d in range(0, 18):
+		for cx_d in range(0, 18):
 			if not (probe_hi.plan_cell(cx_d, cz_d)["convoy"] as Dictionary).is_empty():
 				convoys_hi += 1
 			if not (probe_bare.plan_cell(cx_d, cz_d)["convoy"] as Dictionary).is_empty():
 				convoys_bare += 1
 	probe_hi.free()
 	probe_bare.free()
-	print("[mine] DENSITY IS ALIVE 576 pyx02 cells: %d convoys authored vs %d stripped (authored is 1.5-1.7x, so it must be strictly more) -> %s" % [
+	print("[mine] DENSITY IS ALIVE 324 pyx02 cells in the convoy depth window: %d convoys authored vs %d stripped (authored is 1.6-1.7x, so it must be strictly more) -> %s" % [
 		convoys_hi, convoys_bare,
 		"PASS" if convoys_hi > convoys_bare else "FAIL"])
 
@@ -20724,8 +20749,8 @@ func _run_mine_test() -> void:
 	probe_bare2.generating = false
 	add_child(probe_bare2)
 	probe_bare2.configure(bare02, "pyx02")
-	for cz_n in range(20, 44):
-		for cx_n in range(20, 44):
+	for cz_n in range(0, 18):
+		for cx_n in range(0, 18):
 			var bare_c: Dictionary = probe_bare2.plan_cell(cx_n, cz_n)["convoy"]
 			if bare_c.is_empty():
 				continue
