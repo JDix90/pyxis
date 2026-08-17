@@ -242,7 +242,8 @@ func _build_flying() -> void:
 			"Open the chart. Shut while docked and during an apex fight, exactly like the button."))
 		_body.add_child(_row(GameState.binding_name("drop_beacon"),
 			"Drop a beacon where you are standing. Deep space only, eight in stock, and holding on one takes it back."))
-		_body.add_child(_row(GameState.binding_name("pause"), "Pause, and unpause from any page."))
+		_body.add_child(_row(GameState.binding_name("pause"),
+			"Pause, and unpause again from any page of the pause menu. This page keeps its own back-out."))
 		# Desktop only, and the manual says so by only appearing here — the same
 		# device question the branch above is asked for. Touch has no gesture for
 		# this yet; a manual that described one would be describing the wrong verb.

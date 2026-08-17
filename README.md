@@ -123,7 +123,10 @@ naming one unfamiliar type and then a lot of inference failures, this is it —
 
 Current baseline: **643 PASS / 0 FAIL / 0 script errors** across **64 runs**,
 save intact, save format **v20** — measured on Godot 4.6.stable, headless
-(2026-08-17). Taken fresh rather than incremented: the previous figure of 616 sat
+(2026-08-17), **at STRATEGY §73**. §74 adds assertion lines to existing tags and
+has not been swept, so this number is a floor rather than the current total; it
+is left un-incremented on purpose, because a derived figure written where a
+measured one belongs is the whole mistake §73 records. Taken fresh rather than incremented: the previous figure of 616 sat
 beside a run count that was wrong in two places at once, so it could not be
 adjusted, only re-measured (STRATEGY §73). The gap between 616 and 643 is that
 staleness, not one commit's worth of new assertions. The frontier's stage 1

@@ -7492,3 +7492,61 @@ a refusal clause alone is satisfied perfectly by a dead key:
 is why these push real `InputEventKey`s through `Input` rather than calling the
 panels: calling `chart_panel.open()` would pass with no action declared, no key
 bound and no dispatch written.
+
+### What the adversarial pass found, after the keys worked
+
+The three keys were written, self-checked and committed before a verification
+sweep ran over the diff. It came back with four defects, and the pattern in them
+is worth more than the fixes: **every one was a rule that had only ever been
+tested through the door that could not violate it.**
+
+**A toggle key is not a button pressed twice.** `ChartPanel.close_panel` ended
+with an unguarded `tween_callback(func(): visible = false)`, and `create_tween`
+does not kill the earlier tween. Close and reopen inside `SLIDE_TIME` and that
+callback fires on a panel that is open again, leaving `is_open` true with
+`visible` false — an invisible chart the next press "closes", read by the player
+as a key that did nothing. It was unreachable for as long as the HUD button was
+the only door, because **a button only ever opens**. PauseMenu has carried the
+guard since it shipped, and its comment says why; it was the one panel that
+already had a toggle. Chart now carries it too.
+
+**A default is a binding.** `rebind`'s conflict-stealing loop read the saved
+overrides dict — which holds only actions the player has *already moved*. An
+action still on its project.godot default has no entry there at all, which is
+precisely what leaves the default in place. So on a fresh install, binding
+`move_up` to C returned true and left `chart` on C as well: two live actions on
+one key, produced by the function written to prevent that, while
+`NO SHARED KEY` stayed green because its first rebind puts the action into the
+dict and its second one therefore finds it. The loop now reads the live
+InputMap, the same source `binding_name` was moved to GameState for.
+
+**Reserved has two directions.** Keeping `cancel` out of REBINDABLE stops it
+being moved *off* Escape. Nothing stopped an action being moved *onto* Escape,
+because the conflict loop walks REBINDABLE and `cancel` is not in it. For
+`chart` and `drop_beacon` the result was a dead key — CameraRig tests `cancel`
+first. For `pause` it was worse: PauseMenu tests `pause` before `cancel`, so
+Escape stopped backing out one step and started resuming from any page, which
+falsifies the manual's numbered ladder **from the settings screen**. `rebind`
+now refuses `KEY_ESCAPE` outright, since the only other repair is taking Escape
+away from `cancel`.
+
+**A refusal clause alone is a dead key's alibi.** This section claimed all three
+new legs were measured in both directions. The beacon leg was not: it pressed B
+at depth 0 and asserted the rack had not moved, which a missing action, a wrong
+keycode, a deleted dispatch branch and a typo'd `has_method` all satisfy
+perfectly. It measured that a keypress does nothing. The leg now flies out past
+the chart edge, drops a beacon, checks the rack fell and a node stands, and only
+then comes home to be refused.
+
+Two smaller things the same pass caught. `OS.get_keycode_string` answers
+`"Space"`, `"Tab"`, `"Escape"` — mixed case, in an all-caps interface — so
+`binding_name` upper-cases. And the commit's own thesis was half-delivered: the
+manual started reading the live map while `tutorial.gd` and `barks.gd` went on
+printing `W A S D`, which left the **first sentence in the game** as the lying
+surface and the two-menus-deep page as the honest one. Both now read the map;
+the bark table carries `{MOVE}` and `{TARGET}` tokens because a `const` cannot
+call anything.
+
+Two new assertions, `ESCAPE IS RESERVED BOTH WAYS` and
+`A DEFAULT IS A BINDING TOO`, each red-verified against the code as it stood
+before this pass.

@@ -12222,15 +12222,32 @@ func _run_input_test() -> void:
 	# remembers every place in it -- so the key must reach that refusal rather
 	# than carry a copy of it. Standing at the spawn point, depth is 0 and the
 	# rack must not move.
+	# BOTH DIRECTIONS, and the refusal alone was not one. The first draft of this
+	# leg pressed B at depth 0 and asserted the rack had not moved -- which a
+	# missing action, a wrong keycode, a deleted dispatch branch and a typo'd
+	# has_method all satisfy perfectly. It measured that a keypress does nothing,
+	# which was never in doubt. So the key is made to WORK first, out in the
+	# deep, and only then made to refuse.
+	player.global_position = Vector3(SystemDB.bounds_of(system_id) + 240.0, 0.0, 0.0)
+	await get_tree().process_frame
+	var stock_deep := GameState.beacon_stock_left()
+	var depth_deep := deep_depth()
+	await _press_key(KEY_B)
+	var stock_after_drop := GameState.beacon_stock_left()
+	var beacon_dropped: bool = stock_after_drop == stock_deep - 1
+	var beacon_node: bool = not get_tree().get_nodes_in_group("beacon").is_empty()
+
 	player.global_position = PlayerShip.SPAWN_POINT
 	await get_tree().process_frame
 	var stock_before := GameState.beacon_stock_left()
 	var depth_here := deep_depth()
 	await _press_key(KEY_B)
 	var beacon_refused: bool = GameState.beacon_stock_left() == stock_before
-	print("[input] THE BEACON KEY REFUSES THE CHART depth=%.1f, stock %d -> %d -> %s" % [
-		depth_here, stock_before, GameState.beacon_stock_left(),
-		"PASS" if beacon_refused and depth_here <= 0.0 else "FAIL"])
+	print("[input] THE BEACON KEY WORKS AND THEN REFUSES at depth %.0f the rack fell %d->%d and a beacon stands=%s; at depth %.1f it held at %d -> %s" % [
+		depth_deep, stock_deep, stock_after_drop, str(beacon_node),
+		depth_here, stock_before,
+		"PASS" if beacon_dropped and beacon_node and beacon_refused
+			and depth_deep > 0.0 and depth_here <= 0.0 else "FAIL"])
 
 	# PAUSE IS ONE KEY, AND IT TAKES TWO NODES TO BE ONE. CameraRig is
 	# PROCESS_MODE_INHERIT, so it stops receiving input the instant the tree
@@ -14976,8 +14993,36 @@ func _run_access_test() -> void:
 	# Cancel is not rebindable, and that is deliberate: it is the way out of
 	# every console and of the settings page that would fix a bad binding.
 	var cancel_refused: bool = not GameState.rebind("cancel", KEY_K)
-	print("[access] CANCEL IS RESERVED rebind refused=%s -> %s" % [
-		str(cancel_refused), "PASS" if cancel_refused else "FAIL"])
+	# AND THE OTHER DIRECTION, which is the half that was missing. Keeping
+	# `cancel` out of REBINDABLE stops it being moved off Escape; nothing stopped
+	# an action being moved ONTO Escape, and the conflict loop could not see the
+	# collision because it walks REBINDABLE and `cancel` is not in it. The result
+	# was a dead action (CameraRig tests `cancel` first) or, once `pause` existed,
+	# an Escape that resumed from any page instead of backing out one step --
+	# the manual's numbered ladder falsified from the settings screen.
+	GameState.reset_bindings()
+	var esc_refused: bool = not GameState.rebind("pause", KEY_ESCAPE)
+	var esc_intact: bool = _keys_for("cancel").has(KEY_ESCAPE)
+	print("[access] ESCAPE IS RESERVED BOTH WAYS cancel unmovable=%s, pause refused onto escape=%s, escape still cancel's=%s -> %s" % [
+		str(cancel_refused), str(esc_refused), str(esc_intact),
+		"PASS" if cancel_refused and esc_refused and esc_intact else "FAIL"])
+
+	# A DEFAULT IS A BINDING TOO. The conflict loop used to read the saved
+	# overrides dict, which holds only actions the player has already moved -- so
+	# on a fresh install every factory binding was invisible to it, and binding
+	# move_up to C returned true while leaving `chart` on C as well. Two live
+	# actions on one key, from the function written to prevent exactly that.
+	# NO SHARED KEY above cannot see it: its first rebind puts move_up INTO the
+	# dict, so its second one finds it by the old path.
+	GameState.reset_bindings()
+	var chart_default := _keys_for("chart")
+	var stole_default: bool = GameState.rebind("move_up", KEY_C)
+	var chart_after := _keys_for("chart")
+	var no_default_overlap: bool = not (_keys_for("move_up").has(KEY_C) and chart_after.has(KEY_C))
+	print("[access] A DEFAULT IS A BINDING TOO chart began %s, move_up->C returned %s, chart now %s, no overlap=%s -> %s" % [
+		str(chart_default), str(stole_default), str(chart_after), str(no_default_overlap),
+		"PASS" if no_default_overlap else "FAIL"])
+	GameState.reset_bindings()
 
 	GameState.reset_bindings()
 	var restored := _keys_for("move_up")

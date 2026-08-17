@@ -429,7 +429,16 @@ func close_panel() -> void:
 	Sfx.play("equip", -13.0, 0.9)
 	var tw := create_tween()
 	tw.tween_method(_set_slide, 0.0, _sheet_height(), SLIDE_TIME).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_CUBIC)
-	tw.tween_callback(func() -> void: visible = false)
+	# GUARDED, because open() can win the race. create_tween does not kill the
+	# earlier one, so closing and reopening inside SLIDE_TIME left this callback
+	# to fire on a panel that was open again and hide it -- an is_open chart with
+	# visible false, which the next press "closes" and the player reads as a key
+	# that did nothing. Unreachable while the HUD button was the only door (a
+	# button only ever opens); a toggle key makes it one key pressed twice.
+	# PauseMenu has carried this same guard, for this same race, since it shipped.
+	tw.tween_callback(func() -> void:
+		if not is_open:
+			visible = false)
 
 
 func _on_recall() -> void:

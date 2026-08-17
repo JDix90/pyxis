@@ -154,14 +154,25 @@ func _touch() -> bool:
 func _text_for(step: int) -> String:
 	match step:
 		0:
-			return "HOLD W A S D TO FLY" if not _touch() else "TAP A BEARING TO FLY THERE"
+			# ASKED OF THE INPUT MAP, like the manual's control rows. These were
+			# hand-typed keys for as long as they existed, which was false for
+			# anyone who had used the rebinding page -- and once the manual
+			# started reading the live map, the tutorial became the surface that
+			# lied, which is the worse half: the manual is two menus deep and
+			# this is the first sentence in the game.
+			return "HOLD %s %s %s %s TO FLY" % [
+				GameState.binding_name("move_up"), GameState.binding_name("move_left"),
+				GameState.binding_name("move_down"), GameState.binding_name("move_right")
+			] if not _touch() else "TAP A BEARING TO FLY THERE"
 		1:
-			return "CONTACT ADRIFT — CLICK IT TO ENGAGE (OR PRESS TAB)" if not _touch() \
+			return "CONTACT ADRIFT — CLICK IT TO ENGAGE (OR PRESS %s)" \
+				% GameState.binding_name("cycle_target") if not _touch() \
 				else "CONTACT ADRIFT — TAP IT TO ENGAGE"
 		2:
 			return "SALVAGE ADRIFT — FLY THROUGH IT TO COLLECT"
 		3:
-			return "MORE CONTACTS — PRESS SPACE TO DISCHARGE THE CORE" if not _touch() \
+			return "MORE CONTACTS — PRESS %s TO DISCHARGE THE CORE" \
+				% GameState.binding_name("ability") if not _touch() \
 				else "MORE CONTACTS — TAP OVERCHARGE TO DISCHARGE THE CORE"
 		4:
 			return "TRACTOR RIG RECOVERED — OPEN REFIT AND FIT IT"

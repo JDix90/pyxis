@@ -33,9 +33,15 @@ const LINES := {
 # "HOLD ON THE BREACH POINT" is deliberately NOT here: CameraRig runs
 # _try_begin_hold on the mouse path too, so a hold is one verb on both families
 # and a second wording would be a lie in the other direction.
+#
+# THE KEYS ARE TOKENS, not letters. A const cannot call anything, so the two
+# lines that name keys carry {MOVE} and {TARGET} and line_for fills them from
+# the live InputMap -- the same source the manual and the tutorial read. Spelled
+# out here they were false for any player who had used the rebinding page, and
+# this is the first sentence the ship ever says.
 const DESK_LINES := {
-	"first_launch": "SURVEY VESSEL ONLINE — HOLD W A S D TO FLY",
-	"first_hostiles": "CONTACTS INBOUND — CLICK A CONTACT TO ENGAGE, OR TAB",
+	"first_launch": "SURVEY VESSEL ONLINE — HOLD {MOVE} TO FLY",
+	"first_hostiles": "CONTACTS INBOUND — CLICK A CONTACT TO ENGAGE, OR {TARGET}",
 	"first_dock_range": "DOCKING CLAMPS AVAILABLE — CLICK THE PORT",
 }
 
@@ -89,5 +95,19 @@ static func line_for(key: String) -> String:
 	# a gesture the player cannot perform, rather than testing the one line
 	# somebody remembered to check.
 	if not DisplayServer.is_touchscreen_available() and DESK_LINES.has(key):
-		return String(DESK_LINES[key])
+		return _fill_keys(String(DESK_LINES[key]))
 	return String(LINES.get(key, ""))
+
+
+static func _fill_keys(line: String) -> String:
+	# Only the desktop table has tokens, and only these two. Kept a plain
+	# replace rather than a format map because a missing token must leave the
+	# sentence readable rather than throw -- a bark is the one surface with no
+	# second chance to say the thing.
+	if line.contains("{MOVE}"):
+		line = line.replace("{MOVE}", "%s %s %s %s" % [
+			GameState.binding_name("move_up"), GameState.binding_name("move_left"),
+			GameState.binding_name("move_down"), GameState.binding_name("move_right")])
+	if line.contains("{TARGET}"):
+		line = line.replace("{TARGET}", GameState.binding_name("cycle_target"))
+	return line
