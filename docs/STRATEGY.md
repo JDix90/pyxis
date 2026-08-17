@@ -5998,7 +5998,7 @@ commits, none built yet:
 | 2 | pilot profiles: per-profile save paths, a registry, and device settings split into `prefs.json` | none | **BUILT** — §75 |
 | 3 | per-PYX deep identity + one signature content class per system | none | **BUILT** — §76 |
 | 4 | chart legibility: fit-to-content scale, ship marker, band rings, legend, pan/zoom | none | **BUILT** — §78 |
-| 5 | beacon navigation: set-course autopilot and a depth-capped paid jump, same-PYX only | none | **not built** |
+| 5 | beacon navigation: set-course autopilot and a depth-capped paid jump, same-PYX only | none | **BUILT** — §79 |
 | 6 | persistent per-PYX survey coverage | **v21** | **not built** |
 | — | a static parse pre-flight that runs without the Godot binary | none | **BUILT** — §77 |
 
@@ -8268,3 +8268,114 @@ warp would make the picture jump for a reason the player cannot see. A tap on
 the plot pans and zooms and nothing else — there is no verb to attach to a
 world position until beacon navigation lands, and a tap that selects something
 with nothing to do about it is worse than a tap that moves the map.
+
+## 79. A bookmark you could not return to
+
+The second playtest note: *"there is no way to navigate back to a beacon I
+dropped."* Eight beacons in stock, a drop verb, a recovery verb, a radar tier
+and a chart layer — and no verb that took you to one. The bookmark existed; the
+page turn did not.
+
+### Two verbs, because there are two answers
+
+**COURSE is free, unbounded and slow. JUMP is paid, capped and instant.** One
+button that silently picked between them would hide the only decision the
+feature offers. A beacon at 900u is a two-minute flight you might prefer to make
+— there is salvage on the way. A beacon at 3,000u with a full hold is what the
+fee is for.
+
+`command_course` is a separate entry point rather than a flag on `command_move`,
+because twelve callers share that verb — every hold-approach and every tap on
+empty space — and all of them would start reading as plotted courses. It also
+had to be *refusable* visibly: `command_move` silently no-ops while docked,
+warping or EMP-stunned, so a course verb that assumed success would light the
+CRS row for a flight the ship never took. `has_move_target` is the receipt.
+
+### The flag that would have drifted, and the one that cannot
+
+The obvious build is a `course_active` boolean set by the course verb and
+cleared wherever a course should end. `has_move_target` is cleared at **eight**
+sites in `player_ship.gd` — input disabled, EMP begin, EMP tick, stick input,
+arrival, dock, and two respawn paths — so that flag would have to be cleared at
+all eight, and would start lying the first time somebody added a ninth.
+
+So it is derived: `course_active()` returns `_course_on and has_move_target`.
+Every existing clear already ends the course, including the two the design
+actually wants — **the stick breaks it**, and **an EMP drops it** — and a ninth
+clear site gets the behaviour for free. The cost is that the eight sites report
+no *reason*, so main keeps its own edge detector and answers "why did it end"
+with geometry: within `COURSE_ARRIVE_U` of the destination is an arrival,
+anything else is an abort.
+
+### An unattended course is otherwise a death sentence
+
+A 4,000u course is about 730 seconds of flight across ~62 cells. At band 4
+roughly half of them arm a nest within trigger range of a straight line, and
+`_tick_return_fire` never sets `attack_target` — so **being shot at does not
+interrupt the flight**. The course therefore drops itself on threat contact, on
+a hull below 55%, on an awake engine and on an EMP, and **toasts every one**,
+because a silently abandoned 700-second course reads as a bug rather than as a
+decision. The threat radius is deliberately wider than a nest's trigger: the
+course must die before the first shot, not in response to it.
+
+It also needs visible state, which is what CRS is. An autopilot with no readout
+is indistinguishable from a ship that has stopped taking input. CRS sits above
+HDG in the nav corner, in the same three-figure compass digits, so the two
+compare directly — when they agree you are flying the course.
+
+### The jump reaches no further than the instruments do
+
+Beacons have no depth bound; the drop verb only refuses *inside* the chart.
+Band 6 starts at 5,200u. An unbounded jump would therefore be a permanent
+500-credit door into the richest seams in the game — and, worse, it would move a
+number another assertion depends on: `A FOOTHOLD, NOT A FARM` derives the
+deepest reachable point as `bounds_of("pyx03") + HYPER_DEPTH_MAX`, and would go
+on passing while the real maximum walked out from under it. The cap is
+`HYPER_DEPTH_MAX` exactly, and `AND NO FURTHER THAN THE FOOTHOLD ASSUMES` ties
+the two together rather than hoping they stay equal.
+
+It has an in-fiction reason too, which is the test of whether a bound belongs:
+the colony network is what a jump rides, and past the deepest structure there is
+nothing to ride to. **Beyond the cap the beacon still takes a course.** The
+refusal removes the shortcut, never the destination — and the refusal copy says
+so, per §58.
+
+The clock is the existing shared stamp, and it was **renamed**:
+`last_colony_jump` → `last_outbound_jump`. Founding five colonies must not
+multiply how often you can leave, and neither may dropping eight beacons — one
+stamp is the whole mechanism. A field still called "colony" would have been a
+name that lied about half of what it governs. The loader reads both keys, so a
+v20 save keeps its cooldown and no version bump was needed.
+
+### Rows are a copy, and the label is not saved
+
+`beacons_in` hands out the **live save array by reference**. Every existing
+caller only reads it, but a chart that sorted it for display would be sorting
+the file. `beacon_rows` copies and sorts nearest-first, `colonies_in`'s shape
+for `colonies_in`'s stated reason.
+
+The label — "BEACON 1" — is synthesized from sorted position at read time and
+deliberately not stored. A designation in the save would be a new field to
+migrate, a new thing to keep unique, and a new way for the file to disagree with
+the screen, all for a string the player never types and cannot choose.
+
+### Four sites, one rung
+
+Adding "a course is set → drop it" to the Escape ladder touches the rung, the
+docstring enumeration above it, the manual's prose, **and** the hand-written
+`3 if touchscreen else 4` in `THE MANUAL IS TRUE TO THE CANCEL LADDER`. Miss
+either of the last two and the assertion goes red — which is the assertion
+working. It is appended *below* the target lock so the three rungs above keep
+the numbers the manual already prints, and because dropping a lock is the
+cheaper backout of the two.
+
+### And the readout got documented in the same commit
+
+`CRS` is a new cockpit readout, and the manual's HUD coverage sweep checks a
+**hand-written** list of readouts — so it could not have caught a missing entry
+for a readout nobody added to the list. The row and the list entry land
+together, which is the only thing that keeps a hand-written coverage check
+honest. The radar promotion needed no such row: the destination beacon borrows
+`TIER_HOME`'s exemption rather than taking a tier of its own, precisely so
+`TIER_NAMES` does not grow and demand a legend row for a *state* rather than a
+kind of thing.

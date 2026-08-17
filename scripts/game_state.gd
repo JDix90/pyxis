@@ -299,7 +299,12 @@ var colonies := {}
 # them — never one per colony — so founding five never multiplies how often the
 # player can be outbound. THE COOLDOWN IS THE MECHANISM here, not the fee: see
 # Main.COLONY_JUMP_COOLDOWN.
-var last_colony_jump := -1.0e9
+# v21. RENAMED FROM last_colony_jump, because it stopped being about colonies.
+# The beacon jump shares this one stamp for the reason the colony jump's own
+# comment gives -- founding five colonies must not multiply how often you can
+# leave -- and a field still called "colony" would have been a name that lied
+# about half of what it governs.
+var last_outbound_jump := -1.0e9
 # Eight is where the plot stops teaching. Past it the cones overlap so heavily
 # that another one moves the estimate by less than the marker is wide, and the
 # widest-error hint is dropped first — buying a ±5° reading should never be
@@ -1092,7 +1097,7 @@ func reset_to_starter() -> void:
 	apex_intel = {}
 	beacons = {}
 	colonies = {}
-	last_colony_jump = -1.0e9
+	last_outbound_jump = -1.0e9
 	intel_version += 1
 	# A new survey is a new political slate: the deltas are RUN STATE, cleared
 	# with the ledger. The baseline needs no reset — it is a const table.
@@ -1465,6 +1470,42 @@ func beacon_stock_left() -> int:
 
 func beacons_in(system_id: String) -> Array:
 	return beacons.get(system_id, [])
+
+
+func beacon_rows(system_id: String) -> Array:
+	# [{x, z, depth, label}] for one system, nearest first, as a COPY.
+	#
+	# beacons_in hands out the LIVE array by reference. Every existing caller
+	# only reads it, but a UI that sorted it for display would be sorting the
+	# save -- which is colonies_in's stated reason for copying, and the drop
+	# order is not something a chart layout gets to renumber on disk.
+	#
+	# THE LABEL IS SYNTHESIZED AT READ TIME, from sorted position, and is
+	# deliberately not stored. A designation in the save would be a new field to
+	# migrate, a new thing to keep unique, and a new way for the file to
+	# disagree with the screen -- for a string the player never types and cannot
+	# choose. Nearest-first because that is the order the chart's colony rows
+	# already use, for the same reason: the near one is the one you are deciding
+	# about.
+	var bounds := SystemDB.bounds_of(system_id)
+	var out: Array = []
+	for e_v in beacons.get(system_id, []):
+		var e: Dictionary = e_v
+		var x := float(e["x"])
+		var z := float(e["z"])
+		out.append({"x": x, "z": z,
+			"depth": maxf(Vector2(x, z).length() - bounds, 0.0)})
+	# Depth first, then the coordinates, so two beacons at the same depth still
+	# order deterministically rather than by whatever the save happened to hold.
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if not is_equal_approx(float(a["depth"]), float(b["depth"])):
+			return float(a["depth"]) < float(b["depth"])
+		if not is_equal_approx(float(a["x"]), float(b["x"])):
+			return float(a["x"]) < float(b["x"])
+		return float(a["z"]) < float(b["z"]))
+	for i in out.size():
+		(out[i] as Dictionary)["label"] = "BEACON %d" % (i + 1)
+	return out
 
 
 func drop_beacon(system_id: String, x: float, z: float, depth: float) -> bool:
@@ -2773,7 +2814,7 @@ func save_game() -> void:
 		"apex_intel": apex_intel,
 		"beacons": beacons,
 		"colonies": colonies,
-		"last_colony_jump": last_colony_jump,
+		"last_outbound_jump": last_outbound_jump,
 		"warehouse": warehouse,
 		"ledger": ledger,
 		"ship_name": ship_name,
@@ -3054,7 +3095,12 @@ func load_game() -> bool:
 	# v20 stage 6, riding the same version as beacons — one bump for both stores,
 	# since neither needs a grandfather and an absent key is the correct empty.
 	_load_colonies(data.get("colonies", {}))
-	last_colony_jump = float(data.get("last_colony_jump", -1.0e9))
+	# BOTH KEYS, and no version bump. A rename is a shape change only if the old
+	# file stops loading; reading the legacy key as the default for the new one
+	# means a v20 save keeps its cooldown instead of silently coming back with
+	# the drives cold. Defaults-not-branches, one line.
+	last_outbound_jump = float(data.get("last_outbound_jump",
+		data.get("last_colony_jump", -1.0e9)))
 	_load_warehouse(data.get("warehouse", {}))
 	# v18. A v17 save has no key and arrives at the authored baseline — which by
 	# construction IS the world that save was written in, so the migration can

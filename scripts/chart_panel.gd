@@ -7,6 +7,8 @@ extends CanvasLayer
 signal travel_requested(id: String)
 signal recall_requested
 signal colony_jump_requested(key: String)
+signal course_requested(x: float, z: float, label: String)
+signal beacon_jump_requested(x: float, z: float, depth: float, label: String)
 
 const SHEET_RATIO := 0.55
 const SLIDE_TIME := 0.28
@@ -999,6 +1001,56 @@ func _refresh_colonies() -> void:
 	# cannot mean what it says.
 	if _selected != GameState.current_system:
 		return
+	# v21. THE BEACONS YOU DROPPED, above the colonies. Same-system only, which
+	# the row set already enforces above and the STORE enforces structurally --
+	# beacons are keyed by system id, so there is no cross-system path to
+	# disable. Above the colonies because a beacon is the cheap, common,
+	# reversible bookmark and a colony is the earned one; the near thing first,
+	# which is the order beacon_rows already returns.
+	#
+	# TWO BUTTONS PER ROW, because the two verbs have genuinely different terms:
+	# the course is free, unbounded and slow; the jump is paid, capped and
+	# instant. One button that silently picked would hide the only decision the
+	# feature actually offers.
+	for b_v in GameState.beacon_rows(_selected):
+		var bec: Dictionary = b_v
+		var bx := float(bec["x"])
+		var bz := float(bec["z"])
+		var bdepth := float(bec["depth"])
+		var blabel := String(bec["label"])
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 4)
+
+		var course_btn := Button.new()
+		course_btn.custom_minimum_size = Vector2(0, COLONY_ROW_H)
+		course_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		course_btn.add_theme_font_size_override("font_size", 12)
+		course_btn.add_theme_color_override("font_color", Palette.TEAL)
+		course_btn.text = "COURSE  %s  ·  %dU" % [blabel, int(round(bdepth))]
+		course_btn.pressed.connect(func() -> void:
+			course_requested.emit(bx, bz, blabel))
+		row.add_child(course_btn)
+
+		var jump_btn := Button.new()
+		jump_btn.custom_minimum_size = Vector2(0, COLONY_ROW_H)
+		jump_btn.add_theme_font_size_override("font_size", 12)
+		jump_btn.add_theme_color_override("font_color", Palette.GOLD)
+		# THE ROW STATES ITS OWN TERMS, and the depth refusal names the verb that
+		# still works -- a beacon past the instruments is not unreachable, it is
+		# unjumpable, and those are different sentences (58).
+		var cool: float = float(main.colony_jump_ready_in())
+		if bdepth > main.BEACON_JUMP_MAX_DEPTH:
+			jump_btn.text = "TOO DEEP"
+		elif cool > 0.0:
+			jump_btn.text = "%ds" % int(ceil(cool))
+		else:
+			jump_btn.text = "JUMP (%d)" % int(main.beacon_jump_fee(bdepth))
+		jump_btn.disabled = not bool(main.can_beacon_jump(bdepth))
+		jump_btn.pressed.connect(func() -> void:
+			beacon_jump_requested.emit(bx, bz, bdepth, blabel))
+		row.add_child(jump_btn)
+		_colony_rows.add_child(row)
+
 	for c_v in GameState.colonies_in(_selected):
 		var c: Dictionary = c_v
 		var key := String(c["key"])

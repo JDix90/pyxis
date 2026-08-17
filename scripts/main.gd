@@ -275,13 +275,25 @@ const CORDON_REFORM_INTERVAL := 120.0
 # five-minute cooldown is 100 cr/min, a rounding error against the loop. Only
 # the cooldown bounds how often the deep can be re-entered.
 #
-# ONE STAMP FOR ALL OF THEM, on GameState.last_colony_jump. Per-colony stamps
+# ONE STAMP FOR ALL OF THEM, on GameState.last_outbound_jump. Per-colony stamps
 # would make founding five colonies mean five times the outbound frequency,
 # which is the farm this whole clause exists to prevent — and it is the one
 # defect a single-colony test cannot see, so ONE CLOCK FOR ALL OF THEM stages
 # two instruments and jumps between them.
 const COLONY_JUMP_FEE := 500
 const COLONY_JUMP_COOLDOWN := 300.0
+
+# v21. THE COURSE'S OWN TERMS.
+#   ARRIVE: PlayerShip stops itself at stop_dist, so "did it get there" is asked
+#     with slack rather than at a point the ship never occupies.
+#   THREAT: wider than a nest's trigger range on purpose -- the course must die
+#     BEFORE the first shot, not in response to it, because _tick_return_fire
+#     never sets attack_target and being hit would otherwise not interrupt.
+#   HULL: the same fraction the cockpit prints. A course flown to 30% is a
+#     course that ends with a dead pilot who was not watching.
+const COURSE_ARRIVE_U := 6.0
+const COURSE_THREAT_U := 16.0
+const COURSE_ABORT_HULL := 0.55
 
 const MUSTER_COOLDOWN := 420.0
 # Between the warning and the first ship. Long enough to finish reading the
@@ -415,6 +427,12 @@ var _deep_generation := true
 var _broadcast_band := 0
 var system_id := ""
 var system_def := {}
+# v21. Which beacon the running course is for, and whether one is running at
+# all. _course_was_active is main's own edge detector: PlayerShip.course_active()
+# is derived from eight clear sites that report no reason, so the transition to
+# false is where "why did it end" is decided.
+var _course_label := ""
+var _course_was_active := false
 var warping := false
 
 var boss_active := false
@@ -518,6 +536,16 @@ func _ready() -> void:
 	chart_panel.travel_requested.connect(travel_to)
 	chart_panel.recall_requested.connect(recall_to_system)
 	chart_panel.colony_jump_requested.connect(colony_jump_to)
+	# v21. Both beacon verbs. The chart CLOSES on either, because both of them
+	# are about being somewhere else and a sheet left open over the answer is a
+	# sheet the player has to dismiss before they can see what they asked for.
+	chart_panel.course_requested.connect(func(x: float, z: float, label: String) -> void:
+		if set_course_to(Vector3(x, 0.0, z), label):
+			chart_panel.close_panel())
+	chart_panel.beacon_jump_requested.connect(
+		func(x: float, z: float, depth: float, label: String) -> void:
+			chart_panel.close_panel()
+			beacon_jump_to(x, z, depth, label))
 
 	port_panel = PortPanel.new()
 	add_child(port_panel)
@@ -1190,6 +1218,235 @@ func drop_beacon_here() -> bool:
 	return true
 
 
+# --- beacon navigation (v21) -------------------------------------------------
+
+# THE JUMP REACHES NO FURTHER THAN THE INSTRUMENTS DO. Beacons have no depth
+# bound -- the drop verb only refuses inside the chart -- and band 6 starts at
+# 5200u, so an unbounded jump would be a permanent 500-credit door into the
+# richest seams in the game. Capping it at HYPER_DEPTH_MAX is not a balance
+# nudge: it is what keeps A FOOTHOLD, NOT A FARM's derivation exact, since that
+# assertion measures the deepest REACHABLE point as
+# bounds_of("pyx03") + HYPER_DEPTH_MAX and would go on passing while the real
+# maximum moved out from under it.
+#
+# It also has an in-fiction reason, which is the test of whether a bound belongs:
+# the colony network is what a jump rides, and past the deepest structure there
+# is nothing to ride to. Beyond the cap the beacon still takes a COURSE. The
+# refusal removes the shortcut, never the destination.
+const BEACON_JUMP_MAX_DEPTH := SystemDB.HYPER_DEPTH_MAX
+# Scaled by depth and capped at the colony fee, so a jump is never the cheaper
+# way to reach a colony you founded -- that verb is the earned one.
+const BEACON_JUMP_MIN_FEE := 120
+
+
+func beacon_jump_fee(depth: float) -> int:
+	var t := clampf(depth / BEACON_JUMP_MAX_DEPTH, 0.0, 1.0)
+	return int(round(lerpf(float(BEACON_JUMP_MIN_FEE), float(COLONY_JUMP_FEE), t)))
+
+
+func can_beacon_jump(depth: float) -> bool:
+	# can_colony_jump's guard set plus the depth cap. Same clock, same states.
+	return state == State.PLAYING and not warping and not boss_active \
+		and docked_port == null \
+		and depth <= BEACON_JUMP_MAX_DEPTH \
+		and GameState.salvage >= beacon_jump_fee(depth) \
+		and colony_jump_ready_in() <= 0.0
+
+
+func set_course_to(pos: Vector3, label: String) -> bool:
+	# The free half of the pair. No fee, no clock -- it is the flight you would
+	# have flown, aimed for you.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	if player == null or state != State.PLAYING or warping:
+		return false
+	player.command_course(Vector3(pos.x, 0.0, pos.z))
+	if not player.course_active():
+		# command_move no-ops while docked, warping or EMP-stunned and says
+		# nothing. Without this the CRS row would light for a course the ship
+		# never took -- a button that appears to work is worse than one that
+		# refuses, which is 58's whole argument.
+		if hud:
+			var why := "CANNOT SET A COURSE FROM HERE"
+			if docked_port != null:
+				why = "NOT WHILE DOCKED — DEPART FIRST"
+			elif player.is_emp_stunned():
+				why = "DRIVES ARE DOWN — NO COURSE WHILE STUNNED"
+			hud.show_toast(why, Palette.THREAT)
+			Sfx.play("hit", -10.0, 0.7)
+		return false
+	_course_label = label
+	_course_was_active = true
+	if hud:
+		hud.set_course_name(label)
+		hud.show_toast("COURSE SET — %s, %s" % [label, _course_line(pos)], Palette.TEAL)
+	Sfx.play("equip", -11.0, 1.05)
+	# Once ever, and it says the part the row cannot: that the ship will abandon
+	# the course on its own. A player who does not know that reads the first
+	# self-cancel as the autopilot breaking.
+	Barks.fire("first_course")
+	return true
+
+
+func _course_line(pos: Vector3) -> String:
+	# Through compass_deg, per 60: a bearing the player is shown is the same
+	# bearing the cockpit shows, or the two instruments disagree about north.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	var from := player.global_position if player != null else Vector3.ZERO
+	var to_it := Vector3(pos.x - from.x, 0.0, pos.z - from.z)
+	return "%03d · %dU" % [DeepSpace.compass_deg(to_it), int(round(to_it.length()))]
+
+
+func beacon_jump_to(x: float, z: float, depth: float, label: String) -> void:
+	var fee := beacon_jump_fee(depth)
+	if not can_beacon_jump(depth):
+		if hud:
+			# WHICH refusal, per 58. The depth one names the alternative,
+			# because there always is one: the course is free and unbounded.
+			var why := "JUMP UNAVAILABLE"
+			if depth > BEACON_JUMP_MAX_DEPTH:
+				why = "TOO DEEP TO JUMP — SET A COURSE INSTEAD"
+			elif GameState.salvage < fee:
+				why = "JUMP COSTS %d — NOT ENOUGH BANKED" % fee
+			elif colony_jump_ready_in() > 0.0:
+				why = "DRIVES STILL COOLING — %ds" % int(ceil(colony_jump_ready_in()))
+			elif boss_active:
+				why = "NOT WITH AN ENGINE AWAKE"
+			elif docked_port != null:
+				why = "NOT WHILE DOCKED — DEPART FIRST"
+			hud.prompt(why)
+			Sfx.play("hit", -10.0, 0.7)
+		return
+	if not GameState.spend_salvage(fee):
+		return
+	GameState.last_outbound_jump = GameState.played_seconds
+	warping = true
+	clear_course("")
+	_beacon_jump_sequence(Vector3(x, 0.0, z), label)
+
+
+func _beacon_jump_sequence(at: Vector3, label: String) -> void:
+	# _colony_jump_sequence's beats. NOT extracted into a shared helper, and the
+	# reason is a four-unit difference that a naive extraction erases: recall
+	# puts the rig at Vector3(0, 0, 2) while the ship goes to SPAWN_POINT
+	# (0, 0, 6) -- four units IN FRONT of the ship -- whereas the colony jump
+	# uses arrive + (0, 0, 2), two units behind it. A helper computing
+	# `dest + (0, 0, 2)` would silently move recall's camera by six units.
+	#
+	# EMPHATICALLY NO _load_system, for that function's own stated reason: it
+	# frees SystemRoot wholesale, which would reset the apex, respawn the
+	# garrison, delete loot still drifting toward the player and reroll every
+	# deep sector -- all for a move that never leaves the system.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	var rig := get_tree().get_first_node_in_group("camera_rig")
+
+	if player:
+		player.begin_warp_charge()
+	Sfx.play("warp", -3.0, 0.75)
+	if rig:
+		rig.punch_zoom(1.6)
+	await get_tree().create_timer(WARP_CHARGE).timeout
+
+	if player:
+		player.warp_streak_out()
+	if rig:
+		rig.shake(0.12)
+	_star_streaks()
+	await get_tree().create_timer(WARP_STREAK * 0.55).timeout
+	FX.flash(self, Vector3(0, 0, 4), Palette.WHITE_HOT, 26.0, 0.5)
+	await get_tree().create_timer(WARP_STREAK * 0.45).timeout
+
+	# ARRIVE BESIDE IT, not on it. A beacon is a 1u mast rather than a 140u
+	# silhouette, so the offset is small -- but landing exactly on the anchor
+	# would put the hull inside the hold prompt's range and start a recovery the
+	# player did not ask for.
+	var arrive := at + Vector3(Beacon.HOLD_RANGE * 1.2, 0.0, 0.0)
+	if player:
+		player.teleport_to(arrive)
+		player.velocity = Vector3.ZERO
+		player.clear_target()
+		player.warp_streak_in()
+	if rig:
+		rig.global_position = arrive + Vector3(0, 0, 2)
+
+	Sfx.play("breach", -12.0, 1.3)
+	FX.shockwave(self, arrive, Palette.GOLD, 9.0, 0.9)
+	if hud:
+		hud.show_toast("ARRIVED — %s" % label, Palette.GOLD)
+	await get_tree().create_timer(WARP_ARRIVE).timeout
+	warping = false
+
+
+func clear_course(reason: String) -> void:
+	# ONE EXIT, so every way a course can end says so exactly once. A silently
+	# dropped 700-second course reads as a bug, which is why reason is required
+	# rather than optional -- an empty string is the deliberate "no toast" case
+	# and the caller has to type it.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	if player != null and player.course_active():
+		player.has_move_target = false
+	player_course_end(reason)
+
+
+func player_course_end(reason: String) -> void:
+	if not _course_was_active:
+		return
+	_course_was_active = false
+	if hud:
+		hud.set_course_name("")
+		if reason != "":
+			hud.show_toast(reason, Palette.AMBER_DIM)
+	_course_label = ""
+
+
+func _tick_course(_delta: float) -> void:
+	# AN UNATTENDED COURSE IS OTHERWISE A DEATH SENTENCE. A 4,000u course is
+	# ~730s of flight across ~62 cells; at band 4 roughly half of them arm a nest
+	# within trigger range of a straight line, and _tick_return_fire never sets
+	# attack_target -- so being shot at does not even interrupt the flight. The
+	# course therefore drops itself, and says so every time.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	if player == null:
+		return
+	if not _course_was_active:
+		return
+	if not player.course_active():
+		# It ended somewhere in PlayerShip -- arrival, the stick, an EMP, a dock.
+		# Which one is answered by geometry rather than by a flag, because the
+		# eight clear sites do not report a reason and adding one to each is the
+		# drift this design exists to avoid.
+		var reached := Vector2(player.global_position.x - player.course_dest.x,
+			player.global_position.z - player.course_dest.z).length() <= COURSE_ARRIVE_U
+		if reached:
+			player_course_end("COURSE COMPLETE — %s" % _course_label)
+		else:
+			player_course_end("COURSE DROPPED — %s" % _course_label)
+		return
+	if boss_active:
+		clear_course("COURSE DROPPED — AN ENGINE IS AWAKE")
+		return
+	# THE SAME NUMBER THE COCKPIT SHOWS. hud reads shield_fraction() for its HULL
+	# readout, so the course aborts at the figure the player is looking at rather
+	# than at a second one that could disagree with it.
+	var frac := 1.0
+	if player.has_method("shield_fraction"):
+		frac = float(player.shield_fraction())
+	if frac < COURSE_ABORT_HULL:
+		clear_course("COURSE DROPPED — HULL AT %d%%" % int(round(frac * 100.0)))
+		return
+	if _threat_near(player.global_position, COURSE_THREAT_U):
+		clear_course("COURSE DROPPED — CONTACT")
+
+
+func _threat_near(at: Vector3, radius: float) -> bool:
+	for h_v in get_tree().get_nodes_in_group("hostiles"):
+		var h := h_v as Node3D
+		if h == null or not is_instance_valid(h):
+			continue
+		if h.global_position.distance_to(at) <= radius:
+			return true
+	return false
+
+
 func spawn_sentries() -> void:
 	# Adds the system's garrison to the running scene without a rebuild. The
 	# garrison is the engine's sentries AND the Cordon's pickets — one call,
@@ -1639,7 +1896,7 @@ func colony_jump_ready_in() -> float:
 	# Seconds left on the shared clock, floored at zero. Public so the chart row
 	# can print it — 12's rule that a refusal states its own terms.
 	return maxf(0.0, COLONY_JUMP_COOLDOWN
-		- (GameState.played_seconds - GameState.last_colony_jump))
+		- (GameState.played_seconds - GameState.last_outbound_jump))
 
 
 func can_colony_jump(key: String) -> bool:
@@ -1675,7 +1932,7 @@ func colony_jump_to(key: String) -> void:
 		return
 	if not GameState.spend_salvage(COLONY_JUMP_FEE):
 		return
-	GameState.last_colony_jump = GameState.played_seconds
+	GameState.last_outbound_jump = GameState.played_seconds
 	warping = true
 	_colony_jump_sequence(Vector3(float(e["x"]), 0.0, float(e["z"])), key)
 
@@ -1754,6 +2011,12 @@ func _process(delta: float) -> void:
 
 	if warping:
 		return
+
+	# AFTER the warping guard, because a jump legitimately teleports the ship far
+	# from wherever a course was aimed and the arrival must not be read as an
+	# abort. beacon_jump_to clears the course before the sequence starts, so by
+	# the time this runs again there is nothing to tick.
+	_tick_course(delta)
 
 	if _pending_dock != null:
 		_try_complete_dock()
@@ -13839,7 +14102,7 @@ func _run_save_test() -> void:
 			"pyx01:2": {"x": 1777.0, "z": -1888.0, "founded_at": 42.0},
 			"pyx03:0": {"x": -2999.0, "z": 3111.0, "founded_at": 77.0},
 		}
-		GameState.last_colony_jump = 1234.5
+		GameState.last_outbound_jump = 1234.5
 		GameState.owned.append("mod_survey_array")
 		GameState.ledger = {
 			"deepest_depth": 611, "distance_flown": 4207, "hulks_cracked": 13,
@@ -14731,9 +14994,9 @@ func _run_save_test() -> void:
 			and String((c1[0] as Dictionary)["key"]) == "pyx01:2" \
 			and float((c1[0] as Dictionary)["x"]) == 1777.0 \
 			and float((c3[0] as Dictionary)["z"]) == 3111.0 \
-			and is_equal_approx(GameState.last_colony_jump, 1234.5)
+			and is_equal_approx(GameState.last_outbound_jump, 1234.5)
 		print("[savetest] v20 COLONIES %d + %d founded round-tripped with key, position and the SHARED jump stamp=%s (stamp %.1f) -> %s" % [
-			c1.size(), c3.size(), str(colonies_ok), GameState.last_colony_jump,
+			c1.size(), c3.size(), str(colonies_ok), GameState.last_outbound_jump,
 			"PASS" if colonies_ok else "FAIL"])
 		print("[savetest] v20 BEACONS %d + %d entries round-tripped with every coordinate=%s, derived stock %d (want %d) -> %s" % [
 			b1.size(), b2.size(), str(beacons_ok), GameState.beacon_stock_left(),
@@ -16183,7 +16446,12 @@ func _run_manual_test() -> void:
 	manual._refresh()
 	await get_tree().process_frame
 	var undocumented := ""
-	for want_v in ["SALVAGE", "HOLD", "HULL", "HDG"] + HUD.RadarLayer.TIER_NAMES:
+	# v21: CRS joins the list with the row it names. A readout added to the
+	# cockpit without an entry here is undocumented UI, which is the whole thing
+	# this sweep exists to refuse -- and the list is hand-written, so it only
+	# refuses what somebody remembered to add. Adding the readout and the check
+	# in one commit is the only thing that keeps that honest.
+	for want_v in ["SALVAGE", "HOLD", "HULL", "HDG", "CRS"] + HUD.RadarLayer.TIER_NAMES:
 		if not _panel_text_contains(manual, String(want_v)):
 			undocumented += "%s " % String(want_v)
 	manual.close_panel()
@@ -16208,7 +16476,7 @@ func _run_manual_test() -> void:
 			ladder = i
 	# The device decides the length: the contact menu's rung exists only where a
 	# right-click can raise one, which is the same question ManualScreen asks.
-	var want_rungs := 3 if DisplayServer.is_touchscreen_available() else 4
+	var want_rungs := 4 if DisplayServer.is_touchscreen_available() else 5
 	var menu_rung := _panel_text_contains(manual, "a contact menu is open")
 	var want_menu: bool = not DisplayServer.is_touchscreen_available()
 	manual.close_panel()
@@ -20591,7 +20859,7 @@ func _run_colony_test() -> void:
 
 	# --- G. the refusal set, one flag at a time ------------------------------
 	GameState.salvage = 100000
-	GameState.last_colony_jump = -1.0e9
+	GameState.last_outbound_jump = -1.0e9
 	var base_ok := can_colony_jump(claimed_key)
 	boss_active = true
 	var no_boss := not can_colony_jump(claimed_key)
@@ -20603,9 +20871,9 @@ func _run_colony_test() -> void:
 	var no_broke := not can_colony_jump(claimed_key)
 	GameState.salvage = 100000
 	var no_unclaimed := not can_colony_jump("pyx01:99")
-	GameState.last_colony_jump = GameState.played_seconds
+	GameState.last_outbound_jump = GameState.played_seconds
 	var no_cooling := not can_colony_jump(claimed_key)
-	GameState.last_colony_jump = -1.0e9
+	GameState.last_outbound_jump = -1.0e9
 	print("[colony] THE JUMP IS REFUSED base allowed=%s; boss=%s warping=%s broke=%s unclaimed=%s cooling=%s -> %s" % [
 		str(base_ok), str(no_boss), str(no_warp), str(no_broke),
 		str(no_unclaimed), str(no_cooling),
@@ -20619,9 +20887,9 @@ func _run_colony_test() -> void:
 	GameState.claim_colony("pyx01:0", 2000.0, 0.0)
 	GameState.claim_colony("pyx01:1", 0.0, 2500.0)
 	GameState.salvage = 100000
-	GameState.last_colony_jump = GameState.played_seconds
+	GameState.last_outbound_jump = GameState.played_seconds
 	var second_refused := not can_colony_jump("pyx01:1")
-	GameState.last_colony_jump = GameState.played_seconds - COLONY_JUMP_COOLDOWN - 1.0
+	GameState.last_outbound_jump = GameState.played_seconds - COLONY_JUMP_COOLDOWN - 1.0
 	var later_allowed := can_colony_jump("pyx01:1")
 	print("[colony] ONE CLOCK FOR ALL OF THEM jumped to one, a jump to a DIFFERENT colony refused inside the %.0fs cooldown=%s, allowed after it=%s -> %s" % [
 		COLONY_JUMP_COOLDOWN, str(second_refused), str(later_allowed),
@@ -20810,6 +21078,117 @@ func _run_beacon_test() -> void:
 		str(below_beacon),
 		"PASS" if full_count >= 12 and not beacon_on_full and beacon_on_thin
 			and tier_last else "FAIL"])
+
+	# --- v21: the two verbs -------------------------------------------------
+
+	var sid_b := GameState.current_system
+	var bounds_b := SystemDB.bounds_of(sid_b)
+
+	# ROWS ARE A COPY, AND SORTED. beacons_in hands out the live save array;
+	# a UI that sorted it in place would be reordering the file. Asserted by
+	# sorting the returned rows the other way and checking the store did not
+	# move -- and by planting them OUT of order so the sort has work to do.
+	GameState.beacons[sid_b] = [
+		{"x": bounds_b + 900.0, "z": 0.0},
+		{"x": bounds_b + 100.0, "z": 0.0},
+		{"x": bounds_b + 400.0, "z": 0.0},
+	]
+	var before_order := []
+	for e_v in GameState.beacons[sid_b]:
+		before_order.append(float((e_v as Dictionary)["x"]))
+	var rows := GameState.beacon_rows(sid_b)
+	rows.reverse()
+	var after_order := []
+	for e_v in GameState.beacons[sid_b]:
+		after_order.append(float((e_v as Dictionary)["x"]))
+	var rows2 := GameState.beacon_rows(sid_b)
+	var sorted_ok: bool = rows2.size() == 3 \
+		and float((rows2[0] as Dictionary)["depth"]) < float((rows2[1] as Dictionary)["depth"]) \
+		and float((rows2[1] as Dictionary)["depth"]) < float((rows2[2] as Dictionary)["depth"])
+	var labels_ok: bool = String((rows2[0] as Dictionary)["label"]) == "BEACON 1" \
+		and String((rows2[2] as Dictionary)["label"]) == "BEACON 3"
+	print("[beacon] THE ROWS ARE A COPY, NEAREST FIRST store %s unmoved by a reversed read=%s, depths ascending=%s, labels %s -> %s" % [
+		str(before_order), str(before_order == after_order), str(sorted_ok),
+		"synthesized" if labels_ok else "wrong",
+		"PASS" if before_order == after_order and sorted_ok and labels_ok else "FAIL"])
+
+	# THE JUMP STOPS WHERE THE INSTRUMENTS DO. Both directions, because a cap
+	# asserted only from the refused side passes on a verb that refuses
+	# everything. The shallow beacon must be offered and the deep one refused,
+	# with every OTHER guard held open so the depth is the only variable.
+	GameState.salvage = 99999
+	GameState.last_outbound_jump = -1.0e9
+	var shallow_d := SystemDB.HYPER_DEPTH_MAX - 100.0
+	var deep_d := SystemDB.HYPER_DEPTH_MAX + 100.0
+	var shallow_ok := can_beacon_jump(shallow_d)
+	var deep_ok := can_beacon_jump(deep_d)
+	print("[beacon] THE JUMP STOPS WHERE THE INSTRUMENTS DO %.0fu offered=%s, %.0fu offered=%s (cap %.0f) -> %s" % [
+		shallow_d, str(shallow_ok), deep_d, str(deep_ok),
+		float(BEACON_JUMP_MAX_DEPTH),
+		"PASS" if shallow_ok and not deep_ok else "FAIL"])
+
+	# AND THE CAP IS THE ONE THE DERIVATION USES. A FOOTHOLD, NOT A FARM
+	# measures the deepest reachable point as bounds_of("pyx03") +
+	# HYPER_DEPTH_MAX; a beacon jump that reached further would move that
+	# maximum while the assertion went on passing against the old one. Tied
+	# here rather than hoped for.
+	print("[beacon] AND NO FURTHER THAN THE FOOTHOLD ASSUMES cap %.0f vs HYPER_DEPTH_MAX %.0f -> %s" % [
+		float(BEACON_JUMP_MAX_DEPTH), SystemDB.HYPER_DEPTH_MAX,
+		"PASS" if is_equal_approx(float(BEACON_JUMP_MAX_DEPTH),
+			SystemDB.HYPER_DEPTH_MAX) else "FAIL"])
+
+	# ONE CLOCK FOR ALL OUTBOUND. Founding colonies must not multiply how often
+	# you can leave, and neither may dropping beacons. Spending the colony
+	# clock has to close the beacon door and vice versa.
+	GameState.last_outbound_jump = GameState.played_seconds
+	var beacon_after_colony := can_beacon_jump(200.0)
+	GameState.last_outbound_jump = -1.0e9
+	var beacon_when_cold := can_beacon_jump(200.0)
+	print("[beacon] ONE CLOCK FOR ALL OUTBOUND beacon jump with the shared stamp hot=%s, cold=%s -> %s" % [
+		str(beacon_after_colony), str(beacon_when_cold),
+		"PASS" if not beacon_after_colony and beacon_when_cold else "FAIL"])
+
+	# THE FEE CLIMBS AND IS CAPPED. A flat fee would make the deepest jump the
+	# best value in the game; an uncapped one would eventually beat the colony
+	# verb, which is the earned one.
+	var fee_near := beacon_jump_fee(0.0)
+	var fee_far := beacon_jump_fee(BEACON_JUMP_MAX_DEPTH)
+	var fee_over := beacon_jump_fee(BEACON_JUMP_MAX_DEPTH * 4.0)
+	print("[beacon] THE FEE CLIMBS AND IS CAPPED %d at the edge, %d at the cap, %d past it (colony fee %d) -> %s" % [
+		fee_near, fee_far, fee_over, COLONY_JUMP_FEE,
+		"PASS" if fee_near < fee_far and fee_far == COLONY_JUMP_FEE
+			and fee_over == fee_far else "FAIL"])
+
+	# SAME SYSTEM ONLY, STRUCTURALLY. Not a flag to forget: the store is keyed
+	# by system id, so another Pyx's beacons cannot appear in these rows at all.
+	GameState.beacons["pyx03"] = [{"x": 4000.0, "z": 0.0}]
+	var mine := GameState.beacon_rows(sid_b)
+	var theirs := GameState.beacon_rows("pyx03")
+	print("[beacon] SAME SYSTEM ONLY, STRUCTURALLY %d rows here, %d there, no leak=%s -> %s" % [
+		mine.size(), theirs.size(), str(mine.size() == 3 and theirs.size() == 1),
+		"PASS" if mine.size() == 3 and theirs.size() == 1 else "FAIL"])
+
+	# A COURSE IS NOT A MOVE. command_move is shared by twelve callers and none
+	# of them plotted anything, so an ordinary tap must not light the CRS row --
+	# and must CLEAR a course that was running, which is the stick-breaks-it
+	# rule arriving through the same door.
+	var pilot_c: PlayerShip = get_tree().get_first_node_in_group("player")
+	var course_flags := {}
+	if pilot_c != null:
+		pilot_c.command_course(Vector3(bounds_b + 400.0, 0.0, 0.0))
+		course_flags["after_course"] = pilot_c.course_active()
+		pilot_c.command_move(Vector3(bounds_b + 50.0, 0.0, 0.0))
+		course_flags["after_move"] = pilot_c.course_active()
+		pilot_c.command_course(Vector3(bounds_b + 400.0, 0.0, 0.0))
+		pilot_c.has_move_target = false
+		course_flags["after_arrival"] = pilot_c.course_active()
+	print("[beacon] A COURSE IS NOT A MOVE set=%s, a plain move clears it=%s, losing the move ends it=%s -> %s" % [
+		str(course_flags.get("after_course", false)),
+		str(not bool(course_flags.get("after_move", true))),
+		str(not bool(course_flags.get("after_arrival", true))),
+		"PASS" if bool(course_flags.get("after_course", false))
+			and not bool(course_flags.get("after_move", true))
+			and not bool(course_flags.get("after_arrival", true)) else "FAIL"])
 
 	GameState.beacons = {}
 	get_tree().quit()
