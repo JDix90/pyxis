@@ -42,6 +42,13 @@ static func record_session(seconds: float) -> void:
 		return
 	var led: Dictionary = GameState.ledger
 	var row := {
+		# WHOSE SESSION. One device now holds up to five runs, and without this
+		# their rows interleave with nothing to tell them apart -- which destroys
+		# the file's stated purpose, since every question it exists to answer
+		# ("did anyone reach THE QUIET in one sitting?") is asked of ONE run.
+		# The opaque profile id, never the pilot's name: the name is theirs to
+		# change and is not an identifier.
+		"pilot": GameState.active_profile,
 		"minutes": snappedf(seconds / 60.0, 0.1),
 		# The four keys the Commission gates on, so a threshold can be checked
 		# against what a session actually produced rather than against what the
