@@ -101,6 +101,55 @@ const SYSTEMS := {
 		# noun. The engine names (THE GNOMON / ARMILLARY / MERIDIAN) are the
 		# same vocabulary one scale down: this frontier measured things.
 		"hyper": {"family": "THE ORRERY"},
+		# v21. PYX-01'S FIRST DEEP BLOCK, and the assertion that used to forbid
+		# it was right about the danger and wrong about the rule. The world
+		# fingerprint is measured over THIS system, so a station or landmark
+		# weight authored here would move a hash that is supposed to be the
+		# control -- which is why `station_weights`, `landmark_weights` and
+		# `density` are named in SHARED_STREAM_KEYS and may never appear below.
+		#
+		# Everything that IS here is either display (names, wash), copy
+		# (broadcasts) or drawn on its own salted stream after every existing
+		# roll (the signature). None of it can shift a shared draw, and none of
+		# it is hashed. IDENTITY IS ADDITIVE now asserts that distinction
+		# instead of asserting an empty dictionary.
+		#
+		# It matters because PYX-01 is where the tutorial runs and where the
+		# manual's first hour sends you: identity that skipped it was identity
+		# the complaining player met last.
+		"deep": {
+			# The GSA charted the near deep here and then stopped. The names are
+			# an authority's names -- survey grid, filing language -- and they
+			# get less official the further out they go, which is the arc.
+			"band_names": {
+				1: "THE SHALLOWS", 2: "THE ORRERY DRIFT", 3: "THE OUTER GRID",
+				4: "THE UNFILED", 5: "THE LAPSED", 6: "NO RETURN FILED",
+			},
+			# Cold and clean. PYX-01's deep is the one that still looks like
+			# somebody's jurisdiction, so it keeps the shipped blue and only
+			# lifts the far stars a little toward white.
+			"wash": {
+				"cold": Color(0.36, 0.44, 0.62),
+				"mote": Color(0.72, 0.80, 0.94),
+				"star": Color(0.88, 0.93, 1.0),
+			},
+			# The authority's own voice, degrading with distance. Band 4 keeps
+			# the shipped copy: §68's arc ends there on purpose and a fourth
+			# reassurance would spend it.
+			"broadcasts": {
+				1: {"from": "GSA SURVEY GRID",
+					"body": "Charted volume ends here. Beyond this marker the grid is nominal and the filing is yours."},
+				2: {"from": "GSA RELAY — ORRERY DRIFT",
+					"body": "Traffic advisory: the drift moves. Bearings filed against it expire."},
+				6: {"from": "GSA RELAY — NO CARRIER",
+					"body": "This repeater has not been serviced. Its clock is wrong by some amount nobody has measured."},
+			},
+			# THE DROWNED RELAYS. Dead watch-buoys from the survey that named
+			# this place, in the two bands the grid claims to still cover -- so
+			# the thing you find in PYX-01's near deep is the authority's own
+			# equipment, unmaintained.
+			"signature": {"kind": "relay", "bands": [1, 2], "chance": 0.20},
+		},
 		# v18 stage 3. WHO OWNS THIS SYSTEM. The engine was never masterless: the
 		# sentries standing over the lanes and the swarms that keep arriving are
 		# its forces, and silencing it is taking a system off a government rather
@@ -325,6 +374,38 @@ const SYSTEMS := {
 			# hard ceiling at 619 would author the lair's position into the
 			# weather table.
 			"rift": {"depth_max": 700.0, "rich_mult": 1.25},
+			# v21. PYX-02 digs and smelts, and its deep is named the way a works
+			# names its ground: by what came out of it, not by where it sits.
+			"band_names": {
+				1: "THE TAILINGS", 2: "THE CINDER DRIFT", 3: "THE SLAG REACHES",
+				4: "THE COOLING", 5: "THE CLINKER", 6: "THE UNSMELTED",
+			},
+			# Warm and dirty: iron-oxide cold, ember motes, a sky dimmed like
+			# air with particulate in it.
+			"wash": {
+				"cold": Color(0.58, 0.36, 0.26),
+				"mote": Color(0.94, 0.72, 0.48),
+				"star": Color(1.0, 0.88, 0.74),
+			},
+			"broadcasts": {
+				2: {"from": "ARMILLARY WORKS — OUTER TIP",
+					"body": "Spoil ground. Anything still hot was not ours to cool."},
+				3: {"from": "ARMILLARY WORKS — HAUL ROAD",
+					"body": "This lane was cut for ore trains. They stopped running before the ore stopped."},
+			},
+			# The three gates that scale safely, and PYX-02 spends them on
+			# TRAFFIC: it is the system that still ships things, so convoys are
+			# commoner here and its stations carry bonded storage more often.
+			# The grave-fields are left alone -- a works does not litter band 6
+			# any more thickly than anywhere else.
+			"density": {
+				"convoy": {2: 1.6, 3: 1.7, 4: 1.5, 5: 1.3, 6: 1.2},
+				"deep_storage": {2: 1.4, 3: 1.4, 4: 1.3, 5: 1.2, 6: 1.2},
+			},
+			# THE SLAG TIDES. Cooling spoil that drifts in the bands between the
+			# works and the frontier: hazard and reward in one object, which is
+			# the whole of PYX-02's character.
+			"signature": {"kind": "slag", "bands": [2, 3, 4], "chance": 0.22},
 		},
 		"faction": "armillary",
 		# Mining colony: digs alloys and volatiles, starves for isotopes and cores.
@@ -476,6 +557,38 @@ const SYSTEMS := {
 			# loops, in the one part of the game no harness measures. Range is
 			# content; grade is economy. This stage ships the first.
 			"rift": {"depth_max": 2400.0, "rich_mult": 1.5},
+			# v21. The mute system measures. Its names are a survey's own
+			# vocabulary -- soundings, marks, the language of taking a depth --
+			# which is also the joke of the last one: the line ran out.
+			"band_names": {
+				1: "THE SHOAL MARKS", 2: "THE SOUNDING DRIFT", 3: "THE DEEP MARKS",
+				4: "THE STILL WATER", 5: "THE LEADLINE", 6: "NO BOTTOM FOUND",
+			},
+			# Cold, green and low. Meridian's deep reads like a dark sea rather
+			# than a dark sky -- the one Pyx whose wash is not blue or warm.
+			"wash": {
+				"cold": Color(0.24, 0.46, 0.42),
+				"mote": Color(0.62, 0.88, 0.80),
+				"star": Color(0.78, 0.94, 0.90),
+			},
+			"broadcasts": {
+				3: {"from": "MERIDIAN SOUNDING — MARK SEVEN",
+					"body": "Depth taken and filed. This mark stands until something moves it."},
+				5: {"from": "MERIDIAN SOUNDING — LINE PAID OUT",
+					"body": "No bottom at this mark. The line is not short; the bottom is not there."},
+			},
+			# PYX-03 spends its safe gates on the DEAD rather than on traffic:
+			# thicker grave-fields in the Unsounded, and convoys THINNER than
+			# standard, because a system that stopped talking also stopped
+			# shipping. The contrast with PYX-02 is the point.
+			"density": {
+				"convoy": {2: 0.5, 3: 0.6, 4: 0.7, 5: 0.8, 6: 0.8},
+				"grave": {6: 1.6},
+			},
+			# THE SOUNDING LINES. Plumb-line pylons in the bands past the
+			# charted marks: the mute system's instruments still measuring, and
+			# still willing to tell you a bearing if you go and ask one.
+			"signature": {"kind": "sounding", "bands": [3, 4, 5], "chance": 0.18},
 		},
 		"faction": "meridian",
 		# Military yards: refines its own isotopes, pays well for alloys and relics.
@@ -585,6 +698,64 @@ static func station_weights(id: String, band: int) -> Array:
 
 static func landmark_weights(id: String, band: int) -> Array:
 	return (deep_of(id).get("landmark_weights", {}) as Dictionary).get(band, [])
+
+
+# --- v21 identity: the four channels that cannot move a draw ----------------
+# Everything below is READ-ONLY as far as the generator's shared RNG stream is
+# concerned. Naming and wash are display; broadcasts are copy; the signature
+# takes its own salted stream and appends after every existing roll. That is the
+# whole reason PYX-01 is allowed to author them while still being the system the
+# world fingerprint is measured over -- see SHARED_STREAM_KEYS below.
+
+# The keys a system may NOT author without moving the shared stream, and so the
+# keys PYX-01 may never carry. Read by MINETEST's IDENTITY IS ADDITIVE, which
+# used to assert the far blunter "pyx01's block is empty" -- true, enforceable,
+# and wrong the moment the starter system needed a name of its own.
+const SHARED_STREAM_KEYS := ["station_weights", "landmark_weights", "density"]
+
+
+static func band_name_of(id: String, band: int, fallback: String) -> String:
+	# The fallback is DeepSpace.BAND_NAMES[band], passed in rather than reached
+	# for: this file is data and must not depend on the streamer that reads it.
+	# Same one-line .get(default) shape rift_depth_max uses, for the same reason.
+	var names: Dictionary = deep_of(id).get("band_names", {})
+	var out := String(names.get(band, ""))
+	return out if out != "" else fallback
+
+
+static func deep_wash(id: String) -> Dictionary:
+	# Tints for the cold sphere, the near motes and the far stars. Empty means
+	# the shipped colours, which is what PYX-01 read before it authored any.
+	return deep_of(id).get("wash", {})
+
+
+static func density_mult(id: String, kind: String, band: int) -> float:
+	# ONLY THREE KINDS ARE SAFE TO SCALE, and the list is not a preference. A
+	# chance multiplier spends the same draw only where every draw in the block
+	# precedes the gate; at station, rocks, hulk, trap, pack and seam a passing
+	# roll draws two to six more values, so scaling those cascades through the
+	# rest of the cell and shears every later position apart. Convoy, grave and
+	# deep-storage were written under the draw-before-the-gate rule and are the
+	# three that hold. DeepSpace._mult is the only caller and refuses the rest.
+	var by_kind: Dictionary = deep_of(id).get("density", {})
+	var rows: Dictionary = by_kind.get(kind, {})
+	return clampf(float(rows.get(band, 1.0)), 0.0, 4.0)
+
+
+static func broadcast_override(id: String, band: int) -> Dictionary:
+	# A per-Pyx replacement for a band's standing broadcast. Copy only: the
+	# post itself, its position and whether it exists at all are the shared
+	# stream's business and are not touched here.
+	var rows: Dictionary = deep_of(id).get("broadcasts", {})
+	return rows.get(band, {})
+
+
+static func signature_of(id: String) -> Dictionary:
+	# The one thing each Pyx has that the others do not. Shape:
+	#   {"kind": String, "bands": [int...], "chance": float}
+	# An absent block means no signature, which is what every system read before
+	# this key existed and what a harness-built def reads today.
+	return deep_of(id).get("signature", {})
 
 
 static func music_lp_of(id: String) -> float:

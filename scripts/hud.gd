@@ -132,7 +132,13 @@ class RadarLayer:
 	# copy, not data -- but COVERAGE becomes assertable: a tier added here
 	# without a legend row turns THE MANUAL IS TRUE TO THE DEVICE AND TO THE
 	# HUD red, naming the tier nobody documented.
-	const TIER_NAMES := ["HOME", "APEX", "PORT", "SITE", "HOSTILE", "SEAM", "GHOST", "BEACON", "STORM"]
+	# v21. Appended at the BOTTOM like TIER_SEAM and TIER_BEACON before it, so
+	# nothing above is renumbered. Lowest priority of anything on the board and
+	# therefore first shed at MAX_MARKERS, which is correct: a signature site does
+	# not move, does not shoot, and will still be there next pass.
+	const TIER_SIGNATURE := 8
+	const TIER_NAMES := ["HOME", "APEX", "PORT", "SITE", "HOSTILE", "SEAM", "GHOST", "BEACON", "STORM",
+		"ODDITY"]
 	# What the dossier has to be worth before the ghost appears at all. Three
 	# agreeing hints and a search circle under 200u is the point where an arrow
 	# is honest guidance rather than a confident lie: below that the estimate
@@ -327,6 +333,10 @@ class RadarLayer:
 		# what shoots at you and a storm does not — and APEX-sized, because it is
 		# four hundred units across and a normal dot would be a lie about scale.
 		["storm", TIER_STORM, Palette.band_color(DeepSpace.BAND_NAMES.size() - 1), SIZE_APEX],
+		# v21. The system's own thing. The colour here is only a fallback: a
+		# SignatureSite carries marker_color() and answers with its band, because a
+		# signature is a PLACE and band colour is what "where" means.
+		["signature", TIER_SIGNATURE, Palette.HULL, SIZE_NORMAL],
 		]:
 			for node in get_tree().get_nodes_in_group(String(spec[0])):
 				var n := node as Node3D

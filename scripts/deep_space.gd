@@ -293,7 +293,7 @@ const BROADCASTS := [
 ]
 
 
-static func broadcast_for(band: int, commissioned := false) -> Dictionary:
+static func broadcast_for(band: int, commissioned := false, system_id := "") -> Dictionary:
 	# Optional keys with a fallback rather than a parallel three-entry array: a
 	# second array would be a second bounds contract that could disagree with the
 	# first, and "band 4 is unchanged" would become a size mismatch instead of a
@@ -301,6 +301,16 @@ static func broadcast_for(band: int, commissioned := false) -> Dictionary:
 	if band <= 0 or band >= BROADCASTS.size():
 		return {}
 	var entry: Dictionary = BROADCASTS[band]
+	# v21. COPY ONLY, and only where a system has something of its own to say.
+	# Whether a post exists, where it stands and whether it is standing at all
+	# are the shared stream's business; this replaces the words. The commissioned
+	# overlay below still applies to the shipped rows, because an authored line
+	# is already this system speaking in its own voice and does not need the
+	# authority's second register on top of it.
+	if system_id != "":
+		var own := SystemDB.broadcast_override(system_id, band)
+		if not own.is_empty():
+			return {"from": String(own.get("from", "")), "body": String(own.get("body", ""))}
 	if not commissioned:
 		return entry
 	return {
@@ -574,6 +584,18 @@ static func band_name(depth: float) -> String:
 	return BAND_NAMES[band_of(depth)]
 
 
+static func band_name_in(system_id: String, depth: float) -> String:
+	# v21. The same band, named the way THIS system names it. BAND_NAMES stays
+	# the shipped default and the fallback, so every caller that does not know
+	# or care which Pyx it is standing in keeps reading exactly what it read
+	# before -- including the skill ladders in GameState, which use these strings
+	# as RANK names rather than as places and must not start varying by system.
+	#
+	# Only the readouts that mean "where you are right now" go through here.
+	var band := band_of(depth)
+	return SystemDB.band_name_of(system_id, band, BAND_NAMES[band])
+
+
 # The four compass sectors a rumour can name. COARSE on purpose: a quadrant of
 # the Drift is still an enormous amount of nothing to search, which is exactly
 # what the cheapest tier of intel should buy.
@@ -662,7 +684,14 @@ func configure(def: Dictionary, system_id: String) -> void:
 	_stars.parallax = 0.30
 	_stars.half = 120.0
 	add_child(_stars)
-	_stars.build(STAR_COUNT, sf.get("tint", Color(0.85, 0.9, 1.0)), 0.05, seed_value)
+	# v21. THE WASH. Three tints a system may author, applied where the deep's
+	# dressing is BUILT rather than where it is generated -- _deep is already
+	# resolved above, nothing here is hashed by the world fingerprint, and no
+	# draw is taken, so this is the cheapest identity in the game and the only
+	# one PYX-01 could safely have.
+	var wash := SystemDB.deep_wash(system_id)
+	_stars.build(STAR_COUNT, wash.get("star", sf.get("tint", Color(0.85, 0.9, 1.0))),
+		0.05, seed_value)
 
 	# Near layer: specks that slide past the hull at nearly full speed. Once the
 	# lattice is behind you this is the only thing left that sells motion, so it
@@ -672,7 +701,8 @@ func configure(def: Dictionary, system_id: String) -> void:
 	_motes.half = 30.0
 	_motes.rebake_step = 4.0
 	add_child(_motes)
-	_motes.build(MOTE_COUNT, Color(0.72, 0.78, 0.9), 0.022, seed_value ^ 0x5bf03)
+	_motes.build(MOTE_COUNT, wash.get("mote", Color(0.72, 0.78, 0.9)), 0.022,
+		seed_value ^ 0x5bf03)
 	_motes.set_presence(0.0)
 
 	# The colour of nothing: one huge inside-out sphere under the play plane that
@@ -686,8 +716,8 @@ func configure(def: Dictionary, system_id: String) -> void:
 	sm.rings = 8
 	_cold.mesh = sm
 	_cold.scale = Vector3.ONE * 190.0
-	_cold_mat = Palette.emissive(Color(Palette.DEEP_COLD.r, Palette.DEEP_COLD.g,
-		Palette.DEEP_COLD.b, 0.0), 1.0)
+	var cold_rgb: Color = wash.get("cold", Palette.DEEP_COLD)
+	_cold_mat = Palette.emissive(Color(cold_rgb.r, cold_rgb.g, cold_rgb.b, 0.0), 1.0)
 	_cold_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_cold_mat.cull_mode = BaseMaterial3D.CULL_FRONT
 	_cold.material_override = _cold_mat
@@ -823,6 +853,28 @@ func _owner_tag(cx: int, cz: int) -> String:
 	return "deep:%d:%d" % [cx, cz]
 
 
+func _mult(kind: String, band: int) -> float:
+	# THE THREE GATES THAT SCALE, AND WHY THERE ARE ONLY THREE. Multiplying a
+	# threshold spends the same draw only when the gate's body draws NOTHING
+	# conditionally. That is true at exactly three sites in plan_cell -- convoy,
+	# grave and deep-storage -- because those blocks were written under the
+	# "every draw happens before the gate" rule this file states above the convoy
+	# roll. At station, rocks, hulk, trap, pack and seam a passing roll draws two
+	# to six more values, so a multiplier there changes the draw COUNT and shears
+	# every later position in the cell apart. THE DRAW COUNT DID NOT MOVE exists
+	# to catch precisely that, and it is not a rule to route around.
+	#
+	# Asserted rather than trusted: the name is checked here so a fourth kind
+	# authored into a system def cannot quietly start scaling something unsafe.
+	if not SAFE_DENSITY_KINDS.has(kind):
+		push_warning("Pyxis: '%s' is not a draw-safe density kind" % kind)
+		return 1.0
+	return SystemDB.density_mult(_id, kind, band)
+
+
+const SAFE_DENSITY_KINDS := ["convoy", "grave", "deep_storage"]
+
+
 func plan_cell(cx: int, cz: int) -> Dictionary:
 	# PURE. Given a cell it returns exactly what that cell contains, with no nodes
 	# built and no state touched, and `_spawn_cell` builds from what this returns.
@@ -853,7 +905,8 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 	# day it was written; it now derives the list from a deep cell instead, so
 	# the next append cannot be silent. Anything added below is added here too.
 	var out := {"band": band, "depth": depth, "rocks": [], "hulk": {}, "pack": {},
-		"station": {}, "convoy": {}, "landmark": {}, "seams": [], "hulk2": {}}
+		"station": {}, "convoy": {}, "landmark": {}, "seams": [], "hulk2": {},
+		"signature": {}}
 	if band == 0:
 		return out
 
@@ -882,7 +935,7 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 				# of the place, or "is there a bay at that relay" stops being
 				# something a player can learn and remember.
 				out["station"] = {"pos": sp, "archetype": String(arch["id"]),
-					"storage": rng.randf() < DEEP_STORAGE_CHANCE}
+					"storage": rng.randf() < DEEP_STORAGE_CHANCE * _mult("deep_storage", band)}
 	var keep_out: Vector3 = out["station"].get("pos", Vector3(1e9, 0.0, 1e9))
 
 	# Debris. Thin in the Shoals and thickening outward, so the expanse reads as
@@ -1052,7 +1105,8 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 		# endpoints respect the station keep-out, not just the anchor — the
 		# escorts WALK, and a waypoint on a dock ring is a picket post nobody
 		# authored.
-		if convoy_roll < CONVOY_CHANCE and (out["pack"] as Dictionary).is_empty() \
+		if convoy_roll < CONVOY_CHANCE * _mult("convoy", band) \
+				and (out["pack"] as Dictionary).is_empty() \
 				and cdepth >= CONVOY_MIN_DEPTH and cdepth <= CONVOY_MAX_DEPTH \
 				and cp.distance_to(keep_out) >= STATION_SAFE_RADIUS \
 				and (cp + leg).distance_to(keep_out) >= STATION_SAFE_RADIUS \
@@ -1090,7 +1144,7 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 		var h2_gap := h2rng.randf_range(GRAVE_GAP_MIN, GRAVE_GAP_MAX)
 		var h2_rot := h2rng.randf_range(0.0, 360.0)
 		var first: Dictionary = out["hulk"]
-		if h2_roll < GRAVE_CHANCE and not first.is_empty():
+		if h2_roll < GRAVE_CHANCE * _mult("grave", band) and not first.is_empty():
 			var h2p: Vector3 = (first["pos"] as Vector3) \
 				+ Vector3(cos(h2_ang), 0.0, sin(h2_ang)) * h2_gap
 			# The same two keep-outs the first hulk answered to. A second wreck
@@ -1104,6 +1158,38 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 					"crack_time": float(first["crack_time"]),
 					"trap": {},
 				}
+
+	# v21. THE SIGNATURE — the one thing this Pyx has that the others do not.
+	# APPENDED LAST, on its own salted stream, with every draw taken BEFORE the
+	# gate — the same three rules the convoy and grave blocks above were written
+	# under. Its gate reads only the authored def, the band and its own
+	# rolls: never out["hulk"], out["pack"] or out["rocks"], because a gate that
+	# consulted the shared stream's products would make this block's determinism
+	# hostage to what that stream happened to produce.
+	#
+	# The key is set unconditionally, empty or not, for the reason the band-0
+	# early return states: built_plan indexes plan keys with no .get.
+	out["signature"] = {}
+	var sig := SystemDB.signature_of(_id)
+	var srng := RandomNumberGenerator.new()
+	srng.seed = hash("%s|%d|%d|signature" % [_id, cx, cz])
+	var s_roll := srng.randf()
+	var s_ang := srng.randf_range(0.0, TAU)
+	var s_rad := srng.randf_range(CELL * 0.18, CELL * 0.42)
+	var s_rot := srng.randf_range(0.0, 360.0)
+	if not sig.is_empty() and (sig.get("bands", []) as Array).has(band) \
+			and s_roll < float(sig.get("chance", 0.0)):
+		var sp2 := base + Vector3(cos(s_ang), 0.0, sin(s_ang)) * s_rad
+		# The same two clearances every other placed thing answers to. A
+		# signature is content, not an exemption.
+		if depth_at(sp2) >= CONTENT_MIN_DEPTH \
+				and sp2.distance_to(keep_out) >= STATION_CLEARANCE:
+			out["signature"] = {
+				"pos": sp2,
+				"kind": String(sig.get("kind", "")),
+				"band": band,
+				"rot_y": s_rot,
+			}
 	return out
 
 
@@ -1159,7 +1245,9 @@ func built_plan(cx: int, cz: int) -> Dictionary:
 	# inside a keep-out while the other is not, and dropping both would delete
 	# content the keep-out never objected to.
 	if _has_lair:
-		for key_v in ["station", "pack", "hulk", "hulk2", "convoy"]:
+		# v21: "signature" joins both keep-out lists. A site is content, and
+		# content does not get to stand in the apex arena because it is new.
+		for key_v in ["station", "pack", "hulk", "hulk2", "convoy", "signature"]:
 			var key := String(key_v)
 			var thing: Dictionary = plan[key]
 			if not thing.is_empty() \
@@ -1174,7 +1262,7 @@ func built_plan(cx: int, cz: int) -> Dictionary:
 	# ringing the breach point would read as a second guard post nobody
 	# authored.
 	if _has_hull:
-		for key_v in ["station", "hulk", "hulk2", "convoy"]:
+		for key_v in ["station", "hulk", "hulk2", "convoy", "signature"]:
 			var key := String(key_v)
 			var thing: Dictionary = plan[key]
 			if not thing.is_empty() \
@@ -1557,6 +1645,20 @@ func _populate_cell(cx: int, cz: int, node: Node3D) -> void:
 			node.add_child(node_mark)
 			node_mark.global_position = mark["pos"]
 			node_mark.rotation_degrees.y = float(mark["rot_y"])
+
+	# v21. The system's own thing. Built from the plan like everything else, so
+	# it despawns with its cell and comes back identical from the same salt.
+	var sig: Dictionary = plan.get("signature", {})
+	if not sig.is_empty():
+		var site := SignatureSite.new()
+		# Identity fields before add_child: _ready reads `kind` and `band` to
+		# decide which mesh to build, the project's standard spawner order.
+		site.kind = String(sig["kind"])
+		site.band = int(sig["band"])
+		site.system_id = _id
+		node.add_child(site)
+		site.global_position = sig["pos"]
+		site.rotation_degrees.y = float(sig["rot_y"])
 
 	for r_v in rocks:
 		var r: Dictionary = r_v

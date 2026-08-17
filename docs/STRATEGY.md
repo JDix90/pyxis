@@ -5996,7 +5996,7 @@ commits, none built yet:
 | 0 | preconditions: the band-0 key crash, the save-destroying downgrade path, the stale inventory | none | **BUILT** — §73 |
 | 1 | hotkeys: `chart` / `drop_beacon` / `pause`, each behind a guarded wrapper | none | **BUILT** — §74 |
 | 2 | pilot profiles: per-profile save paths, a registry, and device settings split into `prefs.json` | none | **BUILT** — §75 |
-| 3 | per-PYX deep identity + one signature content class per system | none | **not built** |
+| 3 | per-PYX deep identity + one signature content class per system | none | **BUILT** — §76 |
 | 4 | chart legibility: fit-to-content scale, ship marker, band rings, legend, pan/zoom | none | **not built** |
 | 5 | beacon navigation: set-course autopilot and a depth-capped paid jump, same-PYX only | none | **not built** |
 | 6 | persistent per-PYX survey coverage | **v21** | **not built** |
@@ -7817,3 +7817,105 @@ number nobody could have known was stale; this was a gate that answered "fine"
 when asked a question it never heard. The remedy is the same both times — make
 the check derive its answer from something that must be true, rather than from
 the absence of a string.
+
+---
+
+## 76. Three systems that stop reading the same
+
+The first of the five playtest notes, and the one the horizon is named for:
+*"other than the small charted area in each Pyx, they all feel the same once the
+user begins exploring further out."* True, and true by construction — past
+`bounds` every system read from the same band tables, the same landmark list and
+the same palette, and the only per-Pyx data that reached the deep was §65's
+accent: two weight tables and a rift ceiling.
+
+### Four channels that cannot move a draw, and one that can
+
+The obvious lever is density — more packs here, fewer stations there — and it is
+mostly unavailable. A chance multiplier spends the same draw only where the
+gate's body draws nothing conditionally, and in `plan_cell` that is true at
+exactly three sites: convoy, grave and deep-storage, all written under the
+"every draw happens before the gate" rule stated above the convoy block.
+Everywhere else a passing roll draws two to six more values, so scaling the
+threshold changes the draw COUNT and shears every later position in the cell
+apart — which is what `THE DRAW COUNT DID NOT MOVE` exists to catch, and not a
+rule to route around. `SAFE_DENSITY_KINDS` is that list, and `_mult` refuses
+anything outside it rather than trusting the caller.
+
+So identity comes from four channels that touch no draw at all:
+
+- **Names.** `band_names` per system. PYX-01's are an authority's filing
+  language degrading with distance (THE OUTER GRID → THE UNFILED → NO RETURN
+  FILED); PYX-02 names its ground by what came out of it (THE TAILINGS, THE
+  CINDER DRIFT, THE UNSMELTED); PYX-03 speaks in soundings (THE DEEP MARKS, THE
+  LEADLINE, NO BOTTOM FOUND). `BAND_NAMES` stays the default and the fallback,
+  and only the readouts meaning *"where you are right now"* go through
+  `band_name_in` — the skill ladders use those same strings as RANK names and
+  must not start varying by system.
+- **Wash.** Three tints applied in `configure`, where the dressing is built
+  rather than where the world is generated. PYX-01 keeps the shipped cold blue,
+  PYX-02 is iron-oxide and ember, PYX-03 is a dark green sea. Nothing here is
+  hashed and no draw is taken, which makes it the cheapest identity in the game.
+- **Weights.** §65's mechanism, authored harder.
+- **Broadcasts.** A copy overlay. Whether a post exists and where it stands stay
+  the shared stream's business; this replaces the words.
+
+### The starter system was the one that could not have any
+
+`IDENTITY IS ADDITIVE` asserted that PYX-01 authors no `deep` block at all. That
+was true, enforceable, and the wrong rule: the world fingerprint is measured over
+PYX-01, so the assertion was protecting the hash by forbidding the *dictionary* —
+and PYX-01 is where the tutorial runs and where the manual's first hour sends
+you. Identity that skipped it was identity the complaining player met last.
+
+The real invariant was narrower: no key that changes the **shared RNG stream** in
+the hashed system. Names, wash, broadcasts and a signature drawn on its own
+salted stream are none of those. So `SHARED_STREAM_KEYS` names the three that
+are — `station_weights`, `landmark_weights`, `density` — the assertion reads that
+list from `SystemDB` rather than restating it, and PYX-01 authors everything
+else. A second clause, `THE STARTER SYSTEM HAS A CHARACTER`, asserts it actually
+does: the first clause is a refusal, and a refusal is satisfied perfectly by the
+empty block this section spent two horizons in.
+
+### One thing each, and one class
+
+`SignatureSite` is the thing a player points at, and it is **one class with three
+kinds** because §17 already settled that: *the gradient is parameters, not new
+classes*. Three near-identical Node3Ds differing in a mesh and a reward would be
+three files to keep in step with the pick ladder, the radar table and the
+spawner.
+
+- **THE DROWNED RELAYS** (PYX-01, bands 1–2) — dead GSA watch-buoys. The thing
+  you find in the near deep of the authority's own system is the authority's own
+  equipment, unmaintained. Answers once with a degraded transmission.
+- **THE SLAG TIDES** (PYX-02, bands 2–4) — cooling spoil that ticks hull heat
+  inside its radius. Hazard and reward in one object, which is the whole of the
+  works' character. It goes through `take_hit`, the same door storms use, so
+  mitigation and the death path behave identically; and per §18 it *cannot* trap
+  you in a run, at 1.4/s against any hull that reached it.
+- **THE SOUNDING LINES** (PYX-03, bands 3–5) — plumb-line pylons that quote a
+  free bearing to the nearest deep station, through `compass_deg` (§60), asked
+  of the **world** rather than the generator so a station `built_plan` suppressed
+  is never pointed at. The only object in the deep that points *down*, which is
+  the joke the mute system is making.
+
+The roll is appended last, on its own salted stream, drawing before it gates, and
+its gate reads nothing the shared stream produced — the three rules every
+appended block in `plan_cell` lives under. It joins both of `built_plan`'s
+keep-out lists, because content does not get an exemption from the arena for
+being new. `TIER_SIGNATURE` is appended at the bottom of the radar tiers, lowest
+priority and first shed at the marker cap: a site does not move, does not shoot,
+and will still be there next pass.
+
+### What the assertions had to grow
+
+`THE DRAW COUNT DID NOT MOVE` now compares `seams` and `landmark` as strictly as
+the shared stream, because identity gained channels that could have reached them.
+`DENSITY IS ALIVE` counts convoys across 576 cells with the def authored and
+stripped and requires the authored count to be strictly higher — a stream that
+did not move is also satisfied by a multiplier of no effect. And
+`SCALING A THRESHOLD ONLY MOVES THE BAR` asserts the nesting property that makes
+the whole approach safe: scaling a threshold up can only ADD cells, because the
+roll is the same number and only the bar moved, so every convoy the stripped
+probe placed must still be there, in place. A multiplier that *moved* one would
+be a reshuffle, which is what a changed draw count looks like from outside.
