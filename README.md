@@ -53,11 +53,17 @@ Those three numbers are derivable from `run_harness.sh` and nothing else, so
 check them there rather than trusting this paragraph — it has been wrong before,
 in two places that disagreed with each other (STRATEGY §73).
 
+**`tools/run_harness.sh` now runs this check for you** and refuses to start the
+sweep if it fails, so the version below is only for checking a change by hand
+before you commit it.
+
 **Before running one, check that it parses** — 0.6 seconds against a 7-minute
-silent hang:
+silent hang. Bind the binary to a variable and **prove it exists first**:
 
 ```bash
-/Applications/Godot.app/Contents/MacOS/Godot --headless --path . \
+GODOT=/Applications/Godot.app/Contents/MacOS/Godot
+
+"$GODOT" --version && "$GODOT" --headless --path . \
   --check-only --script scripts/main.gd 2>&1 | grep -c 'Parse Error'
 ```
 
@@ -66,6 +72,23 @@ status. It matters because a `main.gd` that fails to parse does not error — th
 harness never dispatches, the game boots normally, and it runs forever. A broken
 run and a slow one look identical, and one sat for four hours before anybody
 checked (STRATEGY §69).
+
+**The `--version &&` is not decoration, and neither is `$GODOT`.** `godot` is
+usually *not* on `PATH` on macOS — the binary lives inside the `.app` bundle, and
+`run_harness.sh` has always defaulted to the full path rather than the bare name.
+Run the check with a bare `godot` and the shell writes `command not found` to
+stderr, `2>&1` pipes that into `grep`, and it counts **zero** occurrences of
+"Parse Error" and prints a confident `0`. The gate reports a clean parse when the
+compiler never ran, which is worse than no gate at all — and it is how a sweep
+was once launched against a project whose class registry had never been rebuilt.
+Short-circuiting on `--version` means a missing binary prints nothing rather than
+a lie.
+
+The same trap has a second door: **a new `class_name` needs `--import` before
+this check means anything** (see the import note further down). Without it the
+failure is `Could not find type "X"` rather than `Parse Error`, which the grep
+above does not match — `run_harness.sh`'s built-in check greps for all three
+strings for exactly that reason.
 
 The house rules, learned the hard way and enforced by review:
 

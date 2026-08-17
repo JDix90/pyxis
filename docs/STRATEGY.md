@@ -7775,3 +7775,45 @@ compares every serialized key of a fresh pilot against a starter and names the
 field that crossed, and `A PILOT SURVIVES THE ROUND TRIP` is its other half —
 because "the new pilot is clean" is also satisfied by a switch that quietly
 discarded the old one.
+
+### A postscript: the gate that could not fail
+
+Found the first time somebody ran the §75 commands on a machine where `godot`
+is not on `PATH` — which on macOS is the normal state, because the binary lives
+inside the `.app` bundle and `run_harness.sh` has always defaulted to the full
+path rather than the bare name.
+
+```
+$ godot --headless --path . --import
+zsh: command not found: godot
+$ godot --headless --path . --check-only --script scripts/main.gd 2>&1 | grep -c 'Parse Error'
+0
+```
+
+**That `0` is a pass.** `2>&1` pipes `command not found` into `grep`, which
+counts zero occurrences of "Parse Error" and prints the number that means clean.
+The parse gate reported a healthy parse from a compiler that never ran, one line
+after the import pass had also silently not run — and the sweep was then started
+against a project whose class registry had no entry for a brand-new
+`class_name`. Every one of the 65 runs would have hung for the full 1500s
+backstop: the better part of a day to discover a missing `--import`.
+
+Three things came out of it, and only the first is the obvious one:
+
+- **The check now lives in `run_harness.sh`**, which proves the binary exists,
+  then parse-checks once, and refuses to start on either failure with exit 2 and
+  no summary line. A sweep that measured nothing must not print a line that looks
+  like a sweep.
+- **It greps three strings, not one.** A missing `--import` does not produce
+  `Parse Error`; it produces `Could not find type "X"` followed by a cascade of
+  `Cannot infer the type`. The idiom everyone had been running could not have
+  caught the case that actually happened.
+- **The by-hand form short-circuits on `--version`**, so a missing binary prints
+  nothing instead of a convincing zero.
+
+The shape is the one §73 already named, arriving from a new direction: a check
+whose failure mode is indistinguishable from its success. §73's baseline was a
+number nobody could have known was stale; this was a gate that answered "fine"
+when asked a question it never heard. The remedy is the same both times — make
+the check derive its answer from something that must be true, rather than from
+the absence of a string.
