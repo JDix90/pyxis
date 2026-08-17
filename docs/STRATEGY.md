@@ -7668,6 +7668,38 @@ pilot two while the guard compared a missing file to itself and called it clean.
 It now digests the whole save surface: the legacy file if present, the registry,
 the prefs, and every pilot's save.
 
+### The second file was a leak nobody had a rule for yet
+
+Splitting device settings into their own file created a second player-owned file,
+and every rule this repo has about not writing the player's data named the first
+one. `_save_prefs` is reached from `set_setting`, `set_audio_muted` and
+`set_tutorial_step(-1)`, and the suites call those constantly — ACCESSTEST alone
+rebinds keys a dozen times, and SAVETEST's `write` leg sets three settings. So
+the sweep would have been rewriting the developer's real bindings, volumes and
+colour-vision mode on every run.
+
+`lock_saving()` is not the fix, because the three suites most likely to trip it —
+SAVETEST, LIVERYTEST, HUNTTEST — deliberately do NOT lock: the file layer is what
+they test. The fix is that **prefs are off under a harness**, with an empty
+`prefs_path` as the switch, checked before `save_enabled` precisely because those
+suites leave saving on.
+
+Off rather than pointed at a shared scratch file, because a shared scratch file
+is cross-run coupling by another name: one suite's leftover volume becomes
+another suite's starting state, across a sweep that runs them in a fixed order.
+With the layer off, `_prefs_loaded` stays false, `load_game` seeds settings from
+the save exactly as it did before this commit, and **every existing assertion
+keeps the meaning it was written with** — which matters most for `migrate5`,
+which asserts `settings == DEFAULT_SETTINGS`, and `partial6`, whose entire
+subject is merging a v6 save's settings key by key.
+
+The two suites that want the layer assign a path and call `reload_prefs()`, which
+makes a redirect take effect for READS as well — `_ready` is the only other
+reader and it has long since run. SAVETEST sets that state **per mode**: the bare
+read is the one leg that consumes what another wrote (it is the other half of
+`=write`, which is why run_harness.sh keeps the pair adjacent), and every other
+mode starts from no prefs file at all.
+
 `PYXIS_PROFILETEST` is the second harness after SAVETEST that cannot call
 `lock_saving()`, for the same reason: the file layer IS the subject. It redirects
 every path — registry, base dir, legacy, prefs and save — **before the world is

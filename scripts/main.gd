@@ -13057,6 +13057,30 @@ func _run_boss_test() -> void:
 
 # --- pilot profiles test ----------------------------------------------------
 
+const SAVE_TEST_PREFS := "user://test_prefs.json"
+
+
+func _savetest_prefs(mode: String) -> void:
+	# Device preferences are OFF under a harness (GameState._ready's headless
+	# clause), and SAVETEST is one of the two suites that wants them back --
+	# because settings stopped being written to the save when they moved to
+	# prefs.json, so "do the player's volumes survive a round trip" is now a
+	# question about THAT file.
+	#
+	# The state is set per mode rather than inherited, which is the same rule
+	# the fixtures already follow. The bare read is the ONLY leg that consumes
+	# what another leg wrote -- it is the other half of `=write`, and the two
+	# are kept adjacent in run_harness.sh for exactly this reason. Every other
+	# mode starts from no prefs file at all, so `_prefs_loaded` is false, the
+	# save is allowed to seed settings, and legs like migrate5 (which asserts
+	# settings == DEFAULT_SETTINGS) and partial6 (whose whole subject is merging
+	# a v6 save's settings key by key) measure what they always measured.
+	GameState.prefs_path = SAVE_TEST_PREFS
+	if mode != "1":
+		DirAccess.remove_absolute(SAVE_TEST_PREFS)
+	GameState.reload_prefs()
+
+
 const PROFILE_TEST_ROOT := "user://ptest"
 
 
@@ -13069,7 +13093,12 @@ func _profile_test_redirect() -> void:
 	Profiles.registry_path = "%s/profiles.json" % PROFILE_TEST_ROOT
 	Profiles.base_dir = "%s/profiles" % PROFILE_TEST_ROOT
 	Profiles.legacy_path = "%s/save.json" % PROFILE_TEST_ROOT
+	# Prefs back on, pointed at the scratch directory: _ready turned them off
+	# because this is a headless run, and this suite is one of the two that
+	# actually wants the layer. reload_prefs makes the redirect take effect for
+	# READS too -- _ready has already been past.
 	GameState.prefs_path = "%s/prefs.json" % PROFILE_TEST_ROOT
+	GameState.reload_prefs()
 	GameState.save_path = Profiles.legacy_path
 	GameState.save_enabled = true
 
@@ -13243,6 +13272,7 @@ func _rm_rf(path: String) -> void:
 func _run_save_test() -> void:
 	GameState.save_path = "user://test_save.json"
 	var mode := OS.get_environment("PYXIS_SAVETEST")
+	_savetest_prefs(mode)
 
 	if mode == "write":
 		GameState.save_enabled = true

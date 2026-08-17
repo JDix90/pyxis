@@ -453,6 +453,28 @@ func _ready() -> void:
 	settings = DEFAULT_SETTINGS.duplicate()
 	livery = DEFAULT_LIVERY.duplicate()
 	ledger = DEFAULT_LEDGER.duplicate()
+	if _headless():
+		# PREFS ARE OFF UNDER A HARNESS, and the empty path is the switch.
+		#
+		# _save_prefs is reached from set_setting, set_audio_muted and
+		# set_tutorial_step(-1), and forty-odd suites call those constantly --
+		# ACCESSTEST alone rebinds keys a dozen times. Every one of them would
+		# have been writing the player's real preferences, which is the rule this
+		# repo enforces with an md5 in the sweep. Locking saving is not the
+		# answer either: SAVETEST, LIVERYTEST and HUNTTEST deliberately do not
+		# lock, because the file layer is what they are testing.
+		#
+		# Off, rather than pointed at a scratch file, because a shared scratch
+		# file is cross-run coupling by another name: one suite's leftover
+		# volume would arrive as another suite's starting state. With prefs
+		# disabled, `_prefs_loaded` stays false, load_game seeds settings from
+		# the save exactly as it did before this commit, and every existing
+		# assertion keeps the meaning it was written with.
+		#
+		# A suite that actually wants the layer -- SAVETEST and PROFILETEST --
+		# assigns its own path and calls reload_prefs(), which turns it back on
+		# for that run only. Same seam as save_path, same reason.
+		prefs_path = ""
 	_load_prefs()
 	# THE PROFILE IS RESOLVED HERE, not by Main, because this is an autoload and
 	# its _ready runs BEFORE the main scene exists -- so anything that waited for
@@ -495,8 +517,26 @@ func _headless() -> bool:
 
 # --- device preferences -----------------------------------------------------
 
+func reload_prefs() -> void:
+	# Re-reads prefs_path after a caller has MOVED it. _ready is the only other
+	# reader, and it has already run by the time a harness redirects, so without
+	# this the redirect would take effect for writes and not for reads.
+	#
+	# It resets first, so an absent file returns this layer to the state a fresh
+	# install is in -- prefs off, the save allowed to seed. That is what lets one
+	# SAVETEST mode consume what another wrote while the migrate modes each start
+	# from nothing.
+	settings = DEFAULT_SETTINGS.duplicate()
+	audio_muted = false
+	tutorial_seen = false
+	_prefs_loaded = false
+	_load_prefs()
+	apply_settings()
+
+
 func _load_prefs() -> void:
-	if not FileAccess.file_exists(prefs_path):
+	# An empty path means the layer is off -- see _ready's headless clause.
+	if prefs_path == "" or not FileAccess.file_exists(prefs_path):
 		return
 	var f := FileAccess.open(prefs_path, FileAccess.READ)
 	if f == null:
@@ -521,7 +561,10 @@ func _load_prefs() -> void:
 
 
 func _save_prefs() -> void:
-	if not save_enabled:
+	# The empty path is the off switch, and it is checked BEFORE save_enabled on
+	# purpose: the suites that must not write prefs are exactly the ones that
+	# deliberately leave saving enabled.
+	if prefs_path == "" or not save_enabled:
 		return
 	var f := FileAccess.open(prefs_path, FileAccess.WRITE)
 	if f == null:
