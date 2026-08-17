@@ -44,10 +44,10 @@ behind a `PYXIS_*` environment variable and run headless:
 PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 ```
 
-Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 46 of them —
-the 46 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
+Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 48 of them —
+the 48 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
 `TAGS` at all: it is one harness with 18 stateful modes, run as its own
-sequence. So a full sweep is 46 + 18 = **64 runs**.
+sequence. So a full sweep is 48 + 18 = **66 runs**.
 
 Those three numbers are derivable from `run_harness.sh` and nothing else, so
 check them there rather than trusting this paragraph — it has been wrong before,
@@ -57,8 +57,30 @@ in two places that disagreed with each other (STRATEGY §73).
 sweep if it fails, so the version below is only for checking a change by hand
 before you commit it.
 
-**Before running one, check that it parses** — 0.6 seconds against a 7-minute
-silent hang. Bind the binary to a variable and **prove it exists first**:
+**Before running one, check that it parses.** Two gates do this, and
+`run_harness.sh` runs both for you in this order:
+
+```bash
+tools/check_scripts.py     # static, no Godot needed, names the LINE
+```
+
+The first is `tools/check_scripts.py`, plain Python against every `.gd` file.
+It is strictly weaker than Godot's parser and exists anyway, for the error
+message: a mis-indented block in `deep_space.gd` is reported by Godot as
+`Could not parse global class "DeepSpace"` plus four hundred cascade lines in
+files nobody touched, an autoload that will not compile and a boot that fails —
+the actual line appears nowhere in it (STRATEGY §77). It catches two things:
+
+- a block opener whose body is not indented under it — **a comment is not a
+  body**, and since every block here opens with a paragraph, the explanation
+  sits exactly where the body should be and the eye reads it as the block;
+- `SomeClass.member` naming something that class does not declare.
+
+It also runs where Godot is not installed, which is the case that let the
+defect it was written for reach `main` in the first place.
+
+The second is Godot's own parser — 0.6 seconds against a 7-minute silent hang.
+Bind the binary to a variable and **prove it exists first**:
 
 ```bash
 GODOT=/Applications/Godot.app/Contents/MacOS/Godot

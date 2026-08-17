@@ -1,0 +1,264 @@
+#!/usr/bin/env python3
+"""Static pre-flight for every .gd file. No Godot binary required.
+
+WHY THIS EXISTS, AND WHY IT DUPLICATES A CHECK GODOT ALREADY DOES BETTER.
+`run_harness.sh` already gates the sweep on Godot's own parser, which is
+strictly stronger than anything here. This runs first anyway, for two reasons
+that are not about strength:
+
+1. GODOT NAMES THE CLASS, NOT THE LINE. A bad indent inside `deep_space.gd`
+   does not report as "bad indent at line 1204". It reports as
+   `Could not parse global class "DeepSpace"`, followed by roughly four hundred
+   `Could not resolve class "DeepSpace"` errors in files nobody touched, an
+   autoload that will not compile, and a boot that fails. Finding the actual
+   line in that output is an afternoon. This prints the line.
+
+2. NOT EVERY MACHINE THAT EDITS THIS PROJECT HAS THE BINARY. The parse gate can
+   only run where Godot is installed, so on any other machine a syntax error
+   survives review, gets committed, and is discovered by whoever pulls next.
+   That has happened (STRATEGY §77). Python 3 is everywhere Godot is not.
+
+Two checks, both chosen because they cause the class-registry cascade above and
+neither is visible when reading a diff.
+
+    tools/check_scripts.py            # scripts/**/*.gd
+    tools/check_scripts.py a.gd b.gd  # just these
+"""
+import glob
+import os
+import re
+import sys
+
+OPEN, CLOSE = "([{", ")]}"
+
+
+# ----------------------------------------------------------------- lexing ---
+
+def strip_code(line: str):
+    """Drop strings and any trailing comment. Returns (code, bracket_delta).
+
+    String-aware on purpose: a '#' inside a string is not a comment, and a
+    bracket inside one is not a bracket. Getting either wrong makes the
+    indentation check below hallucinate, and a checker with false positives is
+    one nobody runs.
+    """
+    out, i, delta, n = [], 0, 0, len(line)
+    while i < n:
+        c = line[i]
+        if c in "\"'":
+            quote = c
+            triple = line[i:i + 3] in ('"""', "'''")
+            i += 3 if triple else 1
+            while i < n:
+                if line[i] == "\\":
+                    i += 2
+                    continue
+                if triple and line[i:i + 3] == quote * 3:
+                    i += 3
+                    break
+                if not triple and line[i] == quote:
+                    i += 1
+                    break
+                i += 1
+            out.append("STR")
+            continue
+        if c == "#":
+            break
+        if c in OPEN:
+            delta += 1
+        elif c in CLOSE:
+            delta -= 1
+        out.append(c)
+        i += 1
+    return "".join(out), delta
+
+
+def logical_lines(src: str):
+    """(lineno, indent_depth, whole_logical_line, has_space_in_indent).
+
+    A logical line is accumulated across every physical line it spans -- both
+    bracket continuations and trailing backslashes -- so a multi-line `func`
+    signature ends with the ':' it really ends with, and a lambda passed as an
+    argument is one line rather than a body-less block opener. Recording only
+    the first physical line makes both look like defects.
+    """
+    raw = src.split("\n")
+    res, i = [], 0
+    while i < len(raw):
+        line = raw[i]
+        stripped = line.strip()
+        if stripped == "" or stripped.startswith("#"):
+            i += 1
+            continue
+        lead = line[:len(line) - len(line.lstrip())]
+        indent, spaced, start = lead.count("\t"), " " in lead, i + 1
+        acc, depth = "", 0
+        while i < len(raw):
+            code, delta = strip_code(raw[i])
+            depth += delta
+            code = code.strip()
+            more = code.endswith("\\")
+            acc += (code[:-1] if more else code) + " "
+            i += 1
+            if depth <= 0 and not more:
+                break
+        res.append((start, indent, acc.strip(), spaced))
+    return res
+
+
+# ------------------------------------------------------------ indentation ---
+
+def check_indent(path: str):
+    """A block opener whose body is not indented under it.
+
+    THE DEFECT THIS WAS WRITTEN FOR. A COMMENT IS NOT A BODY. Every block in
+    this project opens with a paragraph explaining it, so an `if` whose comment
+    sits at the right depth and whose code sits one tab too far left reads
+    perfectly to a human -- the explanation occupies the space the body should
+    be in. GDScript sees `if:` with nothing under it.
+    """
+    bad, lines = [], logical_lines(open(path, encoding="utf-8").read())
+    for i, (lineno, indent, code, spaced) in enumerate(lines):
+        if spaced:
+            bad.append((lineno, "space in indentation (this project uses tabs)",
+                        code))
+        opener = code.rstrip().endswith(":")
+        if i + 1 >= len(lines):
+            continue
+        next_lineno, next_indent, next_code, _ = lines[i + 1]
+        if opener and next_indent <= indent:
+            bad.append((lineno, "block opener with no indented body", code))
+        elif not opener and next_indent > indent:
+            bad.append((next_lineno,
+                        "unexpected indent (nothing above it opens a block)",
+                        next_code))
+    return bad
+
+
+# -------------------------------------------------------------- reference ---
+
+# Reachable through any class name without being declared anywhere in this
+# project. Keep this list SHORT and only add to it with a real call site --
+# every entry is a place this check has agreed to stop looking.
+ENGINE_STATICS = {"new"}
+
+CLASSNAME = re.compile(r'^class_name\s+([A-Za-z_]\w*)', re.M)
+EXTENDS = re.compile(r'^extends\s+([A-Za-z_]\w*)', re.M)
+DECL = re.compile(r'^\t*(?:static\s+)?(?:func|const|var|signal|enum|class)\s+'
+                  r'([A-Za-z_]\w*)')
+EXPORT = re.compile(r'^\t*@export[^\n]*\s+var\s+([A-Za-z_]\w*)')
+
+
+def build_index(paths):
+    """class_name -> declared members, plus the extends chain between them."""
+    members, parent, home = {}, {}, {}
+    for path in paths:
+        src = open(path, encoding="utf-8").read()
+        m = CLASSNAME.search(src)
+        if not m:
+            continue
+        cls = m.group(1)
+        home[cls] = path
+        e = EXTENDS.search(src)
+        if e:
+            parent[cls] = e.group(1)
+        names = set()
+        for line in src.split("\n"):
+            for pattern in (DECL, EXPORT):
+                d = pattern.match(line)
+                if d:
+                    names.add(d.group(1))
+        # Enum members are referenced as Class.MEMBER too, and are declared
+        # inside braces rather than by a keyword, so they need their own sweep.
+        for body in re.findall(r'enum\s+\w*\s*\{([^}]*)\}', src, re.S):
+            names.update(re.findall(r'\b([A-Z][A-Z0-9_]*)\b', body))
+        members[cls] = names
+    return members, parent, home
+
+
+def check_refs(path, members, parent, home):
+    """`SomeClass.member` naming something that class does not declare.
+
+    Godot reports this as a parse error, so it takes the whole class registry
+    down exactly the way a bad indent does.
+
+    THE FIRST VERSION OF THIS COULD NOT FAIL, and it is worth saying why in
+    full, because the shape recurs (STRATEGY §77). It walked `extends` and
+    returned "fine" on reaching a class it did not know, reasoning that an
+    engine base has members it cannot enumerate. But EVERY class here bottoms
+    out at Node3D, Control or RefCounted, so every lookup reached that bail and
+    every reference resolved. Run against a deliberate `DeepSpace.compass_deg`
+    typo it reported zero problems -- a green that measured nothing.
+
+    What makes the narrow rule correct: `ClassName.member` is a STATIC access.
+    Godot resolves it against static functions, consts, enums and inner classes
+    only -- an inherited *instance* member is not reachable through the class
+    name, so an engine base contributes almost nothing here and running out of
+    the project chain is a real answer rather than a missing one.
+    """
+    bad = []
+    src = open(path, encoding="utf-8").read()
+    own = CLASSNAME.search(src)
+    own = own.group(1) if own else None
+
+    def resolves(cls, name, depth=0):
+        if depth > 8:
+            return True
+        if cls in members and name in members[cls]:
+            return True
+        if cls in parent:
+            return resolves(parent[cls], name, depth + 1)
+        # Out of the project chain, so what is left is what the ENGINE offers
+        # through a class name. That set is small: the constructor, and the
+        # SCREAMING_CASE notification and enum constants every Object carries
+        # (NOTIFICATION_READY, PROCESS_MODE_ALWAYS). Conceding those two shapes
+        # is what keeps this quiet enough to be worth running -- `.new()` alone
+        # is 186 call sites here, and a checker that cries about all of them is
+        # a checker nobody reads.
+        return name in ENGINE_STATICS or name.isupper()
+
+    for n, line in enumerate(src.split("\n"), 1):
+        code, _ = strip_code(line)
+        for cls, name in re.findall(r'\b([A-Z]\w+)\.([A-Za-z_]\w*)', code):
+            # `cls == own` is skipped: a class may name itself before the
+            # member is declared further down the file, which is legal.
+            if cls not in members or cls == own:
+                continue
+            if not resolves(cls, name):
+                bad.append((n, "%s.%s is not declared in %s"
+                            % (cls, name, os.path.basename(home[cls])),
+                            line.strip()))
+    return bad
+
+
+# ------------------------------------------------------------------- main ---
+
+def main(argv):
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    every = sorted(glob.glob(os.path.join(root, "scripts", "**", "*.gd"),
+                             recursive=True))
+    targets = argv[1:] or every
+    # The reference index is always built from EVERY script, even when only a
+    # few files are being checked -- a class declared in a file not on the
+    # command line is still a class, and indexing only the targets would report
+    # every reference into it as unresolved.
+    members, parent, home = build_index(every)
+
+    found = 0
+    for path in targets:
+        for lineno, why, text in check_indent(path) + \
+                check_refs(path, members, parent, home):
+            rel = os.path.relpath(path, root)
+            print("%s:%d: %s\n    %s" % (rel, lineno, why, text[:88]))
+            found += 1
+
+    print("--- %d file(s) checked, %d problem(s)" % (len(targets), found))
+    if found:
+        print("Each of these is a parse error. Godot reports them as "
+              "'Could not parse global class' plus a few hundred lines of "
+              "cascade, so fix them here.")
+    return 1 if found else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

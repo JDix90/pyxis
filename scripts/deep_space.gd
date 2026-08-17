@@ -1189,18 +1189,19 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 	if not sig.is_empty() and (sig.get("bands", []) as Array).has(band) \
 			and s_roll < float(sig.get("chance", 0.0)):
 		# FROM THE CELL CENTRE, NOT `base`. `base` is the cell's MIN CORNER, so a
-	# polar offset from it put three sites in four inside a NEIGHBOURING cell
-	# while parented to this one's node -- streaming in and out with the wrong
-	# cell, and defeating the cross-boundary clearance argument at the top of
-	# this file, which holds because every placement INSETS from the corner and
-	# a cell can only test its own contents. landmark_at recentres explicitly
-	# for exactly this reason; so does this now.
-	#
-	# The arithmetic, so the next append does not have to re-derive it: the ring
-	# is 0.18-0.42 of CELL, so a site sits at most 26.9u from the centre, i.e.
-	# at least 5.1u inside its own cell, and a neighbour's station (inset 22u)
-	# is therefore at least 27.1u away -- clear of every station radius below.
-	var sp2 := cell_centre(cx, cz) + Vector3(cos(s_ang), 0.0, sin(s_ang)) * s_rad
+		# polar offset from it put three sites in four inside a NEIGHBOURING cell
+		# while parented to this one's node -- streaming in and out with the wrong
+		# cell, and defeating the cross-boundary clearance argument at the top of
+		# this file, which holds because every placement INSETS from the corner and
+		# a cell can only test its own contents. landmark_at recentres explicitly
+		# for exactly this reason; so does this now.
+		#
+		# The arithmetic, so the next append does not have to re-derive it: the
+		# ring is 0.18-0.42 of CELL, so a site sits at most 26.9u from the centre,
+		# i.e. at least 5.1u inside its own cell, and a neighbour's station (inset
+		# 22u) is therefore at least 27.1u away -- clear of every station radius
+		# below.
+		var sp2 := cell_centre(cx, cz) + Vector3(cos(s_ang), 0.0, sin(s_ang)) * s_rad
 		# The same two clearances every other placed thing answers to. A
 		# signature is content, not an exemption.
 		# STATION_SAFE_RADIUS, not STATION_CLEARANCE, and the slag tide is why.

@@ -6000,12 +6000,25 @@ commits, none built yet:
 | 4 | chart legibility: fit-to-content scale, ship marker, band rings, legend, pan/zoom | none | **not built** |
 | 5 | beacon navigation: set-course autopilot and a depth-capped paid jump, same-PYX only | none | **not built** |
 | 6 | persistent per-PYX survey coverage | **v21** | **not built** |
+| — | a static parse pre-flight that runs without the Godot binary | none | **BUILT** — §77 |
 
 Two of these reverse recorded decisions and neither may be done quietly: commit
 6 reverses §22's session-only survey rule, whose `SESSION RESET` assertion exists
 specifically to force this conversation, and commit 3 rewrites `IDENTITY IS
 ADDITIVE` so PYX-01 may author presentation-only identity. **§41's `MIDTIER`
 re-derivation is now due** — commit 6 is income.
+
+**The README's harness counts should be derived, not typed** (open 2026-08-17,
+§77). Three numbers — tag count, SAVETEST mode count, total runs — are
+maintained by hand in a paragraph that itself warns the reader it has been
+wrong before. It has now drifted twice: §73 found it claiming 44 and 61 in two
+places that disagreed with each other, and §77 found it claiming 46 and 64
+against a `TAGS` array holding 48 and a sweep of 66. Both times the fix was to
+retype the numbers, which is the fix that expires. `run_harness.sh` already
+knows all three and could print them (`--counts`), or a check could assert the
+README against the array the way `THE MANUAL IS TRUE TO THE CANCEL LADDER`
+asserts prose against a constant. Small, and it removes a recurring class of
+staleness rather than one instance of it.
 
 **Should an ALLIED ship be spared the player's area weapons?** (open 2026-08-07,
 §72). Splash catching a flag is deliberate and measured — `WITNESS_RANGE` is
@@ -7919,3 +7932,106 @@ the whole approach safe: scaling a threshold up can only ADD cells, because the
 roll is the same number and only the bar moved, so every convoy the stripped
 probe placed must still be there, in place. A multiplier that *moved* one would
 be a reshuffle, which is what a changed draw count looks like from outside.
+
+## 77. The line that Godot never names
+
+§76 shipped and `main` would not boot. Not a failed assertion, not a red
+harness — the project did not load at all:
+
+```
+SCRIPT ERROR: Parse Error: Could not parse global class "DeepSpace"
+              from "res://scripts/deep_space.gd".
+ERROR: Failed to create an autoload, script 'res://scripts/game_state.gd'
+       is not compiling.
+ERROR: Failed to load script "res://scripts/main.gd" with error "Parse error".
+```
+
+Between those three lines sat roughly four hundred more: `Could not resolve
+class "DeepSpace"` at `game_state.gd:1638`, at `:2352`, and at two hundred and
+fifty separate lines of `main.gd` — every file that names the type, none of
+which had been touched. The class list printed during `update_scripts_classes`
+carried a blank entry where a name should have been.
+
+The defect was one tab, at `deep_space.gd:1204`.
+
+### A comment is not a body
+
+Reviewing the signature block had turned up a real bug — placements were being
+measured from `base`, the cell's minimum corner, rather than its centre, so
+three sites in four landed inside a neighbouring cell while parented to this
+one's node. The fix was correct and the explanation written above it was
+correct. What went wrong is that the explanation and the line it explained were
+pasted back at one tab instead of two:
+
+```gdscript
+	if not sig.is_empty() and ...:
+		# FROM THE CELL CENTRE, NOT `base`. ...
+	# polar offset from it put three sites in four inside a NEIGHBOURING cell
+	...
+	var sp2 := cell_centre(cx, cz) + ...
+		if depth_at(sp2) >= CONTENT_MIN_DEPTH ...
+```
+
+GDScript sees an `if` with no body, then an indent that opens nothing. A human
+sees twelve lines of prose sitting exactly where the body belongs and reads
+straight past it — **which is a cost of this file's own house style.** Every
+block here opens with a paragraph. That is worth keeping, and it means the one
+place a body-less block could hide is the place this project always puts text.
+
+### Why review did not catch it, and why the gate did not either
+
+The gate for this already existed. §73 added a parse check to
+`run_harness.sh` that greps for exactly these strings and refuses to start the
+sweep. It would have caught this in 0.6 seconds. It did not run, because the
+sweep is run on the machine that has Godot and the merge happened before it —
+the order was build, review, merge, sweep, and only the last step could see it.
+
+That ordering is not going to change: the binary lives on one machine and the
+edits are written on another. So the check has to be able to run where the
+edits are written. `tools/check_scripts.py` is that check — plain Python, no
+binary, two rules:
+
+- a block opener whose next logical line does not indent under it;
+- `SomeClass.member` naming something that class does not declare.
+
+Both are chosen for the same reason: they take down the entire class registry,
+and neither is visible in a diff. It is strictly weaker than Godot's parser and
+that is fine — it runs first, and it prints the line number that Godot's four
+hundred lines never mention.
+
+### The checker that could not fail
+
+Worth recording because it is the fourth time this shape has appeared here.
+The first version of the reference check resolved a member by walking `extends`
+and returning "fine" the moment it reached a class it did not know — reasoning
+that an engine base like `Node3D` has members it cannot enumerate. Run against
+the whole project it reported **0 unresolved references**, and that number was
+worth nothing: every class in this project bottoms out at `Node3D`, `Control`
+or `RefCounted`, so every lookup reached that bail and every reference
+resolved. Pointed at a deliberate `DeepSpace.compass_degrees` typo, it stayed
+green.
+
+What fixed it was not a better heuristic but the right rule.
+`ClassName.member` is a **static** access: Godot resolves it against static
+functions, consts, enums and inner classes only, and an inherited *instance*
+member is not reachable through a class name at all. So running out of the
+project's own `extends` chain is a real answer rather than a missing one, and
+the engine contributes only `new` plus the SCREAMING_CASE notification and enum
+constants — a set small enough to name in one line and concede deliberately.
+
+The pattern, stated once more because it keeps recurring: **an assertion that
+cannot fail for the reason it exists is worse than no assertion,** because it
+occupies the space where a real one would go and reports a number that reads
+like evidence. Red-verify or do not ship it. Both checks here go red against a
+fixture that reintroduces their defect, and the fixture is the thing that made
+the first version's vacuity visible.
+
+### Also in this commit
+
+The README's harness counts were stale again — it claimed 46 tags and 64 runs
+against a `TAGS` array holding 48 and a sweep of 66, drifting by exactly the
+two tags §75 and §76 added (`PROFILETEST`, `SIGTEST`). The paragraph that
+carries those numbers already warns that it has been wrong before and tells the
+reader to check `run_harness.sh` instead. It was wrong again anyway. Numbers
+that must be maintained by hand will drift; the only durable fix is to derive
+them, which is filed in §64 rather than done here.
