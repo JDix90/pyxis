@@ -32,6 +32,25 @@ if ! [ -x "$GODOT" ] && ! command -v "$GODOT" >/dev/null 2>&1; then
 	exit 2
 fi
 
+# THE STATIC PRE-FLIGHT, WHICH NAMES THE LINE. Godot's parser (three lines
+# down) is strictly stronger than this and would catch everything it catches,
+# so this is not here for coverage -- it is here for the ERROR MESSAGE. A bad
+# indent inside deep_space.gd does not report as "bad indent at line 1204"; it
+# reports as `Could not parse global class "DeepSpace"` followed by four
+# hundred cascade lines in files nobody touched, and finding the real line in
+# that is an afternoon. This prints the line. It also runs where Godot is not
+# installed, which is where the defect that prompted it was written.
+if command -v python3 >/dev/null 2>&1; then
+	if ! python3 "$ROOT/tools/check_scripts.py"; then
+		echo "STATIC CHECK FAILED: fix the lines above before sweeping." >&2
+		exit 2
+	fi
+else
+	# Not a fail-open: the Godot parse gate immediately below is a superset of
+	# this check and it is about to run. Only the nicer message is lost.
+	echo "note: python3 not found, skipping static pre-flight" >&2
+fi
+
 # AND THAT IT PARSES, ONCE, BEFORE SPENDING AN HOUR FINDING OUT. A main.gd that
 # fails to parse does not error: the harness never dispatches, the game boots
 # normally and runs forever, so every one of the 65 runs below burns the full
