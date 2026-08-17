@@ -9,6 +9,9 @@ signal continue_pressed
 # control to the game. The manual opens on top and the title stays exactly where
 # it was, because reading it is not a decision to start playing.
 signal manual_pressed
+# A pilot was picked or created, and the run behind it is already loaded. Main
+# treats it exactly like CONTINUE, because that is what it is.
+signal pilot_chosen
 
 const FADE_TIME := 0.5
 
@@ -22,6 +25,14 @@ var _ledger_line: Label
 var _registry_line: Label
 var _continue_button: Button
 var _mute_button: Button
+var _pilots: VBoxContainer
+var _pilots_scroll: ScrollContainer
+var _pilots_rows: VBoxContainer
+var _name_edit: LineEdit
+# The id armed for deletion. One tap arms a row and relabels it, a second tap on
+# the SAME row deletes -- the two-tap confirm PortPanel's undock and the pause
+# menu's ABANDON both use, rather than a modal nobody can style consistently.
+var _arm_delete := ""
 var _t := 0.0
 
 
@@ -72,6 +83,20 @@ func _apply_layout() -> void:
 	var buttons_h := maxf(_buttons.get_combined_minimum_size().y, _buttons.size.y)
 	_buttons.position = Vector2((w - 240.0) * 0.5, h - (h * 0.06) - buttons_h)
 	_buttons.size = Vector2(240.0, buttons_h)
+
+	# The pilot page anchors to the same bottom margin and grows upward, so five
+	# rows plus the name field push toward the wordmark rather than off the
+	# screen. Clamped to the space actually available above that margin, because
+	# a full rack on a laptop window is taller than the column between them.
+	if _pilots != null:
+		# The band, taken rather than negotiated. The rows live in a
+		# ScrollContainer whose own minimum height is zero, so the page's
+		# combined minimum is just the name field plus BACK -- which means this
+		# size is honoured instead of being clamped back up by Control.set_size,
+		# and whatever does not fit scrolls rather than hanging off the screen.
+		var band := maxf(h - (h * 0.06) - (title_y + h * 0.22), 120.0)
+		_pilots.position = Vector2((w - 240.0) * 0.5, h - (h * 0.06) - band)
+		_pilots.size = Vector2(240.0, band)
 
 
 func _build() -> void:
@@ -157,9 +182,192 @@ func _build() -> void:
 	manual_button.pressed.connect(func() -> void: manual_pressed.emit())
 	_buttons.add_child(manual_button)
 
+	var pilots_button := _make_button("PILOTS", Palette.AMBER)
+	pilots_button.pressed.connect(func() -> void:
+		_arm_delete = ""
+		_refresh_pilots()
+		_buttons.visible = false
+		_pilots.visible = true
+		Sfx.play("tap", -10.0, 1.0))
+	_buttons.add_child(pilots_button)
+
 	_mute_button = _make_button("AUDIO ON", Palette.TEAL)
 	_mute_button.pressed.connect(_toggle_mute)
 	_buttons.add_child(_mute_button)
+
+	# The pilot page sits in the same place as the button column and replaces it,
+	# rather than opening a second surface over the top. There is nothing else on
+	# this screen to keep visible behind it, and a sheet would need its own
+	# scrim, its own escape rung and its own layout pass.
+	_pilots = VBoxContainer.new()
+	_pilots.custom_minimum_size = Vector2(240, 0)
+	_pilots.size = Vector2(240, 0)
+	_pilots.add_theme_constant_override("separation", 8)
+	_pilots.visible = false
+	_root.add_child(_pilots)
+
+	# SCROLLED, because the rack does not fit and the exit is inside it. A full
+	# five pilots want roughly 480px of column; the band between the wordmark and
+	# the bottom margin is about 250 on the project's own default desktop window.
+	# Without this the last rows, the name field and BACK all hang below the
+	# screen -- and TitleScreen has no cancel handler, so BACK was the only way
+	# out of a page that had just pushed BACK off the bottom.
+	_pilots_scroll = ScrollContainer.new()
+	_pilots_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_pilots_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_pilots.add_child(_pilots_scroll)
+
+	_pilots_rows = VBoxContainer.new()
+	_pilots_rows.custom_minimum_size = Vector2(240, 0)
+	_pilots_rows.add_theme_constant_override("separation", 6)
+	_pilots_scroll.add_child(_pilots_rows)
+
+	var name_row := HBoxContainer.new()
+	name_row.add_theme_constant_override("separation", 6)
+	_name_edit = LineEdit.new()
+	_name_edit.placeholder_text = "NAME"
+	_name_edit.max_length = Profiles.NAME_MAX
+	_name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_name_edit.add_theme_font_size_override("font_size", 12)
+	name_row.add_child(_name_edit)
+	var add := _make_button("NEW", Palette.TEAL)
+	add.custom_minimum_size = Vector2(80, 34)
+	add.pressed.connect(_create_pilot)
+	name_row.add_child(add)
+	_pilots.add_child(name_row)
+
+	var back := _make_button("BACK", Palette.TEAL)
+	back.custom_minimum_size = Vector2(240, 38)
+	back.pressed.connect(func() -> void:
+		_arm_delete = ""
+		_pilots.visible = false
+		_buttons.visible = true
+		Sfx.play("tap", -12.0, 0.9))
+	_pilots.add_child(back)
+
+
+func _refresh_pilots() -> void:
+	# REMOVED, THEN FREED. queue_free defers to the end of the frame, so for the
+	# whole of this frame the container would hold BOTH racks -- and
+	# get_combined_minimum_size counts every child that is not itself hidden, so
+	# the layout below measured roughly double and positioned the page from a
+	# clamped number while Control.size clamped straight back up to the real
+	# minimum. The page rendered hanging off the bottom of the screen and never
+	# recovered, because nothing re-runs the layout once the doomed rows go.
+	for child in _pilots_rows.get_children():
+		_pilots_rows.remove_child(child)
+		child.queue_free()
+	var rows := Profiles.list_profiles()
+	var active := Profiles.active_id()
+	for row_v in rows:
+		var row: Dictionary = row_v
+		var id := String(row["id"])
+		var sum: Dictionary = row.get("summary", {})
+		# The summary is whatever that pilot last SAVED, so a row nobody has
+		# played yet says so rather than printing a line of zeroes -- the same
+		# argument the ledger line makes for hiding itself with no save.
+		var detail := "NEW SURVEY"
+		if not sum.is_empty():
+			detail = "%s · %du DEEPEST · %d HULLS" % [
+				String(sum.get("ship_name", "—")),
+				int(sum.get("deepest", 0)), int(sum.get("hulks", 0))]
+		var armed := _arm_delete == id
+		var tint := Palette.AMBER
+		if armed:
+			tint = Palette.THREAT
+		elif id == active:
+			tint = Palette.GOLD
+		# One line per pilot rather than two: the × used to sit on its own 22px
+		# row under each, which cost 140px of a column that did not have it.
+		var line := HBoxContainer.new()
+		line.add_theme_constant_override("separation", 4)
+
+		var b := _make_button("", tint)
+		# Spelled out rather than folded into a ternary: `"%s" % x if c else "%s"`
+		# reads as one expression and parses as another, and this line is the
+		# difference between a delete confirm and a pilot row.
+		if armed:
+			b.text = "DELETE %s — TAP AGAIN" % String(row["name"])
+		else:
+			b.text = "%s\n%s" % [String(row["name"]), detail]
+		b.custom_minimum_size = Vector2(0, 46)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.add_theme_font_size_override("font_size", 12)
+		b.pressed.connect(_on_pilot_pressed.bind(id))
+		line.add_child(b)
+
+		# Hidden rather than absent while armed, so the row does not change width
+		# under the finger that is about to tap it again.
+		var kill := _make_button("×", Palette.THREAT)
+		kill.custom_minimum_size = Vector2(34, 46)
+		kill.add_theme_font_size_override("font_size", 13)
+		kill.visible = not armed
+		kill.pressed.connect(func() -> void:
+			_arm_delete = id
+			_refresh_pilots()
+			Sfx.play("tap", -10.0, 0.8))
+		line.add_child(kill)
+		_pilots_rows.add_child(line)
+	_apply_layout()
+
+
+func _on_pilot_pressed(id: String) -> void:
+	# One button, two meanings, decided by whether this row is armed -- which is
+	# what makes the confirm a SECOND tap on the thing being deleted rather than
+	# a yes/no somewhere else on the screen.
+	if _arm_delete == id:
+		# DELETING THE PILOT YOU ARE STANDING IN. GameState still has that run
+		# loaded and save_path still points inside the folder about to be
+		# removed, so without this the session plays on, every save silently
+		# fails against a missing directory, and CONTINUE -- whose visibility
+		# was computed before the delete -- walks the player back into a run
+		# that has nowhere left to be written.
+		var was_active := id == GameState.active_profile
+		Profiles.delete(id)
+		_arm_delete = ""
+		if was_active:
+			var next := Profiles.active_id()
+			if next == "" or not GameState.switch_profile(next):
+				# Nothing left to stand in. CONTINUE goes away with the run.
+				GameState.active_profile = ""
+				_continue_button.visible = false
+				_ledger_line.visible = false
+				_registry_line.visible = false
+		_refresh_pilots()
+		Sfx.play("tap", -8.0, 0.7)
+		return
+	_arm_delete = ""
+	if not GameState.switch_profile(id):
+		return
+	Sfx.play("equip", -8.0, 1.1)
+	_choose(pilot_chosen)
+
+
+func _create_pilot() -> void:
+	if Profiles.list_profiles().size() >= Profiles.MAX_PROFILES:
+		# Refused on the button rather than silently: §12's rule, that the odds
+		# go on the button. There is no room and the page says so.
+		_name_edit.placeholder_text = "NO ROOM — DELETE ONE FIRST"
+		Sfx.play("tap", -14.0, 0.7)
+		return
+	# ASKED BEFORE THE ROW IS WRITTEN. create() sets the new id as the registry's
+	# active profile, so creating first and discovering the switch is refused
+	# afterwards leaves an empty folder holding the active flag -- and repeating
+	# it fills the rack with phantom pilots until the page says NO ROOM. The
+	# refusal that actually happens here is a save from a newer build, which
+	# locks the layer for the session.
+	if not GameState.can_switch_profile():
+		_name_edit.placeholder_text = "SAVE IS FROM A NEWER BUILD"
+		Sfx.play("tap", -14.0, 0.7)
+		return
+	var id := Profiles.create(_name_edit.text, Time.get_unix_time_from_system())
+	if id == "":
+		return
+	_name_edit.text = ""
+	if not GameState.switch_profile(id):
+		return
+	Sfx.play("equip", -8.0, 1.1)
+	_choose(pilot_chosen)
 
 
 func _make_button(text: String, color: Color) -> Button:
@@ -221,6 +429,12 @@ func open(has_save: bool) -> void:
 	# safe -- load_game locked saving before returning -- and the line below
 	# says so, because "your save is fine, this build just cannot read it" is
 	# the only part of this the player actually needs.
+	# The page never survives a close: it is a picker, and reopening the title
+	# with a row still armed for deletion is a live trap.
+	_arm_delete = ""
+	if _pilots != null:
+		_pilots.visible = false
+	_buttons.visible = true
 	var refused := GameState.newer_save_refused
 	_continue_button.visible = has_save and not refused
 	# Hidden with CONTINUE, and for the same reason: with no save there is no run

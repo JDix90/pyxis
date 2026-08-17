@@ -1,6 +1,6 @@
 # Horizon 6 — The Known Frontier
 
-**Status: commits 0 and 1 BUILT (§73, §74). Commits 2–6 specced, not built.** When any of
+**Status: commits 0, 1 and 2 BUILT (§73, §74, §75). Commits 3–6 specced, not built.** When any of
 them is adopted, record it in `docs/STRATEGY.md` §64 in the same commit, per the
 house rule.
 
@@ -123,7 +123,7 @@ Two departures from the obvious order, both load-bearing:
 |---|---|---|---|
 | 0 | preconditions | none | **BUILT** — §73 |
 | 1 | hotkeys | none | **BUILT** — §74 |
-| 2 | pilot profiles + prefs split | none | not built |
+| 2 | pilot profiles + prefs split | none | **BUILT** — §75 |
 | 3 | per-Pyx identity + signature content | none | not built |
 | 4 | chart legibility | none | not built |
 | 5 | beacon navigation | none | not built |
@@ -168,10 +168,37 @@ boots wearing pilot one's paint and name, already commissioned.
 
 | per-pilot (`save.json`) | device-level (`prefs.json`) |
 |---|---|
-| salvage, cargo, modules, fit, systems, intel, beacons, colonies, ledger, skills, faction deltas, `barks_seen`, `tutorial_step`, `played_seconds`, `ship_name`, `livery`, `commissioned` | all of `settings` — bindings, `ui_scale`, volumes, `colorblind`, `haptics`, `reduce_motion`, `telemetry` — plus `audio_muted` |
+| salvage, cargo, modules, fit, systems, intel, beacons, colonies, ledger, skills, faction deltas, `barks_seen`, `tutorial_step`, `played_seconds`, **`ship_name`, `livery`, `commissioned`** | all of `settings` — bindings, `ui_scale`, volumes, `colorblind`, `haptics`, `reduce_motion`, `telemetry` — plus `audio_muted` and `tutorial_seen` |
 
-`barks_seen` and `tutorial_step` stay per-pilot on purpose: a new pilot should
-get onboarding again.
+**Identity is per-pilot — settled with the owner, 2026-08-17.** This is the
+decision the whole feature turns on, because the three fields
+`reset_to_starter` preserves are described in their own comments as things that
+*"outlive the run"*, and profiles split that phrase in half: a thing can outlive
+the run and still belong to the pilot rather than the device.
+
+Each pilot names their own ship, starts in default paint, and earns their own
+commission. That makes a second pilot a genuinely separate run rather than the
+same captain in a different save slot, which is what "experiment with different
+builds" asks for. The accepted cost is stated rather than hidden: a second pilot
+re-earns the commission and the accent colours ≥8 it unlocks, and the deep's
+`from_commissioned` broadcast copy reverts with it. `commissioned` gates flavour
+and cosmetics, never a system or a lane, so this costs a new pilot nothing they
+cannot reach.
+
+`audio_muted` goes the other way for the reason its own comment already gives —
+it is a device preference, not run state.
+
+**Five slots.** Enough for parallel builds without the page becoming a list to
+manage, and five rows fit the title screen's fixed 240px button column without a
+ScrollContainer.
+
+**The tutorial runs once per device, not once per pilot** — a player building a
+fourth fit does not want six steps of onboarding again. Note the implementation
+subtlety: `tutorial_step` **stays per-pilot**, because it is genuinely run state
+and moving it wholesale would share mid-tutorial progress between pilots. What
+moves to `prefs.json` is a single `tutorial_seen` flag, and a newly created
+pilot starts at `tutorial_step = -1` (complete) when the device has already set
+it. `barks_seen` stays per-pilot as before.
 
 **The switch verb is one function**, because `save_path = X; load_game()` is not
 a reset — it no-ops on a missing file and leaves the previous pilot loaded. It

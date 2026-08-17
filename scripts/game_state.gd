@@ -409,6 +409,30 @@ var _save_timer: SceneTreeTimer = null
 # title screen, which must not offer CONTINUE for a run it could not read.
 var newer_save_refused := false
 
+# --- device preferences, which are not run state ----------------------------
+# Everything here belongs to the DEVICE and is shared by every pilot: the keys
+# they rebound, the volume they set, the colour mode they need. It used to ride
+# inside the save, which was correct while there was exactly one save -- and
+# became wrong the moment there were five, because switching pilots would have
+# silently rebound the player's keyboard and changed their colour-vision mode.
+#
+# `tutorial_seen` is the one field here that is not a preference. It is a device
+# fact: this machine has been through onboarding once. tutorial_step stays in the
+# SAVE, because a pilot halfway through step three is run state and sharing that
+# between pilots would be its own bug; what is shared is only whether a NEW pilot
+# starts at -1 instead of 0.
+var prefs_path := "user://prefs.json"
+var tutorial_seen := false
+# True once prefs.json has been read from disk. Until then the legacy save is
+# allowed to seed these fields, which is how an upgrading player keeps the
+# bindings and volumes they already had.
+var _prefs_loaded := false
+
+# The pilot this save belongs to, "" when running on the legacy single-save path
+# (which is every harness, and any boot before the migration has run). Written
+# into the registry on every save so the title screen's rows stay current.
+var active_profile := ""
+
 
 func lock_saving() -> void:
 	# One-way. Harnesses used to just assign `save_enabled = false`, but
@@ -429,10 +453,182 @@ func _ready() -> void:
 	settings = DEFAULT_SETTINGS.duplicate()
 	livery = DEFAULT_LIVERY.duplicate()
 	ledger = DEFAULT_LEDGER.duplicate()
+	if _headless():
+		# PREFS ARE OFF UNDER A HARNESS, and the empty path is the switch.
+		#
+		# _save_prefs is reached from set_setting, set_audio_muted and
+		# set_tutorial_step(-1), and forty-odd suites call those constantly --
+		# ACCESSTEST alone rebinds keys a dozen times. Every one of them would
+		# have been writing the player's real preferences, which is the rule this
+		# repo enforces with an md5 in the sweep. Locking saving is not the
+		# answer either: SAVETEST, LIVERYTEST and HUNTTEST deliberately do not
+		# lock, because the file layer is what they are testing.
+		#
+		# Off, rather than pointed at a scratch file, because a shared scratch
+		# file is cross-run coupling by another name: one suite's leftover
+		# volume would arrive as another suite's starting state. With prefs
+		# disabled, `_prefs_loaded` stays false, load_game seeds settings from
+		# the save exactly as it did before this commit, and every existing
+		# assertion keeps the meaning it was written with.
+		#
+		# A suite that actually wants the layer -- SAVETEST and PROFILETEST --
+		# assigns its own path and calls reload_prefs(), which turns it back on
+		# for that run only. Same seam as save_path, same reason.
+		prefs_path = ""
+	_load_prefs()
+	# THE PROFILE IS RESOLVED HERE, not by Main, because this is an autoload and
+	# its _ready runs BEFORE the main scene exists -- so anything that waited for
+	# Main to point save_path at a pilot would already have loaded the wrong file.
+	# It is also why the harness check below cannot call Main.harness_running().
+	if not _headless():
+		if Profiles.needs_migration():
+			Profiles.migrate_legacy(Time.get_unix_time_from_system())
+		var id := Profiles.active_id()
+		# A FRESH INSTALL MUST STILL HAVE A PILOT. With no legacy save there is
+		# nothing to migrate, so the registry is written empty and active_id is
+		# "" -- which left save_path on the old single-save path. The player then
+		# pressed NEW SURVEY, played a whole run into user://save.json, and the
+		# first time they opened PILOTS and made one, switch_profile moved the
+		# path to the new folder with `active_profile` still empty, so the
+		# outgoing save was skipped and the entire run was stranded in a file
+		# nothing would ever read again. The migration cannot rescue it either:
+		# it is keyed on the registry's absence, and the registry now exists.
+		#
+		# So a player always has a pilot from the first boot, and every run is
+		# written inside one from the start.
+		if id == "":
+			id = Profiles.create("", Time.get_unix_time_from_system())
+		if id != "":
+			active_profile = id
+			save_path = Profiles.save_path_for(id)
 	if not load_game():
 		reset_to_starter()
+	# Seeded, not merged: an upgrading player's bindings and volumes lived in the
+	# save until this build, so the first boot after the split lifts them out of
+	# whatever load_game just read and writes them where they now belong. After
+	# that prefs.json exists and always wins.
+	if not _prefs_loaded:
+		# AND THE ONE FIELD THE SAVE CANNOT SEED BY ITSELF. tutorial_seen has no
+		# home in the old format, so an upgrading player who finished onboarding
+		# months ago would be stamped as never having seen it -- and it cannot
+		# self-correct, because the only writer is set_tutorial_step(-1) and
+		# load_game assigns tutorial_step directly rather than through the
+		# setter, so the step is already -1 and the setter early-returns. Their
+		# second pilot would then be walked through six steps of a tutorial they
+		# finished before this build existed. A save that arrives finished IS the
+		# device having seen it.
+		if tutorial_step == -1:
+			tutorial_seen = true
+		_save_prefs()
 	_recompute()
 	apply_settings()
+
+
+func _headless() -> bool:
+	# THE HARNESS TEST THIS LAYER IS ALLOWED TO MAKE. Main owns HARNESS_VARS and
+	# harness_running(), and neither is reachable from here: main.gd is 21k lines
+	# and a compile-time dependency from an autoload into it is the shape §39
+	# records closing a class-list cycle -- forty parse errors in untouched files
+	# and a boot that hung rather than failed.
+	#
+	# So the question is asked of the display server instead, and it is the right
+	# question rather than a cheap proxy: run_harness.sh runs every suite with
+	# --headless, and the thing being prevented is a HEADLESS run moving the
+	# player's real save into a pilot folder. A player's game is never headless.
+	# Harnesses that want the migration call Profiles directly with redirected
+	# paths, which is how PROFILETEST exercises it.
+	return DisplayServer.get_name() == "headless"
+
+
+# --- device preferences -----------------------------------------------------
+
+func reload_prefs() -> void:
+	# Re-reads prefs_path after a caller has MOVED it. _ready is the only other
+	# reader, and it has already run by the time a harness redirects, so without
+	# this the redirect would take effect for writes and not for reads.
+	#
+	# It resets first, so an absent file returns this layer to the state a fresh
+	# install is in -- prefs off, the save allowed to seed. That is what lets one
+	# SAVETEST mode consume what another wrote while the migrate modes each start
+	# from nothing.
+	settings = DEFAULT_SETTINGS.duplicate()
+	audio_muted = false
+	tutorial_seen = false
+	_prefs_loaded = false
+	_load_prefs()
+	apply_settings()
+
+
+func _load_prefs() -> void:
+	# An empty path means the layer is off -- see _ready's headless clause.
+	if prefs_path == "" or not FileAccess.file_exists(prefs_path):
+		return
+	var f := FileAccess.open(prefs_path, FileAccess.READ)
+	if f == null:
+		return
+	var parsed = JSON.parse_string(f.get_as_text())
+	f.close()
+	if typeof(parsed) != TYPE_DICTIONARY:
+		push_warning("Pyxis: prefs.json unreadable, using defaults")
+		return
+	var data: Dictionary = parsed
+	# Key-by-key onto the defaults, the same merge load_game does, so a prefs
+	# file written before a later setting existed still gets that default.
+	# UNTYPED FIRST, THEN CHECKED. `var saved: Dictionary = data.get(...)` looks
+	# like it is guarded by the `is Dictionary` under it and is not: the typed
+	# declaration converts on assignment, so a prefs.json whose "settings" key
+	# is a number or a string raises a runtime error ON THAT LINE and the guard
+	# below it never runs. This file is hand-editable by definition, and the
+	# whole read would abort -- taking audio_muted and tutorial_seen with it, and
+	# then letting _ready overwrite the file with defaults. profiles.gd already
+	# does this in the right order; so does this now.
+	var saved_v: Variant = data.get("settings", {})
+	if saved_v is Dictionary:
+		var saved: Dictionary = saved_v
+		for key in DEFAULT_SETTINGS:
+			if saved.has(key):
+				settings[key] = saved[key]
+	_clamp_settings()
+	audio_muted = bool(data.get("audio_muted", false))
+	tutorial_seen = bool(data.get("tutorial_seen", false))
+	_prefs_loaded = true
+
+
+func _save_prefs() -> void:
+	# The empty path is the off switch, and it is checked BEFORE save_enabled on
+	# purpose: the suites that must not write prefs are exactly the ones that
+	# deliberately leave saving enabled.
+	if prefs_path == "" or not save_enabled:
+		return
+	var f := FileAccess.open(prefs_path, FileAccess.WRITE)
+	if f == null:
+		return
+	f.store_string(JSON.stringify({
+		"settings": settings,
+		"audio_muted": audio_muted,
+		"tutorial_seen": tutorial_seen,
+	}, "\t"))
+	f.close()
+	_prefs_loaded = true
+
+
+func _clamp_settings() -> void:
+	# Every bound the settings dict has, in one place, because two readers now
+	# fill it: prefs.json and (on the first boot after the split) an old save.
+	settings["music_vol"] = clampf(float(settings["music_vol"]), 0.0, 1.0)
+	settings["sfx_vol"] = clampf(float(settings["sfx_vol"]), 0.0, 1.0)
+	settings["shake"] = bool(settings["shake"])
+	settings["ui_scale"] = clampf(float(settings["ui_scale"]), 0.7, 1.6)
+	settings["colorblind"] = clampi(int(settings["colorblind"]), 0, Palette.Vision.size() - 1)
+	if not (settings["bindings"] is Dictionary):
+		settings["bindings"] = {}
+
+
+func mark_tutorial_seen() -> void:
+	if tutorial_seen:
+		return
+	tutorial_seen = true
+	_save_prefs()
 
 
 # --- v6 settings ------------------------------------------------------------
@@ -446,9 +642,18 @@ func set_setting(key: String, value: Variant) -> void:
 	if not DEFAULT_SETTINGS.has(key):
 		push_warning("Pyxis: unknown setting '%s'" % key)
 		return
+	# Unchanged is not a write. apply_settings runs on every step of a volume
+	# slider, and prefs.json is now a real file on the other side of it -- so
+	# without this, dragging one slider is a few hundred synchronous writes.
+	if settings.has(key) and settings[key] == value:
+		return
 	settings[key] = value
 	apply_settings()
-	_queue_save()
+	# TO PREFS, NOT TO THE SAVE. A setting belongs to the device, so it is
+	# written immediately and to its own file -- which also means changing the
+	# volume no longer dirties the run, and a player who changes a setting on the
+	# title screen before picking a pilot still keeps it.
+	_save_prefs()
 
 
 func apply_settings() -> void:
@@ -1039,13 +1244,21 @@ func set_tutorial_step(step: int) -> void:
 	if tutorial_step == step:
 		return
 	tutorial_step = step
+	# -1 is the sentinel for "finished or never started", and reaching it is what
+	# tells the DEVICE it has been through onboarding once. A second pilot then
+	# starts at -1 rather than at step one, because somebody testing a fourth fit
+	# does not want six steps of it again. The step itself stays in the save.
+	if step == -1:
+		mark_tutorial_seen()
 	_queue_save()
 
 
 func set_audio_muted(v: bool) -> void:
 	audio_muted = v
 	Sfx.set_muted(v)
-	_queue_save()
+	# A device preference, and its own comment in reset_to_starter has said so
+	# since long before there were pilots to share it between. It goes to prefs.
+	_save_prefs()
 
 
 func advance_clock(delta: float) -> void:
@@ -2536,9 +2749,17 @@ func save_game() -> void:
 		"docked_at": docked_at,
 		"market_pressure": market_pressure,
 		"market_events": market_events,
-		"audio_muted": audio_muted,
+		# NO `settings` AND NO `audio_muted`. Both moved to prefs.json when the
+		# save became per-pilot: they belong to the device, and leaving them here
+		# would mean switching pilots rebinds the player's keyboard and changes
+		# their colour-vision mode. Saves written before the split still carry
+		# them and load_game still reads them -- once, to seed prefs.json -- but
+		# nothing writes them again, so the stale copies age out on first save.
+		#
+		# `tutorial_step` stays: a pilot halfway through step three is run state.
+		# What is shared is `tutorial_seen` in prefs, which only decides whether a
+		# NEW pilot starts at -1.
 		"tutorial_step": tutorial_step,
-		"settings": settings,
 		"livery": livery,
 		"archeology": archeology,
 		"archeology_xp": archeology_xp,
@@ -2567,6 +2788,82 @@ func save_game() -> void:
 		return
 	f.store_string(JSON.stringify(data, "\t"))
 	f.close()
+	# The registry row follows the save it describes, so the title screen's
+	# summary is the last thing this pilot actually did.
+	#
+	# DOUBLE-GUARDED, and the second guard is the one that matters: a harness
+	# redirects save_path to a probe file WITHOUT redirecting the registry, so
+	# `save_path == the active pilot's path` is what proves this write belongs to
+	# a real pilot rather than to a test that happens to be running.
+	if active_profile != "" and save_path == Profiles.save_path_for(active_profile):
+		Profiles.touch(active_profile, Time.get_unix_time_from_system(), {
+			"ship_name": ship_name,
+			"deepest": int(ledger.get("deepest_depth", 0)),
+			"hulks": int(ledger.get("hulks_cracked", 0)),
+			"flown": int(ledger.get("distance_flown", 0)),
+			"commissioned": commissioned,
+		})
+
+
+func can_switch_profile() -> bool:
+	# Public so the pilots page can REFUSE BEFORE IT CREATES. Profiles.create
+	# stamps the new id as active, so asking afterwards leaves an empty folder
+	# holding the active flag every time the answer is no.
+	return not newer_save_refused
+
+
+func switch_profile(id: String) -> bool:
+	# THE ONE FUNCTION, because `save_path = X; load_game()` is not a switch.
+	# load_game no-ops on a missing file and returns false, which would leave the
+	# OUTGOING pilot fully loaded in memory under the incoming pilot's name --
+	# the first thing that then saved would write one run into another's folder.
+	if id == "":
+		return false
+	# GATED ON THE REFUSAL, NOT ON save_enabled. lock_saving() is one-way and
+	# process-wide, and load_game takes it whenever it meets a save from a newer
+	# build -- which was fine when there was one save and is wrong now that there
+	# are five. One future-dated pilot would otherwise make EVERY row on the
+	# pilots page a dead button for the rest of the session, with four perfectly
+	# readable runs behind them. The lock is about the FILE it refused, and this
+	# is moving away from that file.
+	if not can_switch_profile():
+		return false
+	# The outgoing pilot is written FIRST and synchronously, because _queue_save's
+	# one-second debounce is pending on almost every switch and the run would
+	# otherwise lose its last second of play. Clearing the handle afterwards only
+	# lets a fresh save queue immediately; it does not cancel the pending
+	# callback, which is safe because every line below runs without an await, so
+	# that callback cannot land between save_path moving and load_game reading.
+	if active_profile != "":
+		save_game()
+		_save_timer = null
+	active_profile = id
+	save_path = Profiles.save_path_for(id)
+	Profiles.set_active(id)
+	if not load_game():
+		# A pilot with no file yet -- the row exists, the run does not. Starter
+		# state, and `tutorial_seen` decides whether they are walked through it.
+		reset_to_starter()
+		# AND THE THREE reset_to_starter WILL NOT TOUCH. Its comments call
+		# ship_name, livery and commissioned things that "outlive the run", and
+		# they are right about the run -- they are wrong about the PILOT, which
+		# is the distinction this horizon settled. Left alone, a brand-new pilot
+		# boots wearing the outgoing pilot's paint, under their ship's name,
+		# already commissioned, and their first save writes all three into the
+		# new file permanently. reset_to_starter is not changed, because a NEW
+		# SURVEY on one pilot should still keep that pilot's identity; the
+		# difference belongs here, where the pilot itself changes.
+		ship_name = DEFAULT_SHIP_NAME
+		livery = DEFAULT_LIVERY.duplicate()
+		commissioned = false
+		tutorial_step = -1 if tutorial_seen else 0
+	# Nothing below is in the save and none of it is cleared by reset_to_starter,
+	# so without these three the new pilot inherits the old one's derived stats,
+	# their power diversions and their last tier readout.
+	diverts = {}
+	last_read_tiered = false
+	_recompute()
+	return true
 
 
 func load_game() -> bool:
@@ -2723,7 +3020,12 @@ func load_game() -> bool:
 			-Market.PRESSURE_CAP, Market.PRESSURE_CAP)
 	# v5 fields. Anyone loading a v1-v4 save has been playing already, so the
 	# tutorial is treated as finished rather than replayed at them.
-	audio_muted = bool(data.get("audio_muted", false))
+	#
+	# audio_muted only when prefs.json has not spoken -- same seeding rule as
+	# `settings` below. Reading it unconditionally would mean loading a pilot who
+	# was saved muted mutes the device for every other pilot.
+	if not _prefs_loaded:
+		audio_muted = bool(data.get("audio_muted", false))
 	tutorial_step = int(data.get("tutorial_step", -1))
 	# v8. A v7 save simply arrives at tier 0 with nothing read — no branch needed,
 	# which is the whole reason load_game has never had one.
@@ -2763,18 +3065,21 @@ func load_game() -> bool:
 	# v6 fields. Merged key-by-key onto the defaults rather than taken wholesale,
 	# so a v6 save written before a later setting existed still gets that
 	# setting's default instead of a missing key.
-	settings = DEFAULT_SETTINGS.duplicate()
-	var saved_settings: Dictionary = data.get("settings", {})
-	for key in DEFAULT_SETTINGS:
-		if saved_settings.has(key):
-			settings[key] = saved_settings[key]
-	settings["music_vol"] = clampf(float(settings["music_vol"]), 0.0, 1.0)
-	settings["sfx_vol"] = clampf(float(settings["sfx_vol"]), 0.0, 1.0)
-	settings["shake"] = bool(settings["shake"])
-	settings["ui_scale"] = clampf(float(settings["ui_scale"]), 0.7, 1.6)
-	settings["colorblind"] = clampi(int(settings["colorblind"]), 0, Palette.Vision.size() - 1)
-	if not (settings["bindings"] is Dictionary):
-		settings["bindings"] = {}
+	#
+	# ONLY WHEN prefs.json IS NOT THERE. These keys stopped being written to the
+	# save when device preferences moved out of it, but every save written before
+	# that still carries them -- and on the first boot after upgrading they are
+	# the only copy of the player's bindings and volumes, so they seed the new
+	# file. Once prefs.json exists it is the authority and the save's stale copy
+	# is ignored rather than merged, or switching pilots would drag one pilot's
+	# keyboard onto another.
+	if not _prefs_loaded:
+		settings = DEFAULT_SETTINGS.duplicate()
+		var saved_settings: Dictionary = data.get("settings", {})
+		for key in DEFAULT_SETTINGS:
+			if saved_settings.has(key):
+				settings[key] = saved_settings[key]
+		_clamp_settings()
 
 	livery = DEFAULT_LIVERY.duplicate()
 	var saved_livery: Dictionary = data.get("livery", {})
@@ -2854,6 +3159,16 @@ func load_game() -> bool:
 
 
 func _notification(what: int) -> void:
+	# BACKGROUNDING A PHONE IS NOT A CLOSE. Until this clause, the only triggers
+	# here were the desktop window closing and the object being deleted -- so on
+	# the platform this game is actually FOR, everything since the last debounced
+	# write depended on the player returning to the app. A task-switch that the OS
+	# then reclaimed took it. Saving on pause costs one write at the moment the
+	# player stops playing, which is exactly when it is free.
+	if what == NOTIFICATION_APPLICATION_PAUSED:
+		save_game()
+		_save_prefs()
+		return
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:
 		save_game()
 		# One row per session, at the same moment the save is written. Guarded by

@@ -5995,7 +5995,7 @@ commits, none built yet:
 |---|---|---|---|
 | 0 | preconditions: the band-0 key crash, the save-destroying downgrade path, the stale inventory | none | **BUILT** — §73 |
 | 1 | hotkeys: `chart` / `drop_beacon` / `pause`, each behind a guarded wrapper | none | **BUILT** — §74 |
-| 2 | pilot profiles: per-profile save paths, a registry, and device settings split into `prefs.json` | none | **not built** |
+| 2 | pilot profiles: per-profile save paths, a registry, and device settings split into `prefs.json` | none | **BUILT** — §75 |
 | 3 | per-PYX deep identity + one signature content class per system | none | **not built** |
 | 4 | chart legibility: fit-to-content scale, ship marker, band rings, legend, pan/zoom | none | **not built** |
 | 5 | beacon navigation: set-course autopilot and a depth-capped paid jump, same-PYX only | none | **not built** |
@@ -7550,3 +7550,228 @@ call anything.
 Two new assertions, `ESCAPE IS RESERVED BOTH WAYS` and
 `A DEFAULT IS A BINDING TOO`, each red-verified against the code as it stood
 before this pass.
+
+---
+
+## 75. Five pilots, and the half of the save that was never the run's
+
+Asked for as *"allow users to create an account so they are able to save their
+progress and save multiple of their games so they can experiment with different
+builds."* Answered as **local pilot profiles**, and the distinction is not a
+dodge — it is what the ask actually needs. §2 keeps this game single-player and
+offline-capable and §5 refuses live-ops, but §2 also says the local save is
+explicitly serialized to *"keep a server port possible without building one
+now"*. Profiles spend none of that option. Multiple builds side by side need no
+server at all, and this leaves the one that might exist later exactly as reachable
+as it was.
+
+### The load-bearing part is the split, not the path
+
+The obvious reading of this feature is "point `save_path` at a folder per
+pilot", and that reading is a data-loss bug. The save was a flat 42-key dict
+holding two different kinds of thing, and nobody had needed to tell them apart
+while there was exactly one save:
+
+- **The run.** Salvage, cargo, fit, systems, intel, beacons, colonies, ledger.
+- **The device.** Key bindings, volumes, UI scale, colour-vision mode, haptics,
+  reduce-motion, the telemetry opt-in, and the audio mute.
+
+Made per-pilot without separating them, **switching pilots rebinds the player's
+keyboard and changes their colour-vision mode** — an accessibility setting, lost
+by picking a different save. So the device half moved to `user://prefs.json` and
+`set_setting` now writes there immediately instead of dirtying the run.
+
+An upgrading player's bindings live in their old save and nowhere else, so
+`load_game` still READS those keys — once, to seed the new file — and nothing
+writes them again. `_prefs_loaded` is what makes that a one-way door: once
+prefs.json exists it wins, and a pilot saved muted no longer mutes the device for
+everyone else.
+
+### "Outlives the run" turned out to be two claims
+
+`reset_to_starter` preserves three fields and its comments call each of them
+something that *outlives the run*: the ship's name, the paint, and the
+commission. Profiles split that phrase, because a thing can outlive the run and
+still belong to the pilot rather than to the machine.
+
+Settled with the owner: **identity is per-pilot.** Each pilot names their own
+ship, starts in default paint, and earns their own commission. That is what makes
+a second pilot a separate RUN rather than the same captain in another slot, which
+is what "experiment with different builds" asks for. The cost is recorded rather
+than hidden — a second pilot re-earns the commission, the accent colours ≥ 8 it
+unlocks, and the deep's `from_commissioned` broadcast copy. It gates flavour and
+cosmetics, never a system and never a lane, so it costs a new pilot nothing they
+cannot reach.
+
+`audio_muted` went the other way, for the reason its own comment already gave.
+
+**The tutorial runs once per device.** Somebody building a fourth fit does not
+want six steps of onboarding again. The subtlety is written down because it is
+the kind that gets discovered later: `tutorial_step` STAYS in the save, because a
+pilot halfway through step three is run state and sharing that between pilots
+would be its own bug. What moved is a single `tutorial_seen` flag, which only
+decides whether a new pilot starts at −1 instead of 0.
+
+### The switch is one function, because the obvious two lines are wrong
+
+`save_path = X; load_game()` looks like a switch and is not one. `load_game`
+no-ops on a missing file and returns false, which leaves the OUTGOING pilot fully
+loaded in memory under the incoming pilot's name — and the first thing that saved
+would write one run into another's folder. `switch_profile` flushes the outgoing
+run synchronously (the one-second debounce is pending on almost every switch),
+moves the path, loads or lays down a starter run, and then clears the three
+things that are in neither the save nor `reset_to_starter`: `diverts`,
+`last_read_tiered`, and the derived stats.
+
+### Where each piece had to live, and why
+
+**`Profiles` is a leaf.** It references no other class in the project. §39
+records a compile-time dependency from a widely-preloaded script closing a
+class-list cycle: forty parse errors in files nobody had touched, and a boot that
+hung rather than failed. A registry that speaks only FileAccess, DirAccess and
+JSON cannot join that.
+
+**The profile is resolved in `GameState._ready`, not by Main.** GameState is an
+autoload and its `_ready` runs before the main scene exists, so anything waiting
+for Main to point `save_path` at a pilot would already have loaded the wrong
+file. That is also why the harness check there cannot call
+`Main.harness_running()` — it asks `DisplayServer.get_name() == "headless"`
+instead, which is the right question rather than a cheap proxy: every suite runs
+`--headless`, a player's game never does, and the thing being prevented is a
+headless run moving the player's real save into a pilot folder.
+
+**`save_path` stays a plain var, set once.** Three harnesses assign it and never
+restore it, so a live-derived property would stomp a probe path mid-suite and
+write the real save.
+
+**The registry write is double-guarded**, and the second guard is the one that
+matters: `save_path == the active pilot's path`. A harness redirects `save_path`
+without redirecting the registry, so that equality is what proves a write belongs
+to a real pilot rather than to a test running past.
+
+### Two things fixed because the save layer was open
+
+`NOTIFICATION_APPLICATION_PAUSED` now saves. Until this, the only triggers were
+the desktop window closing and the object being deleted — so on the platform this
+game is actually for, everything since the last debounced write depended on the
+player returning to the app, and a task-switch the OS then reclaimed took it.
+
+Telemetry rows carry the opaque pilot id. Without it, up to five runs interleave
+in one file with nothing to tell them apart, which destroys the file's stated
+purpose: every question it exists to answer is asked of one run.
+
+
+### What the adversarial pass found, and the shape of it
+
+Four verifiers went over this commit before it merged. They returned five
+blockers, and the pattern is worth more than the list: **every one was a rule
+that had exactly one instance until this commit gave it a second.**
+
+**The feature's own decision was not implemented.** `switch_profile` called
+`reset_to_starter()` and stopped — and `reset_to_starter` deliberately preserves
+`ship_name`, `livery` and `commissioned`, because for a NEW SURVEY on one pilot
+that is right. A brand-new pilot therefore booted wearing the outgoing pilot's
+paint, under their ship's name, already commissioned, and wrote all three into
+their own file on the first save. The settle recorded above was in the doc and in
+the commit message and nowhere in the code. `reset_to_starter` is unchanged; the
+three lines belong where the PILOT changes, not where the run does.
+
+**A fresh install never got a pilot at all.** With no legacy save there is
+nothing to migrate, so the registry was written empty, `active_id` was `""`, and
+`save_path` stayed on the old single-save path. The player pressed NEW SURVEY,
+played a whole run into `user://save.json`, and the first time they opened PILOTS
+and made one, `switch_profile` moved the path with `active_profile` still empty —
+so the outgoing save was skipped and the run was stranded in a file nothing would
+read again. The migration could not rescue it either: it is keyed on the
+registry's absence, and the registry existed. A player now has a pilot from the
+first boot.
+
+**A second file needed the rule the first one had.** `_save_prefs` is reached
+from `set_setting`, and SAVETEST's `write` leg sets three settings while
+ACCESSTEST rebinds a dozen keys — so the sweep would have rewritten the
+developer's real bindings and volumes on every run. `lock_saving()` is not the
+fix, because the three suites most likely to trip it deliberately do not lock:
+the file layer is what they test. Prefs are off under a harness instead, with an
+empty path as the switch, checked before `save_enabled` for exactly that reason.
+Off rather than pointed at a shared scratch file, which is cross-run coupling by
+another name — and which would have taken `migrate5` (asserts
+`settings == DEFAULT_SETTINGS`) and `partial6` (whose whole subject is the
+key-by-key settings merge) down with it.
+
+**One future-dated pilot locked all five.** `lock_saving()` is one-way and
+process-wide, and `switch_profile` gated on `save_enabled` — so a single save
+from a newer build made every row on the pilots page a dead button for the
+session, with four readable runs behind them. The lock is about the FILE it
+refused; switching is moving away from that file. It gates on the refusal now,
+and the page asks `can_switch_profile()` BEFORE creating, because
+`Profiles.create` stamps the new id active and discovering the refusal afterwards
+left an empty folder holding the active flag.
+
+**The migration recorded itself before it moved anything.** Writing the registry
+first makes `needs_migration()` false forever — it IS "the registry exists" — so
+a rename that failed could never be retried, and the player kept a registry
+naming an empty folder while their run sat in `save.json`. The file moves first
+now, and a failure leaves the disk clean enough that the next boot tries again.
+The window that remains — moved, not yet recorded — is covered by rebuilding the
+registry from the folders on disk, because a folder holding a real save is a
+pilot whatever the registry says.
+
+Three smaller ones worth naming. Deleting the pilot you are standing in left
+`save_path` pointing into a removed folder while the session played on, every
+save failing silently against a missing directory. `_refresh_pilots` measured its
+own container in the same frame it `queue_free`d the old rows, so the page laid
+out at roughly double height and hung off the bottom of the screen permanently.
+And the pilots page had no scroll and no Escape: five pilots want ~480px of a
+band that is ~250px on the project's own default desktop window, which pushed
+BACK — the only exit — off the screen.
+
+### The sweep's guard had to grow with the thing it guards
+
+`run_harness.sh` md5'd `save.json` before and after, and after this change that
+file does not even exist on a migrated install — so a harness could scribble over
+pilot two while the guard compared a missing file to itself and called it clean.
+It now digests the whole save surface: the legacy file if present, the registry,
+the prefs, and every pilot's save.
+
+### The second file was a leak nobody had a rule for yet
+
+Splitting device settings into their own file created a second player-owned file,
+and every rule this repo has about not writing the player's data named the first
+one. `_save_prefs` is reached from `set_setting`, `set_audio_muted` and
+`set_tutorial_step(-1)`, and the suites call those constantly — ACCESSTEST alone
+rebinds keys a dozen times, and SAVETEST's `write` leg sets three settings. So
+the sweep would have been rewriting the developer's real bindings, volumes and
+colour-vision mode on every run.
+
+`lock_saving()` is not the fix, because the three suites most likely to trip it —
+SAVETEST, LIVERYTEST, HUNTTEST — deliberately do NOT lock: the file layer is what
+they test. The fix is that **prefs are off under a harness**, with an empty
+`prefs_path` as the switch, checked before `save_enabled` precisely because those
+suites leave saving on.
+
+Off rather than pointed at a shared scratch file, because a shared scratch file
+is cross-run coupling by another name: one suite's leftover volume becomes
+another suite's starting state, across a sweep that runs them in a fixed order.
+With the layer off, `_prefs_loaded` stays false, `load_game` seeds settings from
+the save exactly as it did before this commit, and **every existing assertion
+keeps the meaning it was written with** — which matters most for `migrate5`,
+which asserts `settings == DEFAULT_SETTINGS`, and `partial6`, whose entire
+subject is merging a v6 save's settings key by key.
+
+The two suites that want the layer assign a path and call `reload_prefs()`, which
+makes a redirect take effect for READS as well — `_ready` is the only other
+reader and it has long since run. SAVETEST sets that state **per mode**: the bare
+read is the one leg that consumes what another wrote (it is the other half of
+`=write`, which is why run_harness.sh keeps the pair adjacent), and every other
+mode starts from no prefs file at all.
+
+`PYXIS_PROFILETEST` is the second harness after SAVETEST that cannot call
+`lock_saving()`, for the same reason: the file layer IS the subject. It redirects
+every path — registry, base dir, legacy, prefs and save — **before the world is
+built**, because the state pinning has already queued a debounced save by then
+and "the debounce is slower than the harness" is luck rather than a guarantee.
+Eight assertions, of which two carry the feature: `NO BLEED BETWEEN PILOTS`
+compares every serialized key of a fresh pilot against a starter and names the
+field that crossed, and `A PILOT SURVIVES THE ROUND TRIP` is its other half —
+because "the new pilot is clean" is also satisfied by a switch that quietly
+discarded the old one.

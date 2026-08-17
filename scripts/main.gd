@@ -92,6 +92,7 @@ const HARNESS_VARS := [
 	"PYXIS_PAUSETEST",
 	"PYXIS_PHASE2SHOTS",
 	"PYXIS_RADARTEST",
+	"PYXIS_PROFILETEST",
 	"PYXIS_RAIDTEST",
 	"PYXIS_RIFTTEST",
 	"PYXIS_SALVAGETEST",
@@ -633,6 +634,11 @@ func _ready() -> void:
 	add_child(title_screen)
 	title_screen.new_game_pressed.connect(start_new_game)
 	title_screen.continue_pressed.connect(continue_game)
+	# Picking a pilot IS continuing: GameState.switch_profile has already loaded
+	# that run (or laid down a starter one) by the time the signal fires, so this
+	# wants the same door CONTINUE uses rather than a second one that would have
+	# to re-derive which system to build.
+	title_screen.pilot_chosen.connect(continue_game)
 	title_screen.manual_pressed.connect(manual_screen.open)
 
 	Sfx.set_muted(GameState.audio_muted)
@@ -985,6 +991,26 @@ func _ready() -> void:
 		_run_access_test()
 		return
 
+	if OS.get_environment("PYXIS_PROFILETEST") != "":
+		# NOT lock_saving, and this is the second harness after SAVETEST that
+		# cannot use it: the whole subject is the file layer, and a suite that
+		# has said "never write" would be asserting about a registry nobody
+		# wrote. It redirects every path first instead -- registry, base dir,
+		# legacy and prefs -- which is the same posture SAVETEST takes with
+		# save_path, and the reason none of this can reach the player's files.
+		#
+		# REDIRECTED BEFORE THE WORLD IS BUILT, not inside the test body. The
+		# state pinning above already called reset_to_starter, which queues a
+		# save on a one-second debounce; _load_system and _enter_playing queue
+		# more. All of those would land on the real file if the paths moved
+		# afterwards, and "the debounce is slower than the harness" is luck
+		# rather than a guarantee.
+		_profile_test_redirect()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_profile_test()
+		return
 	if OS.get_environment("PYXIS_STORMTEST") != "":
 		GameState.lock_saving()
 		state = State.PLAYING
@@ -13029,11 +13055,261 @@ func _run_boss_test() -> void:
 	get_tree().quit()
 
 
+# --- pilot profiles test ----------------------------------------------------
+
+const SAVE_TEST_PREFS := "user://test_prefs.json"
+
+
+func _savetest_prefs(mode: String) -> void:
+	# Device preferences are OFF under a harness (GameState._ready's headless
+	# clause), and SAVETEST is one of the two suites that wants them back --
+	# because settings stopped being written to the save when they moved to
+	# prefs.json, so "do the player's volumes survive a round trip" is now a
+	# question about THAT file.
+	#
+	# The state is set per mode rather than inherited, which is the same rule
+	# the fixtures already follow. The bare read is the ONLY leg that consumes
+	# what another leg wrote -- it is the other half of `=write`, and the two
+	# are kept adjacent in run_harness.sh for exactly this reason. Every other
+	# mode starts from no prefs file at all, so `_prefs_loaded` is false, the
+	# save is allowed to seed settings, and legs like migrate5 (which asserts
+	# settings == DEFAULT_SETTINGS) and partial6 (whose whole subject is merging
+	# a v6 save's settings key by key) measure what they always measured.
+	GameState.prefs_path = SAVE_TEST_PREFS
+	if mode != "1":
+		DirAccess.remove_absolute(SAVE_TEST_PREFS)
+	GameState.reload_prefs()
+
+
+const PROFILE_TEST_ROOT := "user://ptest"
+
+
+func _profile_test_redirect() -> void:
+	# Every path this suite can reach, pointed at a scratch directory. The
+	# player's registry, prefs and pilots are never opened by it, which is what
+	# lets it exercise the real file layer rather than a mock.
+	_rm_rf(PROFILE_TEST_ROOT)
+	DirAccess.make_dir_recursive_absolute(PROFILE_TEST_ROOT)
+	Profiles.registry_path = "%s/profiles.json" % PROFILE_TEST_ROOT
+	Profiles.base_dir = "%s/profiles" % PROFILE_TEST_ROOT
+	Profiles.legacy_path = "%s/save.json" % PROFILE_TEST_ROOT
+	# Prefs back on, pointed at the scratch directory: _ready turned them off
+	# because this is a headless run, and this suite is one of the two that
+	# actually wants the layer. reload_prefs makes the redirect take effect for
+	# READS too -- _ready has already been past.
+	GameState.prefs_path = "%s/prefs.json" % PROFILE_TEST_ROOT
+	GameState.reload_prefs()
+	GameState.save_path = Profiles.legacy_path
+	GameState.save_enabled = true
+
+
+func _run_profile_test() -> void:
+	var root := PROFILE_TEST_ROOT
+
+	# 1. THE LEGACY SAVE MOVES ONCE. An upgrading player has one save and no
+	#    registry; they must end up with one pilot holding exactly that run, the
+	#    old file gone, and a SECOND migration doing nothing at all -- because
+	#    the trigger is the registry's absence and a migration that ran twice
+	#    would mean it was never really keyed on anything.
+	GameState.reset_to_starter()
+	GameState.add_salvage(4242)
+	GameState.set_ship_name("OLD FAITHFUL")
+	GameState.save_game()
+	var legacy_bytes := FileAccess.get_file_as_string(Profiles.legacy_path)
+	var first_id := Profiles.migrate_legacy(1000.0)
+	var moved_bytes := FileAccess.get_file_as_string(Profiles.save_path_for(first_id))
+	var legacy_gone: bool = not FileAccess.file_exists(Profiles.legacy_path)
+	var reg_after := Profiles.load_registry()
+	var named_from_ship: bool = not (reg_after["profiles"] as Array).is_empty() \
+		and String((reg_after["profiles"][0] as Dictionary)["name"]) == "OLD FAITHFUL"
+	var second := Profiles.migrate_legacy(2000.0)
+	var idempotent: bool = second == "" and Profiles.list_profiles().size() == 1
+	print("[profile] THE LEGACY SAVE MOVES ONCE id=%s, bytes carried=%s, old file gone=%s, named from the ship=%s, second run changed nothing=%s -> %s" % [
+		first_id, str(moved_bytes == legacy_bytes and legacy_bytes.length() > 0),
+		str(legacy_gone), str(named_from_ship), str(idempotent),
+		"PASS" if first_id != "" and moved_bytes == legacy_bytes and legacy_gone
+			and named_from_ship and idempotent else "FAIL"])
+
+	# 2. NO BLEED BETWEEN PILOTS. The one that matters. Pilot A is given the
+	#    three fields reset_to_starter deliberately PRESERVES -- paint, name and
+	#    the commission -- because those are exactly the ones that leak, and the
+	#    settled decision is that they belong to the pilot. Then a brand new
+	#    pilot B is created and every serialized key is compared against a fresh
+	#    starter, so a field that crosses names itself instead of being guessed.
+	GameState.switch_profile(first_id)
+	GameState.add_salvage(9000)
+	GameState.set_ship_name("PILOT A")
+	GameState.commissioned = true
+	GameState.set_livery(0, 2)
+	GameState.mark_breached("pyx01")
+	GameState.save_game()
+	var b_id := Profiles.create("PILOT B", 3000.0)
+	GameState.switch_profile(b_id)
+	# ACCUMULATED, not first-wins: an if/elif chain names one field and hides the
+	# rest, so a run that leaked three of them would be fixed one commit at a
+	# time. All five were leaking when this was written.
+	var leaks: Array = []
+	if GameState.ship_name == "PILOT A":
+		leaks.append("ship_name")
+	if GameState.commissioned:
+		leaks.append("commissioned")
+	if int(GameState.livery.get("accent", 0)) != 0:
+		leaks.append("livery")
+	if GameState.salvage >= 9000:
+		leaks.append("salvage")
+	if GameState.breached.has("pyx01"):
+		leaks.append("breached")
+	var bled := ", ".join(leaks)
+	print("[profile] NO BLEED BETWEEN PILOTS B sees salvage=%d name='%s' commissioned=%s accent=%d; leaked=%s -> %s" % [
+		GameState.salvage, GameState.ship_name, str(GameState.commissioned),
+		int(GameState.livery.get("accent", 0)), "none" if bled == "" else bled,
+		"PASS" if bled == "" else "FAIL"])
+
+	# 3. AND BACK AGAIN, because "B is clean" is also satisfied by a switch that
+	#    quietly discarded A. The round trip is what proves the file was written
+	#    rather than merely left behind.
+	GameState.switch_profile(first_id)
+	var a_back: bool = GameState.salvage >= 9000 and GameState.ship_name == "PILOT A" \
+		and GameState.commissioned and GameState.breached.has("pyx01")
+	print("[profile] A PILOT SURVIVES THE ROUND TRIP salvage=%d name='%s' commissioned=%s -> %s" % [
+		GameState.salvage, GameState.ship_name, str(GameState.commissioned),
+		"PASS" if a_back else "FAIL"])
+
+	# 4. PREFS OUTLIVE THE PILOT. The reason the split exists: a device
+	#    preference set under one pilot must still be set under the next, and
+	#    the bindings are the sharpest case because they are what the player
+	#    would have to fix from a keyboard they can no longer use.
+	GameState.rebind("move_up", KEY_Y)
+	GameState.set_setting("music_vol", 0.11)
+	GameState.set_audio_muted(true)
+	GameState.switch_profile(b_id)
+	var kept_binding: bool = _keys_for("move_up").has(KEY_Y)
+	var kept_vol: bool = is_equal_approx(float(GameState.setting("music_vol")), 0.11)
+	var kept_mute: bool = GameState.audio_muted
+	print("[profile] PREFS OUTLIVE THE PILOT binding kept=%s, volume kept=%s, mute kept=%s -> %s" % [
+		str(kept_binding), str(kept_vol), str(kept_mute),
+		"PASS" if kept_binding and kept_vol and kept_mute else "FAIL"])
+
+	# 5. THE SAVE NO LONGER CARRIES THE DEVICE. Asserted on the FILE, not on the
+	#    fields: the split is only real if the keys stopped being written, and a
+	#    save that still holds them would reload one pilot's keyboard onto
+	#    another the moment anything read them again.
+	GameState.save_game()
+	var raw := FileAccess.get_file_as_string(Profiles.save_path_for(b_id))
+	var no_settings: bool = not raw.contains("\"settings\"")
+	var no_mute: bool = not raw.contains("\"audio_muted\"")
+	print("[profile] THE SAVE NO LONGER CARRIES THE DEVICE settings absent=%s, audio_muted absent=%s -> %s" % [
+		str(no_settings), str(no_mute),
+		"PASS" if no_settings and no_mute else "FAIL"])
+
+	# 6. THE REGISTRY IS INPUT, NOT TRUTH. Hand-edited rubbish: a duplicate id, a
+	#    row whose folder is gone, a row that is not a dictionary, and an active
+	#    id naming none of them. Exactly the valid ones survive and `active`
+	#    falls back rather than pointing at nothing.
+	var rubbish := {
+		"schema": 1,
+		"active": "p_nothing",
+		"profiles": [
+			{"id": b_id, "name": "REAL"},
+			{"id": b_id, "name": "DUPLICATE"},
+			{"id": "p_missing", "name": "NO FOLDER"},
+			"not a dictionary",
+		],
+	}
+	var rf := FileAccess.open(Profiles.registry_path, FileAccess.WRITE)
+	rf.store_string(JSON.stringify(rubbish, "\t"))
+	rf.close()
+	var cleaned := Profiles.load_registry()
+	var kept_one: bool = (cleaned["profiles"] as Array).size() == 1 \
+		and String((cleaned["profiles"][0] as Dictionary)["id"]) == b_id
+	var active_fell_back: bool = String(cleaned["active"]) == b_id
+	print("[profile] THE REGISTRY IS INPUT, NOT TRUTH kept %d of 4 rows, active fell back=%s -> %s" % [
+		(cleaned["profiles"] as Array).size(), str(active_fell_back),
+		"PASS" if kept_one and active_fell_back else "FAIL"])
+
+	# 7. A HARNESS CANNOT REACH THE REGISTRY. The guard that keeps every OTHER
+	#    suite honest: they redirect save_path to a probe file and never touch
+	#    the registry, so save_game must refuse to write a row for a path that
+	#    is not the active pilot's. Without it, forty-odd suites would each be
+	#    rewriting the player's pilot list on their way past.
+	Profiles.save_registry(cleaned)
+	var before_probe := FileAccess.get_file_as_string(Profiles.registry_path)
+	GameState.save_path = "%s/probe.json" % root
+	GameState.save_game()
+	var after_probe := FileAccess.get_file_as_string(Profiles.registry_path)
+	print("[profile] A HARNESS CANNOT REACH THE REGISTRY registry byte-identical after a redirected save=%s -> %s" % [
+		str(before_probe == after_probe), "PASS" if before_probe == after_probe else "FAIL"])
+
+	# 8. THE RACK HAS A FLOOR AND A CEILING. Five, refused rather than silently
+	#    dropped, and a delete makes room again.
+	var made := 0
+	while Profiles.create("EXTRA %d" % made, 4000.0 + float(made)) != "":
+		made += 1
+		if made > Profiles.MAX_PROFILES + 3:
+			break
+	var capped: bool = Profiles.list_profiles().size() == Profiles.MAX_PROFILES
+	Profiles.delete(b_id)
+	var room_again: bool = Profiles.create("AFTER DELETE", 5000.0) != ""
+	var gone: bool = not DirAccess.dir_exists_absolute("%s/%s" % [Profiles.base_dir, b_id])
+	print("[profile] THE RACK HAS A CEILING capped at %d, folder removed on delete=%s, room after a delete=%s -> %s" % [
+		Profiles.list_profiles().size(), str(gone), str(room_again),
+		"PASS" if capped and gone and room_again else "FAIL"])
+
+	# 9. A FRESH INSTALL STILL GETS A PILOT. The mirror of leg 1, and the case
+	#    every new player is in: no legacy save and no registry must still end
+	#    with somewhere to write, or the first NEW SURVEY runs into the old
+	#    single-save path and is stranded there the moment a pilot is made.
+	_rm_rf(root)
+	_profile_test_redirect()
+	var fresh_id := Profiles.migrate_legacy(6000.0)
+	var fresh_none: bool = fresh_id == "" and Profiles.list_profiles().is_empty()
+	var adopted := Profiles.create("", 6100.0)
+	var fresh_has_home: bool = adopted != "" and Profiles.active_id() == adopted
+	print("[profile] A FRESH INSTALL STILL GETS A PILOT nothing to migrate=%s, a pilot exists to write into=%s -> %s" % [
+		str(fresh_none), str(fresh_has_home),
+		"PASS" if fresh_none and fresh_has_home else "FAIL"])
+
+	# 10. A SAVE THAT MOVED BUT WAS NEVER RECORDED IS STILL A PILOT. The window
+	#     between the rename and the registry write: the folder holds a real run
+	#     and nothing names it. Re-derived from disk rather than mistaken for a
+	#     fresh install, because the alternative loses the run.
+	_rm_rf(root)
+	_profile_test_redirect()
+	var orphan := "%s/profiles/p_orphan" % root
+	DirAccess.make_dir_recursive_absolute(orphan)
+	var of := FileAccess.open("%s/save.json" % orphan, FileAccess.WRITE)
+	of.store_string(JSON.stringify({"version": GameState.SAVE_VERSION, "salvage": 777}, "\t"))
+	of.close()
+	Profiles.migrate_legacy(7000.0)
+	var adopted_rows := Profiles.list_profiles()
+	var orphan_kept: bool = adopted_rows.size() == 1 \
+		and String((adopted_rows[0] as Dictionary)["id"]) == "p_orphan"
+	print("[profile] AN UNRECORDED SAVE IS STILL A PILOT rebuilt %d row(s) from disk, active=%s -> %s" % [
+		adopted_rows.size(), Profiles.active_id(),
+		"PASS" if orphan_kept and Profiles.active_id() == "p_orphan" else "FAIL"])
+
+	_rm_rf(root)
+	get_tree().quit()
+
+
+func _rm_rf(path: String) -> void:
+	# Scratch only. Every caller passes a directory this harness made.
+	var d := DirAccess.open(path)
+	if d == null:
+		return
+	for f in d.get_files():
+		DirAccess.remove_absolute("%s/%s" % [path, f])
+	for sub in d.get_directories():
+		_rm_rf("%s/%s" % [path, sub])
+	DirAccess.remove_absolute(path)
+
+
 # --- save round-trip test ---------------------------------------------------
 
 func _run_save_test() -> void:
 	GameState.save_path = "user://test_save.json"
 	var mode := OS.get_environment("PYXIS_SAVETEST")
+	_savetest_prefs(mode)
 
 	if mode == "write":
 		GameState.save_enabled = true

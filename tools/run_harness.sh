@@ -28,7 +28,7 @@ TAGS=(
 	COLLISIONTEST RIFTTEST SMUGTEST LOGTEST FORGETEST HOLDTEST DAMAGETEST
 	CARTTEST SPILLTEST STORETEST SALVAGETEST SHIPTEST DEEPTEST APEXTEST
 	LIVERYTEST STATIONTEST TORPTEST CONTRACTTEST RAIDTEST PAUSETEST
-	RADARTEST MUSICTEST PACINGTEST LAYOUTTEST TITLETEST TUTORIALTEST
+	RADARTEST MUSICTEST PACINGTEST PROFILETEST LAYOUTTEST TITLETEST TUTORIALTEST
 	INPUTTEST DOCKTEST MARKETTEST BALANCE BOSSTEST
 	FEELTEST UITEST GSATEST ACCESSTEST STREAMTEST ENVTEST MINETEST MANUALTEST
 	HUNTTEST FACTIONTEST BEACONTEST COLONYTEST FRONTIERTEST STORMTEST
@@ -79,8 +79,34 @@ fi
 # harness is at fault -- and check the `version` field, since a harness on a
 # branch that has bumped SAVE_VERSION would write the NEW number and a concurrent
 # game on main would write the old one.
-SAVE="$HOME/Library/Application Support/Godot/app_userdata/Pyxis/save.json"
-save_md5() { [ -f "$SAVE" ] && md5 -q "$SAVE" || echo "absent"; }
+USERDATA="$HOME/Library/Application Support/Godot/app_userdata/Pyxis"
+SAVE="$USERDATA/save.json"
+# THE WHOLE SAVE SURFACE, not one file. Saves became per-pilot in STRATEGY §75,
+# so a harness could scribble over pilot two while save.json -- which after the
+# migration does not even exist -- sat there byte-identical and the sweep called
+# it clean. Everything a harness must not touch is digested together: the legacy
+# file if it is still there, the registry, the device prefs, and every pilot's
+# save. Sorted, so the digest does not move when the filesystem changes its mind
+# about order.
+#
+# Written as a plain loop rather than a find|xargs pipeline on purpose: under
+# `set -o pipefail` a clever pipeline turns "no profiles directory yet" into a
+# failed guard, and a guard that fails open is worse than no guard. With nothing
+# on disk the digest is simply the hash of no input, which is stable and compares
+# equal to itself -- the property the check actually needs.
+save_md5() {
+	{
+		for f in "$SAVE" "$USERDATA/profiles.json" "$USERDATA/prefs.json"; do
+			[ -f "$f" ] && md5 -q "$f"
+		done
+		if [ -d "$USERDATA/profiles" ]; then
+			for p in $(ls "$USERDATA/profiles" 2>/dev/null | sort); do
+				[ -f "$USERDATA/profiles/$p/save.json" ] \
+					&& md5 -q "$USERDATA/profiles/$p/save.json"
+			done
+		fi
+	} 2>/dev/null | md5 -q
+}
 BEFORE="$(save_md5)"
 
 pass=0; fail=0; errs=0; runs=0
