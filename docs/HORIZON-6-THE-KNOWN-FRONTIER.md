@@ -4,11 +4,12 @@
 them is adopted, record it in `docs/STRATEGY.md` §64 in the same commit, per the
 house rule.
 
-> **Nothing in this horizon has been swept.** It was written in an environment
-> with no Godot binary, and `tools/run_harness.sh` is macOS-bound in three places
-> besides (the `GODOT` default, `md5 -q`, and the `~/Library/…` save path). See
-> the README's unmeasured-baseline note before trusting any number here, and run
-> the `--check-only` parse gate before the first sweep.
+> **Commit 0 is swept and green: 643 PASS / 0 FAIL / 0 script errors across 64
+> runs, save intact, Godot 4.6.stable headless, 2026-08-17.** Commits 1–6 are
+> written in an environment with **no Godot binary**, and `tools/run_harness.sh`
+> is macOS-bound in three places besides (the `GODOT` default, `md5 -q`, and the
+> `~/Library/…` save path) — so each of them must be swept on the owner's machine
+> before its numbers are believed, and the `--check-only` parse gate run first.
 
 This horizon comes from a week of playtesting rather than from a design gap: the
 loop works, three-hour sessions happen, and five specific things got in the way.
