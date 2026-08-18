@@ -11,6 +11,18 @@ const LINES := {
 	"refit_available": "SURPLUS SALVAGE — REFIT CONSOLE ONLINE",
 	"first_breach_range": "DERELICT IN RANGE — HOLD ON THE BREACH POINT",
 	"first_course": "COURSE LAID IN — HANDS OFF. I WILL DROP IT IF ANYTHING FINDS US",
+	# v22. THE DEEP TEACHES ITSELF (Horizon 7 commit 5). The tutorial covers the
+	# first hour and band 4 is where the interesting game lives; until these,
+	# nothing between the two said a word about mechanics. One line per band,
+	# once EVER (the bark contract), fired at the same threshold the band's own
+	# broadcast fires -- the ship's AI reading the survey advisory over the
+	# authority's shoulder. Each teaches exactly one thing the band actually
+	# contains, and none names a gesture, so the manual's device sweep stays
+	# clean on every input.
+	"first_band_3": "THE REACHES — CONVOY LANES BELOW. THEY SHOOT BACK IN ORDER, NOT FIRST",
+	"first_band_4": "THE QUIET — NESTS ARM AHEAD OF US NOW. A STRAIGHT LINE IS A CHOICE",
+	"first_band_5": "THE FATHOMS — PAST THE COLONY NETWORK. FROM HERE, EVERY RETURN IS FLOWN",
+	"first_band_6": "THE UNSOUNDED — NO INSTRUMENT SPAN, NO PATROLS, WEATHER. WE ARE THE RECORD NOW",
 	"chart_unlocked": "NEW BEARING CHARTED — OPEN THE CHART",
 	"first_warp": "TRANSIT COMPLETE — UNFAMILIAR SPACE",
 	"apex_out_of_range": "SHOTS BREAKING ON THE SURVEY FIELD — CLOSE IN",

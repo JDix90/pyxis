@@ -1934,6 +1934,13 @@ func _tick_broadcast(depth: float) -> void:
 	# the Anchor hears the answer on their next trip out rather than on their next
 	# launch -- which is the right beat: the beacon is where the acknowledgement
 	# lands, not the dock where the paperwork was filed.
+	# v22. The ship's own line rides the same crossing, once EVER rather than
+	# once per visit -- Barks' persisted contract, so a returning player is not
+	# re-taught. Fired before the broadcast's empty-check on purpose: a band
+	# with no authored broadcast still teaches, and the two surfaces are
+	# different voices (the authority on the plate, the ship in the corner).
+	if band >= 3 and band <= 6:
+		Barks.fire("first_band_%d" % band)
 	var msg := DeepSpace.broadcast_for(band, GameState.commissioned, system_id)
 	if msg.is_empty() or hud == null:
 		return

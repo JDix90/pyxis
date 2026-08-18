@@ -6037,8 +6037,8 @@ to whichever number makes it green.
 | 1 | marks: `survey_filed` as a second set, and `structures_seen` for hyper structures seen but not claimed | **v22** | **BUILT** — §82 |
 | 2 | the counter pays a first-filing bonus, once ever per cell | none | **BUILT** — §83 |
 | 3 | a rival cartographer — evidence only, a pure function, zero save | none | **BUILT** — §84, wreck deferred to the writing pass |
-| 4 | THE UNSOUNDED answers: one authored multi-expedition structure per system past 5,200u | **v23** | **not built** |
-| 5 | beacon stock re-derived against §79's navigation; band-entry teaching through §76's broadcasts | none | **not built** |
+| 4 | THE UNSOUNDED answers: one authored multi-expedition structure per system past 5,200u | **v23** | **fragments DRAFTED** (`docs/UNSOUNDED-FRAGMENTS-DRAFT.md`) — code waits on the read-aloud, per the plan's own gate |
+| 5 | beacon stock re-derived against §79's navigation; band-entry teaching through §76's broadcasts | none | **teaching BUILT** — §85; the stock number is a playtest question and stays open |
 
 **Commit 0 blocks the horizon and is not optional.** §80 moved surveys out of
 the recurring term, so `STEADY MIDTIER` now measures an honestly poorer loop
@@ -8850,3 +8850,23 @@ the Horizon 6 plan had noted and not built.
 **The rival's wreck** — the one authored site where the rival stops being a
 rate and becomes a person. It is content rather than arithmetic, it wants the
 same writing pass as THE UNSOUNDED's fragments, and it should land with them.
+
+## 85. The deep teaches itself
+
+Horizon 7 commit 5, the half that could ship: four lines, one per band from
+THE REACHES out, fired beside the band's own broadcast on first crossing —
+once ever, on the bark contract, so a returning player is never re-taught.
+The tutorial covers the first hour and band 4 is where the interesting game
+lives; until these, nothing between the two said a word about mechanics.
+
+Each line teaches exactly one true thing the band contains — convoy etiquette
+at 3, nest geometry at 4, the end of the jump network at 5, weather and
+self-reliance at 6 — and none names a gesture, so the manual's device sweep
+stays clean on every input. Two voices on one threshold, deliberately: the
+authority on the broadcast plate, the ship in the corner. The bark fires even
+where a band has no authored broadcast, which is itself in character — the
+ship keeps talking after the grid goes quiet.
+
+The other half of commit 5 — whether eight beacons is still the right stock
+now that §79 made each one a free destination — is a playtest question, is
+recorded as one in §64, and no number was moved without a session behind it.
