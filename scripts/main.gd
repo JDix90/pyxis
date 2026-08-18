@@ -13786,14 +13786,39 @@ func _run_plot_test() -> void:
 	#     custom_minimum_size and are font-derived, so they stay estimates and
 	#     this stays a MODEL of the column; it is a model that now matches the
 	#     code's own numbers everywhere the code states one.
+	#
+	#     AND THE ROW COUNT IS NO LONGER PART OF THE SUM, which is the point of
+	#     this revision. Budgeting "two colony rows" was true when colonies were
+	#     the only rows; beacon navigation put up to EIGHT beacon rows in the
+	#     same container, so the column could be asked for ten -- 364px of
+	#     content against 90px of spare -- while this printed PASS. The same
+	#     failure as before, through a different door, one commit later.
+	#
+	#     So the container scrolls at a fixed viewport, and this asserts the
+	#     property that makes that safe: the column's minimum height does not
+	#     depend on how many rows exist. Measured by ADDING ROWS and requiring
+	#     the minimum not to move -- a budget that merely had a big enough
+	#     number would go stale the next time somebody put a row type in there.
 	var sheet_h := UILayout.BASE.y * ChartPanel.SHEET_RATIO
-	var rows := ChartPanel.COLONY_ROW_H * 2.0 + ChartPanel.COLONY_ROW_SEP
 	var fixed := 32.0 + 30.0 + ChartPanel.MAP_MIN_H + 20.0 + 30.0 \
 		+ ChartPanel.PLOT_HEIGHT + 24.0 + ChartPanel.COLONY_ROW_H \
-		+ ChartPanel.COLONY_ROW_H + ChartPanel.COL_SEP * 8.0
-	var colony_room := sheet_h - fixed
-	print("[plot] THE PLOT STILL FITS ITS SHEET sheet %.0fpx, minimums %.0fpx, spare %.0fpx (2 rows = %.0f) -> %s" % [
-		sheet_h, fixed, colony_room, rows, "PASS" if colony_room >= rows else "FAIL"])
+		+ ChartPanel.COLONY_ROW_H + ChartPanel.ROWS_VIEWPORT_H \
+		+ ChartPanel.COL_SEP * 8.0
+	var spare := sheet_h - fixed
+	var before_min: float = cp._rows_scroll.get_combined_minimum_size().y
+	for i in 10:
+		var filler := Button.new()
+		filler.custom_minimum_size = Vector2(0, ChartPanel.COLONY_ROW_H)
+		cp._colony_rows.add_child(filler)
+	await get_tree().process_frame
+	var after_min: float = cp._rows_scroll.get_combined_minimum_size().y
+	for c in cp._colony_rows.get_children():
+		cp._colony_rows.remove_child(c)
+		c.queue_free()
+	var pinned := absf(after_min - before_min) < 1.0
+	print("[plot] THE PLOT STILL FITS ITS SHEET sheet %.0fpx, minimums %.0fpx, spare %.0fpx; rows viewport %.0f -> %.0f after 10 rows (pinned=%s) -> %s" % [
+		sheet_h, fixed, spare, before_min, after_min, str(pinned),
+		"PASS" if spare >= 0.0 and pinned else "FAIL"])
 
 	get_tree().quit()
 

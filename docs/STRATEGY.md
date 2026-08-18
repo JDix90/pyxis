@@ -8359,6 +8359,35 @@ deliberately not stored. A designation in the save would be a new field to
 migrate, a new thing to keep unique, and a new way for the file to disagree with
 the screen, all for a string the player never types and cannot choose.
 
+### The row container had to start scrolling
+
+Caught by checking one thing rather than by a full pass, and it is the same
+defect as §78's sheet budget arriving a second time through a different door.
+
+Beacon rows are added to `_colony_rows` — the container the chart already used
+for colony jump rows. That container was written when colonies were the only
+thing in it, three to five at the outside, and §78's `THE PLOT STILL FITS ITS
+SHEET` budgeted **two rows**. Beacon stock is EIGHT. So the column could be
+asked for ten rows: 364px of content against 90px of spare, pushing WARP off
+the bottom of the screen, while the assertion went on printing PASS.
+
+The fix is not a bigger number. `_colony_rows` now sits in a `ScrollContainer`
+with a fixed viewport, so **the column's height stops depending on how many rows
+exist at all** — and the assertion was rewritten to test that property directly:
+it adds ten rows and requires the container's minimum height not to move. A
+budget that merely had a large enough number in it would go stale the next time
+somebody put a row type in there, which is precisely what just happened.
+
+It also refuses the tempting alternative. Capping the list at "the four nearest
+beacons" would have fitted too, and would have silently hidden half the
+player's own waypoints — the no-silent-caps rule, on a UI surface.
+
+The map's floor came down again, 150 → 126, to leave ~26px of margin. That is
+deliberately not smaller: four rows in the budget have no `custom_minimum_size`
+and are font-derived, so the sum is a model rather than a measurement, and a
+2px spare would be a coincidence dressed up as a design — which this file has
+already shipped once.
+
 ### Four sites, one rung
 
 Adding "a course is set → drop it" to the Escape ladder touches the rung, the
