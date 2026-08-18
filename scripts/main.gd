@@ -95,6 +95,7 @@ const HARNESS_VARS := [
 	"PYXIS_PROFILETEST",
 	"PYXIS_RAIDTEST",
 	"PYXIS_RIFTTEST",
+	"PYXIS_RIVALTEST",
 	"PYXIS_SALVAGETEST",
 	"PYXIS_SAVETEST",
 	"PYXIS_SHIPTEST",
@@ -1039,6 +1040,13 @@ func _ready() -> void:
 		_enter_playing()
 		_run_sig_test()
 		return
+	if OS.get_environment("PYXIS_RIVALTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_rival_test()
+		return
 	if OS.get_environment("PYXIS_PLOTTEST") != "":
 		GameState.lock_saving()
 		state = State.PLAYING
@@ -1212,20 +1220,26 @@ func _build_beacons() -> void:
 const FIRST_FILING_RATE := 0.5
 
 
-func cell_band_of_key(key: String) -> int:
-	# "pyx01:7:-3" -> which depth band that cell's centre sits in. Main owns
-	# this glue for drop_beacon_here's reason inverted: GameState deliberately
-	# holds coverage as opaque strings and never references DeepSpace (the
-	# class-name edge would point back at a file that already reaches the
-	# GameState autoload), so the world half of the question is answered here,
-	# where both ends are safe to name.
+func cell_depth_of_key(key: String) -> float:
+	# "pyx01:7:-3" -> the depth of that cell's centre. Main owns this glue for
+	# drop_beacon_here's reason inverted: GameState deliberately holds coverage
+	# as opaque strings and never references DeepSpace (the class-name edge
+	# would point back at a file that already reaches the GameState autoload),
+	# so the world half of the question is answered here, where both ends are
+	# safe to name. ONE source: the counter's band join, the rival check and the
+	# mast's heads-up all read this, so they cannot disagree about where a cell
+	# is.
 	var bits := key.split(":")
 	if bits.size() != 3:
-		return -1
+		return -1.0
 	var centre := DeepSpace.cell_centre(int(String(bits[1])), int(String(bits[2])))
-	var depth := maxf(Vector2(centre.x, centre.z).length()
+	return maxf(Vector2(centre.x, centre.z).length()
 		- SystemDB.bounds_of(String(bits[0])), 0.0)
-	return DeepSpace.band_of(depth)
+
+
+func cell_band_of_key(key: String) -> int:
+	var depth := cell_depth_of_key(key)
+	return -1 if depth < 0.0 else DeepSpace.band_of(depth)
 
 
 func file_charts_on_sale(good: String, units: int) -> int:
@@ -1258,23 +1272,43 @@ func file_charts_on_sale(good: String, units: int) -> int:
 		return 0
 	var per := int(round(float(CommodityDB.base_price(good))
 		* float(SurveyMast.YIELD_UNITS) * FIRST_FILING_RATE))
+	# v22 commit 3: THE RIVAL GETS THERE FIRST SOMETIMES, and the counter is
+	# where you find out. A rival-filed cell is swept out of the unfiled ledger
+	# without pay and WITHOUT consuming a reading slot -- your readings' bonus
+	# slots go to cells that can still pay, which is the concrete form of THE
+	# RIVAL NEVER TAKES WHAT YOU HAVE: they take the chance, never the goods,
+	# and never another cell's bonus with it.
 	var filed := 0
+	var lost := 0
 	for key_v in GameState.unfiled_cells():
-		if filed >= readings:
-			break
 		var key := String(key_v)
 		if cell_band_of_key(key) != band:
 			continue
-		if GameState.note_survey_filed(key):
+		if Rival.filed(key, cell_depth_of_key(key), GameState.run_seed,
+				GameState.played_seconds):
+			if GameState.note_survey_filed(key):
+				lost += 1
+			continue
+		if filed < readings and GameState.note_survey_filed(key):
 			filed += 1
-	if filed <= 0:
+	if filed <= 0 and lost <= 0:
 		return 0
 	var bonus := per * filed
-	GameState.add_salvage(bonus)
-	GameState.note_ledger("cells_filed", filed)
+	if filed > 0:
+		GameState.add_salvage(bonus)
+		GameState.note_ledger("cells_filed", filed)
 	if hud:
-		hud.show_toast("FILED FIRST — %d CELL%s ON THE RECORD · +%d" % [
-			filed, "" if filed == 1 else "S", bonus], Palette.GOLD)
+		# One toast, not two: a second show_toast in the same frame overwrites
+		# the first, and the money is the headline.
+		if filed > 0 and lost > 0:
+			hud.show_toast("FILED FIRST — %d CELL%s · +%d (%d ALREADY FILED BY ANOTHER HAND)" % [
+				filed, "" if filed == 1 else "S", bonus, lost], Palette.GOLD)
+		elif filed > 0:
+			hud.show_toast("FILED FIRST — %d CELL%s ON THE RECORD · +%d" % [
+				filed, "" if filed == 1 else "S", bonus], Palette.GOLD)
+		else:
+			hud.show_toast("%d CELL%s ALREADY FILED — SOMEBODY IS OUT HERE" % [
+				lost, "" if lost == 1 else "S"], Palette.RIVAL)
 	return bonus
 
 
@@ -13865,6 +13899,117 @@ func _run_sig_test() -> void:
 
 	for pv in probes.values():
 		(pv as DeepSpace).free()
+	get_tree().quit()
+
+
+# --- rival cartographer test -------------------------------------------------
+
+func _run_rival_test() -> void:
+	# The rival is arithmetic wearing a jacket, so what gets asserted is the
+	# arithmetic's promises: purity, the stride, the depth gradient, and above
+	# all that nothing the player HAS can ever be taken by it.
+	var seed_r := GameState.run_seed
+	var t_save := GameState.played_seconds
+
+	# 1. A PURE FUNCTION ON A QUANTISED CLOCK. Same inputs, same answer;
+	#    monotone in time (a filed cell never un-files); and stable within a
+	#    stride, which is what lets the cell streamer call it from two builds
+	#    seconds apart without the world disagreeing with itself.
+	var pure_bad := ""
+	for i in 200:
+		var k := "pyx01:%d:%d" % [i, i * 3 % 17]
+		var d := 100.0 + float(i) * 37.0
+		var a1 := Rival.arrival_seconds(k, d, seed_r)
+		var a2 := Rival.arrival_seconds(k, d, seed_r)
+		if a1 != a2:
+			pure_bad = "%s answered twice differently" % k
+			break
+		var t := float(i) * 977.0
+		if Rival.filed(k, d, seed_r, t) and not Rival.filed(k, d, seed_r, t + Rival.STRIDE_S * 5.0):
+			pure_bad = "%s un-filed itself" % k
+			break
+		var stride_base := floorf(t / Rival.STRIDE_S) * Rival.STRIDE_S
+		if Rival.filed(k, d, seed_r, stride_base) != Rival.filed(k, d, seed_r,
+				stride_base + Rival.STRIDE_S - 1.0):
+			pure_bad = "%s moved inside a stride" % k
+			break
+	print("[rival] A PURE FUNCTION ON A QUANTISED CLOCK 200 cells: %s -> %s" % [
+		"pure, monotone, stride-stable" if pure_bad == "" else pure_bad,
+		"PASS" if pure_bad == "" else "FAIL"])
+
+	# 2. THE SHALLOWS GO FIRST AND THE DEEP OUTRUNS THEM. Measured over the
+	#    jitter, not restated from the constants: the LATEST arrival at depth
+	#    200 must precede the EARLIEST at the band-4 floor, and that earliest
+	#    must be past fifteen hours of play -- the deep belongs to a player who
+	#    flies there, for as long as anyone plays a run.
+	var max_shallow := 0.0
+	var min_deep := 1.0e18
+	for i in 500:
+		max_shallow = maxf(max_shallow, Rival.arrival_seconds("pyx02:%d:1" % i, 200.0, seed_r))
+		min_deep = minf(min_deep, Rival.arrival_seconds("pyx02:%d:2" % i, 1100.0, seed_r))
+	print("[rival] THE DEEP OUTRUNS THEM latest 200u arrival %.0fs, earliest 1100u arrival %.0fs (bar 54000s = 15h) -> %s" % [
+		max_shallow, min_deep,
+		"PASS" if max_shallow < min_deep and min_deep >= 54000.0 else "FAIL"])
+
+	# 3. A FRESH PILOT MEETS NOBODY. At zero played seconds the rival has filed
+	#    nothing anywhere -- the first sortie is never pre-empted, which is the
+	#    difference between a rival and a hazing.
+	var fresh_bad := ""
+	for i in 100:
+		if Rival.filed("pyx01:%d:0" % i, 50.0 + float(i) * 60.0, seed_r, 0.0):
+			fresh_bad = "cell %d filed at t=0" % i
+			break
+	print("[rival] A FRESH PILOT MEETS NOBODY 100 cells at t=0: %s -> %s" % [
+		"none filed" if fresh_bad == "" else fresh_bad,
+		"PASS" if fresh_bad == "" else "FAIL"])
+
+	# 4. THE RIVAL NEVER TAKES WHAT YOU HAVE. With the clock pushed far enough
+	#    that the rival has swept the shallows: a cell the player FILED stays
+	#    filed and stays paid-for; a cell they surveyed but had not filed is
+	#    consumed without pay at the counter -- and coverage, the thing the
+	#    chart draws, never loses an entry to any of it.
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+	var rk_a := DeepSpace.cell_key(system_id, 4, 0)
+	var rk_b := DeepSpace.cell_key(system_id, 0, 4)
+	GameState.note_survey_worked(rk_a)
+	GameState.note_survey_worked(rk_b)
+	GameState.note_survey_filed(rk_a)
+	GameState.played_seconds = 100000.0
+	var rival_took_b := Rival.filed(rk_b, cell_depth_of_key(rk_b), seed_r, 100000.0)
+	var salv_r := GameState.salvage
+	var paid_r := file_charts_on_sale("chart_drift", SurveyMast.YIELD_UNITS)
+	print("[rival] THE RIVAL NEVER TAKES WHAT YOU HAVE player-filed cell still filed=%s; rival-reached cell (%s) paid %d and salvage moved %d; coverage still %d of 2 -> %s" % [
+		str(GameState.is_survey_filed(rk_a)), str(rival_took_b), paid_r,
+		GameState.salvage - salv_r, GameState.survey_coverage.size(),
+		"PASS" if GameState.is_survey_filed(rk_a) and rival_took_b and paid_r == 0
+			and GameState.salvage == salv_r
+			and GameState.survey_coverage.size() == 2 else "FAIL"])
+	GameState.played_seconds = t_save
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+
+	# 5. EVIDENCE IS NOT AN ATTACK. A foreign beacon is furniture: it joins the
+	#    beacon pick group and no combat group, it refuses the recovery hold,
+	#    and neither the store nor the stock ever hears about it.
+	var fb := Beacon.new()
+	fb.foreign = true
+	fb.system_id = system_id
+	add_child(fb)
+	fb.global_position = Vector3(500.0, 0.0, 0.0)
+	await get_tree().process_frame
+	var stock_before := GameState.beacon_stock_left()
+	fb.hold_begin()
+	fb.hold_tick(10.0)
+	var groups_ok: bool = fb.is_in_group("beacon") \
+		and not fb.is_in_group("hostiles") and not fb.is_in_group("combatants")
+	print("[rival] EVIDENCE IS NOT AN ATTACK groups beacon/hostiles/combatants=%s/%s/%s, a 10s hold recovered nothing (stock %d -> %d, store %d entries) -> %s" % [
+		str(fb.is_in_group("beacon")), str(fb.is_in_group("hostiles")),
+		str(fb.is_in_group("combatants")), stock_before,
+		GameState.beacon_stock_left(), GameState.beacons.size(),
+		"PASS" if groups_ok and GameState.beacon_stock_left() == stock_before
+			and GameState.beacons.is_empty() else "FAIL"])
+	fb.queue_free()
 	get_tree().quit()
 
 

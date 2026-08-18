@@ -883,6 +883,12 @@ func _mult(kind: String, band: int) -> float:
 const SAFE_DENSITY_KINDS := ["convoy", "grave", "deep_storage"]
 
 
+# v22. What fraction of rival-reached cells carry one of their beacons. Sparse
+# on purpose: evidence reads as evidence at four in a hundred, and as
+# infestation much above it.
+const RIVAL_BEACON_PCT := 4
+
+
 func plan_cell(cx: int, cz: int) -> Dictionary:
 	# PURE. Given a cell it returns exactly what that cell contains, with no nodes
 	# built and no state touched, and `_spawn_cell` builds from what this returns.
@@ -1687,6 +1693,38 @@ func _populate_cell(cx: int, cz: int, node: Node3D) -> void:
 		node.add_child(site)
 		site.global_position = sig["pos"]
 		site.rotation_degrees.y = float(sig["rot_y"])
+
+	# v22. RIVAL EVIDENCE (Horizon 7 commit 3). A sparse fraction of cells the
+	# rival has reached carry one of their beacons -- the same node the player
+	# drops, in a livery that is not theirs, refusing recovery. WORLD DRESSING,
+	# not a store entry: it lives and dies with its cell, never touches
+	# GameState.beacons, and never counts against stock.
+	#
+	# NO DRAW FROM ANY STREAM. Presence, angle and radius all derive from one
+	# salted hash, so the shared stream and every appended sub-stream are
+	# untouched -- THE DRAW COUNT DID NOT MOVE cannot see this, correctly,
+	# because there is nothing to see. Rival.filed is stride-quantised, so the
+	# synchronous and amortised builds STREAMTEST compares cannot disagree
+	# about whether the beacon is there.
+	var rb_hash := absi(hash("%s|%d|%d|rival_beacon" % [_id, cx, cz]))
+	if rb_hash % 100 < RIVAL_BEACON_PCT:
+		var rb_centre := cell_centre(cx, cz)
+		var rb_depth := depth_at(rb_centre)
+		if rb_depth >= CONTENT_MIN_DEPTH and Rival.filed(cell_key(_id, cx, cz),
+				rb_depth, GameState.run_seed, GameState.played_seconds):
+			var rb_ang := TAU * float(rb_hash % 1000) / 1000.0
+			var rb_rad := CELL * (0.15 + 0.25 * float((rb_hash >> 10) % 1000) / 1000.0)
+			var rb_pos := rb_centre + Vector3(cos(rb_ang), 0.0, sin(rb_ang)) * rb_rad
+			var rb_station: Dictionary = plan["station"]
+			var rb_keep: Vector3 = rb_station.get("pos", Vector3(1e9, 0.0, 1e9))
+			# The same clearance every placed thing answers to; a rival's
+			# furniture is not an exemption either.
+			if rb_pos.distance_to(rb_keep) >= STATION_SAFE_RADIUS:
+				var rb := Beacon.new()
+				rb.foreign = true
+				rb.system_id = _id
+				node.add_child(rb)
+				rb.global_position = rb_pos
 
 	for r_v in rocks:
 		var r: Dictionary = r_v

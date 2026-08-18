@@ -6036,7 +6036,7 @@ to whichever number makes it green.
 | 0 | pay §41's `MIDTIER` re-derivation — measurement and a decision, not a feature | none | **not built** |
 | 1 | marks: `survey_filed` as a second set, and `structures_seen` for hyper structures seen but not claimed | **v22** | **BUILT** — §82 |
 | 2 | the counter pays a first-filing bonus, once ever per cell | none | **BUILT** — §83 |
-| 3 | a rival cartographer — evidence only, a pure function of (system, run_seed, played_seconds), zero save | none | **not built** |
+| 3 | a rival cartographer — evidence only, a pure function, zero save | none | **BUILT** — §84, wreck deferred to the writing pass |
 | 4 | THE UNSOUNDED answers: one authored multi-expedition structure per system past 5,200u | **v23** | **not built** |
 | 5 | beacon stock re-derived against §79's navigation; band-entry teaching through §76's broadcasts | none | **not built** |
 
@@ -8762,3 +8762,91 @@ about. What §41 still owes is a judgement (is `lance_1` still mid-tier after
 the catalog grew 84%?) that needs PACINGTEST's printed numbers from a real run,
 and it stays open in §64 until those numbers exist. A one-time income stream
 orthogonal to the bar does not have to wait on a question about the bar.
+
+## 84. The other cartographer
+
+Horizon 7 commit 3. Somebody else is working the same deep, and the player only
+ever meets the evidence: a cell already filed when they sell, a mast whose
+reading comes back annotated *somebody was first*, a beacon in a livery that is
+not theirs. Nothing is ever seen moving. Nothing shoots.
+
+### A rival with no save, racing the player's own clock
+
+`Rival` is a leaf class of two pure functions. A cell's rival-arrival time
+derives from `(cell key, depth, run_seed)`; whether the rival has filed it is
+that arrival compared against `played_seconds`. Zero bytes of save — §17's
+"revisiting a sector costs zero bytes" untouched — and because `played_seconds`
+is the player's own accumulated clock, the rival races exactly the person
+playing. Pause the run for a month and nothing moves. There is no rival while
+nobody is flying, which is both the cheapest implementation and the right
+fiction.
+
+The gradient is the design. `BASE_S` (half an hour) means a brand-new pilot's
+first sortie is never pre-empted — `A FRESH PILOT MEETS NOBODY` holds that at
+zero played seconds nothing anywhere is filed. `S_PER_U` (60) means the
+shallows go in single sessions while the earliest possible arrival at the
+band-4 floor is ~18.8 hours of play — `THE DEEP OUTRUNS THEM` measures that
+over the jitter rather than restating the formula, and holds the latest
+200u arrival strictly before the earliest 1100u one. The near ring burns with
+a hand attached to it; the deep belongs to whoever flies there.
+
+Per-cell jitter of [1, 3] exists for `hyper_positions`' reason: a flat front
+would let one found cell date every other cell at its depth, and denying that
+inference is a pillar, not a preference.
+
+### The stride holds the world still
+
+The clock is quantised to ten-minute strides before any comparison. This is
+not flavour: the cell streamer consults `Rival.filed` when it dresses a cell,
+and STREAMTEST's `SAME WORLD EITHER WAY` compares a synchronous build against
+an amortised one — two builds seconds apart must not disagree about whether a
+beacon stands in a cell. Within a stride the world is stable; progress happens
+between strides, like a tide coming in while you looked away. Which is also
+the right fiction for somebody you never see.
+
+### They take the chance, never the goods
+
+The one design risk named in the horizon plan was a rival that punishes. The
+implementation makes the safe property structural:
+
+- **At the mast**, a rival-filed cell still pays its full cargo — the data is
+  yours; only the counter's first-filing bonus is gone, and the toast says so
+  in the deep rather than letting the counter be the first to mention it a
+  session later.
+- **At the counter**, rival-filed cells are swept out of the unfiled ledger
+  without pay and **without consuming a reading slot** — your readings' bonus
+  slots go to cells that can still pay. Coverage never loses an entry: the
+  chart you drew stays drawn.
+- **A player-filed cell can never be un-filed** by any amount of rival
+  advance. `THE RIVAL NEVER TAKES WHAT YOU HAVE` drives all three through the
+  real counter with the clock pushed past the shallows.
+
+Both the mast's heads-up and the counter's verdict read depth through
+`main.cell_depth_of_key` — one source, so the two surfaces cannot disagree
+about where a cell is.
+
+### The evidence in the world
+
+A sparse fraction (4%) of rival-reached cells carry one of their beacons — the
+same `Beacon` node the player drops, reusing mesh, breath, pick group and
+radar tier, because it *is* a beacon; what differs is a `foreign` flag. It
+lives and dies with its cell, never touches `GameState.beacons`, never counts
+against stock, and refuses the recovery hold with copy that says why. Its
+presence, angle and radius all derive from one salted hash: no draw from any
+stream, so `THE DRAW COUNT DID NOT MOVE` cannot see it — correctly, because
+there is nothing to see.
+
+`Palette.RIVAL` (violet) is the one new colour: not a band (place), not the
+livery accent (yours), not THREAT (danger), because a rival beacon is none of
+those things. Per §30 the hue is the at-a-glance channel and ownership is
+carried by the refusal itself.
+
+Beacon also gained `marker_color()` — own beacons now wear the livery accent
+on the radar as well as in the world, closing a small radar/world disagreement
+the Horizon 6 plan had noted and not built.
+
+### Deferred from this commit, deliberately
+
+**The rival's wreck** — the one authored site where the rival stops being a
+rate and becomes a person. It is content rather than arithmetic, it wants the
+same writing pass as THE UNSOUNDED's fragments, and it should land with them.
