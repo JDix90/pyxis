@@ -8572,15 +8572,31 @@ CONTRACTTEST and PACINGTEST never saw it because both clear `contracts.active`
 by hand before using it — each leg quietly not trusting the pin, without
 anyone noticing that was what the clearing meant.
 
-### The fix is at the pin, not the leg
+### The first fix was wrong, in the way that teaches
 
-The pin block now re-syncs the node: `contracts._restore()` immediately after
-`reset_to_starter()`, reading the freshly cleared state. Every harness gets
-clean slots, including the two that were already clearing by hand. The rule it
-adds, stated where the pin lives: **any future node that caches save state in
-`_ready` must be re-synced there too.**
+The pin block now re-syncs the node — `contracts._restore()` immediately after
+`reset_to_starter()` — and the first version of this section claimed that gave
+every harness "clean slots". It does not, and the very next run of the leg
+proved it: `_restore` on an unseeded state auto-assigns the **starter pair**,
+whose documented purpose is to *fill both slots* so the HUD tracker has
+content during the tutorial. A fresh run's slots are FULL BY DESIGN.
+
+So the pin fix changed the failure from environmental to deterministic — red
+because of whatever the developer's save held became red identically on every
+machine — which is progress, and is also not green. The two halves of the real
+fix are owned by different layers:
+
+- **The pin owns determinism.** Same state on every machine, and the rule
+  stands: any future node that caches save state in `_ready` must be
+  re-synced there too.
+- **The leg owns its preconditions.** A leg that needs a free slot clears one
+  — `contracts.active = []` — which is what CONTRACTTEST and PACINGTEST were
+  already doing. Their hand-clearing was never distrust of the pin; it was
+  this exact fact about fresh runs, known in two harnesses and written down in
+  none.
 
 And the leg now captures what it stages: `accept()`'s return is printed by
-name and joined to the PASS clause, so a recurrence says `accepted=false` in
-the output instead of hiding as a delivery that settled `12->12` — the cause
-took three files of digging that one word would have saved.
+name and joined to the PASS clause. That single word is what turned the second
+red from three files of digging into one glance — `accepted=false` names the
+refusal — and it is why the wrong first fix cost one re-run rather than an
+afternoon.

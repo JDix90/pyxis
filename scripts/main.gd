@@ -6176,6 +6176,17 @@ func _run_hold_test() -> void:
 	# The delivery path, driven the way docking drives it: accept the real
 	# contract, carry exactly what it asks, dock where it points.
 	GameState.cargo = {}
+	# THE SLOTS ARE STAGED, because a fresh run's slots are FULL BY DESIGN.
+	# The pin re-syncs contracts from reset state, and _restore's unseeded
+	# branch then auto-assigns the STARTER PAIR -- whose documented purpose is
+	# to fill both slots so the HUD tracker has content during the tutorial.
+	# So "pinned" does not mean "empty": it means the same full slots on every
+	# machine, and a leg that needs a free one clears it, exactly as
+	# CONTRACTTEST and PACINGTEST already do. (81 tells the whole story: this
+	# leg failed on a live save with full slots, the pin fix made the failure
+	# deterministic instead of environmental, and this line is the half that
+	# was the leg's own to fix.)
+	contracts.active = []
 	# CAPTURED, not fired and forgotten. When this leg went red on a live save
 	# the output said "12->12" and the cause -- accept() refusing on full slots
 	# -- had to be dug out of three files. A staged precondition that can fail
