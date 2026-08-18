@@ -6028,6 +6028,34 @@ the next sweep turns that leg red, that IS the re-derivation arriving: the
 answer is a decision about yields or the band, taken in the open, not a nudge
 to whichever number makes it green.
 
+**Horizon 7 — the filed frontier** (opened 2026-08-18; specced in
+`docs/HORIZON-7-THE-FILED-FRONTIER.md`). Six commits, **none built**:
+
+| # | what | save | status |
+|---|---|---|---|
+| 0 | pay §41's `MIDTIER` re-derivation — measurement and a decision, not a feature | none | **not built** |
+| 1 | marks: a `filed` flag on coverage, and a store for hyper structures SEEN but not claimed | **v22** | **not built** |
+| 2 | the counter pays a first-filing bonus, once ever per cell | none | **not built** |
+| 3 | a rival cartographer — evidence only, a pure function of (system, run_seed, played_seconds), zero save | none | **not built** |
+| 4 | THE UNSOUNDED answers: one authored multi-expedition structure per system past 5,200u | **v23** | **not built** |
+| 5 | beacon stock re-derived against §79's navigation; band-entry teaching through §76's broadcasts | none | **not built** |
+
+**Commit 0 blocks the horizon and is not optional.** §80 moved surveys out of
+the recurring term, so `STEADY MIDTIER` now measures an honestly poorer loop
+against an unchanged band; adding a new income shape on top of an unresolved bar
+means tuning two things at once and knowing which moved neither.
+
+**One live gap is folded into commit 1 rather than filed separately.** A hyper
+structure the player has SEEN but not claimed has nowhere to be recorded —
+`colonies_in` reads the claimed store and there is no radar tier — so flying
+past one and being driven off by its wardens loses information the player
+earned. The silhouette design (`hyper_structure.gd:15`) is deliberate and
+stands; the missing record is not.
+
+**Long expeditions are deferred on purpose**, not forgotten: provisioning is the
+idea most likely to become tedium, and it only earns its place once commit 4
+gives THE UNSOUNDED something worth the trip.
+
 **The README's harness counts should be derived, not typed** (open 2026-08-17,
 §77). Three numbers — tag count, SAVETEST mode count, total runs — are
 maintained by hand in a paragraph that itself warns the reader it has been
