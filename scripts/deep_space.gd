@@ -527,8 +527,8 @@ var _cells := {}
 var _cell_last := Vector2i(0x7fffffff, 0x7fffffff)
 # Cells registered but not yet dressed. See _stream for the split and why.
 var _build_queue: Array[Vector2i] = []
-# cell -> { seam index: true }. A dict of dicts rather than the flat set
-# _cracked and _surveyed use, because a cell holds at most one SURVEY but can
+# cell -> { seam index: true }. A dict of dicts rather than the flat cell set
+# _cracked uses, because a cell holds at most one crackable hull position but can
 # hold a seam on every rock in it. (_cracked stopped being a flat cell set in
 # stage 4: a band-6 grave-field puts two hulls in one cell, so it keys on
 # cell-and-index now — see _hulk_key.)
@@ -568,7 +568,6 @@ var _counted := {}      # Vector2i -> true, posts already credited to the logboo
 # visited-cells array by another name, growing every minute the player flies.
 # The consequence — a warp resets surveys — is asserted on purpose in CARTTEST,
 # so a future "fix" that saves this trips a FAIL and forces the conversation.
-var _surveyed := {}
 
 var _armed := {}
 # Cells whose nest has already been sprung this visit. Session-only and rebuilt
@@ -1359,11 +1358,12 @@ func seams_for(cx: int, cz: int, band: int, rocks: Array) -> Array:
 
 
 func note_mined(cell: Vector2i, index: int) -> void:
-	# SESSION state, like _cracked and _surveyed. 17 refuses a persistent
-	# visited-cells array because it grows every minute the player flies, and
-	# rocks are the most numerous thing out there -- a saved one would grow
-	# faster than surveys would. What stops this being a farm is the band
-	# gradient, not a save. See PYXIS_MINETEST's WARP FARM.
+	# SESSION state, like _cracked -- and UNLIKE surveys, which went persistent
+	# in v21 (80). The distinction is the one 17's growth argument actually
+	# draws: a survey is EARNED, one mast worked per cell, capped in the store;
+	# mined rocks are the most numerous thing out there and a saved set would
+	# grow every minute a prospector flies. What stops mining being a farm is
+	# the band gradient, not a save. See PYXIS_MINETEST's WARP FARM.
 	if not _mined.has(cell):
 		_mined[cell] = {}
 	(_mined[cell] as Dictionary)[index] = true
@@ -1749,7 +1749,7 @@ func _populate_cell(cx: int, cz: int, node: Node3D) -> void:
 		mast.band = int(plan["band"])
 		mast.survey_time = 3.0 + 0.5 * float(int(plan["band"]) - 1)
 		mast.cell = Vector2i(cx, cz)
-		mast.surveyed = _surveyed.has(Vector2i(cx, cz))
+		mast.surveyed = is_surveyed(Vector2i(cx, cz))
 		node.add_child(mast)
 		mast.global_position = d.global_position + d.global_transform.basis.z * SurveyMast.HULL_OFFSET
 
@@ -2073,11 +2073,25 @@ func is_hulk_cracked(key: Vector2i, index := 0) -> bool:
 
 
 func note_surveyed(key: Vector2i) -> void:
-	_surveyed[key] = true
+	# v21. WRITES THROUGH TO THE SAVE. There is no session dict any more --
+	# coverage lives in GameState, keyed by system, and persists (80, reversing
+	# 17's session-only rule under a cap). Reading and writing the store
+	# directly, rather than keeping a seeded cache here, is what makes the two
+	# old wipe paths impossible by construction: a warp frees this node and a
+	# colour-vision rebuild clears its dicts, and neither can erase state this
+	# node does not hold.
+	#
+	# THE SENTINEL IS REJECTED HERE, at the one door, not in the loader. A rift
+	# has no cell of its own and stamps its mast with (0x7ffffff, 0x7ffffff);
+	# stored, that key survives to the chart, whose fit-to-content scale would
+	# be asked to span 8.6e9 units. In-memory hygiene, not just file hygiene.
+	if absi(key.x) > 1 << 20 or absi(key.y) > 1 << 20:
+		return
+	GameState.note_survey_worked(cell_key(_id, key.x, key.y))
 
 
 func is_surveyed(key: Vector2i) -> bool:
-	return _surveyed.has(key)
+	return GameState.is_survey_worked(cell_key(_id, key.x, key.y))
 
 
 func _check_convoy_hails(at: Vector3) -> void:
@@ -2271,7 +2285,6 @@ func _despawn_all() -> void:
 	_defended.clear()
 	_counted.clear()
 	_cracked.clear()
-	_surveyed.clear()
 	_cell_last = Vector2i(0x7fffffff, 0x7fffffff)
 
 

@@ -1,6 +1,6 @@
 # Horizon 6 — The Known Frontier
 
-**Status: commits 0–5 BUILT (§73, §74, §75, §76, §78, §79). Commit 6 specced, not built.** When any of
+**Status: ALL SIX COMMITS BUILT (§73, §74, §75, §76, §78, §79, §80). Horizon complete.** When any of
 them is adopted, record it in `docs/STRATEGY.md` §64 in the same commit, per the
 house rule.
 
@@ -130,7 +130,7 @@ Two departures from the obvious order, both load-bearing:
 | 3 | per-Pyx identity + signature content | none | **BUILT** — §76 |
 | 4 | chart legibility | none | **BUILT** — §78 |
 | 5 | beacon navigation | none | **BUILT** — §79 |
-| 6 | persistent survey coverage | **v21** | not built |
+| 6 | persistent survey coverage | **v21** | **BUILT** — §80 |
 
 ---
 

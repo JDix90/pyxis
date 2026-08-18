@@ -46,8 +46,8 @@ PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 
 Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 49 of them —
 the 49 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
-`TAGS` at all: it is one harness with 18 stateful modes, run as its own
-sequence. So a full sweep is 49 + 18 = **67 runs**.
+`TAGS` at all: it is one harness with 19 stateful modes, run as its own
+sequence. So a full sweep is 49 + 19 = **68 runs**.
 
 Those three numbers are derivable from `run_harness.sh` and nothing else, so
 check them there rather than trusting this paragraph — it has been wrong before,
@@ -170,9 +170,11 @@ Current baseline: **667 PASS / 0 FAIL / 0 script errors** across **66 runs**,
 save intact, save format **v20** — measured on Godot 4.6.stable, headless
 (2026-08-17), at STRATEGY §77.
 
-**This figure is two commits behind.** §78 added `PLOTTEST` and its twelve
-assertions; §79 added seven legs to the existing `BEACONTEST` and no new tag. So
-the next sweep should read **686 across 67**. A
+**This figure is three commits behind.** §78 added `PLOTTEST` (twelve
+assertions); §79 added seven `BEACONTEST` legs; §80 added four `CARTTEST` legs
+net of the one it replaced, one SAVETEST assertion to the read leg, and the
+`migrate20` mode (one new run carrying one). So the next sweep should read
+667 + 12 + 7 + 4 + 1 + 1 = **692 across 68**, save format **v21**. A
 baseline is a MEASUREMENT and is only written here once somebody has taken it;
 predicting one and typing it in as though it were taken is how the numbers this
 paragraph keeps correcting got wrong in the first place.
