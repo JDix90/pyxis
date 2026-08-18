@@ -82,6 +82,11 @@ const DEFAULT_LEDGER := {
 	"posts_cleared": 0,
 	"chart_data_sold": 0,
 	"tolls_paid": 0,
+	# v22. Cells filed first. The count behind the first-filing bonus, and the
+	# ledger's version of "places I put on the map" -- chart_data_sold measures
+	# volume, this measures FIRSTS. A new key in this dict needs no save bump:
+	# the load-side merge is defaults-based.
+	"cells_filed": 0,
 }
 const SHIP_NAME_MAX := 24
 const DEFAULT_SHIP_NAME := "SURVEYOR"

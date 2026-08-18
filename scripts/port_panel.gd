@@ -379,6 +379,14 @@ func _sell(good: String, units: int) -> void:
 	GameState.add_salvage(price * n)
 	if CommodityDB.is_chart(good):
 		GameState.note_ledger("chart_data_sold", n)
+		# v22. The provenance half. AFTER the market half above has unloaded and
+		# paid, so the settlement can be a pure bonus -- and through main, which
+		# owns the world-side glue (which band a cell sits in), per
+		# drop_beacon_here's split: the counter is a button, the rule lives
+		# elsewhere.
+		var m_file := get_tree().get_first_node_in_group("main")
+		if m_file and m_file.has_method("file_charts_on_sale"):
+			m_file.file_charts_on_sale(good, n)
 	# SMUGGLING's one feed. At a FENCE specifically — the whole skill is about who
 	# will deal with you off the books, and selling stolen goods over a legitimate
 	# counter is not that.

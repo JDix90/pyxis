@@ -1,6 +1,6 @@
 # Horizon 7 — The Filed Frontier
 
-**Status: commit 1 BUILT (§82). Commits 0, 2–5 specced, not built.** When any of it is adopted, record it in
+**Status: commits 1–2 BUILT (§82, §83). Commits 0, 3–5 specced, not built.** When any of it is adopted, record it in
 `docs/STRATEGY.md` §64 in the same commit, per the house rule.
 
 ## What this answers
@@ -101,7 +101,7 @@ which moved neither. **This sequences first, and it is not optional.**
 |---|---|---|---|
 | 0 | §41 `MIDTIER` re-derivation | — | Blocks everything economic. Measurement and a decision, not a feature. |
 | 1 | Marks: filed charts, sighted structures | **v22** | **BUILT — §82.** Provenance's storage half, plus the live colony gap. No pricing yet. |
-| 2 | The counter pays for being first | — | Pricing, against a bar that has just been re-derived. |
+| 2 | The counter pays for being first | — | **BUILT — §83.** Landed ahead of commit 0: the bonus never enters the recurring loop (asserted), so it cannot move §41's bar. |
 | 3 | The other cartographer | — | Needs "first" to mean something. Zero save: a pure function. |
 | 4 | THE UNSOUNDED answers | **v23** | Independent of the economy. Can run in parallel with 2–3. |
 | 5 | Small: beacon stock, deep onboarding | — | Both cheap, both overdue, neither blocking. |

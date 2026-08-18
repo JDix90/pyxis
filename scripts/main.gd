@@ -1199,6 +1199,85 @@ func _build_beacons() -> void:
 		b.global_position = Vector3(float(e["x"]), 0.0, float(e["z"]))
 
 
+# --- first-filing settlement (v22, Horizon 7 commit 2) ------------------------
+
+# The premium for being FIRST, as a fraction of the reading's base value. A
+# band-2 cell pays 140 on top of the market sale; a band-5 cell pays more only
+# because its chart good's base is higher -- one rate, depth carried by the
+# existing price ladder rather than by a second table.
+#
+# BASE price, deliberately not the market price. The market half of a sale is
+# where you sold it and what the port thinks of that good today; provenance is
+# a fact about the CELL, and a fact should not pay differently at a fence.
+const FIRST_FILING_RATE := 0.5
+
+
+func cell_band_of_key(key: String) -> int:
+	# "pyx01:7:-3" -> which depth band that cell's centre sits in. Main owns
+	# this glue for drop_beacon_here's reason inverted: GameState deliberately
+	# holds coverage as opaque strings and never references DeepSpace (the
+	# class-name edge would point back at a file that already reaches the
+	# GameState autoload), so the world half of the question is answered here,
+	# where both ends are safe to name.
+	var bits := key.split(":")
+	if bits.size() != 3:
+		return -1
+	var centre := DeepSpace.cell_centre(int(String(bits[1])), int(String(bits[2])))
+	var depth := maxf(Vector2(centre.x, centre.z).length()
+		- SystemDB.bounds_of(String(bits[0])), 0.0)
+	return DeepSpace.band_of(depth)
+
+
+func file_charts_on_sale(good: String, units: int) -> int:
+	# THE PROVENANCE HALF OF A CHART SALE, called by the port counter after the
+	# market half has already settled. Selling a reading's worth of a band's
+	# chart data files your oldest unfiled cells of that band -- one cell per
+	# YIELD_UNITS sold, because one reading IS what a mast yields -- and pays
+	# the first-filing bonus for each. Returns the bonus paid.
+	#
+	# THE BONUS IS A BONUS, NOT THE PRICE. This function touches no cargo and
+	# no coverage: the sale already unloaded and paid market price before it was
+	# called, and a player who never thinks about filing loses nothing they had
+	# yesterday. What it touches is the filed set and the wallet, and both only
+	# ever move forward.
+	#
+	# Cross-system on purpose. Chart data is data -- you carry pyx01's readings
+	# to a pyx03 counter and they file just the same. The band must match the
+	# good because the good IS the band; that is the only join there is.
+	#
+	# A HALF-READING FILES NOTHING, and the remainder does not carry. Selling
+	# one unit of a two-unit reading is selling half a coordinate; the counter
+	# files whole cells or none, statelessly, and the next two-unit sale starts
+	# fresh. A carried remainder would be save state for a bookkeeping trick.
+	var band := CommodityDB.chart_band_of(good)
+	if band < 0 or units <= 0:
+		return 0
+	@warning_ignore("integer_division")
+	var readings := units / SurveyMast.YIELD_UNITS
+	if readings <= 0:
+		return 0
+	var per := int(round(float(CommodityDB.base_price(good))
+		* float(SurveyMast.YIELD_UNITS) * FIRST_FILING_RATE))
+	var filed := 0
+	for key_v in GameState.unfiled_cells():
+		if filed >= readings:
+			break
+		var key := String(key_v)
+		if cell_band_of_key(key) != band:
+			continue
+		if GameState.note_survey_filed(key):
+			filed += 1
+	if filed <= 0:
+		return 0
+	var bonus := per * filed
+	GameState.add_salvage(bonus)
+	GameState.note_ledger("cells_filed", filed)
+	if hud:
+		hud.show_toast("FILED FIRST — %d CELL%s ON THE RECORD · +%d" % [
+			filed, "" if filed == 1 else "S", bonus], Palette.GOLD)
+	return bonus
+
+
 func drop_beacon_here() -> bool:
 	# The world half of the verb: gather what GameState cannot know (where the
 	# ship is, how deep that is) and hand it to the rule. §59's argument shape.
@@ -6817,6 +6896,75 @@ func _run_cart_test() -> void:
 	GameState.survey_filed = {}
 	GameState.structures_seen = {}
 
+	# 7j. THE COUNTER PAYS FOR BEING FIRST (v22, Horizon 7 commit 2). Two band-2
+	#     cells surveyed and a reading's worth of chart_drift sold twice: the
+	#     first sale files both and pays the bonus, the second files nothing and
+	#     pays nothing. The PRECONDITION is asserted through the world's own
+	#     depth_at rather than through cell_band_of_key -- the same helper the
+	#     code under test uses would make a shared band error invisible, which
+	#     is the scale bar's lesson from 78.
+	var c_a := DeepSpace.cell_key(system_id, 4, 0)
+	var c_b := DeepSpace.cell_key(system_id, 0, 4)
+	var band_ok: bool = DeepSpace.band_of(deep_space.depth_at(
+		DeepSpace.cell_centre(4, 0))) == 2 \
+		and DeepSpace.band_of(deep_space.depth_at(DeepSpace.cell_centre(0, 4))) == 2
+	GameState.note_survey_worked(c_a)
+	GameState.note_survey_worked(c_b)
+	var salv_file := GameState.salvage
+	var bonus1 := file_charts_on_sale("chart_drift", 2 * SurveyMast.YIELD_UNITS)
+	var bonus2 := file_charts_on_sale("chart_drift", 2 * SurveyMast.YIELD_UNITS)
+	var half := file_charts_on_sale("chart_drift", 1)
+	var want_per := int(round(float(CommodityDB.base_price("chart_drift"))
+		* float(SurveyMast.YIELD_UNITS) * FIRST_FILING_RATE))
+	print("[cart] THE COUNTER PAYS FOR BEING FIRST both cells band 2=%s; first sale +%d (want %d), second +%d, half-reading +%d, wallet moved %d -> %s" % [
+		str(band_ok), bonus1, want_per * 2, bonus2, half,
+		GameState.salvage - salv_file,
+		"PASS" if band_ok and bonus1 == want_per * 2 and bonus2 == 0
+			and half == 0 and GameState.salvage - salv_file == bonus1 else "FAIL"])
+
+	# 7k. AND THE BAND IS THE JOIN. A band-3 cell must not be filed by a band-2
+	#     sale, and its bonus must be larger -- depth carried by the price
+	#     ladder, not by a second table. The band-2 sale above already ran with
+	#     the band-3 cell ABSENT; here it is present and a chart_drift sale must
+	#     skip it.
+	var c_deep := DeepSpace.cell_key(system_id, 9, 0)
+	var deep_band := DeepSpace.band_of(deep_space.depth_at(DeepSpace.cell_centre(9, 0)))
+	GameState.note_survey_worked(c_deep)
+	GameState.note_survey_worked(DeepSpace.cell_key(system_id, 0, 9))
+	# The band-2 sale runs FIRST, with only band-3 cells unfiled, and must pay
+	# nothing and file nothing -- deep_before is read between the two sales,
+	# because reading it only at the end cannot tell "filed by the right sale"
+	# from "filed by the wrong one".
+	var skipped := file_charts_on_sale("chart_drift", SurveyMast.YIELD_UNITS)
+	var deep_before := GameState.is_survey_filed(c_deep)
+	var deep_bonus := file_charts_on_sale("chart_reaches", SurveyMast.YIELD_UNITS)
+	var want_deep := int(round(float(CommodityDB.base_price("chart_reaches"))
+		* float(SurveyMast.YIELD_UNITS) * FIRST_FILING_RATE))
+	print("[cart] AND THE BAND IS THE JOIN band-3 cell (band %d): band-2 sale paid %d and filed it=%s; band-3 sale +%d (want %d, > band-2's %d) filed it=%s -> %s" % [
+		deep_band, skipped, str(deep_before), deep_bonus, want_deep, want_per,
+		str(GameState.is_survey_filed(c_deep)),
+		"PASS" if deep_band == 3 and skipped == 0 and not deep_before
+			and deep_bonus == want_deep and want_deep > want_per
+			and GameState.is_survey_filed(c_deep) else "FAIL"])
+
+	# 7l. THE BONUS IS NOT THE PRICE. The settlement touches the filed set and
+	#     the wallet and nothing else -- no cargo, no coverage. A player who
+	#     never thinks about filing loses nothing they had yesterday, and that
+	#     is a property to hold, not a hope.
+	GameState.cargo = {}
+	GameState.load_cargo("alloys", 2)
+	GameState.note_survey_worked(DeepSpace.cell_key(system_id, 5, 0))
+	var used_file := GameState.cargo_used()
+	var cov_file := GameState.survey_coverage.size()
+	file_charts_on_sale("chart_drift", SurveyMast.YIELD_UNITS)
+	print("[cart] THE BONUS IS NOT THE PRICE cargo %d -> %d, coverage %d -> %d -> %s" % [
+		used_file, GameState.cargo_used(), cov_file, GameState.survey_coverage.size(),
+		"PASS" if GameState.cargo_used() == used_file
+			and GameState.survey_coverage.size() == cov_file else "FAIL"])
+	GameState.cargo = {}
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+
 	# 8. Masts ride deep hulks and nothing else. No mast may sit near a dock ring
 	#    either — CameraRig checks `crackable` BEFORE `dockable`, so one parked on
 	#    a station would intercept the tap that docks you.
@@ -11898,6 +12046,17 @@ func _run_pacing_test() -> void:
 	print("[pacing] MINING IS A ROUTE, NOT A RAISE standard loop names %s, seam among them=%s -> %s" % [
 		str(PACING_LOOP.keys()), str(PACING_LOOP.has("seam")),
 		"PASS" if not PACING_LOOP.has("seam") else "FAIL"])
+
+	# v22. The same fence for the first-filing bonus, which is once-only BY
+	# CONSTRUCTION (a cell files once, ever) and therefore must never appear as
+	# a recurring term -- the exact over-report 80 removed from surveys, rebuilt
+	# one commit later, is what this goes red on. Both profiles checked, because
+	# PACING_PROSPECT surveys too and would be the quieter place to slip it in.
+	var names_filing: bool = PACING_LOOP.has("filing") or PACING_LOOP.has("filed") \
+		or PACING_PROSPECT.has("filing") or PACING_PROSPECT.has("filed")
+	print("[pacing] FILING IS NOT A RAISE loop names a filing term=%s (rate %.2f rides the once-only filed set) -> %s" % [
+		str(names_filing), FIRST_FILING_RATE,
+		"PASS" if not names_filing else "FAIL"])
 	get_tree().quit()
 
 

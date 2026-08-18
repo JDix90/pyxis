@@ -172,10 +172,10 @@ Current baseline: **667 PASS / 0 FAIL / 0 script errors** across **66 runs**,
 save intact, save format **v20** — measured on Godot 4.6.stable, headless
 (2026-08-17), at STRATEGY §77.
 
-**This figure is one commit behind.** §82 added four `CARTTEST` legs, one
+**This figure is two commits behind.** §82 added four `CARTTEST` legs, one
 SAVETEST assertion to the read leg, and the `migrate21` mode (one new run
-carrying one). So the next sweep should read 692 + 6 = **698 across 69**, save
-format **v22**. A
+carrying one); §83 added three `CARTTEST` legs and one `PACINGTEST` leg. So the
+next sweep should read 692 + 6 + 4 = **702 across 69**, save format **v22**. A
 baseline is a MEASUREMENT and is only written here once somebody has taken it;
 predicting one and typing it in as though it were taken is how the numbers this
 paragraph keeps correcting got wrong in the first place.

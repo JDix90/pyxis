@@ -6035,7 +6035,7 @@ to whichever number makes it green.
 |---|---|---|---|
 | 0 | pay §41's `MIDTIER` re-derivation — measurement and a decision, not a feature | none | **not built** |
 | 1 | marks: `survey_filed` as a second set, and `structures_seen` for hyper structures seen but not claimed | **v22** | **BUILT** — §82 |
-| 2 | the counter pays a first-filing bonus, once ever per cell | none | **not built** |
+| 2 | the counter pays a first-filing bonus, once ever per cell | none | **BUILT** — §83 |
 | 3 | a rival cartographer — evidence only, a pure function of (system, run_seed, played_seconds), zero save | none | **not built** |
 | 4 | THE UNSOUNDED answers: one authored multi-expedition structure per system past 5,200u | **v23** | **not built** |
 | 5 | beacon stock re-derived against §79's navigation; band-entry teaching through §76's broadcasts | none | **not built** |
@@ -8701,3 +8701,64 @@ Worth recording alongside it: §80 spent **0.097 mid-tier modules** of the
 smaller than it reads. What §41 actually asks is whether `lance_1` is still a
 mid-tier reference after the Mk II tiers grew the catalog 84%, and that is a
 question for PACINGTEST's printed numbers rather than its verdict.
+
+## 83. The counter pays for being first
+
+Horizon 7 commit 2, and the point of the whole horizon: the premise — *selling
+charts of places nobody has filed a return from* — finally has a mechanic that
+knows which places, and whether anybody had.
+
+### The sale splits into a market half and a provenance half
+
+The market half is untouched: `port_panel._sell` unloads the units and pays
+`Market.sell_price`, with every fence rule, pressure effect and smuggling feed
+exactly where it was. The provenance half runs after it: selling a reading's
+worth of a band's chart data files your oldest unfiled cells of that band — one
+cell per `YIELD_UNITS` sold, because one reading is what a mast yields — and
+pays `FIRST_FILING_RATE` (0.5) of the reading's **base** value per cell, once
+ever.
+
+Base price, deliberately not market price. The market half answers "where did
+you sell it and what does this port think of that good today"; provenance is a
+fact about the *cell*, and a fact should not pay differently at a fence.
+
+Depth is carried by the existing price ladder rather than a second table: a
+band-5 cell pays more than a band-2 cell only because `chart_fathom`'s base is
+higher than `chart_drift`'s. One rate, no new numbers to keep in step.
+
+### What this converts
+
+§80 recorded, as an accepted trade, that persistence burns the near ring and
+turns chart income into an outward treadmill. The bonus is what makes that a
+pull rather than a tax: the near ring is *filed*, so first-filings — the good
+money — are always further out than the last trip. The sentence the game rests
+on ("the further out you go the better it pays") stops being only about band
+tables and starts being about the player's own history.
+
+The ledger gains `cells_filed` beside `chart_data_sold` — volume versus firsts,
+and the first version of "places I put on the map".
+
+### The three refusals that keep it honest
+
+- **The bonus is a bonus.** `file_charts_on_sale` touches the filed set and the
+  wallet and nothing else — no cargo, no coverage. A player who never thinks
+  about filing loses nothing they had yesterday. Asserted as a property.
+- **A half-reading files nothing, and the remainder does not carry.** Selling
+  one unit of a two-unit reading is selling half a coordinate. The counter
+  files whole cells or none, statelessly — a carried remainder would be save
+  state for a bookkeeping trick.
+- **Filing is not a raise.** The bonus is once-only by construction, so
+  `PACING_LOOP` must never name it — the exact over-report §80 removed from
+  surveys, rebuilt one commit later, is what `FILING IS NOT A RAISE` goes red
+  on. Both profiles are checked, because `PACING_PROSPECT` surveys too and
+  would be the quieter place to slip it in.
+
+### The sequencing note, honestly
+
+The plan ordered this after §41's `MIDTIER` re-derivation. It landed first, and
+the reason is structural rather than impatient: the bonus never enters the
+recurring loop — asserted, not promised — so it cannot move the bar §41 is
+about. What §41 still owes is a judgement (is `lance_1` still mid-tier after
+the catalog grew 84%?) that needs PACINGTEST's printed numbers from a real run,
+and it stays open in §64 until those numbers exist. A one-time income stream
+orthogonal to the bar does not have to wait on a question about the bar.
