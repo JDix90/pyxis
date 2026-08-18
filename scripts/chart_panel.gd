@@ -368,6 +368,10 @@ func legend_words(live: bool, has_ship: bool) -> PackedStringArray:
 		out.append("COLONY")
 	if live and GameState.apex_hint_count(_selected) > 0:
 		out.append("ESTIMATE")
+	for seen_v in GameState.structures_seen_in(_selected):
+		if not GameState.is_colony_claimed(String((seen_v as Dictionary)["key"])):
+			out.append("SIGHTED")
+			break
 	var pref := _selected + ":"
 	for cov_v in GameState.survey_coverage:
 		if String(cov_v).begins_with(pref):
@@ -669,6 +673,33 @@ func _draw_plot() -> void:
 	#    the two, not hue -- they share the accent deliberately, since "mine" is
 	#    what the colour means here.
 	var accent := Palette.livery_accent(int(GameState.livery.get("accent", 0)))
+
+	# 5a. STRUCTURES YOU HAVE SEEN BUT NOT TAKEN (v22). A hollow DIAMOND, which
+	#     is the same square the colony draws turned forty-five degrees -- the
+	#     shape says "this kind of thing", the rotation says "not yours yet",
+	#     and neither reading depends on colour (30). Drawn under the colonies
+	#     so a claimed one covers its own sighting rather than fighting it.
+	#
+	#     POSITION COMES FROM THE GENERATOR, not from the store. hyper_positions
+	#     is a pure function of (system, run_seed) and the sighting records only
+	#     THAT you saw it, so there is no stored coordinate that could disagree
+	#     with where the thing actually is.
+	var spots: Array = SystemDB.hyper_positions(_selected, GameState.run_seed)
+	for seen_v in GameState.structures_seen_in(_selected):
+		var seen: Dictionary = seen_v
+		var si := int(seen["index"])
+		if si < 0 or si >= spots.size():
+			continue
+		if GameState.is_colony_claimed(String(seen["key"])):
+			continue
+		var sp3 := to_plot.call(spots[si] as Vector3) as Vector2
+		var dim := Color(accent.r, accent.g, accent.b, 0.55)
+		var diamond := PackedVector2Array([
+			sp3 + Vector2(0.0, -5.5), sp3 + Vector2(5.5, 0.0),
+			sp3 + Vector2(0.0, 5.5), sp3 + Vector2(-5.5, 0.0),
+			sp3 + Vector2(0.0, -5.5)])
+		_plot.draw_polyline(diamond, dim, 1.5, true)
+
 	for co_v in GameState.colonies_in(_selected):
 		var co: Dictionary = co_v
 		var cp2 := to_plot.call(Vector3(float(co["x"]), 0.0, float(co["z"]))) as Vector2
@@ -754,6 +785,12 @@ func _draw_plot() -> void:
 					c, false, 1.5)
 			elif word == "BEACON":
 				_plot.draw_circle(Vector2(lx + 3.5, ly), 2.5, c)
+			elif word == "SIGHTED":
+				_plot.draw_polyline(PackedVector2Array([
+					Vector2(lx + 3.5, ly - 4.0), Vector2(lx + 7.5, ly),
+					Vector2(lx + 3.5, ly + 4.0), Vector2(lx - 0.5, ly),
+					Vector2(lx + 3.5, ly - 4.0)]),
+					Color(c.r, c.g, c.b, 0.55), 1.5, true)
 			elif word == "SURVEYED":
 				c = Palette.band_color(2)
 				_plot.draw_rect(Rect2(Vector2(lx, ly - 3.5), Vector2(7.0, 7.0)),

@@ -6745,6 +6745,77 @@ func _run_cart_test() -> void:
 		"PASS" if mine_count == GameState.SURVEY_CELL_CAP and oldest_gone
 			and newest_kept and neighbour_kept else "FAIL"])
 	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+
+	# 7f. A FILED CELL IS NOT AN UNFILED ONE (v22). Filing is what the counter
+	#     will pay a first-filing bonus against, so the two states have to be
+	#     distinguishable in BOTH directions -- a store that marked everything
+	#     filed, or nothing, passes half of this perfectly.
+	#
+	#     And filed is a SUBSET of coverage, enforced rather than assumed:
+	#     filing a cell nobody surveyed is refused at the accessor, or the two
+	#     stores become parallel truths that can disagree.
+	GameState.note_survey_worked(DeepSpace.cell_key(system_id, 2, 2))
+	GameState.note_survey_worked(DeepSpace.cell_key(system_id, 3, 3))
+	var file_first := GameState.note_survey_filed(DeepSpace.cell_key(system_id, 2, 2))
+	var file_again := GameState.note_survey_filed(DeepSpace.cell_key(system_id, 2, 2))
+	var file_unknown := GameState.note_survey_filed(DeepSpace.cell_key(system_id, 8, 8))
+	var unfiled := GameState.unfiled_cells(system_id)
+	print("[cart] A FILED CELL IS NOT AN UNFILED ONE first file=%s, refiled=%s, unsurveyed cell refused=%s, %d unfiled of 2 -> %s" % [
+		str(file_first), str(file_again), str(not file_unknown), unfiled.size(),
+		"PASS" if file_first and not file_again and not file_unknown
+			and unfiled.size() == 1
+			and String(unfiled[0]) == DeepSpace.cell_key(system_id, 3, 3) else "FAIL"])
+
+	# 7g. AND THE CAP TAKES BOTH. filed rides coverage's cap rather than
+	#     carrying one of its own -- a filed key outliving its coverage key
+	#     would be a second store growing without a bound, which is the thing
+	#     17 refuses and 80 answered by construction.
+	for i in GameState.SURVEY_CELL_CAP + 3:
+		GameState.note_survey_worked(DeepSpace.cell_key(system_id, i, 7))
+	var evicted_filed := GameState.is_survey_filed(DeepSpace.cell_key(system_id, 2, 2))
+	var cov_has := GameState.survey_coverage.has(DeepSpace.cell_key(system_id, 2, 2))
+	var subset_ok := true
+	for k_v in GameState.survey_filed:
+		if not GameState.survey_coverage.has(String(k_v)):
+			subset_ok = false
+	print("[cart] AND THE CAP TAKES BOTH evicted cell still filed=%s (coverage has it=%s), filed is a subset of coverage=%s -> %s" % [
+		str(evicted_filed), str(cov_has), str(subset_ok),
+		"PASS" if not evicted_filed and not cov_has and subset_ok else "FAIL"])
+
+	# 7h. THE STRUCTURE STORE IS BOUNDED BY THE GENERATOR (v22). No cap, and
+	#     that is a property rather than an oversight: hyper_positions returns
+	#     at most HYPER_MAX per system, so the store cannot exceed what the
+	#     generator authored. Asserted AGAINST the generator, not against a
+	#     literal -- a retune of HYPER_MIN/MAX moves this with it.
+	GameState.structures_seen = {}
+	var authored := 0
+	for sid_v in SystemDB.ids():
+		var sid_s := String(sid_v)
+		var n := SystemDB.hyper_positions(sid_s, GameState.run_seed).size()
+		authored += n
+		# One past the end, which the loader must reject and the accessor must
+		# never have been handed -- so the bound holds even against a bad file.
+		for i in n + 2:
+			GameState.note_structure_seen(GameState.colony_key(sid_s, i))
+	GameState._load_structures_seen(GameState.structures_seen.duplicate())
+	print("[cart] THE STRUCTURE STORE IS BOUNDED BY THE GENERATOR %d kept of %d offered, generator authored %d -> %s" % [
+		GameState.structures_seen.size(), authored + SystemDB.ids().size() * 2,
+		authored, "PASS" if GameState.structures_seen.size() == authored else "FAIL"])
+
+	# 7i. AND A SIGHTING IS NOT A CLAIM. The whole point of the store: a
+	#     structure you found and could not take is recorded, and recording it
+	#     must not hand you the colony.
+	var probe_key := GameState.colony_key(system_id, 0)
+	var seen_only := GameState.is_structure_seen(probe_key) \
+		and not GameState.is_colony_claimed(probe_key)
+	print("[cart] AND A SIGHTING IS NOT A CLAIM seen=%s, claimed=%s -> %s" % [
+		str(GameState.is_structure_seen(probe_key)),
+		str(GameState.is_colony_claimed(probe_key)),
+		"PASS" if seen_only else "FAIL"])
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+	GameState.structures_seen = {}
 
 	# 8. Masts ride deep hulks and nothing else. No mast may sit near a dock ring
 	#    either — CameraRig checks `crackable` BEFORE `dockable`, so one parked on
@@ -14018,6 +14089,10 @@ func _run_profile_test() -> void:
 	# exactly when a leak ships -- the five below were all leaking when the leg
 	# was written.
 	GameState.note_survey_worked("pyx01:31:-7")
+	# v22: both new stores, for the reason the coverage line above gives -- the
+	# newest field is exactly when a leak ships.
+	GameState.note_survey_filed("pyx01:31:-7")
+	GameState.note_structure_seen(GameState.colony_key("pyx01", 0))
 	GameState.save_game()
 	var b_id := Profiles.create("PILOT B", 3000.0)
 	GameState.switch_profile(b_id)
@@ -14037,6 +14112,10 @@ func _run_profile_test() -> void:
 		leaks.append("breached")
 	if GameState.is_survey_worked("pyx01:31:-7"):
 		leaks.append("survey_coverage")
+	if GameState.is_survey_filed("pyx01:31:-7"):
+		leaks.append("survey_filed")
+	if GameState.is_structure_seen(GameState.colony_key("pyx01", 0)):
+		leaks.append("structures_seen")
 	var bled := ", ".join(leaks)
 	print("[profile] NO BLEED BETWEEN PILOTS B sees salvage=%d name='%s' commissioned=%s accent=%d; leaked=%s -> %s" % [
 		GameState.salvage, GameState.ship_name, str(GameState.commissioned),
@@ -14247,6 +14326,11 @@ func _run_save_test() -> void:
 		GameState.note_survey_worked("pyx01:7:-3")
 		GameState.note_survey_worked("pyx01:12:5")
 		GameState.note_survey_worked("pyx02:-4:19")
+		# v22: one of the three FILED and a structure sighted, so the round trip
+		# covers both new stores and the subset invariant between them. Distinct
+		# from the coverage sentinels for the six-distinct-sentinels reason.
+		GameState.note_survey_filed("pyx01:12:5")
+		GameState.note_structure_seen(GameState.colony_key("pyx01", 0))
 		GameState.owned.append("mod_survey_array")
 		GameState.ledger = {
 			"deepest_depth": 611, "distance_flown": 4207, "hulks_cracked": 13,
@@ -15070,6 +15154,81 @@ func _run_save_test() -> void:
 			str(not GameState.is_survey_worked("pyx01:0:0")),
 			str(not GameState.is_survey_worked("pyx99:1:1")),
 			"PASS" if ok20 and fresh21 and kept21 and flood_ok else "FAIL"])
+	elif mode == "migrate21":
+		# v22 adds survey_filed and structures_seen. NO MIGRATION BRANCH, and
+		# survey_coverage is deliberately UNCHANGED in shape -- that was the
+		# whole argument for two sets rather than a `filed` flag on the value.
+		# A v21 file's coverage loads through the loader it always did, byte for
+		# byte, and an absent survey_filed means "nothing filed yet", which is
+		# exactly true of every v21 pilot. The generous reading and the correct
+		# one: work already done stays worth its first-filing bonus.
+		var v21 := {
+			"version": 21,
+			"salvage": 8100,
+			"current_system": "pyx01",
+			"run_seed": 212121,
+			"tutorial_step": -1,
+			"survey_coverage": {"pyx01:5:5": true, "pyx01:6:6": true},
+		}
+		var f21 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f21.store_string(JSON.stringify(v21))
+		f21.close()
+		var ok21 := GameState.load_game()
+		var carried: bool = GameState.survey_coverage.size() == 2 \
+			and GameState.is_survey_worked("pyx01:5:5")
+		var all_unfiled: bool = GameState.survey_filed.is_empty() \
+			and GameState.unfiled_cells("pyx01").size() == 2
+		var no_sightings: bool = GameState.structures_seen.is_empty()
+
+		# The rubbish pass. Both stores at once, because each has a filter the
+		# other does not: filed is validated against COVERAGE (a filed key for a
+		# cell you never surveyed is meaningless whatever its shape), and
+		# structures_seen is validated against the GENERATOR (an index past what
+		# hyper_positions returns names a structure that is not there).
+		var n0 := SystemDB.hyper_positions("pyx01", 212121).size()
+		var dirty22 := {
+			"version": 22,
+			"salvage": 8100,
+			"run_seed": 212121,
+			"tutorial_step": -1,
+			"survey_coverage": {"pyx01:5:5": true, "pyx01:6:6": true},
+			"survey_filed": {
+				"pyx01:5:5": true,        # good -- in coverage
+				"pyx01:9:9": true,        # not in coverage: dropped
+				"pyx01:6:6": false,       # falsey: dropped
+				"rubbish": true,          # not in coverage either
+			},
+			"structures_seen": {
+				"pyx01:0": true,          # good, if the generator authored one
+				"pyx01:%d" % (n0 + 5): true,   # index past the end
+				"pyx99:0": true,          # unknown system
+				"pyx01:abc": true,        # index not a number
+				"nocolon": true,          # shape
+				"pyx01:-1": true,         # negative
+			},
+		}
+		var fd22 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fd22.store_string(JSON.stringify(dirty22))
+		fd22.close()
+		GameState.load_game()
+		var want_seen := 1 if n0 > 0 else 0
+		var cleaned22: bool = GameState.survey_filed.size() == 1 \
+			and GameState.is_survey_filed("pyx01:5:5") \
+			and not GameState.is_survey_filed("pyx01:9:9") \
+			and GameState.structures_seen.size() == want_seen \
+			and not GameState.is_structure_seen("pyx99:0")
+		# AND THE INVARIANT SURVIVES A FILE, which is the one a loader can break
+		# on its own: filed must still be a subset of coverage after loading
+		# rubbish that tried to put a stranger in it.
+		var subset22 := true
+		for k_v in GameState.survey_filed:
+			if not GameState.survey_coverage.has(String(k_v)):
+				subset22 = false
+		print("[savetest] v21->v22 A V21 SAVE ARRIVES WITH EVERYTHING UNFILED coverage carried=%s, nothing filed=%s, no sightings=%s; rubbish pass kept 1 of 4 filed and %d of 6 sightings=%s, filed still a subset=%s -> %s" % [
+			str(carried), str(all_unfiled), str(no_sightings),
+			GameState.structures_seen.size(), str(cleaned22), str(subset22),
+			"PASS" if ok21 and carried and all_unfiled and no_sightings
+				and cleaned22 and subset22 else "FAIL"])
 	elif mode == "future":
 		# A SAVE FROM A NEWER BUILD. Refusing to load it was never the hard
 		# part — that clause has always been there. What it did NOT do was stop
@@ -15222,6 +15381,19 @@ func _run_save_test() -> void:
 			str(GameState.survey_coverage.size() == 3),
 			str(not GameState.is_survey_worked("pyx02:7:-3")),
 			"PASS" if cov_ok else "FAIL"])
+		# v22: exactly ONE of the three is filed, which is the state that
+		# distinguishes a working filed store from one that lost or invented
+		# entries -- all-filed and none-filed both round-trip a broken loader.
+		var filed_ok: bool = GameState.is_survey_filed("pyx01:12:5") \
+			and not GameState.is_survey_filed("pyx01:7:-3") \
+			and not GameState.is_survey_filed("pyx02:-4:19") \
+			and GameState.unfiled_cells().size() == 2 \
+			and GameState.is_structure_seen(GameState.colony_key("pyx01", 0))
+		print("[savetest] v22 FILED AND SIGHTED 1 of 3 cells filed=%s, %d unfiled, 1 structure sighted=%s -> %s" % [
+			str(GameState.is_survey_filed("pyx01:12:5")),
+			GameState.unfiled_cells().size(),
+			str(GameState.is_structure_seen(GameState.colony_key("pyx01", 0))),
+			"PASS" if filed_ok else "FAIL"])
 		print("[savetest] v10 LOGBOOK ledger %s, name '%s' (%d chars, cap %d) -> %s" % [
 			str(GameState.ledger), GameState.ship_name, GameState.ship_name.length(),
 			GameState.SHIP_NAME_MAX, "PASS" if led_ok and name_ok else "FAIL"])

@@ -6034,7 +6034,7 @@ to whichever number makes it green.
 | # | what | save | status |
 |---|---|---|---|
 | 0 | pay §41's `MIDTIER` re-derivation — measurement and a decision, not a feature | none | **not built** |
-| 1 | marks: a `filed` flag on coverage, and a store for hyper structures SEEN but not claimed | **v22** | **not built** |
+| 1 | marks: `survey_filed` as a second set, and `structures_seen` for hyper structures seen but not claimed | **v22** | **BUILT** — §82 |
 | 2 | the counter pays a first-filing bonus, once ever per cell | none | **not built** |
 | 3 | a rival cartographer — evidence only, a pure function of (system, run_seed, played_seconds), zero save | none | **not built** |
 | 4 | THE UNSOUNDED answers: one authored multi-expedition structure per system past 5,200u | **v23** | **not built** |
@@ -8628,3 +8628,76 @@ name and joined to the PASS clause. That single word is what turned the second
 red from three files of digging into one glance — `accepted=false` names the
 refusal — and it is why the wrong first fix cost one re-run rather than an
 afternoon.
+
+## 82. What the chart records (v22)
+
+Horizon 7's first build, and the smallest useful piece of it: the two stores the
+rest of the horizon needs, with no pricing attached to either. §80 made the deep
+remember where you worked; this records **what that memory is worth so far** —
+which of those cells you have sold, and which structures you have merely seen.
+
+### Two sets, not a flag, and the migration is the reason
+
+The obvious shape is `survey_coverage[key] = {"filed": bool}` — one store, one
+concept. It was rejected for what it does to the file: changing the value shape
+means every v21 pilot's real work migrates through a new branch on load.
+
+`survey_filed` as a **separate set** means `survey_coverage` is untouched, byte
+for byte, and loads through the loader it always did. An absent `survey_filed`
+is "nothing filed yet", which is exactly true of every v21 pilot — and it is the
+generous reading as well as the correct one: work already done keeps its
+first-filing bonus. Defaults-not-branches with no branch at all.
+
+The cost is an invariant to hold rather than a shape that enforces itself:
+**filed is a subset of coverage.** `note_survey_filed` refuses a cell that is
+not in coverage, `_load_survey_filed` filters against coverage rather than
+against a shape, and `_enforce_survey_cap` evicts from both together — because a
+filed key outliving its coverage key would be a second store growing without a
+bound of its own, which is the thing §17 refuses and §80 answered by
+construction. Three enforcement points, one assertion each way.
+
+### A sighting was information the player earned and the game threw away
+
+Hyper structures are 3–5 per system, always present, at depth 1600–4200, with no
+radar tier and no chart layer until claimed. The silhouette argument in
+`hyper_structure.gd` is deliberate and stands: the mesh reads at ~1000u, so
+finding one is roughly a fifty-minute circumferential sweep — an expedition, not
+a lottery.
+
+What did not stand is losing the result. Fly past one, get driven off by its
+three wardens, and there was **nowhere for "it is THERE" to live.** Fifty
+minutes of search, and the only record was the player's memory.
+
+`structures_seen` is keyed `"system:index"` — `colonies`' own shape, because it
+is the same thing at an earlier stage — and the sighting is recorded at
+`SIGHT_RANGE`, derived from the silhouette argument rather than picked. It is
+checked **before** the claimed/woken early return in `_process`, because being
+driven off is precisely the case it exists for.
+
+It stores **no position.** `hyper_positions` is a pure function of
+`(system, run_seed)` and the chart already calls it, so a stored coordinate
+would be a second copy that could disagree with the generator. The store answers
+one question — *have you seen this one* — and the generator answers where.
+
+**It needs no cap**, and that is a property rather than an oversight: the
+generator authors at most `HYPER_MAX` per system, so the store is bounded at
+fifteen entries across the whole game. Asserted against `hyper_positions()`
+rather than against a literal, so a retune of `HYPER_MIN`/`HYPER_MAX` moves the
+bound with it.
+
+The chart draws a sighting as a **hollow diamond** — the colony's square turned
+forty-five degrees. The shape says "this kind of thing", the rotation says "not
+yours yet", and neither reading depends on colour (§30).
+
+### What is deliberately not here
+
+**No pricing.** The first-filing bonus is the next commit, and it lands *after*
+§41's `MIDTIER` re-derivation, because adding an income shape on top of an
+unresolved bar means tuning two things at once and knowing which moved neither.
+This commit adds a store and changes no economy at all.
+
+Worth recording alongside it: §80 spent **0.097 mid-tier modules** of the
+[0.60, 3.00] band — 4% of its width — so the debt §64 has been carrying is
+smaller than it reads. What §41 actually asks is whether `lance_1` is still a
+mid-tier reference after the Mk II tiers grew the catalog 84%, and that is a
+question for PACINGTEST's printed numbers rather than its verdict.

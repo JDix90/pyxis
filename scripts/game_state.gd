@@ -33,7 +33,7 @@ signal lane_opened(id: String)
 signal standing_shifted(other: String, delta: int, band: int)
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 21
+const SAVE_VERSION := 22
 const SAVE_DEBOUNCE := 1.0
 
 # v6 defaults. Kept as one dictionary each so a migration only has to merge
@@ -263,6 +263,30 @@ var seams_cut := {}
 # intel dossier's own posture, enforced on write and re-enforced by the loader.
 # Bounded by construction, not by hope. See 80.
 var survey_coverage := {}
+# v22. WHICH OF THOSE HAVE BEEN SOLD. A SEPARATE SET rather than a `filed` flag
+# on the value above, and the reason is the migration: leaving survey_coverage
+# as key->true means a v21 file loads through the SAME loader it always did,
+# byte for byte, and an absent survey_filed is simply "nothing has been filed
+# yet" -- which is exactly true of every v21 pilot. Defaults-not-branches with
+# no branch at all, against a store that already holds the player's real work.
+#
+# INVARIANT: filed is a SUBSET of coverage, and the cap evicts them together.
+# A filed key surviving its coverage key would grow without a bound of its own,
+# which is the thing 17 refuses and 80 answered by construction.
+var survey_filed := {}
+# v22. HYPER STRUCTURES THE PLAYER HAS SEEN, keyed "system:index" -- the SAME
+# shape `colonies` uses, because it is the same thing at an earlier stage.
+#
+# The silhouette design (hyper_structure.gd) is deliberate: 3-5 per system, no
+# radar tier, visible at ~1000u, so finding one is a ~54-minute sweep rather
+# than a lottery. That stands. What did not stand is losing the result: fly
+# past one, get driven off by its wardens, and there was nowhere for "it is
+# THERE" to live. The search stays hard; the answer stops evaporating.
+#
+# NEEDS NO CAP, and that is a property of the generator rather than a hope --
+# hyper_positions returns at most HYPER_MAX per system, so this is bounded at
+# 15 entries across the whole game. Asserted against the generator.
+var structures_seen := {}
 
 # v16. THE INTEL DOSSIER. Keyed by system id; each value is an Array of hint
 # dictionaries the player has PAID FOR or EARNED, and together they are the only
@@ -1107,6 +1131,8 @@ func reset_to_starter() -> void:
 	persuasion_xp = 0
 	seams_cut = {}
 	survey_coverage = {}
+	survey_filed = {}
+	structures_seen = {}
 	apex_intel = {}
 	beacons = {}
 	colonies = {}
@@ -1503,6 +1529,118 @@ func _enforce_survey_cap(system_id: String) -> void:
 			mine.append(String(k_v))
 	for i in range(0, mine.size() - SURVEY_CELL_CAP):
 		survey_coverage.erase(mine[i])
+		# v22. AND ITS FILED FLAG, or the subset invariant breaks and the filed
+		# set becomes a second store growing with no bound of its own. A cell
+		# that has fallen out of a four-hundred-cell window is one the pilot has
+		# surveyed four hundred others since; treating it as fresh on a return
+		# is the generous reading and, more importantly, the bounded one.
+		survey_filed.erase(mine[i])
+
+
+func note_survey_filed(key: String) -> bool:
+	# Returns whether this cell had NOT been filed before -- the caller pays a
+	# first-filing bonus on true and nothing on false. Refuses to file a cell
+	# that is not in coverage at all, which is what keeps filed a subset rather
+	# than a parallel store that could disagree with it.
+	if not survey_coverage.has(key) or survey_filed.has(key):
+		return false
+	survey_filed[key] = true
+	_queue_save()
+	return true
+
+
+func is_survey_filed(key: String) -> bool:
+	return survey_filed.has(key)
+
+
+func unfiled_cells(system_id := "") -> Array:
+	# Coverage minus filed, optionally for one system. The pricing half of this
+	# lands in the next commit; the accessor is here because the store is here,
+	# and because a UI that wants to say "eleven unfiled" should not be walking
+	# two dictionaries itself.
+	var prefix := system_id + ":"
+	var out: Array = []
+	for k_v in survey_coverage:
+		var k := String(k_v)
+		if system_id != "" and not k.begins_with(prefix):
+			continue
+		if not survey_filed.has(k):
+			out.append(k)
+	return out
+
+
+func note_structure_seen(key: String) -> bool:
+	# Returns whether this is the FIRST sighting, so the caller can toast once
+	# rather than every frame the silhouette is in range.
+	if structures_seen.has(key):
+		return false
+	structures_seen[key] = true
+	_queue_save()
+	return true
+
+
+func is_structure_seen(key: String) -> bool:
+	return structures_seen.has(key)
+
+
+func structures_seen_in(system_id: String) -> Array:
+	# [{key, index}] for one system, in index order so a UI built from it is
+	# stable between frames -- colonies_in's shape and colonies_in's reason.
+	# Position is deliberately NOT stored: hyper_positions is a pure function of
+	# (system, run_seed) and the chart already calls it, so storing coordinates
+	# would be a second copy that could disagree with the generator.
+	var out: Array = []
+	var prefix := system_id + ":"
+	var keys: Array = structures_seen.keys()
+	keys.sort()
+	for k_v in keys:
+		var k := String(k_v)
+		if not k.begins_with(prefix):
+			continue
+		var bits := k.split(":")
+		if bits.size() != 2:
+			continue
+		out.append({"key": k, "index": int(bits[1])})
+	return out
+
+
+func _load_survey_filed(saved: Dictionary) -> void:
+	# Filtered against COVERAGE rather than against a shape, which is the
+	# stronger test and the one the invariant actually needs: a filed key naming
+	# a cell this pilot has not surveyed is meaningless whatever it looks like.
+	# _load_warehouse validates bay keys against the places that exist, for the
+	# same reason.
+	survey_filed = {}
+	for key_v in saved:
+		if not bool(saved[key_v]):
+			continue
+		var key := String(key_v)
+		if survey_coverage.has(key):
+			survey_filed[key] = true
+
+
+func _load_structures_seen(saved: Dictionary) -> void:
+	# Validated against the GENERATOR, the seams_cut posture: the index must
+	# still name a structure hyper_positions actually returns. A run_seed change
+	# or a retune of HYPER_MIN/MAX must not leave this pointing at a sighting of
+	# something that is no longer there.
+	structures_seen = {}
+	for key_v in saved:
+		if not bool(saved[key_v]):
+			continue
+		var key := String(key_v)
+		var bits := key.split(":")
+		if bits.size() != 2:
+			continue
+		var sid := String(bits[0])
+		if not SystemDB.exists(sid):
+			continue
+		if not String(bits[1]).is_valid_int():
+			continue
+		var idx := int(bits[1])
+		if idx < 0 or idx >= SystemDB.hyper_positions(sid, run_seed).size():
+			continue
+		structures_seen[key] = true
 
 
 func _load_survey(saved: Dictionary) -> void:
@@ -2891,6 +3029,8 @@ func save_game() -> void:
 		"persuasion_xp": persuasion_xp,
 		"seams_cut": seams_cut,
 		"survey_coverage": survey_coverage,
+		"survey_filed": survey_filed,
+		"structures_seen": structures_seen,
 		"apex_intel": apex_intel,
 		"beacons": beacons,
 		"colonies": colonies,
@@ -3171,6 +3311,11 @@ func load_game() -> bool:
 	# pilot who has surveyed nothing -- which, before v21, is what every pilot
 	# effectively was between sessions.
 	_load_survey(data.get("survey_coverage", {}))
+	# v22. AFTER coverage, both of them, and the order is load-bearing for the
+	# first: _load_survey_filed filters against the coverage store, so it has to
+	# run once coverage is populated or every filed key is dropped as unknown.
+	_load_survey_filed(data.get("survey_filed", {}))
+	_load_structures_seen(data.get("structures_seen", {}))
 	_load_apex_intel(data.get("apex_intel", {}))
 	# v20. Beacons: no migration branch, per this file's standing rule — an
 	# absent key is an empty store and a full stock, which is exactly what a

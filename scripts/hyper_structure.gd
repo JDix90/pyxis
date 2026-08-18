@@ -45,6 +45,14 @@ const WARDEN_HP_SCALE := 2.4
 const WARDEN_DIFFICULTY := 2.6
 const WARDEN_STANDOFF := 11.0
 
+# v22. HOW NEAR BEFORE THE SIGHTING IS RECORDED. Derived from the silhouette
+# argument at the top of this file rather than picked: the mesh reads at ~1000u
+# on a 55-degree fov, so 900 is inside the range at which a player can honestly
+# say they SAW it. Deliberately not WARDEN_WAKE (260) -- the wardens are what
+# drives you off, and being driven off is precisely the case where the sighting
+# has to survive.
+const SIGHT_RANGE := 900.0
+
 # Identity, set by the spawner before add_child — the contract every field in
 # this project's spawners uses.
 var system_id := ""
@@ -118,10 +126,28 @@ func _process(delta: float) -> void:
 	if not _holding and _progress > 0.0:
 		_progress = maxf(_progress - DECAY_RATE * delta, 0.0)
 		_sync_gauge()
+	var p := get_tree().get_first_node_in_group("player")
+	if p == null:
+		return
+	var d := global_position.distance_to(p.global_position)
+
+	# v22. THE SIGHTING, recorded once ever. Checked BEFORE the claimed/woken
+	# early return below, because a structure you found and could not take is
+	# the exact case this exists for -- the wardens drive you off, and without
+	# this the only thing you learned in fifty minutes of sweeping evaporates.
+	# GameState refuses the repeat, so this is one dictionary lookup per frame
+	# per instance and no toast after the first.
+	if d <= SIGHT_RANGE and system_id != "" and index >= 0:
+		if GameState.note_structure_seen(claim_key()):
+			var hud := get_tree().get_first_node_in_group("hud")
+			if hud != null and hud.has_method("show_toast"):
+				hud.show_toast("STRUCTURE SIGHTED — %s · FILED ON THE CHART"
+					% designation(), Palette.GOLD)
+			Sfx.play("equip", -12.0, 0.85)
+
 	if _woken or is_claimed():
 		return
-	var p := get_tree().get_first_node_in_group("player")
-	if p != null and global_position.distance_to(p.global_position) <= WARDEN_WAKE:
+	if d <= WARDEN_WAKE:
 		_wake_wardens()
 
 
