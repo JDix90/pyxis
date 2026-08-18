@@ -691,6 +691,17 @@ func _ready() -> void:
 	# itself as its first act, and reset_to_starter() does not queue a save.
 	if harness_running():
 		GameState.reset_to_starter()
+		# AND RE-SYNC THE NODES THAT COPIED STATE OUT BEFORE THE PIN. Contracts
+		# restores in its _ready -- which fired when it was added to the tree,
+		# a hundred lines above this block -- so its `active` array is already
+		# holding whatever the developer's pilot was carrying, and resetting
+		# GameState alone leaves that copy alive. Found red on a live save:
+		# ACTIVE_SLOTS is 2, a week of playtesting had both slots full, and
+		# HOLDTEST's delivery leg could not accept its contract -- the suite
+		# measured against whatever that person last did, which is the exact
+		# sentence at the top of this block. Any future node that caches save
+		# state in _ready must be re-synced here too.
+		contracts._restore()
 		# AND PIN THE RUN SALT, which reset_to_starter has just randomised. From
 		# v15 the hunt hides the apex engine at a position derived from run_seed,
 		# so a harness that let it roll would be measuring a world that moved on
@@ -6165,7 +6176,11 @@ func _run_hold_test() -> void:
 	# The delivery path, driven the way docking drives it: accept the real
 	# contract, carry exactly what it asks, dock where it points.
 	GameState.cargo = {}
-	contracts.accept("haul_alloys")
+	# CAPTURED, not fired and forgotten. When this leg went red on a live save
+	# the output said "12->12" and the cause -- accept() refusing on full slots
+	# -- had to be dug out of three files. A staged precondition that can fail
+	# reports its own failure, by name.
+	var accepted := contracts.accept("haul_alloys")
 	GameState.load_cargo("alloys", 6)
 	hud.refresh_cargo()
 	var dock_before := GameState.cargo_used()
@@ -6175,10 +6190,10 @@ func _run_hold_test() -> void:
 	var want_dock := "HOLD %d/%d" % [GameState.cargo_used(), GameState.cargo_capacity()]
 	var both_fired: bool = spilled > 0 and used_before > GameState.cargo_used() + 0 \
 		and dock_before > 0 and GameState.cargo_count("alloys") == 0
-	print("[hold] THE READOUT FOLLOWS THE HOLD spill %d units '%s'->'%s' (want '%s'); delivery settled %d->%d '%s' (want '%s'); both paths fired=%s -> %s" % [
-		spilled, readout_before, readout_spill, want_spill,
+	print("[hold] THE READOUT FOLLOWS THE HOLD spill %d units '%s'->'%s' (want '%s'); contract accepted=%s, delivery settled %d->%d '%s' (want '%s'); both paths fired=%s -> %s" % [
+		spilled, readout_before, readout_spill, want_spill, str(accepted),
 		dock_before, GameState.cargo_used(), readout_dock, want_dock, str(both_fired),
-		"PASS" if both_fired and readout_spill == want_spill \
+		"PASS" if accepted and both_fired and readout_spill == want_spill \
 			and readout_dock == want_dock else "FAIL"])
 
 	# --- v16. THE HOLD SCREEN -------------------------------------------------

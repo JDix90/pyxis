@@ -8537,3 +8537,50 @@ keeps it session-only on §17's original grounds.
 nothing holds under persistence — but its comment claimed once-per-session, and
 now says once ever: a berth you charted last week stays charted, which is the
 same statement the chart itself now makes.
+
+## 81. The suite measured a playthrough
+
+The first full sweep of Horizon 6 came back 691 of 692 — one red, in HOLDTEST,
+a suite none of the horizon's commits touched:
+
+```
+[hold] THE READOUT FOLLOWS THE HOLD spill 3 units 'HOLD 10/24'->'HOLD 4/24'
+(want 'HOLD 4/24'); delivery settled 12->12 ... both paths fired=false -> FAIL
+```
+
+Every string in that line matches its want. What failed was the staged
+precondition: `contracts.accept("haul_alloys")` refused, so there was no
+delivery to settle and `12->12` was the delivery not existing.
+
+### Why it refused, and why only now
+
+The pin block in `main._ready` exists for exactly this: GameState has already
+loaded the developer's real save by the time harnesses run, so
+`reset_to_starter()` pins the state "or every assertion in the suite is
+measured against whatever that person last did." Its own words.
+
+But `Contracts` is a **node**, created a hundred lines earlier, and its
+`_ready` → `_restore()` had already copied the pilot's active contracts into
+its own `active` array. Resetting GameState cleared `contract_state` and left
+that copy alive. `ACTIVE_SLOTS` is 2; a week of playtesting had both slots
+full; `accept()` returned false on `slots_free() <= 0`. The leg had been green
+on every earlier sweep only because the developer's save happened to have a
+slot open — a latent dependency on live state, sitting inside the very
+mechanism built to remove it.
+
+CONTRACTTEST and PACINGTEST never saw it because both clear `contracts.active`
+by hand before using it — each leg quietly not trusting the pin, without
+anyone noticing that was what the clearing meant.
+
+### The fix is at the pin, not the leg
+
+The pin block now re-syncs the node: `contracts._restore()` immediately after
+`reset_to_starter()`, reading the freshly cleared state. Every harness gets
+clean slots, including the two that were already clearing by hand. The rule it
+adds, stated where the pin lives: **any future node that caches save state in
+`_ready` must be re-synced there too.**
+
+And the leg now captures what it stages: `accept()`'s return is printed by
+name and joined to the PASS clause, so a recurrence says `accepted=false` in
+the output instead of hiding as a delivery that settled `12->12` — the cause
+took three files of digging that one word would have saved.
