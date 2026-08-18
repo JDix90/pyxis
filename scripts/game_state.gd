@@ -33,7 +33,7 @@ signal lane_opened(id: String)
 signal standing_shifted(other: String, delta: int, band: int)
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 20
+const SAVE_VERSION := 21
 const SAVE_DEBOUNCE := 1.0
 
 # v6 defaults. Kept as one dictionary each so a migration only has to merge
@@ -251,6 +251,18 @@ var persuasion_xp := 0
 # The KEY is the system id and the asteroid's ARRAY INDEX, so reordering an
 # `asteroids` array in system_db.gd silently rekeys a player's cut seams.
 var seams_cut := {}
+# v21. WORKED SURVEY CELLS, persistent. Keyed "system:cx:cz" -- DeepSpace's own
+# cell_key shape, the one warehouse already uses -- because a bare Vector2i is
+# the same key in every Pyx and the whole point of qualifying is that pyx01's
+# (7,-3) and pyx02's (7,-3) are different places.
+#
+# THIS REVERSES 17's SESSION-ONLY RULE, and the reversal is answered rather
+# than waved at: 17 refused a VISITED-cells array, which grows every minute the
+# player flies. This records only cells where a mast was WORKED -- earned, not
+# travelled -- and it is capped per system with oldest-first eviction, the
+# intel dossier's own posture, enforced on write and re-enforced by the loader.
+# Bounded by construction, not by hope. See 80.
+var survey_coverage := {}
 
 # v16. THE INTEL DOSSIER. Keyed by system id; each value is an Array of hint
 # dictionaries the player has PAID FOR or EARNED, and together they are the only
@@ -1094,6 +1106,7 @@ func reset_to_starter() -> void:
 	persuasion = 0
 	persuasion_xp = 0
 	seams_cut = {}
+	survey_coverage = {}
 	apex_intel = {}
 	beacons = {}
 	colonies = {}
@@ -1451,6 +1464,72 @@ func _load_seams_cut(saved: Dictionary) -> void:
 			continue                       # 4. and must still name a real rock
 		if bool(saved[key_v]):
 			seams_cut[key] = true          # 5. falsey values dropped, not kept
+
+
+# --- survey coverage (v21) ----------------------------------------------------
+
+# Generous against real play -- masts ride deep hulks, so a long session works
+# a few dozen cells -- and small against the file: 400 short strings. What it
+# buys is the property 17 demanded: the store cannot grow without bound, so
+# "the save grows every minute the player flies" stays refused even though the
+# session-only rule is gone.
+const SURVEY_CELL_CAP := 400
+
+
+func note_survey_worked(key: String) -> bool:
+	# Returns whether this was NEW coverage, so a caller that pays for a first
+	# reading can refuse to pay for a repeat. Insertion order is eviction order:
+	# GDScript dictionaries keep it, which is the same property the eviction in
+	# _enforce_survey_cap and the loader both lean on.
+	if survey_coverage.has(key):
+		return false
+	survey_coverage[key] = true
+	_enforce_survey_cap(String(key.split(":")[0]))
+	_queue_save()
+	return true
+
+
+func is_survey_worked(key: String) -> bool:
+	return survey_coverage.has(key)
+
+
+func _enforce_survey_cap(system_id: String) -> void:
+	# Oldest first, and only within the one system that grew: coverage in pyx02
+	# must never be what pyx01's four-hundred-and-first mast evicts.
+	var prefix := system_id + ":"
+	var mine: Array = []
+	for k_v in survey_coverage:
+		if String(k_v).begins_with(prefix):
+			mine.append(String(k_v))
+	for i in range(0, mine.size() - SURVEY_CELL_CAP):
+		survey_coverage.erase(mine[i])
+
+
+func _load_survey(saved: Dictionary) -> void:
+	# _load_seams_cut's posture: reset, then filter, dropping rather than
+	# crashing. Entries are INSERTED THROUGH THE SAME CAP the write path uses,
+	# in file order -- so an over-cap file loads as its newest CAP entries, the
+	# same set the write path would have left, and the two enforcement points
+	# cannot disagree.
+	survey_coverage = {}
+	for key_v in saved:
+		if not bool(saved[key_v]):
+			continue                        # 1. falsey values dropped, not kept
+		var key := String(key_v)
+		var bits := key.split(":")
+		if bits.size() != 3:
+			continue                        # 2. shape is system:cx:cz
+		if not SystemDB.exists(String(bits[0])):
+			continue                        # 3. the system must still exist
+		if not String(bits[1]).is_valid_int() or not String(bits[2]).is_valid_int():
+			continue                        # 4. both coordinates are integers
+		if absi(int(bits[1])) > 1 << 20 or absi(int(bits[2])) > 1 << 20:
+			continue                        # 5. and name a cell that can exist --
+			                                #    the rift sentinel is 0x7ffffff,
+			                                #    and a chart scale fed that cell
+			                                #    would span 8.6e9 units
+		survey_coverage[key] = true
+		_enforce_survey_cap(String(bits[0]))
 
 
 # --- waypoint beacons (v20, Hunt stage 5) ------------------------------------
@@ -2811,6 +2890,7 @@ func save_game() -> void:
 		"persuasion": persuasion,
 		"persuasion_xp": persuasion_xp,
 		"seams_cut": seams_cut,
+		"survey_coverage": survey_coverage,
 		"apex_intel": apex_intel,
 		"beacons": beacons,
 		"colonies": colonies,
@@ -3087,6 +3167,10 @@ func load_game() -> bool:
 	persuasion = clampi(int(data.get("persuasion", 0)), 0, PERSUASION_TIERS.size() - 1)
 	persuasion_xp = maxi(int(data.get("persuasion_xp", 0)), 0)
 	_load_seams_cut(data.get("seams_cut", {}))
+	# v21. Defaults-not-branches: a v20 file has no key, gets {}, and loads as a
+	# pilot who has surveyed nothing -- which, before v21, is what every pilot
+	# effectively was between sessions.
+	_load_survey(data.get("survey_coverage", {}))
 	_load_apex_intel(data.get("apex_intel", {}))
 	# v20. Beacons: no migration branch, per this file's standing rule — an
 	# absent key is an empty store and a full stock, which is exactly what a

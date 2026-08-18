@@ -64,7 +64,11 @@ func _build() -> void:
 	mast.band = band
 	mast.survey_time = 3.0 + 0.5 * float(band - 1)
 	# A rift has no cell of its own; the sentinel cell keeps note_surveyed
-	# harmless while the mast still pays its chart packet.
+	# harmless while the mast still pays its chart packet. v21: note_surveyed
+	# now REJECTS this sentinel at the door rather than storing it -- coverage
+	# persists in the save, and a stored cell at 0x7ffffff would hand the
+	# chart's fit-to-content scale an 8.6e9-unit radius. Same outcome for this
+	# mast (surveying it pays, nothing is recorded), enforced one layer down.
 	mast.cell = Vector2i(0x7ffffff, 0x7ffffff)
 	add_child(mast)
 	mast.position = Vector3(0, 0, 4.0)

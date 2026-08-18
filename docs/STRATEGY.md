@@ -581,6 +581,13 @@ truth, so stability is provable rather than asserted, and a harness can compare
 two visits without flying there twice. Revisiting a sector costs zero bytes; the
 alternative, a visited-cells array, would grow every minute the player flies.
 
+*(v21, §80: survey coverage now persists, and it does not breach this rule —
+it is not a visited-cells array. It records only cells where a mast was
+**worked**, one write per deliberate act rather than per minute flown — §26's
+"passive growth" distinction, applied a second time — and it is capped per
+system with oldest-first eviction. The generation itself remains pure and
+unsaved; what is stored is what the player did, never what the world is.)*
+
 Streaming is 5×5 cells of 64u, torn down at 7×7. The gap is hysteresis, and the
 sizing is load-bearing: crossing into a new cell adds a column whose nearest edge
 is 128u away against a visible half-extent of ~34u, so content always appears and
@@ -1343,13 +1350,21 @@ is not cargo — and would have made a pure explorer's weighted hold never cross
 playstyle and voiding §17's "no range at which a full hold is safe." At 0.5, the
 Forged Manifest's own number, an explorer is **quiet, not invisible**.
 
-### A survey resets on warp, and that is asserted on purpose
+### A survey resets on warp ~~, and that is asserted on purpose~~ — REVERSED, v21
 
-`_surveyed` is session-only, like `_sprung`. Persisting it would be a
-visited-cells array by another name — the thing §17 refuses because it grows
-every minute the player flies. So warping resets surveys, and `SESSION RESET`
-asserts that *deliberately*: if anyone ever "fixes" it by saving the dict, the
-line turns red and forces the conversation instead of quietly growing saves.
+**This rule was reversed by §80.** It stood from v16 to v21 and worked as
+designed to the end: `SESSION RESET` existed to force a conversation before
+anyone persisted the dict, and that is exactly what happened — the leg was
+flipped to `THE CHART REMEMBERS` in the same commit that answered its
+objection. The original text follows, kept because the *argument* still
+constrains the shape of what replaced it:
+
+`_surveyed` was session-only, like `_sprung`, because persisting it naively
+would be a visited-cells array by another name — the thing §17 refuses because
+it grows every minute the player flies. §80's answer is a store that records
+**worked** cells only, capped per system with oldest-first eviction: growth per
+deliberate act, bounded by construction. `_sprung` and `_cracked` and `_mined`
+remain session-only; the growth argument still holds for all three.
 
 The farming arithmetic says the reset is safe. The near ring inside depth 60
 holds an expected 0.64 hulks, so there is no dense cluster near home to reset;
@@ -5999,14 +6014,19 @@ commits, none built yet:
 | 3 | per-PYX deep identity + one signature content class per system | none | **BUILT** — §76 |
 | 4 | chart legibility: fit-to-content scale, ship marker, band rings, legend, pan/zoom | none | **BUILT** — §78 |
 | 5 | beacon navigation: set-course autopilot and a depth-capped paid jump, same-PYX only | none | **BUILT** — §79 |
-| 6 | persistent per-PYX survey coverage | **v21** | **not built** |
+| 6 | persistent per-PYX survey coverage | **v21** | **BUILT** — §80 |
 | — | a static parse pre-flight that runs without the Godot binary | none | **BUILT** — §77 |
 
-Two of these reverse recorded decisions and neither may be done quietly: commit
-6 reverses §22's session-only survey rule, whose `SESSION RESET` assertion exists
-specifically to force this conversation, and commit 3 rewrites `IDENTITY IS
-ADDITIVE` so PYX-01 may author presentation-only identity. **§41's `MIDTIER`
-re-derivation is now due** — commit 6 is income.
+Both reversals are now done and neither was quiet: commit 6 reversed §22's
+session-only survey rule (the `SESSION RESET` assertion forced exactly the
+conversation it existed to force — §80), and commit 3 rewrote `IDENTITY IS
+ADDITIVE` (§76). **§41's `MIDTIER` re-derivation is still owed, and commit 6
+sharpened it rather than paying it**: persistence moved surveys OUT of the
+recurring term — income-negative, not income-positive — so `STEADY MIDTIER`
+now measures an honestly poorer loop against the same [0.60, 3.00] band. If
+the next sweep turns that leg red, that IS the re-derivation arriving: the
+answer is a decision about yields or the band, taken in the open, not a nudge
+to whichever number makes it green.
 
 **The README's harness counts should be derived, not typed** (open 2026-08-17,
 §77). Three numbers — tag count, SAVETEST mode count, total runs — are
@@ -6067,8 +6087,11 @@ this one said otherwise for two weeks after it shipped; see §73.
 been outstanding since §65 and stage 4 was the work that made it due — a rift
 depth extension is INCOME, not a sink, and stages 1-3 could be measured against a
 bar nobody had re-derived only because none of them could move it. Stage 4 shipped
-without it. **It is still owed, and it is now owed by whatever adds income next**
-— which Horizon 6's survey-coverage persistence does. No save bump was spent
+without it. **It is still owed, and it is now owed by whatever moves income next**
+— which Horizon 6's survey-coverage persistence did, in the negative
+direction: §80 moved surveys out of the recurring term, so the steady loop is
+measured poorer, not richer. See the §64 note above on what a red `STEADY
+MIDTIER` now means. No save bump was spent
 anywhere in this horizon: deep space persists nothing, and module and commodity
 ids flow through the existing generic `owned`/`fit`/cargo paths.
 
@@ -8408,3 +8431,109 @@ honest. The radar promotion needed no such row: the destination beacon borrows
 `TIER_HOME`'s exemption rather than taking a tier of its own, precisely so
 `TIER_NAMES` does not grow and demand a legend row for a *state* rather than a
 kind of thing.
+
+## 80. The chart remembers (v21)
+
+The last of the five playtest notes to land, and the one that reverses a
+recorded decision: survey coverage now persists in the save. §22's session-only
+rule stood from v16 to v21, and its `SESSION RESET` assertion did the job its
+comment promised — it forced this conversation instead of letting someone
+quietly save the dict. This section is the conversation.
+
+### The growth argument, answered rather than waved at
+
+§17 refuses a **visited-cells** array because it grows every minute the player
+flies — passive growth, proportional to distance. What ships is not that array:
+
+- **Worked, not travelled.** A cell enters the store when a mast is worked or a
+  deep berth is first docked — one write per deliberate act. Flying charts
+  nothing. This is §26's passive-growth distinction, applied a second time.
+- **Capped by construction.** 400 cells per system, oldest evicted first — the
+  intel dossier's posture. Enforced on write, and the loader inserts through
+  the same cap so the two enforcement points cannot disagree: an over-cap file
+  loads as its newest 400, the same set the write path would have left.
+- **System-qualified from the first key.** The old dict keyed on bare
+  `Vector2i`, so pyx01's (7,-3) and pyx02's (7,-3) were one key. Persist that
+  and a survey here marks a cell *there*. Keys are `"pyx01:7:-3"` — the
+  warehouse's shape — and the store lives in GameState, where qualified keys
+  belong.
+
+### There is no session dict any more, and that is the fix
+
+`_surveyed` is deleted, not seeded. `note_surveyed` and `is_surveyed` write and
+read GameState directly, which makes the two old wipe paths impossible by
+construction rather than guarded against: a warp frees the DeepSpace node, and
+a colour-vision change calls `rebuild()` → `_despawn_all()` → clear-every-dict
+— **two taps from the pause menu used to erase every survey of the session**,
+undocumented. Neither path can erase state the node does not hold.
+`COVERAGE SURVIVES A COLOUR CHANGE` pins that against anyone reintroducing a
+cache here. `_cracked`, `_mined` and `_sprung` stay session-only — the growth
+argument still holds for all three, and §22's amended text says so.
+
+The rift sentinel is rejected at `note_surveyed` itself, not in the loader. A
+rift stamps its mast with cell `(0x7ffffff, 0x7ffffff)`; stored, that key
+survives to the chart, whose fit-to-content scale would be asked to span 8.6e9
+units. In-memory hygiene, not just file hygiene — the loader filters it too,
+but the loader is the second line, not the first.
+
+### One version bump, no migration branch
+
+`SAVE_VERSION` 20 → 21. An absent `survey_coverage` key is an empty store,
+which is exactly what every v20 pilot effectively had between sessions —
+nothing is lost that anyone ever kept. The `migrate20` SAVETEST leg carries the
+usual rubbish pass (shapes, unknown systems, non-integer coordinates, the
+sentinel, falsey values, and a flood past the cap), because an absent key and a
+rejected one look identical from an empty store — migrate19's red-verify
+lesson, inherited.
+
+The v20 `last_colony_jump` → `last_outbound_jump` rename from §79 rides the
+same fixture: the loader reads the legacy key as the default for the new one,
+so a hot cooldown does not come back cold.
+
+### The income model stops pretending
+
+`PACING_LOOP` counted two surveys per loop as recurring income, priced at band
+2 — the ring a standard loop reaches. Persistence burns that ring: each cell
+pays once ever, so a recurring rate that includes them over-reports by two
+readings a loop, silently, while every assertion passes. `STEADY` now subtracts
+surveys the way it subtracts the derelict, and the prospector's route subtracts
+its own survey term so `ROUTE PARITY` compares recurring against recurring.
+
+Stated as the accepted trade, not hidden: **chart income is not capped, it is
+converted** — from a warp-reset farm into an outward treadmill. The expanse is
+unbounded, so there is always a fresh cell, but it is always further out, and
+the burned near ring is precisely the region a low-tier ship can reach. That
+is the design speaking: depth is the difficulty axis, and the chart now
+enforces it instead of refunding it every warp.
+
+### What the chart shows for it
+
+Surveyed cells draw on the plot as faint filled squares, world-sized — they
+scale with zoom, which is what separates them by shape from the colony marker's
+fixed-size outline under §30's rule — in the band colour of where they sit,
+under every other layer. The legend gains SURVEYED only when coverage exists.
+
+Coverage is drawn but **not fitted to**, and since §78 promised this decision
+would be made when persistence landed: the fit frames what you can act on now —
+ship, beacons, colonies, the live hunt. Coverage is history, and one far cell
+surveyed months ago would zoom every future look at the system out to it,
+permanently, shrinking the working picture to pay for a memory. The chart pans
+and zooms; history is reachable, not resident.
+
+### What flipped, what grew
+
+`SESSION RESET` became `THE CHART REMEMBERS`, asserted in both directions — a
+loader that marked everything surveyed passes the survival half perfectly, so
+the never-surveyed cell must still read false after the same rebuild. New:
+`THE STORE IS SYSTEM-QUALIFIED`, `THE SENTINEL NEVER LANDS`,
+`COVERAGE SURVIVES A COLOUR CHANGE`, `THE CAP EVICTS THE OLDEST` (in one
+system only — pyx02's coverage must not be what pyx01's four-hundred-and-first
+mast evicts), the `v21 COVERAGE` write/read sentinels, and `migrate20`.
+MINETEST's unrelated `SESSION RESET` — mined state — is deliberately untouched,
+and `note_mined`'s comment now draws the earned-versus-travelled line that
+keeps it session-only on §17's original grounds.
+
+`DOCK GRANTS` needed no assertion change — first-berth-grants, redock-grants-
+nothing holds under persistence — but its comment claimed once-per-session, and
+now says once ever: a berth you charted last week stays charted, which is the
+same statement the chart itself now makes.

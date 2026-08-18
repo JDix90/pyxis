@@ -3934,8 +3934,10 @@ func _complete_dock(port: Port) -> void:
 	# Docking a deep station IS surveying it: you demonstrably hold its
 	# coordinates. Granted here rather than via a mast because a mast within
 	# PICK_PX of a station would intercept docking taps — CameraRig checks
-	# `crackable` before `dockable`. Keyed on the cell like every other reading,
-	# so it is once per session and resets on warp with the rest of the expanse.
+	# `crackable` before `dockable`. Keyed on the cell like every other reading
+	# — and v21 made coverage persistent (80), so this berth grant is ONCE EVER
+	# per station, not once per session. A berth you charted last week stays
+	# charted, which is the same statement the chart itself now makes.
 	if DeepPortDB.is_deep_port(port.port_id) and deep_space != null:
 		var cell := DeepSpace.cell_of(port.global_position)
 		if not deep_space.is_surveyed(cell):
@@ -6642,19 +6644,81 @@ func _run_cart_test() -> void:
 	probe.queue_free()
 	probe2.queue_free()
 
-	# 7. SESSION RESET, asserted ON PURPOSE. _surveyed is session-only for the
-	#    reason 17 gives — persisting it would be a visited-cells array by
-	#    another name, growing every minute the player flies. So a warp resets
-	#    surveys, and if anyone ever "fixes" that by saving the dict, this line
-	#    turns red and forces the conversation instead of silently growing saves.
+	# 7. THE CHART REMEMBERS — the deliberate reversal of the SESSION RESET leg
+	#    that stood here from v16 to v21. That leg existed to force this exact
+	#    conversation ("if anyone ever fixes that by saving the dict, this line
+	#    turns red"), and it did: 80 reverses 17's session-only rule under a
+	#    per-system cap, so coverage now survives the warp.
+	#
+	#    ASSERTED IN BOTH DIRECTIONS, because a loader that marked every cell
+	#    surveyed would pass the survival half perfectly. The never-surveyed
+	#    cell must still read false after the same rebuild.
 	deep_space.note_surveyed(Vector2i(7, -3))
 	var before_warp := deep_space.is_surveyed(Vector2i(7, -3))
 	_load_system(system_id)
 	await get_tree().physics_frame
 	var after_warp := deep_space.is_surveyed(Vector2i(7, -3))
-	print("[cart] SESSION RESET surveyed before a rebuild=%s, after=%s (deliberate; see 17) -> %s" % [
-		str(before_warp), str(after_warp),
-		"PASS" if before_warp and not after_warp else "FAIL"])
+	var never_warp := deep_space.is_surveyed(Vector2i(9, 9))
+	print("[cart] THE CHART REMEMBERS surveyed before a rebuild=%s, after=%s, never-surveyed still false=%s (80 reverses 17) -> %s" % [
+		str(before_warp), str(after_warp), str(not never_warp),
+		"PASS" if before_warp and after_warp and not never_warp else "FAIL"])
+
+	# 7b. THE STORE IS SYSTEM-QUALIFIED. The old dict keyed on bare Vector2i, so
+	#     pyx01's (7,-3) and pyx02's (7,-3) were one key — persist that and a
+	#     survey here marks a cell THERE. Asserted at the GameState layer, where
+	#     the qualified key actually lives.
+	var q_here := GameState.is_survey_worked(DeepSpace.cell_key(system_id, 7, -3))
+	var q_there := GameState.is_survey_worked(DeepSpace.cell_key("pyx02", 7, -3))
+	print("[cart] THE STORE IS SYSTEM-QUALIFIED %s:7:-3=%s, pyx02:7:-3=%s -> %s" % [
+		system_id, str(q_here), str(q_there),
+		"PASS" if q_here and not q_there else "FAIL"])
+
+	# 7c. THE SENTINEL NEVER LANDS. A rift stamps its mast with cell
+	#     (0x7ffffff, 0x7ffffff); stored, that key would hand the chart's
+	#     fit-to-content scale an 8.6e9-unit radius. Rejected at note_surveyed
+	#     itself so the in-memory store stays clean, not merely the file.
+	var cov_before := GameState.survey_coverage.size()
+	deep_space.note_surveyed(Vector2i(0x7ffffff, 0x7ffffff))
+	var sentinel_read := deep_space.is_surveyed(Vector2i(0x7ffffff, 0x7ffffff))
+	print("[cart] THE SENTINEL NEVER LANDS store %d -> %d entries, reads back=%s -> %s" % [
+		cov_before, GameState.survey_coverage.size(), str(sentinel_read),
+		"PASS" if GameState.survey_coverage.size() == cov_before
+			and not sentinel_read else "FAIL"])
+
+	# 7d. COVERAGE SURVIVES A COLOUR CHANGE. rebuild() -> _despawn_all() used to
+	#     clear the session dict, so changing colour vision — two taps from the
+	#     pause menu — silently wiped every survey. The store lives in GameState
+	#     now and this node holds nothing, which is the construction this leg
+	#     pins against anyone reintroducing a cache here.
+	deep_space.rebuild()
+	await get_tree().physics_frame
+	var after_rebuild := deep_space.is_surveyed(Vector2i(7, -3))
+	print("[cart] COVERAGE SURVIVES A COLOUR CHANGE surveyed after rebuild()=%s -> %s" % [
+		str(after_rebuild), "PASS" if after_rebuild else "FAIL"])
+
+	# 7e. THE CAP EVICTS THE OLDEST, IN ONE SYSTEM ONLY. 17's growth argument is
+	#     answered by construction, so the construction is what gets asserted:
+	#     write past the cap and the store must hold exactly CAP cells for that
+	#     system, the FIRST-written ones gone, the newest kept — and a
+	#     neighbour system's coverage untouched by the eviction.
+	GameState.survey_coverage = {}
+	GameState.note_survey_worked(DeepSpace.cell_key("pyx02", 999, 999))
+	for i in GameState.SURVEY_CELL_CAP + 3:
+		GameState.note_survey_worked(DeepSpace.cell_key(system_id, i, 0))
+	var mine_count := 0
+	for k_v in GameState.survey_coverage:
+		if String(k_v).begins_with(system_id + ":"):
+			mine_count += 1
+	var oldest_gone := not GameState.is_survey_worked(DeepSpace.cell_key(system_id, 0, 0))
+	var newest_kept := GameState.is_survey_worked(
+		DeepSpace.cell_key(system_id, GameState.SURVEY_CELL_CAP + 2, 0))
+	var neighbour_kept := GameState.is_survey_worked(DeepSpace.cell_key("pyx02", 999, 999))
+	print("[cart] THE CAP EVICTS THE OLDEST %d cells held (cap %d), first gone=%s, newest kept=%s, neighbour untouched=%s -> %s" % [
+		mine_count, GameState.SURVEY_CELL_CAP, str(oldest_gone), str(newest_kept),
+		str(neighbour_kept),
+		"PASS" if mine_count == GameState.SURVEY_CELL_CAP and oldest_gone
+			and newest_kept and neighbour_kept else "FAIL"])
+	GameState.survey_coverage = {}
 
 	# 8. Masts ride deep hulks and nothing else. No mast may sit near a dock ring
 	#    either — CameraRig checks `crackable` BEFORE `dockable`, so one parked on
@@ -11678,7 +11742,16 @@ func _run_pacing_test() -> void:
 	# changing. That is the metric reporting on the catalog, not on the pacing.
 	# "One recurring loop is worth about one mid-tier module" is the thing the
 	# design actually promises, and it is scale-invariant.
-	var steady := earned - per_derelict * float(PACING_LOOP["derelict"])
+	# v21: SURVEYS LEAVE THE RECURRING TERM TOO. Coverage persists now (80), so
+	# the two readings this loop takes are priced at band 2 -- the ring a
+	# standard loop reaches -- and that ring BURNS: each cell pays once ever.
+	# Leaving them in the steady term would over-report the recurring rate by
+	# two readings a loop, silently, while every assertion passed. The expanse
+	# is unbounded so chart income does not cap -- it converts into an outward
+	# treadmill -- but "fly further every session" is not a steady rate at a
+	# fixed band price, and this line stops pretending it is.
+	var steady := earned - per_derelict * float(PACING_LOOP["derelict"]) \
+		- per_survey * float(PACING_LOOP["survey"])
 	var steady_modules := steady / maxf(mid, 1.0)
 	print("[pacing] STEADY (no derelict) %.0f per loop, ratio vs catalog %.3f" % [
 		steady, steady / maxf(float(catalog), 1.0)])
@@ -11711,9 +11784,14 @@ func _run_pacing_test() -> void:
 	# whole game — and the prospector's route has none in it, so comparing to the
 	# loop that includes one would credit mining with a hull it never cracked and
 	# make a route that pays 30% worse look correct.
-	var parity := absf(prospect - steady) / maxf(steady, 1.0)
-	print("[pacing] ROUTE PARITY prospector %.0f vs steady %.0f, %.1f%% apart vs %.0f%% allowed -> %s" % [
-		prospect, steady, parity * 100.0, PACING_ROUTE_TOLERANCE * 100.0,
+	# v21: the prospector's survey leaves ITS recurring term for the same
+	# reason, or parity would compare a route still credited with a burned ring
+	# against one that is not -- two different games, which is exactly what this
+	# assertion's own comment below says it must never do.
+	var prospect_steady := prospect - per_survey * float(PACING_PROSPECT["survey"])
+	var parity := absf(prospect_steady - steady) / maxf(steady, 1.0)
+	print("[pacing] ROUTE PARITY prospector %.0f vs steady %.0f (both less one-time surveys), %.1f%% apart vs %.0f%% allowed -> %s" % [
+		prospect_steady, steady, parity * 100.0, PACING_ROUTE_TOLERANCE * 100.0,
 		"PASS" if parity <= PACING_ROUTE_TOLERANCE else "FAIL"])
 
 	# And the standard loop must not have been paid a credit for mining existing.
@@ -13910,6 +13988,10 @@ func _run_profile_test() -> void:
 	GameState.commissioned = true
 	GameState.set_livery(0, 2)
 	GameState.mark_breached("pyx01")
+	# v21: coverage is per-pilot state too, and it is the newest field, which is
+	# exactly when a leak ships -- the five below were all leaking when the leg
+	# was written.
+	GameState.note_survey_worked("pyx01:31:-7")
 	GameState.save_game()
 	var b_id := Profiles.create("PILOT B", 3000.0)
 	GameState.switch_profile(b_id)
@@ -13927,6 +14009,8 @@ func _run_profile_test() -> void:
 		leaks.append("salvage")
 	if GameState.breached.has("pyx01"):
 		leaks.append("breached")
+	if GameState.is_survey_worked("pyx01:31:-7"):
+		leaks.append("survey_coverage")
 	var bled := ", ".join(leaks)
 	print("[profile] NO BLEED BETWEEN PILOTS B sees salvage=%d name='%s' commissioned=%s accent=%d; leaked=%s -> %s" % [
 		GameState.salvage, GameState.ship_name, str(GameState.commissioned),
@@ -14128,6 +14212,15 @@ func _run_save_test() -> void:
 			"pyx03:0": {"x": -2999.0, "z": 3111.0, "founded_at": 77.0},
 		}
 		GameState.last_outbound_jump = 1234.5
+		# v21 SURVEY COVERAGE. Two systems, three cells, every coordinate
+		# distinct — the six-distinct-sentinels rule a third time: identical
+		# values would let a loader that crossed cx with cz, or pyx01 with
+		# pyx02, round-trip clean. Written through the accessor so the write
+		# path (cap and all) is the one exercised.
+		GameState.survey_coverage = {}
+		GameState.note_survey_worked("pyx01:7:-3")
+		GameState.note_survey_worked("pyx01:12:5")
+		GameState.note_survey_worked("pyx02:-4:19")
 		GameState.owned.append("mod_survey_array")
 		GameState.ledger = {
 			"deepest_depth": 611, "distance_flown": 4207, "hulks_cracked": 13,
@@ -14886,6 +14979,71 @@ func _run_save_test() -> void:
 			str(col_cleaned),
 			"PASS" if ok19 and fresh20 and kept20 and cleaned and col_cleaned
 				else "FAIL"])
+	elif mode == "migrate20":
+		# v21 adds survey_coverage. No migration branch, ever: an absent key is
+		# an empty store, which is exactly what every v20 pilot effectively had
+		# between sessions -- coverage was session-only, so nothing is lost that
+		# any of them ever kept. The stamp rename rides the same fixture: a v20
+		# file says last_colony_jump, and the loader reads it as the default for
+		# last_outbound_jump rather than letting a hot cooldown come back cold.
+		var v20 := {
+			"version": 20,
+			"salvage": 7300,
+			"current_system": "pyx03",
+			"run_seed": 202020,
+			"tutorial_step": -1,
+			"last_colony_jump": 555.5,
+		}
+		var f20 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f20.store_string(JSON.stringify(v20))
+		f20.close()
+		var ok20 := GameState.load_game()
+		var fresh21: bool = GameState.survey_coverage.is_empty()
+		var kept21: bool = GameState.salvage == 7300 and GameState.run_seed == 202020 \
+			and is_equal_approx(GameState.last_outbound_jump, 555.5)
+		# The rubbish pass, because an ABSENT key and a REJECTED one look
+		# identical from an empty store -- migrate19's red-verify lesson. One
+		# good entry among seven kinds of rubbish: wrong shapes, an unknown
+		# system, non-integer coordinates, the rift sentinel, a falsey value,
+		# and a flood past the cap that must load as its newest CAP entries.
+		var flood := {}
+		flood["pyx02:0:77"] = true                       # good
+		flood["nocolons"] = true                          # 1. shape
+		flood["pyx01:1"] = true                           # 2. two parts, not three
+		flood["pyx99:1:1"] = true                         # 3. unknown system
+		flood["pyx01:a:1"] = true                         # 4. cx not an int
+		flood["pyx01:134217727:134217727"] = true         # 5. the rift sentinel
+		flood["pyx01:2:2"] = false                        # 6. falsey dropped
+		for i in GameState.SURVEY_CELL_CAP + 10:
+			flood["pyx01:%d:0" % i] = true                # 7. over-cap flood
+		var dirty21 := {
+			"version": 21,
+			"salvage": 7300,
+			"run_seed": 202020,
+			"tutorial_step": -1,
+			"survey_coverage": flood,
+		}
+		var fd21 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fd21.store_string(JSON.stringify(dirty21))
+		fd21.close()
+		GameState.load_game()
+		var pyx01_count := 0
+		for k_v in GameState.survey_coverage:
+			if String(k_v).begins_with("pyx01:"):
+				pyx01_count += 1
+		var flood_ok: bool = pyx01_count == GameState.SURVEY_CELL_CAP \
+			and GameState.is_survey_worked("pyx02:0:77") \
+			and not GameState.is_survey_worked("pyx01:0:0") \
+			and GameState.is_survey_worked("pyx01:%d:0" % (GameState.SURVEY_CELL_CAP + 9)) \
+			and not GameState.is_survey_worked("pyx99:1:1") \
+			and not GameState.is_survey_worked("pyx01:134217727:134217727") \
+			and not GameState.is_survey_worked("pyx01:2:2")
+		print("[savetest] v20->v21 A V20 SAVE ARRIVES WITH EMPTY COVERAGE empty=%s, state kept (stamp via legacy key %.1f)=%s; rubbish pass: cap held at %d=%s, oldest evicted=%s, sentinel/unknown/falsey rejected=%s -> %s" % [
+			str(fresh21), GameState.last_outbound_jump, str(kept21),
+			GameState.SURVEY_CELL_CAP, str(pyx01_count == GameState.SURVEY_CELL_CAP),
+			str(not GameState.is_survey_worked("pyx01:0:0")),
+			str(not GameState.is_survey_worked("pyx99:1:1")),
+			"PASS" if ok20 and fresh21 and kept21 and flood_ok else "FAIL"])
 	elif mode == "future":
 		# A SAVE FROM A NEWER BUILD. Refusing to load it was never the hard
 		# part — that clause has always been there. What it did NOT do was stop
@@ -15026,6 +15184,18 @@ func _run_save_test() -> void:
 		print("[savetest] v20 BEACONS %d + %d entries round-tripped with every coordinate=%s, derived stock %d (want %d) -> %s" % [
 			b1.size(), b2.size(), str(beacons_ok), GameState.beacon_stock_left(),
 			GameState.BEACON_STOCK - 3, "PASS" if beacons_ok else "FAIL"])
+		# v21: the three coverage sentinels, and a fourth key that must NOT be
+		# there — without the negative, a loader that marked everything surveyed
+		# would round-trip these three perfectly.
+		var cov_ok: bool = GameState.is_survey_worked("pyx01:7:-3") \
+			and GameState.is_survey_worked("pyx01:12:5") \
+			and GameState.is_survey_worked("pyx02:-4:19") \
+			and not GameState.is_survey_worked("pyx02:7:-3") \
+			and GameState.survey_coverage.size() == 3
+		print("[savetest] v21 COVERAGE 3 cells in 2 systems round-tripped=%s, absent key still absent=%s -> %s" % [
+			str(GameState.survey_coverage.size() == 3),
+			str(not GameState.is_survey_worked("pyx02:7:-3")),
+			"PASS" if cov_ok else "FAIL"])
 		print("[savetest] v10 LOGBOOK ledger %s, name '%s' (%d chars, cap %d) -> %s" % [
 			str(GameState.ledger), GameState.ship_name, GameState.ship_name.length(),
 			GameState.SHIP_NAME_MAX, "PASS" if led_ok and name_ok else "FAIL"])

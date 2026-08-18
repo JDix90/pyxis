@@ -308,9 +308,15 @@ func fit_radius_for(id: String, ship := Vector2.ZERO) -> float:
 	# with a ship pass it; callers without pass nothing and get the same answer
 	# they would have got with the ship at the origin.
 	#
-	# Survey coverage is deliberately NOT in here yet. It is session-only until
-	# the persistence commit, and fitting to something that vanishes on warp
-	# would make the scale jump for a reason the player cannot see.
+	# Survey coverage is DRAWN but deliberately not FITTED TO, and the reason
+	# changed in v21 so it is restated: coverage now persists, so the old
+	# argument (it vanishes on warp, the scale would jump) is gone. What stands
+	# is this: the fit frames what you can ACT on now -- your ship, your
+	# beacons, your colonies, the live hunt -- and coverage is history. One
+	# far-out cell surveyed months ago would otherwise zoom every future look
+	# at this system out to it, permanently, shrinking the working picture to
+	# pay for a memory. The chart pans and zooms; history is reachable, not
+	# resident.
 	if id == "" or not SystemDB.exists(id):
 		return 1.0
 	var s := SystemDB.get_system(id)
@@ -362,6 +368,11 @@ func legend_words(live: bool, has_ship: bool) -> PackedStringArray:
 		out.append("COLONY")
 	if live and GameState.apex_hint_count(_selected) > 0:
 		out.append("ESTIMATE")
+	var pref := _selected + ":"
+	for cov_v in GameState.survey_coverage:
+		if String(cov_v).begins_with(pref):
+			out.append("SURVEYED")
+			break
 	return out
 
 
@@ -538,6 +549,38 @@ func _draw_plot() -> void:
 					HORIZONTAL_ALIGNMENT_LEFT, -1, UIKit.SIZE_FINE,
 					Color(bc.r, bc.g, bc.b, 0.75))
 
+	# 0b. WHERE YOU HAVE WORKED. Every persisted survey cell in this system
+	#     (v21, 80), drawn as a faint FILLED square the size of the cell itself
+	#     -- world-sized, scaling with zoom, which is what separates it by SHAPE
+	#     from the colony marker (a small OUTLINED square of fixed screen size)
+	#     under 30's rule. Faint on purpose: this layer is the paper's texture,
+	#     not a marker, and it must never compete with the things drawn on it.
+	#     Under everything so a beacon dropped in a surveyed cell stays visible.
+	var cov_prefix := _selected + ":"
+	var cell_px := DeepSpace.CELL * scale
+	for cov_v in GameState.survey_coverage:
+		var cov := String(cov_v)
+		if not cov.begins_with(cov_prefix):
+			continue
+		var cbits := cov.split(":")
+		if cbits.size() != 3:
+			continue
+		var ccx := int(cbits[1])
+		var ccz := int(cbits[2])
+		var cworld := DeepSpace.cell_centre(ccx, ccz)
+		var centre := to_plot.call(cworld) as Vector2
+		# Skip cells wholly outside the rect: with clip_contents on this is
+		# purely a draw-call economy, but coverage is the one layer that can
+		# legitimately hold hundreds of entries.
+		if centre.x < -cell_px or centre.x > size.x + cell_px \
+				or centre.y < -cell_px or centre.y > size.y + cell_px:
+			continue
+		var cband := DeepSpace.band_of(maxf(
+			Vector2(cworld.x, cworld.z).length() - bounds, 0.0))
+		var cc := Palette.band_color(cband)
+		_plot.draw_rect(Rect2(centre - Vector2(cell_px, cell_px) * 0.5,
+			Vector2(cell_px, cell_px)), Color(cc.r, cc.g, cc.b, 0.10), true)
+
 	# 1. The charted volume you started from, for scale.
 	_plot.draw_arc(mid, bounds * scale, 0.0, TAU, 48,
 		Color(Palette.TEAL.r, Palette.TEAL.g, Palette.TEAL.b, 0.35), 1.0, true)
@@ -711,6 +754,10 @@ func _draw_plot() -> void:
 					c, false, 1.5)
 			elif word == "BEACON":
 				_plot.draw_circle(Vector2(lx + 3.5, ly), 2.5, c)
+			elif word == "SURVEYED":
+				c = Palette.band_color(2)
+				_plot.draw_rect(Rect2(Vector2(lx, ly - 3.5), Vector2(7.0, 7.0)),
+					Color(c.r, c.g, c.b, 0.35), true)
 			else:
 				c = Palette.TEAL
 				_plot.draw_arc(Vector2(lx + 3.5, ly), 3.5, 0.0, TAU, 12, c, 1.0, true)
