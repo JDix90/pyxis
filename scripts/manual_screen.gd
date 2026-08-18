@@ -242,6 +242,12 @@ func _build_flying() -> void:
 			"Open the chart. Shut while docked and during an apex fight, exactly like the button."))
 		_body.add_child(_row(GameState.binding_name("drop_beacon"),
 			"Drop a beacon where you are standing. Deep space only, eight in stock, and holding on one takes it back."))
+		# v21. The two verbs the chart adds to a beacon, taught beside the one
+		# that creates them. THREE verbs, named together on purpose: a bookmark
+		# you cannot return to is half a feature, and until this row the only
+		# documented thing you could do with a beacon was pick it back up.
+		_body.add_child(_row("CHART",
+			"Every beacon in this system gets a row. COURSE flies you there for free and drops itself if anything goes wrong; JUMP puts you there at once for a fee, and refuses past the depth the colony network reaches."))
 		_body.add_child(_row(GameState.binding_name("pause"),
 			"Pause, and unpause again from any page of the pause menu. This page keeps its own back-out."))
 		# Desktop only, and the manual says so by only appearing here — the same
@@ -264,7 +270,8 @@ func _build_flying() -> void:
 		rung += 1
 	_body.add_child(_para("%d.  a console is open, so it closes" % rung))
 	_body.add_child(_para("%d.  a target is locked, so the lock drops" % (rung + 1)))
-	_body.add_child(_para("%d.  otherwise the game pauses" % (rung + 2)))
+	_body.add_child(_para("%d.  a course is set, so the course drops" % (rung + 2)))
+	_body.add_child(_para("%d.  otherwise the game pauses" % (rung + 3)))
 	_body.add_child(_back())
 
 
@@ -274,6 +281,7 @@ func _build_hud() -> void:
 	_body.add_child(_row("HOLD", "Cargo used against capacity. A full hold refuses new loot and refuses a cut. Tap it to open the manifest."))
 	_body.add_child(_row("HULL", "Shields take the hit first. Hull damage is the part that does not come back on its own."))
 	_body.add_child(_row("HDG", "Which way your nose is pointing: a three-figure heading and the quarter of the sky it falls in. Every bearing you are given is in the same figures."))
+	_body.add_child(_row("CRS", "Only while a course is running: the bearing and range to the beacon you set it for. When CRS and HDG agree you are flying it. The ship drops the course by itself on contact, on a hurt hull or on a stun, and says so."))
 	_body.add_child(_spacer(6))
 	_body.add_child(_para("THE RADAR RING marks what is off screen, nearest first:"))
 	_body.add_child(_legend(Palette.TEAL, "HOME", "The way back to charted space, whenever you are outside it. This is a compass, not a ping — it does not fade near the edge."))

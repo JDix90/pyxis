@@ -170,8 +170,9 @@ Current baseline: **667 PASS / 0 FAIL / 0 script errors** across **66 runs**,
 save intact, save format **v20** — measured on Godot 4.6.stable, headless
 (2026-08-17), at STRATEGY §77.
 
-**This figure is one commit behind the tag count above.** §78 added `PLOTTEST`
-and its twelve assertions, so the next sweep should read **679 across 67**. A
+**This figure is two commits behind.** §78 added `PLOTTEST` and its twelve
+assertions; §79 added seven legs to the existing `BEACONTEST` and no new tag. So
+the next sweep should read **686 across 67**. A
 baseline is a MEASUREMENT and is only written here once somebody has taken it;
 predicting one and typing it in as though it were taken is how the numbers this
 paragraph keeps correcting got wrong in the first place.

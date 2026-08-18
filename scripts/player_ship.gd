@@ -31,6 +31,12 @@ const SPAWN_POINT := Vector3(0, 0, 6)
 var velocity := Vector3.ZERO
 var move_target := Vector3.ZERO
 var has_move_target := false
+# v21. Set-course state. `course_dest` is kept separately from `move_target`
+# because move_target is overwritten by every ordinary tap, and the HUD row and
+# the radar exemption need to know where the COURSE was aimed even on the frame
+# it ends.
+var _course_on := false
+var course_dest := Vector3.ZERO
 var attack_target: Node3D = null
 
 # --- return fire -------------------------------------------------------------
@@ -724,6 +730,38 @@ func command_move(pos: Vector3) -> void:
 	move_target = pos
 	has_move_target = true
 	attack_target = null
+	# A PLAIN MOVE IS NOT A COURSE. Twelve callers share this verb -- every
+	# hold-approach and every tap on empty space -- and none of them plotted
+	# anything. Clearing here rather than only in the course verb means the flag
+	# cannot survive the next ordinary tap.
+	_course_on = false
+
+
+func command_course(pos: Vector3) -> void:
+	# v21. SET COURSE: the same move, declared. It is a separate entry point
+	# rather than a flag on command_move for the reason above -- twelve callers
+	# would all start reading as plotted courses.
+	#
+	# REFUSAL IS VISIBLE TO THE CALLER. command_move silently no-ops while
+	# docked, warping or EMP-stunned, so a course verb that assumed success would
+	# light a CRS row for a course that was never set. has_move_target is the
+	# receipt; main checks course_active() and says why, per 58.
+	command_move(pos)
+	if not has_move_target:
+		return
+	_course_on = true
+	course_dest = pos
+
+
+func course_active() -> bool:
+	# DERIVED, NEVER MIRRORED, and this is the whole reason it is a function.
+	# has_move_target is cleared at EIGHT sites in this file -- input disabled,
+	# EMP begin, EMP tick, stick input, arrival, dock, and two respawn paths --
+	# and a parallel course flag would have to be cleared at all eight or start
+	# lying. Anding the two means every one of those already ends the course,
+	# including the two the design actually asks for: the stick breaks it, and an
+	# EMP drops it.
+	return _course_on and has_move_target
 
 
 func command_attack(target: Node3D) -> void:

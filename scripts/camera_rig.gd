@@ -394,7 +394,8 @@ func _cancel() -> void:
 	#   1. a contact menu is open -> close it
 	#   2. a console is open      -> close it
 	#   3. a target is designated -> drop it
-	#   4. otherwise              -> pause
+	#   4. a course is set        -> drop it
+	#   5. otherwise              -> pause
 	# The pause menu handles Escape itself once open, because this node stops
 	# receiving input the moment the tree is paused.
 	#
@@ -417,6 +418,16 @@ func _cancel() -> void:
 	var player: Node3D = get_tree().get_first_node_in_group("player")
 	if player and player.has_method("clear_target") and is_instance_valid(player.attack_target):
 		player.clear_target()
+		Sfx.play("tap", -12.0, 0.8)
+		return
+
+	# v21. BELOW THE TARGET LOCK, so the three rungs above keep the numbers the
+	# manual already prints for them and only the new one is appended. A course
+	# is also the larger commitment of the two: dropping a lock is the cheaper
+	# backout, so it comes off first.
+	if main and main.has_method("clear_course") and player \
+			and player.has_method("course_active") and player.course_active():
+		main.clear_course("COURSE DROPPED")
 		Sfx.play("tap", -12.0, 0.8)
 		return
 

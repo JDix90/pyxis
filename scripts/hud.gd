@@ -381,9 +381,21 @@ class RadarLayer:
 				var col: Color = spec[2] as Color
 				if n.has_method("marker_color"):
 					col = n.marker_color()
+				# v21. THE BEACON YOU ARE FLYING TO IS PROMOTED, not given a tier
+				# of its own. A new tier would grow TIER_NAMES and immediately owe
+				# the manual a legend row for a state rather than a kind of thing
+				# -- and "BEACON" is already documented. Borrowing TIER_HOME gets
+				# both properties this needs for free: never shed by the
+				# 12-marker cap, and never faded by distance. Which is the point:
+				# a course can run for twelve minutes across ten thousand units,
+				# and the one arrow that must survive a crowded board is the one
+				# pointing where the ship is actually going.
+				var tier := int(spec[1])
+				if tier == TIER_BEACON and _course_dest_near(world):
+					tier = TIER_HOME
 				found.append({
 					"id": n.get_instance_id(),
-					"tier": int(spec[1]),
+					"tier": tier,
 					"dist": player.global_position.distance_to(world),
 					"screen": screen,
 					"color": col,
@@ -432,6 +444,20 @@ class RadarLayer:
 		var tx := half.x / maxf(absf(dir.x), 0.00001)
 		var ty := half.y / maxf(absf(dir.y), 0.00001)
 		return centre + dir * minf(tx, ty)
+
+	func _course_dest_near(world: Vector3) -> bool:
+		# Matched by POSITION with the same 0.5u tolerance recover_beacon uses,
+		# for recover_beacon's stated reason: an instance id held across a
+		# recovery goes stale and a position cannot. course_dest is Vector3.ZERO
+		# when nothing is running, and the origin is inside the charted volume
+		# where no beacon may be dropped, so the idle case cannot match anything.
+		var player: Node3D = get_tree().get_first_node_in_group("player")
+		if player == null or not player.has_method("course_active") \
+				or not player.course_active():
+			return false
+		var d: Vector3 = player.course_dest
+		return absf(d.x - world.x) < 0.5 and absf(d.z - world.z) < 0.5
+
 
 	func marker_alpha(tier: int, dist: float) -> float:
 		# The fade RULE, lifted out of _draw so it can be asserted without reading
@@ -489,6 +515,10 @@ var _boss_plates: HBoxContainer
 var _cargo_label: Label
 var _hull_label: Label
 var _heading_label: Label
+var _course_label_ui: Label
+# Set by main when a course starts, because the SHIP knows where it is going and
+# only main knows which beacon that was. Cleared with the course.
+var _course_name := ""
 # Last rendered heading, so the string is rebuilt only when it CHANGES. Same
 # guard and same reason as set_deep_tag's sub-unit short-circuit: a heading
 # moves every frame, and a per-frame String build for an unchanged value is
@@ -676,6 +706,32 @@ func _ready() -> void:
 	_heading_label.add_theme_color_override("font_color", Palette.AMBER_DIM)
 	_heading_label.add_theme_font_size_override("font_size", 12)
 	nav.add_child(_heading_label)
+
+	# v21. CRS -- THE COURSE ROW. Above HDG, and hidden when no course runs.
+	#
+	# A course flies the ship for up to twelve minutes with the player's hands
+	# off the stick, so the cockpit has to say so: an autopilot with no visible
+	# state is indistinguishable from a ship that has stopped taking input.
+	# CRS, not HDG and not BRG -- a third word for a third thing, by the same
+	# argument the heading label makes about spending one noun on two meanings.
+	# Heading is where the nose points; a bearing is a direction to something;
+	# a COURSE is a commitment to fly one.
+	#
+	# TEAL rather than AMBER_DIM, which is the one place this corner shouts. It
+	# is the only row here describing something the SHIP is doing rather than
+	# something the world is, and it is temporary -- so it may be the brightest
+	# thing in the corner while it exists.
+	#
+	# Child index 0 is safe: the box is GROW_DIRECTION_BEGIN, pinned by its
+	# bottom, so inserting at the top pushes CRS up rather than pushing the band
+	# line down into the action dock.
+	_course_label_ui = Label.new()
+	_course_label_ui.text = ""
+	_course_label_ui.visible = false
+	_course_label_ui.add_theme_color_override("font_color", Palette.TEAL)
+	_course_label_ui.add_theme_font_size_override("font_size", 12)
+	nav.add_child(_course_label_ui)
+	nav.move_child(_course_label_ui, 0)
 
 	_system_label = Label.new()
 	_system_label.text = "SYS // PYX-01 :: DERELICT FIELD"
@@ -1549,6 +1605,12 @@ func show_arrival(text: String) -> void:
 	tw.chain().tween_property(_arrival_label, "modulate:a", 0.0, 0.6)
 
 
+func set_course_name(name: String) -> void:
+	# main owns "which beacon"; the ship owns "where". The row needs both, and
+	# neither node can answer the other's half.
+	_course_name = name
+
+
 func show_toast(text: String, color: Color) -> void:
 	_toast_count += 1
 	_toast_label.text = text
@@ -1703,6 +1765,20 @@ func _process(_delta: float) -> void:
 	# THROUGH compass_deg, which is what makes 000 mean north on this instrument
 	# rather than 270. It also does the wrap -- round(359.6) is 360, and HDG 360
 	# is not a heading anybody quotes.
+	# The course row rides the same poll. Through compass_deg like every other
+	# player-facing bearing in the game (60), so CRS and HDG are directly
+	# comparable digit for digit -- which is the whole point of showing both:
+	# when they agree you are flying the course, when they do not you are not.
+	if _course_label_ui != null:
+		var running: bool = player.has_method("course_active") and player.course_active()
+		_course_label_ui.visible = running
+		if running:
+			var to_it: Vector3 = player.course_dest - player.global_position
+			to_it.y = 0.0
+			_course_label_ui.text = "CRS %03d · %dU · %s" % [
+				DeepSpace.compass_deg(to_it), int(round(to_it.length())),
+				_course_name]
+
 	var fwd := -player.global_transform.basis.z
 	var hdg := DeepSpace.compass_deg(Vector3(fwd.x, 0.0, fwd.z))
 	var quarter := DeepSpace.quadrant_of(Vector3(fwd.x, 0.0, fwd.z))
