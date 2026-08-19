@@ -9019,6 +9019,19 @@ prompts, and `hyper` joins the ladder last, for the hold ladder's own stated
 reason: the biggest thing on screen should lose every contested tap to the
 smaller thing in front of it.
 
+**And its assertion was wrong on first measurement, in the direction worth
+recording.** `THE MONUMENT ANSWERS A TAP` shipped here and was first actually
+run two commits later (§91's sweep), where it came back red quoting a prompt
+that was *correct*: `THE ORRERY · FIRST INSTRUMENT — CLAIMED. THE CHART CARRIES
+ITS JUMP.` The leg took whatever `get_nodes_in_group("hyper")` returned first
+and demanded the unclaimed wording — but `ONE CLOCK FOR ALL OF THEM`, four legs
+earlier in the same suite, claims `pyx01:0` and `pyx01:1` by hand. First-in-tree
+was a claimed monument answering its claimed branch perfectly. The leg now
+picks by STATE rather than by tree order and taps BOTH, which is the promise
+this section actually made: every branch answers. A test that depends on tree
+order is depending on something nothing guarantees — the same class of mistake
+as reading a function's absence off a caller's silence, one paragraph up.
+
 ### And the checker gained a third rule
 
 The duplicate above passed `check_scripts.py` clean and detonated on Godot as

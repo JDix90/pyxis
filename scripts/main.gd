@@ -22020,21 +22020,44 @@ func _run_colony_test() -> void:
 	# states the terms through the real prompt, and the alpha-zero trap from
 	# BEACONTEST applies: the prompt fades in, so it cannot be read on the
 	# frame it is set.
-	var monument: HyperStructure = null
+	#
+	# ITS FIRST MEASUREMENT WAS RED, AND THE TEST WAS THE WRONG HALF. It took
+	# whatever `get_nodes_in_group("hyper")` handed back first and demanded the
+	# unclaimed wording -- but leg H four screens up claims pyx01:0 and pyx01:1
+	# by hand, so "first in the group" is a CLAIMED monument answering the
+	# claimed branch perfectly. The code was doing exactly what 88 asked of it.
+	# Picking by STATE rather than by tree order fixes it and asserts the real
+	# promise, which was always the stronger one: EVERY branch answers, so both
+	# are tapped here and both must name themselves and their verb.
+	var claimed_mon: HyperStructure = null
+	var open_mon: HyperStructure = null
 	for h_v2 in get_tree().get_nodes_in_group("hyper"):
-		monument = h_v2 as HyperStructure
-		break
+		var h3 := h_v2 as HyperStructure
+		if h3 == null:
+			continue
+		if h3.is_claimed():
+			if claimed_mon == null:
+				claimed_mon = h3
+		elif open_mon == null:
+			open_mon = h3
 	var tap_ok := false
 	var tap_text := ""
-	if monument != null and hud != null:
+	var claimed_text := ""
+	if open_mon != null and claimed_mon != null and hud != null:
 		hud.clear_prompt()
-		monument.on_tapped()
+		open_mon.on_tapped()
 		await get_tree().create_timer(0.4).timeout
 		tap_text = hud.prompt_text()
-		tap_ok = tap_text.contains(monument.designation()) \
-			and (tap_text.contains("HOLD AT THE BASE") or tap_text.contains("WARDEN"))
-	print("[colony] THE MONUMENT ANSWERS A TAP prompt '%s' names it and the verb -> %s" % [
-		tap_text, "PASS" if tap_ok else "FAIL"])
+		hud.clear_prompt()
+		claimed_mon.on_tapped()
+		await get_tree().create_timer(0.4).timeout
+		claimed_text = hud.prompt_text()
+		tap_ok = tap_text.contains(open_mon.designation()) \
+			and (tap_text.contains("HOLD AT THE BASE") or tap_text.contains("WARDEN")) \
+			and claimed_text.contains(claimed_mon.designation()) \
+			and claimed_text.contains("JUMP")
+	print("[colony] THE MONUMENT ANSWERS A TAP unclaimed says '%s'; claimed says '%s'; both name themselves and their verb -> %s" % [
+		tap_text, claimed_text, "PASS" if tap_ok else "FAIL"])
 
 	GameState.colonies = {}
 	get_tree().quit()

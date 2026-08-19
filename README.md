@@ -179,17 +179,21 @@ mode (one new run carrying one); §84 added `RIVALTEST`, one new run carrying
 five; §83 added three `CARTTEST` legs and one `PACINGTEST` leg. So
 692 + 6 + 4 + 5 = 707, and 68 + 2 = 70 — measured, not predicted.
 
-**Four commits ahead of that figure, and none of them measured yet.** §86 moved
-`PACING_MIDTIER` to `rig_strike` and added `THE YARDSTICK IS MID-TIER`
-(confirmed green on a real run); §87 cut `BEACON_STOCK` to 3 and added
-`A RETUNE NEVER DELETES A BEACON`; §88–§90 (the nine-note playtest patch) added
-one leg each to `PLOTTEST`, `COLONYTEST` and `MUSICTEST` — 712 across 70. Then
-§91 added `UNSOUNDTEST` (one new run carrying seven), the `migrate22` mode (one
-new run carrying one) and one assertion to the SAVETEST read leg. So the next
-full sweep should read **721 across 72**, at save format **v23**. A
-baseline is a MEASUREMENT and is only written here once somebody has taken it;
-predicting one and typing it in as though it were taken is how the numbers this
-paragraph keeps correcting got wrong in the first place.
+**The move to 721 across 72 reconciles exactly, and was measured.** §86 moved
+`PACING_MIDTIER` to `rig_strike` and added `THE YARDSTICK IS MID-TIER`; §87 cut
+`BEACON_STOCK` to 3 and added `A RETUNE NEVER DELETES A BEACON`; §88–§90 (the
+nine-note playtest patch) added one leg each to `PLOTTEST`, `COLONYTEST` and
+`MUSICTEST` — 707 + 5 = 712 across 70. Then §91 added `UNSOUNDTEST` (one new
+run carrying seven), the `migrate22` mode (one new run carrying one) and one
+assertion to the SAVETEST read leg: 712 + 9 = **721**, and 70 + 2 = **72**.
+
+That sweep came back 720 PASS / 1 FAIL — `THE MONUMENT ANSWERS A TAP`, red on
+its FIRST EVER run, quoting a prompt that was correct (§88's own note records
+the diagnosis: the leg picked a monument by tree order and an earlier leg had
+claimed it). The leg was fixed, not the code. A baseline is a MEASUREMENT and
+is only written here once somebody has taken it; predicting one and typing it
+in as though it were taken is how the numbers this paragraph keeps correcting
+got wrong in the first place.
 
 **The move from §75's 657 across 65 runs reconciles exactly, and that is why
 both numbers are kept.** §76 added `SIGTEST`, one new run carrying seven, and
