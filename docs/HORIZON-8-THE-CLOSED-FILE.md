@@ -1,7 +1,8 @@
 # Horizon 8 — The Closed File
 
-**Status: SPECCED, nothing built. Commit 0 is gated on the prose read-aloud
-(`docs/DIRECTIVE-NINE-DRAFT.md`, decisions R1–R4).** When any of it is adopted,
+**Status: SPECCED, nothing built. The first read-aloud answered R1–R4 and set
+a register rule; the draft (`docs/DIRECTIVE-NINE-DRAFT.md`) is on its second
+revision and wants one more read before code.** When any of it is adopted,
 record it in `docs/STRATEGY.md` §64 in the same commit, per the house rule.
 
 ## What this answers
@@ -40,8 +41,8 @@ The pass therefore has a rule it can be held to, and an assertion that holds it:
 
 | # | Commit | Save | Why here |
 |---|---|---|---|
-| 0 | The second register — bands 5/6 after-lines, the Commission's unset field, one bark, one log line | **none** | The reveal itself. Data and copy; derived entirely from v23 `deep_logs` |
-| 1 | The refusers' network — Directive 9 pages on foreign beacons | **none** | Needs the register to exist so the pages are corroboration rather than exposition |
+| 0 | The second register, staged — the private beat at the read, the two living voices at the whole record | **none** | The reveal itself. Data and copy; both flags derived from v23 `deep_logs` |
+| 1 | The refusers' network — Directive 9 pages on band-3+ foreign beacons | **none** | The mid-game hint channel. Built second, but in play it is met FIRST — the pages foreshadow the archive, not the other way round |
 | 2 | Purchasable slot expansion (Utility III, Drive II, Weapon III) | likely **v24** | §64's headline. Touches the fit dict, refit UI, section damage, every BALANCE and PACING assertion |
 | 3 | Faction contracts offered on hail | TBD | §64's second act; the offer verb is the one new piece, riding existing contract + faction machinery |
 
@@ -58,66 +59,92 @@ discovery.
 
 ---
 
-## Commit 0 — the second register
+## Commit 0 — the second register, staged
 
-**The gate, derived rather than hardcoded:**
+R1's answer is structure, not copy: the reveal lands in three beats that the
+geography already orders — pages as mid-game hints (commit 1), the private
+realization at the archive, and the world's answer only once the whole record
+is held. Commit 0 builds the last two, as **two derived flags**:
 
 ```gdscript
 func knows_directive_9() -> bool:
-    # Any system's bearing-terminus record, held to fragment 2 or past it.
-    # Derived from the data so a future system authoring the "return" datum
-    # is covered without a second place to edit.
+    # Any system's bearing-terminus record at fragment 2 or past it. Gates
+    # only what is PRIVATE: the bark, the log line, the Commission field.
+
+func holds_whole_record() -> bool:
+    # meridian, glass and return all read to stage 3. Gates the two living
+    # voices — the world speaks differently only to someone who knows
+    # everything, and to no one else.
 ```
 
-`GameState`, beside the v23 store it reads. Zero new save, and a pilot who
-already read the fragment is already carrying the flag.
+Both in `GameState`, beside the v23 store they read, derived from the data
+rather than hardcoded to systems. Zero new save; a pilot who already read the
+fragments is already carrying both flags.
 
 **Where the words live.** `broadcast_for` already resolves optional keys with a
 fallback — *"a second array would be a second bounds contract that could
 disagree with the first"* — so bands 5 and 6 gain `from_after` / `body_after`
 and inherit that whole argument. The commissioned overlay and the per-system
-override both keep their current precedence; the after-register only ever
-applies to rows that authored one, which is two rows in the whole table.
+override keep their precedence; the after-register only ever applies to rows
+that authored one, which is two rows in the whole table.
 
-**Everything else is one label and two strings:** the Commission page's unset
-`RETURNS LOGGED` field (see R4 — I recommend always visible), one `Barks` key,
-one `note_log` line at the moment the fragment is read.
+**The private half is one field, one bark, one log line.** Per R4 the
+Commission field is **absent until the order is read** — before, the page is
+byte-identical to today's; after, `RETURNS LOGGED FROM THE RECLASSIFIED
+VOLUME: —` appears with its plain one-line explanation, corroborating what the
+player now knows instead of teasing what they do not.
 
 **Harness — new tag `PYXIS_DIRECTIVETEST`:**
 
-- `THE MACHINES DO NOT KNOW` — bands 1–4 resolve byte-identical before and
-  after the gate, in every system, commissioned and not. The load-bearing one:
-  it is the design rule as an assertion, and it goes red the moment somebody
-  "finishes" the table. Red-verify by authoring a `body_after` on band 1.
-- `THE LIVING VOICES ANSWER` — bands 5 and 6 differ across the gate, and both
-  halves are non-empty (an after-line that is accidentally empty would pass a
-  one-sided "they differ" check).
-- `THE GATE IS THE ORDER` — flips exactly on `return` stage 2: false at stage 1,
-  true at 2 and 3, and true for a record read in any system that authors the
-  datum. Driven through `note_deep_log`, not by writing the store.
-- `THE REGISTRY NEVER ADDS UP` — the Commission page renders the unset field,
-  and it is still unset after selling charts (whatever the pilot files, that
-  field does not move — it is not a counter).
+- `THE MACHINES DO NOT KNOW` — bands 1–4 resolve byte-identical under every
+  combination of the two flags, in every system, commissioned and not. The
+  load-bearing one: it is the design rule as an assertion, and it goes red the
+  moment somebody "finishes" the table. Red-verify by authoring a `body_after`
+  on band 1.
+- `THE WORLD WAITS FOR THE WHOLE RECORD` — bands 5 and 6 are unchanged at
+  `knows_directive_9` alone (two archives done, one partial), change only at
+  3/3/3, and both halves of each changed row are non-empty. This is the staged
+  reveal as an assertion: a wiring mistake that flipped the world on the first
+  fragment would land the twist exactly as early as R1 feared.
+- `THE GATE IS THE ORDER` — `knows_directive_9` flips exactly on `return`
+  stage 2: false at 1, true at 2 and 3. Driven through `note_deep_log`, not by
+  writing the store.
+- `THE FIELD ARRIVES WITH THE ORDER` — the Commission page carries no trace of
+  the field before the flag (the R4 decision as a check), renders it after,
+  and the field never changes thereafter — it is a statement, not a counter.
 - `NOTHING NEW IS STORED` — the save dict is byte-identical before and after
-  reading the order, beyond the `deep_logs` entry §91 already asserts. The whole
-  claim of this commit is "no save", and a claim like that wants a check.
+  reading the order, beyond the `deep_logs` entries §91 already asserts. The
+  whole claim of this commit is "no save", and a claim like that wants a
+  check.
 
 ---
 
-## Commit 1 — the refusers' network
+## Commit 1 — the refusers' network, band 3 and deeper
 
-Foreign beacons (§84) gain a second verb. The recovery refusal stays exactly as
-it is — *"NOT YOUR ANCHOR CODE — THIS BEACON ANSWERS TO SOMEBODY ELSE"* — and
-the read is a separate, shorter hold that costs nothing and pays nothing.
+Foreign beacons (§84) gain a second verb. The recovery refusal stays exactly
+as it is — *"NOT YOUR ANCHOR CODE — THIS BEACON ANSWERS TO SOMEBODY ELSE"* —
+and the read is a separate, shorter hold that costs nothing and pays nothing.
 
-**Which page a beacon carries is a pure function of its cell key.** The rival's
-covenant, unchanged: zero bytes of save, no store, no completion tracker. The
-Authority's records persist; the refusers leave nothing behind. A player who
-wants the whole order flies until they have seen six different beacons, and the
-game never tells them how many they are missing.
+**Only beacons at band 3 or deeper carry a page**, and this gate is R1's other
+half. Foreign beacons spawn wherever the rival has filed, from
+`CONTENT_MIN_DEPTH` (24u) outward — the shallows go to the rival within single
+sessions, so ungated pages would put the order's text at the chart edge inside
+the first hours. Band 3 (1,100u+) is where the shipped broadcast arc already
+turns strange, so the hints arrive exactly when the game has said things are
+no longer fine — and the fiction agrees: you do not leave contraband where the
+authority still sweeps. A shallow foreign beacon stays what it is today:
+somebody else's furniture, refusal and all.
+
+**Which page a beacon carries is a pure function of its cell key.** The
+rival's covenant, unchanged: zero bytes of save, no store, no completion
+tracker. The Authority's records persist; the refusers leave nothing behind.
+A player who wants the whole order flies until they have seen six different
+deep beacons, and the game never tells them how many they are missing.
 
 **Harness legs:** `EVERY PAGE IS REACHABLE` (the pure function covers all six
-across a sweep of cell keys, and the distribution is not degenerate),
+across a sweep of band-3+ cell keys, and the distribution is not degenerate),
+`THE PAGES KEEP TO THE DEEP` (a band-1/2 foreign beacon offers no read — the
+pacing gate as an assertion, red-verified by dropping the band check),
 `THE PAGES LEAVE NOTHING BEHIND` (reading is save-neutral), and
 `A REFUSAL IS STILL A REFUSAL` (the recovery hold still refuses, with its
 existing copy, on a beacon that has just been read).

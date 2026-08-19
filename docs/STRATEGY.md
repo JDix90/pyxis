@@ -6074,8 +6074,8 @@ the two items that remain open and are genuinely new design:
 
 | # | what | save | status |
 |---|---|---|---|
-| 0 | the second register: what changes once the player has read Directive 9 | none | **SPECCED**, gated on the prose read-aloud (decisions R1–R4) |
-| 1 | the refusers' network: Directive 9's pages on foreign beacons | none | **SPECCED** |
+| 0 | the second register, STAGED: the private beat at the read, the living voices only at the whole record | none | **SPECCED**; first read-aloud answered R1–R4, draft revised, one more read wanted |
+| 1 | the refusers' network: Directive 9's pages on band-3+ foreign beacons | none | **SPECCED**; the band gate is R1's other half — ungated, the rival's shallows sweep would put pages at the chart edge in the first hours |
 | 2 | purchasable slot expansion | likely v24 | specced only as a row; wants its own research pass |
 | 3 | faction contracts offered on hail | TBD | specced only as a row |
 
@@ -6088,6 +6088,15 @@ the game the moment somebody has read the order. What changes is what is alive:
 bands 5 and 6 (never the GSA's), the player's own file, the player's own ship.
 `THE MACHINES DO NOT KNOW` is that rule as an assertion, and it goes red the
 moment somebody tries to finish the table.
+
+**The first read-aloud set a register rule worth keeping beyond this horizon:**
+every line is understandable on first read — eeriness comes from what a line
+MEANS, never from being hard to parse. The player always knows what they were
+just told; what grows with depth is how much they wish they had not been told
+it. And the reveal is STAGED to protect the slow burn: pages hint from band 3,
+the archive read changes only what is private (bark, log, Commission field —
+which per R4 appears only after the read, corroborating rather than teasing),
+and the two living voices answer only a pilot holding all nine fragments.
 
 **And the verb the last fragment asks for is deferred on purpose.** Filing
 returns with the refusers instead of the Authority is what *"file a return for

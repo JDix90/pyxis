@@ -1,208 +1,199 @@
 # DIRECTIVE 9 — prose draft (Horizon 8 commit 0)
 
-**Status: DRAFT FOR REVIEW. No code exists yet, deliberately.** Same gate the
-UNSOUNDED fragments went through (§91) and for the same reason: prose is cheap
-before the wiring exists and expensive after. Read it aloud. Veto freely. Four
-decisions are marked **R1–R4** and want an answer rather than a nod.
+**Status: SECOND DRAFT, revised after the first read-aloud (2026-08-19).** The
+four marked decisions came back answered and one general note came with them;
+both are folded in below and recorded here so the reasoning survives. Wants one
+more read before code.
+
+**R1 (the gate)** — the worry was the twist landing too early, before the game
+has earned it. Answered structurally: the reveal is now **staged** (see "The
+arc"), and the pages no longer reach the shallows.
+**R2 (band 6)** — kept in full, as drafted.
+**R3 (page count)** — six.
+**R4 (the Commission field)** — the always-visible dash was a give-away. The
+field now **appears only after the order is read**, where it is corroboration
+instead of a teaser.
+**The register note** — the copy was more cryptic than it needed to be. The
+rule below is new, and every line in this draft was rewritten against it.
 
 ---
 
-## The finding that reshaped this
+## The register rule (new, and it governs everything here)
 
-The plan was "the GSA's broadcasts change register once the player knows." Then
-I read the table, and the table already answers.
+**Every line is understandable on first read. Eeriness comes from what a line
+means, never from being hard to parse.** The player should always know what
+they were just told; what should grow with depth is how much they wish they
+had not been told it.
 
-`BROADCASTS` bands 1–4 are the Galactic Survey Authority speaking: an automated
-beacon, a relay, a degraded relay, and then a carrier tone with nothing behind
-it. Every one of them is **a recording**. And THE LAST RETURN's final entry —
-already written, already shipped — says:
+And the game already walks that gradient — this pass adds nothing eerie to the
+near game, because the near game is already authored normal:
 
-> *THE ENGINES WERE NOT RECALLED. THE WARDENS WERE NOT STOOD DOWN. SOMEBODY
-> DECIDED THE MACHINES DID NOT NEED TO KNOW.*
+| where | shipped voice | register |
+|---|---|---|
+| bands 1–2 | the GSA beacon, the last repeater | mundane, bureaucratic, even warm |
+| bands 3–4 | a degraded recording, then a dead carrier | official voice failing |
+| bands 5–6 | A KEPT LIGHT, the listener | not the authority's voice at all |
+| past 5,200u | the three archives | the truth, in plain words |
 
-So the authority's voice **cannot change**, and must not. The chart-edge beacon
-goes on telling a commissioned pilot *"the bearing is yours, and it is written
-down"* forever, in the same warm register, because it is a machine that was
-never told. That line is already the most frightening sentence in the game; it
-just needs a reader who has seen the order.
-
-**What changes is everything that is alive.** Two voices out past the Quiet
-that were never the GSA's, the player's own file, and the player's own ship.
-
-This is cheaper than the original pitch, and it is better. It also means the
-pass has a rule it can be held to: *if a recording changed its words, the pass
-is wrong.*
+Everything this horizon adds slots into the bottom half of that table. Nothing
+above band 3 changes at all.
 
 ---
 
-## The gate
+## The arc — normal, then hints, then the truth, then the aftermath
 
-Directive 9 is fragment 2 of THE LAST RETURN — the bearing terminus, PYX-03,
-past 5,200u. The register turns on **holding that specific fragment**, derived
-from the data rather than hardcoded to a system:
+This is R1's answer. The reveal is not one gate; it is three beats that the
+player walks in order because the *geography* orders them:
+
+**1. Hints (mid-game, bands 3+).** Directive 9's six pages ride foreign
+beacons — but **only beacons standing at band 3 or deeper** (1,100u+). This is
+new: without the gate, the rival's shallows sweep would put pages at the chart
+edge inside the first hours, which is exactly the too-early reveal R1 feared.
+The band gate is also the fiction agreeing: you do not leave contraband where
+the authority still sweeps. A mid-game player finds one page, out of order,
+understands every word of it, and cannot yet tell what it is part of. That is
+the "several eerie, unsettling interactions" beat, done with content that
+never pretends to be confusing — just incomplete.
+
+**2. The truth (late, past 5,200u).** THE LAST RETURN, fragment 2, is the
+order itself. Reading it is the realization, and it changes only what is
+**private**: the ship says one line, the log takes one entry, the Commission
+page gains its field. The world does not react yet — you know, and nothing
+else does, which is its own kind of alone.
+
+**3. The aftermath (later still).** The two living voices — bands 5 and 6, the
+only broadcasts that were never the GSA's — change register only once **the
+whole record is held**: all three archives read to the end. The deep speaks
+differently to someone who knows everything, and to no one else.
+
+Two derived flags, zero new save (both read v23's `deep_logs`):
 
 ```
-knows_directive_9() := any deep_logs key ending ":return" with stage >= 2
+knows_directive_9()  := any ":return" record at stage >= 2
+holds_whole_record() := meridian, glass and return all at stage 3
 ```
 
-Zero new save. It reads the v23 store §91 already ships, so a pilot who has
-read it is already carrying the flag and does not need to re-earn it.
-
-Fragment **3** of the same record — *"file a return for us"* — is a second rung
-and is **not spent here**. It is the request that a later verb answers, and
-offering that verb in the same breath as the revelation would turn a discovery
-into a quest step. See §64's deferred row.
-
-**R1 — is one record the right gate?** The alternative is all three archives
-(nine fragments, three systems, ~45 minutes of outbound flying). I recommend
-one: the reveal should be *reachable* by a player who mounts one real
-expedition, and the other two archives are already what make it make sense.
+Fragment 3 of THE LAST RETURN — *"file a return for us"* — is still not spent.
+The verb it asks for is deferred past this horizon, deliberately.
 
 ---
 
-## A. The two living voices
+## A. The two living voices (gated on the whole record)
 
-Bands 5 and 6 are the only broadcasts in the game that are not the authority.
-Neither carries a `commissioned` variant, deliberately — *"being known by the
-authority is not what gets you spoken to out here. Arriving is."* They gain an
-after-register instead, on the same optional-key-with-fallback shape
-`broadcast_for` already uses.
-
-They are heard on the **next outward crossing**, which needs no work at all:
-`_tick_broadcast` reads at fire time and caches nowhere. You learn the order at
-the end of the world, fly home, and the deep says something different the next
-time you go out.
+Heard on the next outward crossing — `_tick_broadcast` reads at fire time, so
+this costs nothing. Both shipped lines stay verbatim for everyone else.
 
 ### Band 5 — A KEPT LIGHT
 
-Shipped, unchanged for a pilot who has not read the order:
+Shipped, unchanged before the record is complete:
 
-> **A KEPT LIGHT** — *There is a light ahead of you. It is kept. It has been
-> kept a long time, and by somebody. If you need it, it is there.*
+> *There is a light ahead of you. It is kept. It has been kept a long time,
+> and by somebody. If you need it, it is there.*
 
 After:
 
-> **A KEPT LIGHT** — *The light ahead of you is kept by crews who were ordered
-> not to come back. They came back anyway, and it did not count, so they stopped
-> going home. It is still lit. It is lit for whoever is still out here, which
-> now includes you.*
+> *You have read the order, so you know whose light this is. The crews who
+> came home and were not counted stopped going home. They kept the light
+> instead. It is lit for whoever is still out here — which, by the
+> authority's own ledger, now includes you.*
 
 ### Band 6 — · · ·
 
 Shipped:
 
-> **· · ·** — *Nothing is transmitting. Something is listening.*
+> *Nothing is transmitting. Something is listening.*
 
-After:
+After (kept in full, per R2):
 
-> **· · ·** — *Nothing is transmitting. Something is listening: a recorder, left
-> running, taking down returns for a file that was closed a long time ago. It
-> has your bearing. It will keep it. Nobody will read it.*
-
-That is the horror register the whole game is written in — **the machinery
-outlived the decision**, and being heard is not the same as being answered.
-
-**R2 — does band 6 go too far?** It is the only line in the pass that tells the
-player something about the listener. The safer version stops after *"a file
-that was closed a long time ago"* and leaves the last three sentences out.
+> *Nothing is transmitting. Something is listening: a recorder, left running,
+> taking down returns for a file that was closed a long time ago. It has your
+> bearing. It will keep it. Nobody will read it.*
 
 ---
 
-## B. Directive 9 itself — six pages, passed hand to hand
+## B. Directive 9 — six pages, band 3 and deeper
 
-Foreign beacons already exist (§84), already wear RIVAL violet, and already
-refuse the recovery hold with copy that states its own terms. They gain a
-**second verb**: a short read that costs nothing and pays nothing.
+Foreign beacons keep their existing refusal untouched (*"NOT YOUR ANCHOR CODE —
+THIS BEACON ANSWERS TO SOMEBODY ELSE"*). The read is a second, shorter hold
+that costs nothing and pays nothing. Which page a beacon carries is a pure
+function of its cell key — zero bytes of save. The Authority's records persist;
+the refusers leave nothing behind.
 
-**Which page a beacon carries is a pure function of its cell key** — the rival's
-own covenant, zero bytes of save. The Authority's records persist; the refusers
-leave nothing behind. That is the architecture agreeing with the fiction, and it
-costs less than the alternative.
-
-Plate sender lines read `DIRECTIVE 9 — PAGE n OF 6 · PASSED HAND TO HAND`.
+Plate sender: `DIRECTIVE 9 — PAGE n OF 6 · PASSED HAND TO HAND`. Each page is
+the order's own words, then one hand-written line from whoever copied it. The
+order is bureaucratic and plain; the margins are people, and also plain.
 
 **1.**
-> *The frontier beyond the bearing terminus is reclassified UNSOUNDABLE. Survey
-> operations in the reclassified volume are suspended indefinitely.*
-> — handed to me at a fuel stop by somebody who would not give a name.
+> *The frontier beyond the bearing terminus is reclassified UNSOUNDABLE.
+> Survey operations in the reclassified volume are suspended indefinitely.*
+> — copied and passed on. whoever gave it to me would not give a name.
 
 **2.**
 > *No return filed from the reclassified volume shall be logged, corroborated,
 > or entered against a commission.*
-> — READ IT AGAIN. NOT REFUSED. NOT LOGGED. WE DID NOT FAIL TO COME BACK. WE
-> CAME BACK AND IT DID NOT COUNT.
+> — READ IT TWICE. IT DOES NOT SAY THE CREWS WERE LOST. IT SAYS THE CREWS CAME
+> BACK, AND THE RETURNS WENT IN THE BIN.
 
 **3.**
 > *Vessels remaining in the reclassified volume at the effective date are
 > removed from the active register.*
-> — THEY DID NOT SEND ANYONE. THEY DID THE PAPERWORK.
+> — NO RESCUE WAS SENT. NO SEARCH WAS FLOWN. THEY DELETED THE SHIPS FROM THE
+> LIST AND CALLED IT DONE.
 
 **4.**
 > *Automated instruments, relays and standing security assets within the
-> reclassified volume are to remain in service. Recall is not authorized at this
-> time.*
-> — EVERYTHING STILL SHOOTING AT US OUT HERE IS STILL SHOOTING AT US BECAUSE
-> NOBODY WROTE THE SECOND MEMO.
+> reclassified volume are to remain in service. Recall is not authorized at
+> this time.*
+> — SO EVERY MACHINE OUT THERE IS STILL ON DUTY. THE WARDENS, THE ENGINES, THE
+> BEACONS. NOBODY EVER TOLD THEM IT WAS OVER.
 
-**5.** *(the one that matters)*
+**5.** *(the spine)*
 > *APPENDIX B — NOT CIRCULATED. Reclassification is recommended on the grounds
-> that continued resurvey would oblige the authority to publish successive
-> charts of the same volume which do not agree. The commercial and legal
-> exposure of publishing a chart known to be provisional is assessed as severe.*
-> — THERE IT IS. NOT A MONSTER. A LIABILITY ASSESSMENT.
+> that repeated resurvey of the volume produces charts which do not agree with
+> one another. Publication of charts known to be provisional exposes the
+> authority to severe commercial and legal liability.*
+> — THERE IT IS. THEY DID NOT CLOSE THE FRONTIER BECAUSE SOMETHING WAS WRONG
+> WITH IT. THEY CLOSED IT BECAUSE THE MAPS WOULD NOT AGREE — AND THEY SELL
+> MAPS.
 
 **6.**
-> *ATTACHED: crews known to have filed after the effective date.*
-> — the list is nine names long and I have met two of them. The last line is a
-> hull in a livery nobody logged, last seen outbound, still filing.
-
-Page 5 is the spine of the whole reveal: **they did not kill the frontier to
-hide something. They killed it to save the map.** A place that will not hold
-still proves that charting is a claim rather than a fact, and every chart the
-authority ever sold rests on the opposite. Page 6 is the rival, named without
-being named.
-
-**R3 — six pages or four?** Six means a player who finds three foreign beacons
-has half an order and a real reason to want the rest. Four means most players
-who engage at all will complete it. I lean six.
+> *ATTACHED: vessels known to have filed after the effective date.*
+> — nine names. I have met two of them. the last one on the list is a hull in
+> a livery nobody registered, last seen heading out, still filing.
 
 ---
 
-## C. The player's own file
+## C. The player's own file (appears with the order, per R4)
 
-One line on the Commission page — the authority's file on you, which is now the
-page where the authority contradicts itself:
+Before Directive 9 is read: the Commission page is exactly as it ships today.
+No dash, no unexplained field, nothing to ask about.
+
+After, one field appears at the bottom of the registry, in the page's own
+plain voice:
 
 > **RETURNS LOGGED FROM THE RECLASSIFIED VOLUME: —**
-> *This field has been unset since Resurvey 44. Your filings are counted above.*
+> *Field retired at Resurvey 44. Filings from the volume are accepted and
+> counted above.*
 
-Resurvey 44 is THE FIRST MERIDIAN's own fragment ("*RESURVEY 44 FILED.
-DISPLACEMENT OF DATUM: 41 UNITS*"), so the date the returns stopped is the date
-the datum was found to move. The two records agree without either explaining the
-other.
+Read after the order, this is the page confirming it: your deep returns go
+into the general tally, and the ledger that would have named where they came
+from was switched off the cycle the datum was found to move. *Accepted and
+counted* — just never as what they are.
 
-The existing closing line stays **exactly** as it is, and gets much worse for
-free:
+The existing closing line stays exactly as shipped, and does its own work now:
 
 > THE FILE IS CLOSED. THE REGISTRY CARRIES YOUR NAME.
 
-**R4 — is the registry line always visible, or only after Directive 9?** I
-recommend **always**: an empty field with a dash in it, on a page that explains
-everything else, never mentioned by anything. A playtester asking "what is that
-dash?" is the design working. The cost is a player who asks and gets no answer
-for twenty hours — which is the same deal the silhouette design already makes.
-
 ---
 
-## D. The ship
+## D. The ship (fires at the moment of the read)
 
-One bark, fired once ever, at the moment the fragment is read. The crew voice
-already ends band 6 with *"WE ARE THE RECORD NOW"* — this answers it:
+One bark, once ever, answering the crew's own band-6 line ("WE ARE THE RECORD
+NOW"):
 
 > **WE ARE STILL FILING. SOMEBODY SHOULD KNOW THAT WE ARE STILL FILING.**
 
-And one captain's-log line, in the log's terse register (`THE LINE HELD`,
-`REFUSED THE TOLL`):
+One captain's-log entry, in the log's terse register:
 
 > **READ DIRECTIVE 9 — THE RETURNS WERE REFUSED**
 
@@ -210,14 +201,15 @@ And one captain's-log line, in the log's terse register (`THE LINE HELD`,
 
 ## What is deliberately not touched
 
-- **Every GSA broadcast, bands 1–4.** The machines were not told. If a recording
-  changes its words, this pass is wrong.
-- **Band 4's silence.** *"Do not 'finish' this entry"* stands, and now has a
-  second reason to: nothing was transmitting there before the order either.
-- **The Commission's statement-of-record posture.** One field is added. It is
-  not a tracker, it does not tell the player to do anything, and it never
-  updates.
-- **No faction to join, no side to take, no questline.** The revelation changes
-  the reader, not the rules. A rebellion arc would make the horror into content.
-- **No new save.** Everything here is derived from v23's `deep_logs`, or is a
-  pure function of a cell key.
+- **Every GSA broadcast, bands 1–4.** The machines were not told. If a
+  recording changes its words, this pass is wrong — `THE MACHINES DO NOT KNOW`
+  is that rule as an assertion.
+- **Band 4's silence.** *"Do not 'finish' this entry"* stands.
+- **The near game.** Bands 1–2 stay mundane; no page, no field, no line lands
+  before band 3. The game starts normal because it is normal, for hours.
+- **The Commission's statement-of-record posture.** One field, appearing only
+  once it corroborates something the player did, stating plainly what it is.
+- **No faction, no side, no questline, no tracker.** The revelation changes
+  the reader, not the rules.
+- **No new save.** Both flags derive from v23's `deep_logs`; the pages are a
+  pure function of cell keys.
