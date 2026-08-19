@@ -6038,7 +6038,7 @@ to whichever number makes it green.
 | 2 | the counter pays a first-filing bonus, once ever per cell | none | **BUILT** — §83 |
 | 3 | a rival cartographer — evidence only, a pure function, zero save | none | **BUILT** — §84, wreck deferred to the writing pass |
 | 4 | THE UNSOUNDED answers: one authored multi-expedition structure per system past 5,200u | **v23** | **fragments DRAFTED** (`docs/UNSOUNDED-FRAGMENTS-DRAFT.md`) — code waits on the read-aloud, per the plan's own gate |
-| 5 | beacon stock re-derived against §79's navigation; band-entry teaching through §76's broadcasts | none | **teaching BUILT** — §85; the stock number is a playtest question and stays open |
+| 5 | beacon stock re-derived against §79's navigation; band-entry teaching through §76's broadcasts | none | **BUILT** — §85 (teaching), §87 (stock 8 → 3, decided from live play, legacy saves grandfathered) |
 
 **Commit 0 is PAID (§86).** The measurement found the reference at the 18th
 percentile of the catalog; it moved to `rig_strike`, the yields and band stand,
@@ -8923,3 +8923,36 @@ of 3.00) dissolves under the honest ruler to 1.16 — that near-red was the
 mis-calibration, not the economy. And the CEILING catalog-fraction ratio at
 0.020 against 0.15 is now pure catastrophic-printer insurance; the MIDTIER
 band is the working bound, which is what §41 predicted when it split them.
+
+## 87. Three beacons (§79's number, re-derived)
+
+The last open half of Horizon 7's commit 5, decided the way §85 said it had to
+be — from play, not from a desk. Weeks of sessions on both sides of §79 are the
+derivation: before navigation, eight beacons threaded a route and the recover
+verb existed; after navigation made every beacon a free course destination and
+a jump target, eight was a fast-travel network and recovery went unused — the
+exact failure `beacon.gd`'s own header warned about ("the recover verb would
+never once be used"), arrived from the opposite direction it expected.
+
+**`BEACON_STOCK` is 3.** At three, placing a beacon is a commitment again, and
+recovering one is routine rather than never.
+
+### A retune must never delete a placed beacon
+
+The loader capped entries at `BEACON_STOCK`, which was correct until the day
+the constant moved — then it would have silently deleted beacons from any save
+standing more than three, on load, with the player's own markers as the
+casualty. The cap now bounds against `BEACON_LEGACY_CAP` (8, the largest stock
+ever shipped): a corrupt file is still refused, a retune deletes nothing, and a
+grandfathered pilot simply cannot drop until recovery brings them under the new
+stock. `beacon_stock_left()` clamps at zero for the same reason — "-2 IN
+STOCK" in a toast would be the arithmetic showing through the fiction.
+`A RETUNE NEVER DELETES A BEACON` drives the whole arc: five legacy entries
+kept, stock clamped, drop refused, recovery re-opening it.
+
+### And the prose is derived now
+
+The manual said "eight in stock" in two hand-written places, which is exactly
+the drift class the cancel-ladder lesson closed for rungs: both now format
+`GameState.BEACON_STOCK` into the sentence, so this number cannot go stale in
+copy again. The ledger leg's print derives its count the same way.

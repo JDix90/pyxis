@@ -5,11 +5,14 @@ extends Node3D
 # readout, and a place worth returning to — a rich cell, a station, and next
 # stage a hyper-structure — could only be remembered by writing its bearing on
 # paper. A beacon is that memory, dropped in the world and persisted in the
-# save: eight in stock, each one standing somewhere until it is recovered.
+# save: three in stock, each one standing somewhere until it is recovered.
 #
-# THE STOCK IS THE DESIGN. Eight is enough to thread a route across a system's
-# deep and few enough that a beacon is a decision — an unlimited supply would
-# be spray-paint, and the recover verb would never once be used. Stock is
+# THE STOCK IS THE DESIGN, and it was re-derived once (§87): eight, when a
+# beacon was a passive bookmark, was route-threading; after §79 made each one
+# a free course destination and a jump target, eight was a fast-travel network
+# and the recover verb went unused — the exact failure this paragraph warned
+# about, arrived from the other direction. At three, placing one is a
+# commitment and recovering one is routine. Stock is
 # DERIVED (BEACON_STOCK minus every dropped entry across every system), never
 # stored: §59's derived-not-tracked rule, so the save cannot disagree with
 # itself about how many beacons exist.

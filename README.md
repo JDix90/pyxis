@@ -179,10 +179,10 @@ mode (one new run carrying one); §84 added `RIVALTEST`, one new run carrying
 five; §83 added three `CARTTEST` legs and one `PACINGTEST` leg. So
 692 + 6 + 4 + 5 = 707, and 68 + 2 = 70 — measured, not predicted.
 
-**One commit ahead of that figure:** §86 moved `PACING_MIDTIER` to `rig_strike`
-and added `THE YARDSTICK IS MID-TIER`, so the next sweep should read **708
-across 70**, with the three MIDTIER lines at ~0.77× / ~1.16× / ~0.82× — the
-same economy under an honest ruler. A
+**Two commits ahead of that figure:** §86 moved `PACING_MIDTIER` to
+`rig_strike` and added `THE YARDSTICK IS MID-TIER` (confirmed green on a real
+run); §87 cut `BEACON_STOCK` to 3 and added `A RETUNE NEVER DELETES A BEACON`.
+So the next full sweep should read **709 across 70**. A
 baseline is a MEASUREMENT and is only written here once somebody has taken it;
 predicting one and typing it in as though it were taken is how the numbers this
 paragraph keeps correcting got wrong in the first place.

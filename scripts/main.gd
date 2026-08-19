@@ -21686,9 +21686,33 @@ func _run_beacon_test() -> void:
 		if GameState.beacon_stock_left() != GameState.BEACON_STOCK - i - 1:
 			stock_walk_ok = false
 	var ninth := GameState.drop_beacon("pyx01", 900.0, 900.0, 50.0)
-	print("[beacon] THE STOCK IS THE LEDGER 8 drops accepted with the derivation tracking each=%s, the ninth refused=%s -> %s" % [
-		str(stock_walk_ok), str(not ninth),
+	print("[beacon] THE STOCK IS THE LEDGER %d drops accepted with the derivation tracking each=%s, one more refused=%s -> %s" % [
+		GameState.BEACON_STOCK, str(stock_walk_ok), str(not ninth),
 		"PASS" if stock_walk_ok and not ninth else "FAIL"])
+
+	# 1b. A RETUNE NEVER DELETES A BEACON (v22, §87). The stock went 8 -> 3 with
+	#     live saves standing more than 3, so the property that matters is
+	#     grandfathering: the loader keeps every legacy entry (it bounds against
+	#     BEACON_LEGACY_CAP, never the stock), the derived stock clamps at zero
+	#     rather than going negative through a toast, dropping is refused until
+	#     recovery brings the field under stock, and then works again. The whole
+	#     arc, driven through the real loader and the real verbs.
+	var legacy := {"pyx01": []}
+	for i in 5:
+		(legacy["pyx01"] as Array).append({"x": 100.0 + float(i) * 40.0, "z": 300.0})
+	GameState._load_beacons(legacy)
+	var kept_all := GameState.beacons_in("pyx01").size() == 5
+	var clamped := GameState.beacon_stock_left() == 0
+	var refused_over := not GameState.drop_beacon("pyx01", 999.0, 999.0, 50.0)
+	for i in 3:
+		GameState.recover_beacon("pyx01", 100.0 + float(i) * 40.0, 300.0)
+	var after_rec := GameState.beacon_stock_left()
+	var drop_again := GameState.drop_beacon("pyx01", 999.0, 999.0, 50.0)
+	print("[beacon] A RETUNE NEVER DELETES A BEACON 5 legacy entries kept=%s, stock clamps to 0=%s, drop refused=%s; 3 recovered -> stock %d, drop works=%s -> %s" % [
+		str(kept_all), str(clamped), str(refused_over), after_rec, str(drop_again),
+		"PASS" if kept_all and clamped and refused_over and after_rec == 1
+			and drop_again else "FAIL"])
+	GameState.beacons = {}
 
 	# 2. THE CHART REFUSES A BEACON. Depth is an argument, so the rule is a
 	#    pure call — at depth 0 and inside the chart it refuses with stock in

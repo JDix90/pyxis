@@ -1677,17 +1677,33 @@ func _load_survey(saved: Dictionary) -> void:
 
 # --- waypoint beacons (v20, Hunt stage 5) ------------------------------------
 
-const BEACON_STOCK := 8
+# v22: THREE, down from eight — §79's re-derivation, decided from live play
+# (§87). Eight was tuned when a beacon was a passive bookmark; navigation made
+# each one a free course destination and a jump target, so the stock stopped
+# being "enough to thread a route" and became the size of a fast-travel
+# network. At three, placing one is a real commitment again, and the recover
+# verb — which an eight-stock player never needed — is back in the loop.
+const BEACON_STOCK := 3
+# The largest stock EVER shipped. The loader bounds a corrupt file against
+# this, never against BEACON_STOCK, because a retune must not delete a beacon
+# somebody placed: a v21 pilot with five standing beacons keeps all five and
+# simply cannot drop new ones until recovery brings them under the new stock.
+const BEACON_LEGACY_CAP := 8
 
 
 func beacon_stock_left() -> int:
-	# DERIVED. Eight minus every dropped entry across every system — the one
+	# DERIVED. The stock minus every dropped entry across every system — the one
 	# arithmetic, computed where it is asked, so a save edited by hand cannot
-	# carry "stock: 9" beside eight standing beacons.
+	# carry "stock: 9" beside a field of standing beacons.
+	#
+	# CLAMPED AT ZERO, and only because of the retune: a grandfathered save can
+	# legitimately stand more beacons than today's stock, and "-2 IN STOCK" in a
+	# toast would be the arithmetic showing through the fiction. Zero reads as
+	# what it is — recover before you drop.
 	var dropped := 0
 	for sid_v in beacons:
 		dropped += (beacons[sid_v] as Array).size()
-	return BEACON_STOCK - dropped
+	return maxi(0, BEACON_STOCK - dropped)
 
 
 func beacons_in(system_id: String) -> Array:
@@ -1774,9 +1790,11 @@ func recover_beacon(system_id: String, x: float, z: float) -> bool:
 func _load_beacons(saved: Dictionary) -> void:
 	# Entry-by-entry validation, the apex_intel loader's shape: a file is input,
 	# not truth. Unknown systems are dropped, malformed entries are dropped,
-	# non-finite coordinates are dropped, and anything past BEACON_STOCK in
-	# total is dropped — in file order, so which eight survive a corrupt file is
-	# deterministic rather than dictionary-order luck.
+	# non-finite coordinates are dropped, and anything past BEACON_LEGACY_CAP in
+	# total is dropped — in file order, so which entries survive a corrupt file
+	# is deterministic rather than dictionary-order luck. THE LEGACY CAP, not
+	# the stock: the bound exists to refuse a corrupt file, and a stock retune
+	# must never delete a beacon somebody placed (§87).
 	beacons = {}
 	var kept := 0
 	for sid_v in saved:
@@ -1787,7 +1805,7 @@ func _load_beacons(saved: Dictionary) -> void:
 			continue
 		var row: Array = []
 		for e_v in saved[sid_v]:
-			if kept >= BEACON_STOCK:
+			if kept >= BEACON_LEGACY_CAP:
 				break
 			if not (e_v is Dictionary):
 				continue
