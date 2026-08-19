@@ -6076,7 +6076,7 @@ the two items that remain open and are genuinely new design:
 |---|---|---|---|
 | 0 | the second register, STAGED: the private beat at the read, the living voices only at the whole record | none | **BUILT** — §92; no save bump, both flags derived from v23 |
 | 1 | the refusers' network: Directive 9's pages on band-3+ foreign beacons | none | **BUILT** — §93; the band gate lives in one pure function so no spawn site can re-decide the pacing |
-| 2 | purchasable slot expansion | likely v24 | specced only as a row; wants its own research pass |
+| 2 | purchasable slot expansion — now **berths**: a slot AND power together, paid for with a permanent penalty | likely v24 | **RESEARCHED**, spec in the horizon doc. The research killed the obvious version: greedy best-per-slot already draws 32 against the Mk V's 24, so a pilot at the top of the game owns a bay the reactor cannot feed, and selling them another would be selling an empty one. Awaiting the penalty-axis decision |
 | 3 | faction contracts offered on hail | TBD | specced only as a row |
 
 **The finding that shaped it, and the rule it hands the pass.** The authority's

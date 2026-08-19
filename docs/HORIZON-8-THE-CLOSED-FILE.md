@@ -50,9 +50,9 @@ The pass therefore has a rule it can be held to, and an assertion that holds it:
 | 3 | Faction contracts offered on hail | TBD | §64's second act; the offer verb is the one new piece, riding existing contract + faction machinery |
 
 Commits 0 and 1 are small, save-free and independently shippable. Commit 2 is
-the largest single mechanical change since the horizon system itself and wants
-its own research pass before it is specced in detail — this document does not
-pretend to have done that yet.
+the largest single mechanical change since the horizon system itself; its
+research pass is below, and it found that the obvious version of the feature
+does not work.
 
 **Deferred on purpose:** filing returns with the refusers instead of the
 Authority. It is the verb the last fragment asks for (*"file a return for us"*),
@@ -166,3 +166,82 @@ existing copy, on a beacon that has just been read).
   the order. The Commission's statement-of-record posture (§90) holds.
 - **A completed table.** Bands 1–4 stay silent for the same reason band 4 has no
   commissioned line: *"Do not 'finish' this entry."*
+
+
+---
+
+## Commit 2 — the berths (research pass, 2026-08-19)
+
+### The finding: the top of the game already has a slot it cannot fill
+
+Power is the binding constraint on fitting, and it is protected by a live
+assertion. `ALL-BEST IS STILL OUT OF REACH` measures greedy best-per-slot at
+**32 power against the Mk V reactor's 24** — a margin of 8, green on every
+sweep, computed from the live catalog rather than from a constant.
+
+`module_db.gd` spells out the top-end product in its own words: two Mk III
+mounts (6 + 7), a Vector Mk II (4) and an Aegis (4) is 21, plus exactly one
+3-power tool makes 24 — *"and the second utility bay still empty. That is the
+entire product."*
+
+So a pilot at the top of the game **already owns a slot the reactor cannot
+feed**. Selling them a Utility III for ninety thousand credits would be selling
+a bay that stays empty: the players most likely to buy the upgrade are exactly
+the players it does nothing for. The obvious version of this feature is a
+confusing purchase, not a powerful one.
+
+That is not an argument against the playtest note. It is the note's real
+content. What was asked for underneath *"purchasable extra slots"* is **more
+ship** — slots are simply how the refit console renders that idea.
+
+### Three shapes, and what each actually sells
+
+| | what it sells | verdict |
+|---|---|---|
+| **A. Berths** — a slot AND power together, paid for with a permanent penalty in another axis | more ship, at a stated cost | **recommended** — real at every tier, and the penalty is what keeps all-best out of reach |
+| **B. Slots only** | flexibility the reactor cannot power | rejected — dead exactly where it is most expensive |
+| **C. Power only, no new slots** | fills the bay that is already there | answers the constraint but leaves the note unanswered and adds no decision |
+
+Under A, `ALL-BEST IS STILL OUT OF REACH` stays the governing invariant: every
+berth raises the cap by less than the best module that could occupy its slot,
+so the margin narrows and never closes. The assertion is re-derived across all
+berths bought rather than re-pinned to a new constant.
+
+### What the code says about the change (findings, not plans)
+
+- **`compute_stats` hardcodes two slot lists** (`[WEAPON_A, WEAPON_B]` and
+  `[DRIVE, UTILITY, UTILITY_B, CORE]`). A new slot added to the enum and
+  forgotten here would be purchasable, equippable, powered — and contribute
+  **nothing**, silently. Both lists should be derived from `SLOT_CATEGORY` in
+  the same commit, with an assertion that every slot reaches the stats.
+- **`power_draw` iterates `fit`** and is slot-agnostic. Nothing to change.
+- **Sections govern SYSTEMS, not slots** (`dps`, `speed`, `shield`, `core`), so
+  section damage needs no new rows for new slots.
+- **`refit_panel` builds chips from `SLOT_NAMES` into an HFlow**, which its own
+  comment says was chosen because *"six chips no longer fit an HBox"* — more
+  chips wrap without layout work.
+- **The count 6 is pinned in three places**: `SECOND SLOT` asserts
+  `SLOT_NAMES.size() == 6`, the manual prints the count, and a UITEST leg
+  checks the refit sheet mentions it. All three want to become "the number of
+  slots this pilot has", not a literal.
+- **Save (v24)**: which berths are bought. The loader must also refuse a fit
+  that names a slot the pilot has not bought — otherwise a hand-edited save
+  grants free slots, and `can_equip` is not the only door into `fit`.
+
+### The decision this needs before it is built
+
+**What the berth costs.** The credit price is the easy half; the permanent
+penalty is the design. Candidates, all of which the existing floors machinery
+(`enforce_floors`) already supports:
+
+1. **Mass** — each berth costs max speed. Reads as a heavier ship, hits the
+   axis the deep punishes most (a slow ship in band 5 is a dead ship), and is
+   legible on the refit sheet's own delta rows.
+2. **Hold** — each berth costs cargo space. Hits the income loop directly, so
+   it trades combat capability against how much a run pays.
+3. **Integrity** — each berth costs hull. Simple, but it makes the upgrade read
+   as a downgrade in the one number a new player watches.
+
+Recommendation: **mass**. It is the axis the frontier already tests, it makes
+the fully-berthed ship a deliberate choice rather than a strict upgrade, and it
+cannot be bought back — which is what makes it a trade rather than a tax.
