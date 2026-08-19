@@ -14898,10 +14898,18 @@ func _run_directive_test() -> void:
 	var salvage_before := GameState.salvage
 	pb.hold_begin()
 	pb.hold_tick(Beacon.READ_TIME + 1.0)
+	# THE AFTER-IMAGE IS TAKEN IN THE SAME FRAME AS THE READ, and the first
+	# version of this leg was not -- it waited 0.4s for the plate to fade in
+	# first, and came back red because `played_seconds += delta` is in the save
+	# dict and four hundred milliseconds of it had gone by. The save had moved;
+	# reading had not moved it. What this leg means is that the ACT stored
+	# nothing, so the two images have to bracket the act and nothing else. The
+	# plate wait belongs after them.
+	var save_after := JSON.stringify(GameState.save_dict())
 	await get_tree().create_timer(0.4).timeout
 	var plate := hud.broadcast_text()
 	var read_ok: bool = plate.contains("RETURNS WENT IN THE BIN") \
-		and JSON.stringify(GameState.save_dict()) == save_before \
+		and save_after == save_before \
 		and GameState.beacon_stock_left() == stock_before \
 		and GameState.cargo_used() == cargo_before \
 		and GameState.salvage == salvage_before \
@@ -14909,7 +14917,7 @@ func _run_directive_test() -> void:
 		and is_instance_valid(pb)
 	print("[directive] THE PAGE LEAVES NOTHING BEHIND plate carries page 2=%s; save/stock/cargo/salvage unmoved=%s/%s/%s/%s; store empty=%s; the mast still stands=%s -> %s" % [
 		str(plate.contains("RETURNS WENT IN THE BIN")),
-		str(JSON.stringify(GameState.save_dict()) == save_before),
+		str(save_after == save_before),
 		str(GameState.beacon_stock_left() == stock_before),
 		str(GameState.cargo_used() == cargo_before),
 		str(GameState.salvage == salvage_before),

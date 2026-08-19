@@ -9375,6 +9375,18 @@ they have seen six different deep beacons, and the game never tells them how
 many they are missing — the same refusal the silhouette design makes (§68) and
 for the same reason.
 
+**And that leg was red on its first run, for a reason worth keeping.** It took
+its before-image, ran the read, then waited 0.4s for the broadcast plate to
+fade in before taking the after-image — and came back red because
+`played_seconds += delta` is in the save dict and four hundred milliseconds of
+it had gone by. The save had moved; reading had not moved it. The rule the fix
+states: **a leg that brackets an act must bracket only the act.** The two
+images now sit either side of `hold_tick` with no frame boundary between them,
+and the plate wait happens after. This is the second assertion in two horizons
+to be red on its first run for a test-side reason (§88's was tree order), and
+both had the same shape — the leg measured something true but not the thing it
+claimed to measure.
+
 ### The refusal did not go away, it got a sibling
 
 A foreign beacon with no page still answers exactly as it did: *NOT YOUR ANCHOR
