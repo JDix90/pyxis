@@ -14820,6 +14820,103 @@ func _run_directive_test() -> void:
 		after_dict.size(), str(moved) if not moved.is_empty() else "none",
 		"PASS" if moved.is_empty() else "FAIL"])
 
+	# 7. EVERY PAGE IS REACHABLE, AND NONE OF IT IS BLANK. The order is six
+	#    pages found in no order across a whole frontier, so the failure that
+	#    matters is a page nobody can ever draw -- an off-by-one in the modulo,
+	#    or a hash that clumps. Swept over two thousand deep cells rather than
+	#    reasoned about, and the spread is checked too: six pages that all came
+	#    back as page 4 would satisfy "no page is unreachable" on a
+	#    technicality.
+	var seen_pages := {}
+	for i in 2000:
+		var pk := DeepSpace.cell_key("pyx02", i % 47 - 23, i / 47 - 21)
+		var pg := Beacon.page_for(pk, 6)
+		seen_pages[pg] = int(seen_pages.get(pg, 0)) + 1
+	var missing := ""
+	var thin := ""
+	for want in range(1, Beacon.DIRECTIVE_PAGES.size() + 1):
+		if not seen_pages.has(want):
+			missing += "%d " % want
+		elif int(seen_pages[want]) < 100:
+			thin += "%d(%d) " % [want, int(seen_pages[want])]
+	var blank := ""
+	for i2 in range(Beacon.DIRECTIVE_PAGES.size()):
+		var row: Dictionary = Beacon.DIRECTIVE_PAGES[i2]
+		if String(row.get("clause", "")).strip_edges() == "" \
+				or String(row.get("margin", "")).strip_edges() == "":
+			blank += "%d " % (i2 + 1)
+	var out_of_range: bool = seen_pages.has(0) \
+		or seen_pages.has(Beacon.DIRECTIVE_PAGES.size() + 1)
+	print("[directive] EVERY PAGE IS REACHABLE %d pages over 2000 deep cells, spread %s; never drawn: %s; thin: %s; blank halves: %s; out of range: %s -> %s" % [
+		Beacon.DIRECTIVE_PAGES.size(), str(seen_pages),
+		"none" if missing == "" else missing, "none" if thin == "" else thin,
+		"none" if blank == "" else blank, str(out_of_range),
+		"PASS" if missing == "" and thin == "" and blank == "" and not out_of_range
+			else "FAIL"])
+
+	# 8. THE PAGES KEEP TO THE DEEP. The pacing gate, and the leg that would
+	#    have caught the first draft of this feature: foreign beacons stand
+	#    wherever the rival has filed, which starts at 24 units out, so an
+	#    ungated page puts the order's own text at the chart edge in a new
+	#    pilot's first hours. Every band swept, not a sample. Red-verify by
+	#    dropping the band clause from Beacon.page_for.
+	var shallow_leak := ""
+	var deep_dry := ""
+	for band in range(0, DeepSpace.BAND_NAMES.size()):
+		for i3 in 300:
+			var k3 := DeepSpace.cell_key("pyx01", i3 - 150, i3 * 3 % 91 - 45)
+			var got3 := Beacon.page_for(k3, band)
+			if band < Beacon.PAGE_MIN_BAND and got3 != 0:
+				shallow_leak += "band %d " % band
+				break
+			if band >= Beacon.PAGE_MIN_BAND and got3 == 0:
+				deep_dry += "band %d " % band
+				break
+	print("[directive] THE PAGES KEEP TO THE DEEP nothing at bands 0-%d: %s; a page at every band %d and deeper: %s -> %s" % [
+		Beacon.PAGE_MIN_BAND - 1, "confirmed" if shallow_leak == "" else shallow_leak,
+		Beacon.PAGE_MIN_BAND, "confirmed" if deep_dry == "" else deep_dry,
+		"PASS" if shallow_leak == "" and deep_dry == "" else "FAIL"])
+
+	# 9. THE PAGE LEAVES NOTHING BEHIND, AND IS STILL NOT YOURS. The covenant,
+	#    end to end on a real node: reading pays nothing, stores nothing, and
+	#    does not quietly become the recovery it sits beside. The mast must
+	#    still be standing afterwards -- a page that vanished on reading would
+	#    be a collectible rather than something somebody left for whoever came
+	#    through next.
+	var pb := Beacon.new()
+	pb.foreign = true
+	pb.system_id = system_id
+	pb.page = 2
+	add_child(pb)
+	var pilot2 := get_tree().get_first_node_in_group("player")
+	if pilot2:
+		pb.global_position = pilot2.global_position + Vector3(2.0, 0.0, 0.0)
+	await get_tree().process_frame
+	var save_before := JSON.stringify(GameState.save_dict())
+	var stock_before := GameState.beacon_stock_left()
+	var cargo_before := GameState.cargo_used()
+	var salvage_before := GameState.salvage
+	pb.hold_begin()
+	pb.hold_tick(Beacon.READ_TIME + 1.0)
+	await get_tree().create_timer(0.4).timeout
+	var plate := hud.broadcast_text()
+	var read_ok: bool = plate.contains("RETURNS WENT IN THE BIN") \
+		and JSON.stringify(GameState.save_dict()) == save_before \
+		and GameState.beacon_stock_left() == stock_before \
+		and GameState.cargo_used() == cargo_before \
+		and GameState.salvage == salvage_before \
+		and GameState.beacons.is_empty() \
+		and is_instance_valid(pb)
+	print("[directive] THE PAGE LEAVES NOTHING BEHIND plate carries page 2=%s; save/stock/cargo/salvage unmoved=%s/%s/%s/%s; store empty=%s; the mast still stands=%s -> %s" % [
+		str(plate.contains("RETURNS WENT IN THE BIN")),
+		str(JSON.stringify(GameState.save_dict()) == save_before),
+		str(GameState.beacon_stock_left() == stock_before),
+		str(GameState.cargo_used() == cargo_before),
+		str(GameState.salvage == salvage_before),
+		str(GameState.beacons.is_empty()), str(is_instance_valid(pb)),
+		"PASS" if read_ok else "FAIL"])
+	pb.queue_free()
+
 	GameState.deep_logs = {}
 	get_tree().quit()
 

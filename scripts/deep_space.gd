@@ -1748,6 +1748,12 @@ func _populate_cell(cx: int, cz: int, node: Node3D) -> void:
 				var rb := Beacon.new()
 				rb.foreign = true
 				rb.system_id = _id
+				# §93. Whether this mast carries a page of Directive 9, and
+				# which. Beacon.page_for owns the whole rule -- including the
+				# band gate that keeps the order out of the shallows -- so this
+				# call site cannot re-decide the pacing, and neither can the
+				# next one. Set before add_child, every spawner's contract.
+				rb.page = Beacon.page_for(cell_key(_id, cx, cz), band_of(rb_depth))
 				node.add_child(rb)
 				rb.global_position = rb_pos
 

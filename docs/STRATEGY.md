@@ -6075,7 +6075,7 @@ the two items that remain open and are genuinely new design:
 | # | what | save | status |
 |---|---|---|---|
 | 0 | the second register, STAGED: the private beat at the read, the living voices only at the whole record | none | **BUILT** — §92; no save bump, both flags derived from v23 |
-| 1 | the refusers' network: Directive 9's pages on band-3+ foreign beacons | none | **SPECCED**; the band gate is R1's other half — ungated, the rival's shallows sweep would put pages at the chart edge in the first hours |
+| 1 | the refusers' network: Directive 9's pages on band-3+ foreign beacons | none | **BUILT** — §93; the band gate lives in one pure function so no spawn site can re-decide the pacing |
 | 2 | purchasable slot expansion | likely v24 | specced only as a row; wants its own research pass |
 | 3 | faction contracts offered on hail | TBD | specced only as a row |
 
@@ -9319,3 +9319,80 @@ requires that reading Directive 9 moves `deep_logs` and nothing else. The claim
 "this horizon costs zero bytes" was worth exactly as much as the check behind
 it, and until this commit there was no way to make that check that did not
 involve the disk.
+
+## 93. The pages, and where they are not
+
+Horizon 8 commit 1, and no save bump again. Directive 9 travels the way a
+banned document travels: one page at a time, out of order, clipped to the masts
+of people who were told not to file and filed anyway.
+
+### It is met first and built second
+
+In play this is the FIRST beat of the reveal — a mid-game pilot finds a page,
+reads a clause of an order they have no context for, and understands every word
+of it without yet knowing what it is part of. §92's private beat and the two
+living voices both come later. It was built second because the pages are
+corroboration for a fact the game had to be able to state first; that is a
+build order, not a play order, and the distinction is worth writing down
+because the two are opposites here.
+
+### The band gate is the whole pacing decision, so it lives in one function
+
+The playtest note that shaped this horizon — *shouldn't the game feel normal
+first?* — is answered here or not at all. Foreign beacons stand wherever the
+rival has filed, and the rival's arrival begins at `CONTENT_MIN_DEPTH`, 24
+units out. The shallows go inside single sessions. An ungated page would
+therefore have put the order's own text at the chart edge in a new pilot's
+first hours: the twist, delivered before the game has said anything is wrong.
+
+`Beacon.page_for(cell_key, band)` owns the rule — which page, and whether there
+is one at all — as a single pure function, with `PAGE_MIN_BAND = 3`. The
+spawner calls it and decides nothing. That placement is deliberate: a band
+check written at the spawn site is a pacing decision sitting in a place where
+the next caller will not think to look for it, and there is now no way to spawn
+a foreign beacon that quietly disagrees about where the order is allowed to be.
+`THE PAGES KEEP TO THE DEEP` sweeps every band over three hundred keys each,
+and red-verifies by dropping the band clause.
+
+Band 3 is also where the shipped broadcast arc already turns strange — the
+relay goes to SIGNAL DEGRADED, the ship's own bark starts naming things that
+shoot back. The hints arrive exactly when the game has stopped being reassuring,
+and the fiction agrees with the pacing: you do not leave contraband where the
+authority still sweeps.
+
+### Reading costs nothing and leaves nothing
+
+The rival's covenant (§84), applied to the people the rival was one of. No
+cargo, no credits, no stage, no store entry, no seen-set: zero bytes, and the
+mast is still standing afterwards. A page that vanished on being read would be
+a collectible, and this is not a collectible — it is a thing somebody left
+where the next crew through would find it. `THE PAGE LEAVES NOTHING BEHIND`
+drives the whole verb on a real node and compares two `save_dict()` images
+across it.
+
+There is no counter anywhere. A player who wants the whole order flies until
+they have seen six different deep beacons, and the game never tells them how
+many they are missing — the same refusal the silhouette design makes (§68) and
+for the same reason.
+
+### The refusal did not go away, it got a sibling
+
+A foreign beacon with no page still answers exactly as it did: *NOT YOUR ANCHOR
+CODE — THIS BEACON ANSWERS TO SOMEBODY ELSE*. Out in the near ring that is the
+whole truth — there is nothing clipped to the mast, and the anchor code is
+still not the player's to release. One question, `reading()`, is asked in all
+four places the three verbs diverge, so recovery, refusal and reading cannot
+drift apart.
+
+`on_tapped` gained what §88 said it should have had all along. It used to pulse
+and fly the ship in without a word, which is the affordance problem one layer
+down — and it matters more now that a tap can land on three beacons that do
+three different things. All three branches say which one this is.
+
+### Not in the manual, deliberately
+
+The manual documents the player's instruments and the player's verbs. A page
+clipped to somebody else's mast is neither: it is something found, and the tap
+prompt teaches it at the moment it is in front of the player. Writing it into
+the manual would turn a discovery into a checklist item — the same argument
+§90 made for the Commission page not being a quest log.

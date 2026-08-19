@@ -1,7 +1,10 @@
 # DIRECTIVE 9 — prose draft (Horizon 8 commit 0)
 
-**Status: SHIPPED (§92) for everything in sections A, C and D; section B's
-pages wait for Horizon 8 commit 1.** Read and approved 2026-08-19. The four
+**Status: FULLY SHIPPED — sections A, C and D in §92, section B's six pages in
+§93. Both without a save bump.** Read and approved 2026-08-19. Edit any line
+here and in its class together: the after-lines live in `deep_space.gd`'s
+`BROADCASTS`, the pages in `beacon.gd`'s `DIRECTIVE_PAGES`, and assertions read
+the classes rather than this file. The four
 marked decisions came back answered and one general note came with them; both
 are folded in below and recorded here so the reasoning survives.
 

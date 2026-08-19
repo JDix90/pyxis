@@ -1,7 +1,7 @@
 # Horizon 8 — The Closed File
 
-**Status: COMMIT 0 BUILT (§92, no save bump). Commits 1–3 specced, nothing
-built.** The read-aloud answered R1–R4 and set the register rule; the prose in
+**Status: COMMITS 0 AND 1 BUILT (§92, §93 — no save bump in either). Commits
+2–3 specced, nothing built.** The read-aloud answered R1–R4 and set the register rule; the prose in
 `docs/DIRECTIVE-NINE-DRAFT.md` shipped as drafted, with one design change found
 during the build and recorded there (the per-system override correctly wins on
 two of the four living-voice rows, because both of those overrides are
@@ -45,7 +45,7 @@ The pass therefore has a rule it can be held to, and an assertion that holds it:
 | # | Commit | Save | Why here |
 |---|---|---|---|
 | 0 | The second register, staged — the private beat at the read, the two living voices at the whole record | **none** | **BUILT (§92)** — the reveal itself. Data and copy; both flags derived from v23 `deep_logs` |
-| 1 | The refusers' network — Directive 9 pages on band-3+ foreign beacons | **none** | The mid-game hint channel. Built second, but in play it is met FIRST — the pages foreshadow the archive, not the other way round |
+| 1 | The refusers' network — Directive 9 pages on band-3+ foreign beacons | **none** | **BUILT (§93)** — the mid-game hint channel. Built second, but in play it is met FIRST — the pages foreshadow the archive, not the other way round |
 | 2 | Purchasable slot expansion (Utility III, Drive II, Weapon III) | likely **v24** | §64's headline. Touches the fit dict, refit UI, section damage, every BALANCE and PACING assertion |
 | 3 | Faction contracts offered on hail | TBD | §64's second act; the offer verb is the one new piece, riding existing contract + faction machinery |
 

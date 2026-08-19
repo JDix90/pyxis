@@ -193,10 +193,11 @@ the diagnosis: the leg picked a monument by tree order and an earlier leg had
 claimed it). The leg was fixed, not the code, and the re-sweep came back
 **721 across 72, all green**, at save format **v23**.
 
-**One commit ahead of that figure, and not yet measured:** §92 adds
-`DIRECTIVETEST`, one new run carrying six, and **no save bump at all** — both
-of its flags derive from the v23 store. So the next full sweep should read
-**727 across 73**. A baseline is a MEASUREMENT and is only written here once
+**Two commits ahead of that figure:** §92 added `DIRECTIVETEST`, one new run
+carrying six, and **no save bump at all** — both of its flags derive from the
+v23 store; that sweep came back green at **727 across 73**. §93 then added
+three legs to the same suite and no new run, and no save bump either. So the
+next full sweep should read **730 across 73**. A baseline is a MEASUREMENT and is only written here once
 somebody has taken it; predicting one and typing it in as though it were taken
 is how the numbers this paragraph keeps correcting got wrong in the first
 place.
