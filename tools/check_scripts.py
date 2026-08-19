@@ -18,7 +18,7 @@ that are not about strength:
    survives review, gets committed, and is discovered by whoever pulls next.
    That has happened (STRATEGY §77). Python 3 is everywhere Godot is not.
 
-Three checks, all chosen because they cause the class-registry cascade above
+Four checks, all chosen because they cause the class-registry cascade above
 and none is visible when reading a diff.
 
     tools/check_scripts.py            # scripts/**/*.gd
@@ -166,6 +166,56 @@ def check_duplicates(path: str):
     return bad
 
 
+# ----------------------------------------------------------------- shadow ---
+
+LOOP = re.compile(r'^(\t*)for\s+([A-Za-z_]\w*)\s+in\b')
+LOCAL = re.compile(r'^(\t*)(?:var|const)\s+([A-Za-z_]\w*)')
+FUNC = re.compile(r'^(?:static\s+)?func\s')
+
+
+def check_shadow(path: str):
+    """A `for` variable with the same name as a local that is still in scope.
+
+    THE FOURTH RULE, and the second one a scripted edit produced. GDScript
+    rejects `for b in 40` outright when a `var b` earlier in the same function
+    is still live -- "There is already a variable named b in this scope" -- and
+    that is a parse error, so it takes the class registry down with it exactly
+    the way a bad indent does. It also survives review perfectly: the loop and
+    the declaration were two hundred lines apart, both correct on their own,
+    and the diff showed only the new one.
+
+    SCOPE IS TRACKED BY INDENTATION, which is what makes this quiet enough to
+    keep. A `var` inside an `if` body dies with the block, so a later loop at
+    lower indent may legitimately reuse the name -- the naive version of this
+    check reported 28 collisions against a tree that parses, which is a checker
+    nobody would run twice.
+    """
+    bad, live = [], []
+    for n, line in enumerate(open(path, encoding="utf-8"), 1):
+        if line.strip() == "" or line.lstrip().startswith("#"):
+            continue
+        if FUNC.match(line):
+            live = []
+            continue
+        indent = len(line) - len(line.lstrip("\t"))
+        # Everything declared deeper than this line has gone out of scope.
+        live = [e for e in live if e[0] <= indent]
+        m = LOOP.match(line)
+        if m:
+            depth, name = len(m.group(1)), m.group(2)
+            hit = [e for e in live if e[1] == name and e[0] <= depth]
+            if hit:
+                bad.append((n, "for variable %s is already a live local from "
+                            "line %d" % (name, hit[-1][2]), line.strip()))
+            # The loop variable itself scopes to the body.
+            live.append((depth + 1, name, n))
+            continue
+        m = LOCAL.match(line)
+        if m:
+            live.append((len(m.group(1)), m.group(2), n))
+    return bad
+
+
 # -------------------------------------------------------------- reference ---
 
 # Reachable through any class name without being declared anywhere in this
@@ -278,7 +328,7 @@ def main(argv):
     found = 0
     for path in targets:
         for lineno, why, text in check_indent(path) + check_duplicates(path) + \
-                check_refs(path, members, parent, home):
+                check_shadow(path) + check_refs(path, members, parent, home):
             rel = os.path.relpath(path, root)
             print("%s:%d: %s\n    %s" % (rel, lineno, why, text[:88]))
             found += 1

@@ -10898,8 +10898,8 @@ func _run_contract_test() -> void:
 	var seen_rows := 0
 	var bad_terms := 0
 	var clock := GameState.played_seconds
-	for b in 40:
-		GameState.played_seconds = float(b) * ContractDB.BOARD_ROTATE_SECONDS + 1.0
+	for bucket in 40:
+		GameState.played_seconds = float(bucket) * ContractDB.BOARD_ROTATE_SECONDS + 1.0
 		for offer_v in live.board(port_id):
 			var offer: Dictionary = offer_v
 			if String(offer["id"]) != comm_id:

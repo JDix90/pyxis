@@ -9581,3 +9581,30 @@ claimed.
    **five-of-twelve** shuffle, so that is a coin flip — a flake wearing an
    assertion's clothes. It now sweeps forty time buckets, which is exhaustive
    rather than lucky because the shuffle is deterministic per (port, bucket).
+
+### And a third one got out, which is why the checker has a fourth rule
+
+The bucket sweep shipped as `for b in 40`, two hundred lines below a `var b`
+in the same function. GDScript rejects that outright — *"There is already a
+variable named b in this scope"* — which is a parse error, which takes the
+whole class registry down (§77's cascade). It reached the other machine and
+cost a pull.
+
+Neither `check_scripts.py` nor a re-read caught it, and the reason is worth
+stating: **both halves were correct on their own, they were two screens apart,
+and the diff showed only the new one.** That is the exact profile the checker
+exists for, so it now carries `check_shadow` — a `for` variable that collides
+with a local still in scope.
+
+Scope is tracked by INDENTATION, and that is what makes the rule keepable. A
+`var` inside an `if` body dies with the block, so a later loop at lower indent
+may legitimately reuse the name. The naive version — "has this name appeared
+in this function" — reported **28 collisions against a tree that parses**, and
+a checker that cries 28 times about working code is one nobody runs twice. The
+shipped rule reports zero on the clean tree, names the exact pair when the
+defect is reintroduced, and was red-verified against a fixture holding one
+legal reuse and one illegal one.
+
+Four rules now, and all four came from a defect that had already shipped:
+bad indent (§77), unresolved static reference (§77), duplicate declaration
+(§88), shadowed loop variable (here).
