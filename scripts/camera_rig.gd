@@ -584,6 +584,15 @@ func _select(screen_pos: Vector2) -> bool:
 	if port and port.has_method("on_tapped"):
 		port.on_tapped()
 		return true
+	# v22 (88). The instruments, last for the hold ladder's own reason: they are
+	# the biggest thing on screen when they are on it, so any contested tap
+	# should resolve to the smaller thing first. Before this line, CLICKING the
+	# largest object in the game did nothing at all -- the claim hold was fully
+	# wired and the tap that every player tries first was not.
+	var hyper := _pick(screen_pos, "hyper")
+	if hyper and hyper.has_method("on_tapped"):
+		hyper.on_tapped()
+		return true
 	return false
 
 

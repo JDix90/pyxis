@@ -730,17 +730,40 @@ func _forge_row(id: String) -> Control:
 	# when you cannot craft — that IS the advertisement.
 	var rec := ModuleDB.recipe(id)
 	var parts := ""
+	var sources := ""
 	for good_v in rec:
 		var good := String(good_v)
 		var need := int(rec[good])
 		var have := GameState.cargo_count(good)
 		parts += "%s %d/%d   " % [CommodityDB.short_name(good), have, need]
+		# v22 (90). THE SOURCE LINE THE COMMENT ABOVE ALWAYS CLAIMED. "A
+		# component names the read that produces it" was written up top and
+		# never wired -- the bill printed have/need and nothing else, and a
+		# playtest concluded the forge's inputs did not exist in the game.
+		# Derived from READS_AS, the same table the reads use, so it cannot
+		# drift: the shallowest salvage grade whose read table yields this
+		# component names the band to go crack.
+		var src_band := -1
+		for sal_v in CommodityDB.READS_AS:
+			if (CommodityDB.READS_AS[sal_v] as Array).has(good):
+				var b := CommodityDB.band_of(String(sal_v))
+				src_band = b if src_band < 0 else mini(src_band, b)
+		if src_band >= 0 and have < need:
+			sources += "%s FALLS FROM READING BAND %d+ SALVAGE\n" % [
+				CommodityDB.short_name(good), src_band]
 	var bill := Label.new()
 	bill.text = parts
 	bill.add_theme_font_size_override("font_size", 10)
 	bill.add_theme_color_override("font_color",
 		Palette.GOLD if GameState.can_craft(id) else Palette.AMBER_DIM)
 	box.add_child(bill)
+	if sources != "":
+		var src := Label.new()
+		src.text = sources.strip_edges()
+		src.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		src.add_theme_font_size_override("font_size", 9)
+		src.add_theme_color_override("font_color", Palette.TEAL)
+		box.add_child(src)
 
 	# What it costs to run, in the same words the refit console uses.
 	var costs := ""
@@ -1026,6 +1049,23 @@ func _build_commission() -> void:
 	head.add_theme_font_size_override("font_size", 15)
 	head.add_theme_color_override("font_color", Palette.GOLD)
 	_body.add_child(head)
+
+	# v22 (90). WHAT THIS PAGE IS, in one breath, before the record begins. The
+	# statement-of-record posture above is the design and it held for a year --
+	# and a playtest still filed "sees no purpose for this tab", because a page
+	# that refuses to be a quest log still owes the reader one sentence saying
+	# what it IS. Describing the page is not instructing the player; the line
+	# below states what the registry does and what standing it confers, and
+	# then the record speaks for itself.
+	var why := Label.new()
+	why.text = ("THE GSA'S FILE ON YOUR SURVEY. STAGES ARE ACKNOWLEDGED HERE AS "
+		+ "YOU EARN THEM — %d OF %d ON FILE — AND THE FULL COMMISSION CHANGES "
+		+ "HOW THE AUTHORITY ADDRESSES YOU EVERYWHERE IT SPEAKS.") % [
+		GameState.commission_claimed, CommissionDB.count()]
+	why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	why.add_theme_font_size_override("font_size", 10)
+	why.add_theme_color_override("font_color", Palette.AMBER_DIM)
+	_body.add_child(why)
 
 	var claimed := GameState.commission_claimed
 	for i in range(CommissionDB.count()):

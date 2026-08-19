@@ -11932,6 +11932,33 @@ func _run_music_test() -> void:
 	await get_tree().process_frame
 	print("[music] TITLE playing=%s (must be false)  ambient loop=%s (must be true)" % [
 		str(Music.is_playing()), str(Sfx.is_looping("ambient"))])
+
+	# v22 (89). COMBAT SOUND FALLS OFF WITH DISTANCE. The curve, held without
+	# listening: flat inside full range, monotone to the floor at the cull edge,
+	# and the cull strictly beyond the flat zone so the two constants cannot be
+	# tuned past each other. The world's fire/hit/explode all route through
+	# play_at now; a battle past SFX_CULL_RANGE does not exist to the ear.
+	var att_bad := ""
+	if Sfx.attenuation_for(0.0) != 0.0 or Sfx.attenuation_for(Sfx.SFX_FULL_RANGE) != 0.0:
+		att_bad = "not flat inside full range"
+	elif absf(Sfx.attenuation_for(Sfx.SFX_CULL_RANGE) + Sfx.SFX_FALLOFF_DB) > 0.001:
+		att_bad = "cull edge is not the floor"
+	elif Sfx.SFX_CULL_RANGE <= Sfx.SFX_FULL_RANGE:
+		att_bad = "cull inside full range"
+	else:
+		var att_prev := 0.0
+		var att_d := 0.0
+		while att_d <= Sfx.SFX_CULL_RANGE + 20.0:
+			var a := Sfx.attenuation_for(att_d)
+			if a > att_prev + 0.001:
+				att_bad = "curve rises at %.0fu" % att_d
+				break
+			att_prev = a
+			att_d += 5.0
+	print("[music] COMBAT SOUND FALLS OFF WITH DISTANCE flat to %.0fu, -%.0fdB at %.0fu, monotone: %s -> %s" % [
+		Sfx.SFX_FULL_RANGE, Sfx.SFX_FALLOFF_DB, Sfx.SFX_CULL_RANGE,
+		"yes" if att_bad == "" else att_bad,
+		"PASS" if att_bad == "" else "FAIL"])
 	get_tree().quit()
 
 
@@ -14337,6 +14364,38 @@ func _run_plot_test() -> void:
 	print("[plot] THE PLOT STILL FITS ITS SHEET sheet %.0fpx, minimums %.0fpx, spare %.0fpx; rows viewport %.0f -> %.0f after 10 rows (pinned=%s) -> %s" % [
 		sheet_h, fixed, spare, before_min, after_min, str(pinned),
 		"PASS" if spare >= 0.0 and pinned else "FAIL"])
+
+	# 13. AND EVERY WINDOW FITS THE SHEET (v22, 88). Leg 12 models the PORTRAIT
+	#     design size, which is why a landscape overflow lived through every
+	#     sweep: on a wide, short window the 0.55 sheet is smaller than the
+	#     column's minimums, the VBox refuses to shrink its children, and the
+	#     overflow comes out of the bottom -- which is the WARP button, so the
+	#     bug reads as "cannot travel". The sheet now grows UPWARD when the
+	#     window is short. Asserted in both directions: landscape pulls the top
+	#     anchor up and keeps WARP on screen; portrait remains exactly the
+	#     0.55 it always was.
+	get_window().size = Vector2i(2000, 1090)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	cp.open()
+	# PAST THE SLIDE, not past a frame: open() animates the sheet up over
+	# SLIDE_TIME by offsetting its position, so a rect read mid-slide sits
+	# below where the sheet will rest and fails a correct layout.
+	await get_tree().create_timer(ChartPanel.SLIDE_TIME + 0.15).timeout
+	var land_top := cp._sheet.anchor_top
+	var land_vh := cp._sheet.get_viewport_rect().size.y
+	var warp_bottom := cp._travel_button.get_global_rect().end.y
+	var grew_up: bool = land_top < 1.0 - ChartPanel.SHEET_RATIO - 0.001
+	var warp_on: bool = warp_bottom <= land_vh + 1.0
+	cp.close_panel()
+	get_window().size = Vector2i(720, 1280)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var portrait_back: bool = absf(cp._sheet.anchor_top - (1.0 - ChartPanel.SHEET_RATIO)) < 0.001
+	print("[plot] AND EVERY WINDOW FITS THE SHEET landscape: top anchor %.3f (grew up=%s), WARP bottom %.0f of %.0f on-screen=%s; portrait restored to %.2f=%s -> %s" % [
+		land_top, str(grew_up), warp_bottom, land_vh, str(warp_on),
+		1.0 - ChartPanel.SHEET_RATIO, str(portrait_back),
+		"PASS" if grew_up and warp_on and portrait_back else "FAIL"])
 
 	get_tree().quit()
 
@@ -21658,6 +21717,29 @@ func _run_colony_test() -> void:
 	var named := PACING_LOOP.has("colony") or PACING_LOOP.has("hyper")
 	print("[colony] A JUMP IS NOT A RAISE PACING_LOOP names a colony term=%s -> %s" % [
 		str(named), "PASS" if not named else "FAIL"])
+
+	# --- K. the monument answers a tap (v22, 88) -----------------------------
+	# The claim hold was wired from the day these shipped and a playtest still
+	# reported "no way to interact", because the tap -- the verb every player
+	# tries first on the biggest object in the game -- did nothing. on_tapped
+	# states the terms through the real prompt, and the alpha-zero trap from
+	# BEACONTEST applies: the prompt fades in, so it cannot be read on the
+	# frame it is set.
+	var monument: HyperStructure = null
+	for h_v2 in get_tree().get_nodes_in_group("hyper"):
+		monument = h_v2 as HyperStructure
+		break
+	var tap_ok := false
+	var tap_text := ""
+	if monument != null and hud != null:
+		hud.clear_prompt()
+		monument.on_tapped()
+		await get_tree().create_timer(0.4).timeout
+		tap_text = hud.prompt_text()
+		tap_ok = tap_text.contains(monument.designation()) \
+			and (tap_text.contains("HOLD AT THE BASE") or tap_text.contains("WARDEN"))
+	print("[colony] THE MONUMENT ANSWERS A TAP prompt '%s' names it and the verb -> %s" % [
+		tap_text, "PASS" if tap_ok else "FAIL"])
 
 	GameState.colonies = {}
 	get_tree().quit()

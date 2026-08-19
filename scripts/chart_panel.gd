@@ -60,6 +60,9 @@ var _touches := {}
 var _pinch_ref := 0.0
 
 var _sheet: Panel
+# Kept for _apply_layout: the sheet's height decision reads the column's real
+# minimums, and the margin container is where they accumulate.
+var _margin: MarginContainer
 var _map: Control
 var _title: Label
 var _detail: Label
@@ -82,6 +85,23 @@ func _ready() -> void:
 
 func _apply_layout() -> void:
 	UILayout.column_horizontal(_sheet)
+	# v22 (88). THE SHEET GROWS UPWARD WHEN THE WINDOW IS SHORT. SHEET_RATIO is
+	# a PORTRAIT design constant: 55% of 1280 holds this column's ~680px of
+	# minimums with room to spare. On a wide desktop window 55% of ~1090 does
+	# not -- and a VBoxContainer does not shrink children below their minimums,
+	# so the overflow came out of the BOTTOM: the WARP button, which made the
+	# chart read as "cannot travel" on any landscape window while the top 45%
+	# of the screen sat empty. The playtest that found it reported exactly
+	# that, as two separate symptoms.
+	#
+	# The ratio stays the FLOOR, so portrait is untouched byte for byte; the
+	# sheet takes more of a short window only when the column's own minimums
+	# demand it, capped at 95% so the world never fully disappears.
+	if _margin != null:
+		var vh := _sheet.get_viewport_rect().size.y
+		var frac := clampf(_margin.get_combined_minimum_size().y / maxf(vh, 1.0),
+			SHEET_RATIO, 0.95)
+		_sheet.anchor_top = 1.0 - frac
 
 
 func _build() -> void:
@@ -107,7 +127,8 @@ func _build() -> void:
 	_sheet.add_theme_stylebox_override("panel", style)
 	root.add_child(_sheet)
 
-	var margin := MarginContainer.new()
+	_margin = MarginContainer.new()
+	var margin := _margin
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	for side in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, 16)
@@ -1066,6 +1087,7 @@ func open() -> void:
 	is_open = true
 	visible = true
 	_selected = GameState.current_system
+	_apply_layout()
 	reset_view()
 	_refresh()
 	Sfx.play("equip", -9.0, 1.15)

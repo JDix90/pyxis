@@ -227,6 +227,26 @@ func hold_begin() -> void:
 	_holding = true
 
 
+func on_tapped() -> void:
+	# v22 (88). THE INVITATION. The claim hold was wired from the day these
+	# shipped and the playtest still reported "no way to interact" -- because a
+	# player who finds a 140-unit monument CLICKS it, and nothing answered.
+	# The tap states the terms (58: which refusal, what to do about it) and
+	# starts the approach; the hold at the base stays the claiming verb.
+	var hud := get_tree().get_first_node_in_group("hud")
+	if hud:
+		if is_claimed():
+			hud.prompt("%s — CLAIMED. THE CHART CARRIES ITS JUMP." % designation())
+		elif is_locked():
+			hud.prompt("%s — %d WARDEN(S) STANDING. CLEAR THEM, THEN HOLD AT THE BASE TO CLAIM."
+				% [designation(), wardens_standing()])
+		else:
+			hud.prompt("%s — HOLD AT THE BASE TO CLAIM." % designation())
+	FX.ring_pulse(get_parent(), pick_anchor(), Palette.GOLD, 3.0, 0.8)
+	if not _player_in_range():
+		_approach()
+
+
 func hold_release() -> void:
 	_holding = false
 	var hud := get_tree().get_first_node_in_group("hud")

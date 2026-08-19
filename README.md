@@ -182,7 +182,9 @@ five; §83 added three `CARTTEST` legs and one `PACINGTEST` leg. So
 **Two commits ahead of that figure:** §86 moved `PACING_MIDTIER` to
 `rig_strike` and added `THE YARDSTICK IS MID-TIER` (confirmed green on a real
 run); §87 cut `BEACON_STOCK` to 3 and added `A RETUNE NEVER DELETES A BEACON`.
-So the next full sweep should read **709 across 70**. A
+So the next full sweep should read 709 across 70 before the playtest patch; §88–§90 (the nine-note playtest patch) added one leg each to
+`PLOTTEST`, `COLONYTEST` and `MUSICTEST`. So the next full sweep should read
+**712 across 70**. A
 baseline is a MEASUREMENT and is only written here once somebody has taken it;
 predicting one and typing it in as though it were taken is how the numbers this
 paragraph keeps correcting got wrong in the first place.

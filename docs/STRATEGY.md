@@ -6056,6 +6056,15 @@ stands; the missing record is not.
 idea most likely to become tedium, and it only earns its place once commit 4
 gives THE UNSOUNDED something worth the trip.
 
+**From the nine-note playtest of 2026-08-18** (triage and fixes in §88–§90),
+the two items that remain open and are genuinely new design:
+
+| what | status |
+|---|---|
+| purchasable slot expansion (Utility III, Weapon III…) with power/section/speed tradeoffs | **Horizon 8's headline** — touches the fit dict, refit UI, section damage, and every BALANCE/PACING assertion; deserves the full spec treatment |
+| faction contracts offered on hail, with standing gain; standing LOSS already exists (witnessed kills, fence deals) | **Horizon 8 second act** — the offer verb is the one new piece, rides existing contract + faction machinery |
+| rival-remnant inspection with staged reveals (hold on a foreign beacon = read it) | folds into commit 4's writing pass, already gated on the fragments read |
+
 **The README's harness counts should be derived, not typed** (open 2026-08-17,
 §77). Three numbers — tag count, SAVETEST mode count, total runs — are
 maintained by hand in a paragraph that itself warns the reader it has been
@@ -8956,3 +8965,89 @@ The manual said "eight in stock" in two hand-written places, which is exactly
 the drift class the cancel-ladder lesson closed for rungs: both now format
 `GameState.BEACON_STOCK` into the sentence, so this number cannot go stale in
 copy again. The ledger leg's print derives its count the same way.
+
+## 88. The features that existed and could not be seen
+
+A nine-note playtest, and the triage is the finding: of nine notes, one was a
+real layout bug, one was a wired verb with no invitation, one was
+architectural, and *six* were systems working as built that the game never
+introduced. The best possible playtest result, and the most damning — the work
+was done and the door was shut. This section covers the two interaction fixes;
+§89 the audio; §90 the teaching verdicts.
+
+### The sheet grew upward (the chart bug)
+
+`SHEET_RATIO` is a portrait constant: 55% of 1280 holds the chart column's
+~680px of minimums. On a wide desktop window, 55% of ~1090 does not — and a
+VBoxContainer refuses to shrink children below their minimums, so the overflow
+came out of the *bottom*, which is the WARP button. The playtest filed it as
+two symptoms — "the chart opens too low" and "cannot travel to the new Pyx" —
+and both were one bug: the button was there, below the window edge, while the
+top 45% of the screen sat empty.
+
+`_apply_layout` now treats the ratio as a floor: the sheet takes more of a
+short window only when the column's own measured minimums demand it, capped at
+95%. Portrait is untouched byte for byte. `AND EVERY WINDOW FITS THE SHEET`
+asserts both directions at a landscape resolution — the leg the portrait-only
+model of leg 12 was structurally unable to provide — and it measures *after*
+the slide animation, because a rect read mid-slide sits below where the sheet
+will rest and fails a correct layout.
+
+### The monument answers a tap
+
+The claim hold was wired from the day hyper structures shipped: `hold_begin`
+prompts the warden count, `_approach` flies you in, the gauge runs. The
+playtest still reported "no way to interact" — because the verb every player
+tries first on the biggest object in the game is a *click*, and the select
+ladder did not include `hyper`. Clicking a 140-unit monument did nothing at
+all. `on_tapped` now states the terms through the real prompt (claimed /
+wardens standing / hold-to-claim), starts the approach, and joins the ladder
+last, for the hold ladder's own stated reason: the biggest thing on screen
+should lose every contested tap to the smaller thing in front of it.
+
+The general lesson, worth its sentence: **a wired verb without an affordance
+is indistinguishable from an unbuilt feature, and the player's report will
+correctly say "cannot interact" either way.**
+
+## 89. Combat sound has a distance
+
+`Sfx.play` is a flat sixteen-player pool — every caller anywhere in the
+streamed window played at authored volume. A swarm fighting a picket three
+hundred units away was as loud as one on the hull, forever; the playtest
+called it "really annoying," which for a mobile game is a death sentence
+politely phrased.
+
+`play_at(pos, …)` reads the player's distance: unchanged inside 40u, a linear
+dB roll-off to −22 at 120u, culled entirely past it. The world's fire, hit and
+explode calls route through it; the cockpit — UI, pickups, the player's own
+ship — keeps the flat path, because feedback for your own actions is not
+diegetic and must never fade. The curve is a pure static (`attenuation_for`),
+so `COMBAT SOUND FALLS OFF WITH DISTANCE` holds it without listening: flat
+zone, floor at the cull edge, monotone between, and the cull strictly beyond
+the flat zone so the two constants cannot be tuned past each other.
+
+## 90. Three verdicts of teaching, one of evidence
+
+**The forge (§4 of the playtest).** The loop was intact end to end — crack,
+carry unread, read at your archeology tier, components fall from reads, forge
+consumes them — and deliberately market-proof. The comment above `_build_forge`
+even claimed "a component names the read that produces it." **It never did**:
+the bill printed have/need and nothing else — prose above code with nothing
+connecting the two, §73's oldest shape. The bill now derives each missing
+component's source from `READS_AS` itself ("SRV-P FALLS FROM READING BAND 2+
+SALVAGE"), so the line cannot drift from the table that makes it true.
+
+**The Commission (§5).** Working as designed, failing as communication. The
+statement-of-record posture stands — but a page that refuses to be a quest log
+still owes the reader one sentence saying what it *is*. It now opens with what
+the registry does, the stages-on-file count, and what the full commission
+confers. Describing the page is not instructing the player.
+
+**The skills (§8).** The verdict is evidence, not code: all four skills have
+live feeds, XP tables, tier walks, tier-up toasts, refusal copy that names the
+tier you need (the hold screen's locked-reads strip), and a permanent home on
+the pause menu's root page. Nothing was added, and that is the finding worth
+recording: the answer to "is this implemented?" was yes four times over, and
+the player asking after weeks of play means the *surfaces* are quiet, not
+absent. If a future playtest asks again, the answer is louder surfaces — not
+doubt about the machinery.
