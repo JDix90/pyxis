@@ -45,6 +45,7 @@ const HARNESS_VARS := [
 	"PYXIS_APEXTEST",
 	"PYXIS_BALANCE",
 	"PYXIS_BEACONTEST",
+	"PYXIS_BERTHTEST",
 	"PYXIS_BOSSTEST",
 	"PYXIS_CARTTEST",
 	"PYXIS_COLLISIONTEST",
@@ -1082,6 +1083,13 @@ func _ready() -> void:
 		_load_system(GameState.current_system)
 		_enter_playing()
 		_run_directive_test()
+		return
+	if OS.get_environment("PYXIS_BERTHTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_berth_test()
 		return
 	if OS.get_environment("PYXIS_PROFILETEST") != "":
 		# NOT lock_saving, and this is the second harness after SAVETEST that
@@ -7984,8 +7992,21 @@ func _run_ship_test() -> void:
 	print("[ship] SPECIALISATION hauler %.0f hold / %.1f speed vs strike %.0f hold / %.1f speed -> %s" % [
 		haul_hold, haul_speed, strike_hold, strike_speed,
 		"PASS" if haul_hold > strike_hold and haul_speed < strike_speed else "FAIL"])
-	print("[ship] SECOND SLOT %d fitting slots -> %s" % [ModuleDB.SLOT_NAMES.size(),
-		"PASS" if ModuleDB.SLOT_NAMES.size() == 6 else "FAIL"])
+	# v24 (§94). SIX ON THE HULL, THREE FOR SALE. The literal 6 stays -- it is
+	# the ship every pilot starts with, and that is the fact this leg was
+	# written to pin -- but it is now checked against what a FRESH pilot can
+	# actually fit rather than against the size of the catalog's table, because
+	# those stopped being the same number the day berths shipped. The berth
+	# slots are counted separately, so adding a fourth berth cannot quietly
+	# change what a new pilot begins with.
+	var berth_slots := 0
+	for b_v in ModuleDB.BERTHS:
+		berth_slots += 1
+	var starter_slots := GameState.open_slots().size()
+	print("[ship] SECOND SLOT %d fitting slots on a fresh hull, %d berths for sale, %d in the table -> %s" % [
+		starter_slots, berth_slots, ModuleDB.SLOT_NAMES.size(),
+		"PASS" if starter_slots == 6 and GameState.berths.is_empty()
+			and ModuleDB.SLOT_NAMES.size() == 6 + berth_slots else "FAIL"])
 	GameState.equip(ModuleDB.Slot.UTILITY, "")
 
 	# --- breaking off a boss fight -------------------------------------------
@@ -14928,6 +14949,157 @@ func _run_directive_test() -> void:
 	GameState.deep_logs = {}
 	get_tree().quit()
 
+# --- berth test --------------------------------------------------------------
+
+func _run_berth_test() -> void:
+	# THE BERTHS, asserted as the four promises that make them a trade rather
+	# than a strict upgrade: a locked slot holds nothing by any route, every
+	# slot the enum knows about actually reaches the stats, the mass is real and
+	# permanent, and the power arrives with the slot rather than after it.
+	# 1. A LOCKED SLOT HOLDS NOTHING, BY EITHER DOOR. can_equip is the door the
+	#    console uses; the LOADER is the other one, and a hand-edited save is
+	#    exactly the sort of thing that walks through it. Both are checked,
+	#    because a berth refused in the UI and granted by a file is not refused.
+	GameState.berths = []
+	GameState.owned.append("util_assay")
+	var refused_ui := not GameState.can_equip(ModuleDB.Slot.UTILITY_C, "util_assay")
+	GameState.fit[ModuleDB.Slot.UTILITY_C] = "util_assay"
+	var forced := GameState.save_dict()
+	GameState.fit.erase(ModuleDB.Slot.UTILITY_C)
+	# Through the real loader, which is the thing under test.
+	var probe_path := "user://berthtest_probe.json"
+	var real_path := GameState.save_path
+	var fp := FileAccess.open(probe_path, FileAccess.WRITE)
+	fp.store_string(JSON.stringify(forced))
+	fp.close()
+	GameState.save_path = probe_path
+	GameState.load_game()
+	GameState.save_path = real_path
+	var refused_file := String(GameState.fit.get(ModuleDB.Slot.UTILITY_C, "")) == ""
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(probe_path))
+	print("[berth] A LOCKED SLOT HOLDS NOTHING refused by can_equip=%s, and a save that names it anyway loads empty=%s -> %s" % [
+		str(refused_ui), str(refused_file),
+		"PASS" if refused_ui and refused_file else "FAIL"])
+
+	# 2. EVERY SLOT REACHES THE STATS. The trap this commit was written around:
+	#    compute_stats carried two hand-written slot lists, so a slot added to
+	#    the enum and forgotten there would be purchasable, equippable, POWERED
+	#    -- and would contribute nothing at all, silently. Now derived from
+	#    SLOT_CATEGORY, and proved by fitting the same module in every slot of
+	#    its category and requiring the stats to move each time. Red-verify by
+	#    dropping a category from slots_of.
+	GameState.berths = ModuleDB.BERTHS.keys()
+	GameState.owned.append("util_shield_2")
+	var dead_slots := ""
+	for slot_v in ModuleDB.SLOT_CATEGORY:
+		var cat := String(ModuleDB.SLOT_CATEGORY[slot_v])
+		if cat != "utility":
+			continue
+		var bare := ModuleDB.compute_stats(ModuleDB.STARTER_FIT)
+		var probe := ModuleDB.STARTER_FIT.duplicate()
+		probe[int(slot_v)] = "util_shield_2"
+		var with_it := ModuleDB.compute_stats(probe)
+		if float(with_it.get("shield_max", 0.0)) <= float(bare.get("shield_max", 0.0)):
+			dead_slots += "%s " % String(ModuleDB.SLOT_NAMES[slot_v])
+	print("[berth] EVERY SLOT REACHES THE STATS %d utility slots, silent ones: %s -> %s" % [
+		ModuleDB.slots_of("utility").size(), dead_slots if dead_slots != "" else "none",
+		"PASS" if dead_slots == "" and ModuleDB.slots_of("utility").size() >= 3 else "FAIL"])
+
+	# 3. THE MASS IS REAL, AND IT IS NOT A MODULE. A berth is welded on: the
+	#    speed it costs cannot be recovered by unfitting anything, which is the
+	#    whole reason it is a trade. Measured on the same fit, berthed and not.
+	var bare_speed := float(ModuleDB.compute_stats(ModuleDB.STARTER_FIT).get("max_speed", 0.0))
+	var berthed_speed := float(ModuleDB.compute_stats(ModuleDB.STARTER_FIT,
+		ModuleDB.BERTHS.keys()).get("max_speed", 0.0))
+	var empty_fit := {}
+	var stripped := float(ModuleDB.compute_stats(empty_fit,
+		ModuleDB.BERTHS.keys()).get("max_speed", 0.0))
+	var bare_stripped := float(ModuleDB.compute_stats(empty_fit).get("max_speed", 0.0))
+	var mass_ok: bool = berthed_speed < bare_speed \
+		and is_equal_approx(bare_speed - berthed_speed, ModuleDB.berth_mass(ModuleDB.BERTHS.keys())) \
+		and stripped < bare_stripped
+	print("[berth] THE MASS IS REAL %.2f speed bare, %.2f fully berthed (cost %.2f); still down with every module pulled=%s -> %s" % [
+		bare_speed, berthed_speed, ModuleDB.berth_mass(ModuleDB.BERTHS.keys()),
+		str(stripped < bare_stripped), "PASS" if mass_ok else "FAIL"])
+
+	# 4. THE POWER ARRIVES WITH THE SLOT. The research finding this whole commit
+	#    exists because of: a slot sold without power is a bay the reactor
+	#    cannot feed. So each berth must bring enough to run something -- more
+	#    than the cheapest module of its own category -- while still adding less
+	#    than the BEST one, which is what keeps all-best out of reach (asserted
+	#    in full by FRONTIERTEST).
+	var cheapest := {}
+	for id_v in ModuleDB.MODULES:
+		var m: Dictionary = ModuleDB.get_module(String(id_v))
+		var c := String(m.get("category", ""))
+		var pw := int(m.get("power", 0))
+		if not cheapest.has(c) or pw < int(cheapest[c]):
+			cheapest[c] = pw
+	var starved := ""
+	var generous := ""
+	for bid_v in ModuleDB.BERTHS:
+		var berth: Dictionary = ModuleDB.BERTHS[bid_v]
+		var cat2 := String(ModuleDB.SLOT_CATEGORY[int(berth["slot"])])
+		var best := 0
+		for id2_v in ModuleDB.MODULES:
+			var m2: Dictionary = ModuleDB.get_module(String(id2_v))
+			if String(m2.get("category", "")) == cat2:
+				best = maxi(best, int(m2.get("power", 0)))
+		if int(berth["power"]) < int(cheapest.get(cat2, 0)):
+			starved += "%s " % String(bid_v)
+		if int(berth["power"]) >= best:
+			generous += "%s " % String(bid_v)
+	print("[berth] THE POWER ARRIVES WITH THE SLOT %d berths, none too starved to run anything: %s; none rich enough to pay for the best in its class: %s -> %s" % [
+		ModuleDB.BERTHS.size(), "confirmed" if starved == "" else starved,
+		"confirmed" if generous == "" else generous,
+		"PASS" if starved == "" and generous == "" else "FAIL"])
+
+	# 5. BOUGHT ONCE, AND THE CAP MOVES WITH IT. Driven through the real verb:
+	#    a pilot who cannot afford it is refused, one who can is charged exactly
+	#    once, and a second purchase of the same berth is refused rather than
+	#    charged again.
+	GameState.berths = []
+	GameState.salvage = 0
+	var broke_refused := not GameState.can_buy_berth("berth_utility")
+	GameState.salvage = 1000000
+	var cap_before := GameState.power_cap()
+	var slots_before := GameState.open_slots().size()
+	var bought := GameState.buy_berth("berth_utility")
+	var paid := 1000000 - GameState.salvage
+	var twice := GameState.buy_berth("berth_utility")
+	var cap_after := GameState.power_cap()
+	print("[berth] BOUGHT ONCE broke=%s refused; bought=%s for %d (want %d); a second purchase refused=%s; slots %d -> %d, power cap %d -> %d -> %s" % [
+		str(broke_refused), str(bought), paid, GameState.berth_price("berth_utility"),
+		str(not twice), slots_before, GameState.open_slots().size(),
+		cap_before, cap_after,
+		"PASS" if broke_refused and bought and not twice
+			and paid == GameState.berth_price("berth_utility")
+			and GameState.open_slots().size() == slots_before + 1
+			and cap_after == cap_before + int(ModuleDB.BERTHS["berth_utility"]["power"])
+			else "FAIL"])
+
+	# 6. AND THE YARD IS AT THE FAR END. A berth is bought where the Mk V is
+	#    bought and nowhere else -- the deep counters that name a reactor cap --
+	#    so a first windfall at the Waypoint Anchor cannot buy a third hardpoint.
+	var chart_sells := ""
+	for pid_v in SystemDB.port_ids():
+		var pdef := SystemDB.port_def_by_id(String(pid_v))
+		if int(pdef.get("reactor_cap", ModuleDB.REACTOR_CAP_DEFAULT)) >= ModuleDB.BERTH_YARD_TIER:
+			chart_sells += "%s " % String(pid_v)
+	var deep_sells := 0
+	for i in range(DeepPortDB.count()):
+		var adef: Dictionary = DeepPortDB.ARCHETYPES[i]
+		if int(adef.get("reactor_cap", ModuleDB.REACTOR_CAP_DEFAULT)) >= ModuleDB.BERTH_YARD_TIER:
+			deep_sells += 1
+	print("[berth] THE YARD IS AT THE FAR END charted counters selling berths: %s; deep archetypes that do: %d -> %s" % [
+		chart_sells if chart_sells != "" else "none", deep_sells,
+		"PASS" if chart_sells == "" and deep_sells >= 1 else "FAIL"])
+
+	GameState.berths = []
+	GameState.fit = ModuleDB.STARTER_FIT.duplicate()
+	get_tree().quit()
+
+
 # --- pilot profiles test ----------------------------------------------------
 
 const SAVE_TEST_PREFS := "user://test_prefs.json"
@@ -16231,6 +16403,59 @@ func _run_save_test() -> void:
 		print("[savetest] v22->v23 A V22 SAVE HAS READ NOTHING empty=%s, state kept=%s; rubbish pass kept %d of 9 (unknown system, bad kind, stage 99, stage 0, negative, bad shape and a non-numeric value all dropped)=%s -> %s" % [
 			str(fresh23), str(kept22), GameState.deep_logs.size(), str(cleaned23),
 			"PASS" if ok22 and fresh23 and kept22 and cleaned23 else "FAIL"])
+	elif mode == "migrate23":
+		# v24 adds berths. No migration branch, the standing rule: an absent key
+		# is an empty array, and "has bought no hull work" is exactly true of
+		# every v23 pilot -- the yards did not cut berths in the build that
+		# wrote their file.
+		#
+		# AND THE FIT IS THE INTERESTING HALF. A v23 file cannot name a berth
+		# slot, but a hand-edited one can, and can_equip is not the door it came
+		# through. The loader drops it.
+		var v23 := {
+			"version": 23,
+			"salvage": 6400,
+			"current_system": "pyx01",
+			"run_seed": 232323,
+			"tutorial_step": -1,
+			"owned": ["pulse_1", "drive_cruise", "core_overcharge", "util_assay"],
+			"fit": {
+				str(ModuleDB.Slot.WEAPON_A): "pulse_1",
+				str(ModuleDB.Slot.UTILITY): "util_assay",
+				str(ModuleDB.Slot.UTILITY_C): "util_assay",
+			},
+		}
+		var f23 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f23.store_string(JSON.stringify(v23))
+		f23.close()
+		var ok23 := GameState.load_game()
+		var no_berths: bool = GameState.berths.is_empty() \
+			and GameState.open_slots().size() == 6
+		var kept23: bool = GameState.salvage == 6400 \
+			and String(GameState.fit.get(ModuleDB.Slot.UTILITY, "")) == "util_assay"
+		var free_slot_refused: bool = String(GameState.fit.get(ModuleDB.Slot.UTILITY_C, "")) == ""
+		# The rubbish pass: unknown ids and duplicates dropped, and the power cap
+		# must follow what SURVIVED rather than what the file claimed.
+		var dirty24 := {
+			"version": 24,
+			"salvage": 6400,
+			"run_seed": 232323,
+			"tutorial_step": -1,
+			"berths": ["berth_utility", "berth_utility", "berth_nonsense", 7],
+		}
+		var fd24 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fd24.store_string(JSON.stringify(dirty24))
+		fd24.close()
+		GameState.load_game()
+		var want_cap := ModuleDB.reactor_power(GameState.reactor_tier) \
+			+ int(ModuleDB.BERTHS["berth_utility"]["power"])
+		var cleaned24: bool = GameState.berths.size() == 1 \
+			and GameState.berths.has("berth_utility") \
+			and GameState.power_cap() == want_cap
+		print("[savetest] v23->v24 A V23 SAVE HAS NO HULL WORK none bought=%s, state kept=%s, a fit naming an unbought berth slot loads empty=%s; rubbish pass kept 1 of 4 and the cap followed=%s -> %s" % [
+			str(no_berths), str(kept23), str(free_slot_refused), str(cleaned24),
+			"PASS" if ok23 and no_berths and kept23 and free_slot_refused
+				and cleaned24 else "FAIL"])
 	elif mode == "future":
 		# A SAVE FROM A NEWER BUILD. Refusing to load it was never the hard
 		# part — that clause has always been there. What it did NOT do was stop
@@ -17730,7 +17955,10 @@ func _run_manual_test() -> void:
 	var before_text := _manual_text(manual)
 	var real_power := ModuleDB.reactor_power(0)
 	var mentions_power: bool = before_text.contains(str(real_power))
-	var mentions_slots: bool = before_text.contains(str(ModuleDB.SLOT_NAMES.size()))
+	# v24: the SHIP'S slot count, not the catalog's. The manual prints what this
+	# pilot has, and a berthed pilot has more -- so a check against SLOT_NAMES
+	# would demand the manual promise nine slots to a pilot who owns six.
+	var mentions_slots: bool = before_text.contains(str(GameState.open_slots().size()))
 	manual._page = "deep"
 	manual._refresh()
 	await get_tree().process_frame
@@ -17745,7 +17973,7 @@ func _run_manual_test() -> void:
 	var living_text := _manual_text(manual)
 	var mentions_ore: bool = living_text.contains(str(CommodityDB.ore_ids().size()))
 	print("[manual] THE NUMBERS ARE DERIVED reactor %d=%s, %d slots=%s, all %d bands named=%s, %d ores=%s -> %s" % [
-		real_power, str(mentions_power), ModuleDB.SLOT_NAMES.size(), str(mentions_slots),
+		real_power, str(mentions_power), GameState.open_slots().size(), str(mentions_slots),
 		DeepSpace.BAND_NAMES.size(), str(names_all_bands),
 		CommodityDB.ore_ids().size(), str(mentions_ore),
 		"PASS" if mentions_power and mentions_slots and names_all_bands and mentions_ore else "FAIL"])
@@ -24090,18 +24318,42 @@ func _run_frontier_test() -> void:
 		var m: Dictionary = ModuleDB.get_module(String(id_v))
 		var cat := String(m.get("category", ""))
 		by_slot[cat] = maxi(int(by_slot.get(cat, 0)), int(m.get("power", 0)))
-	var all_best: int = int(by_slot.get("weapon", 0)) * 2 \
-		+ int(by_slot.get("drive", 0)) + int(by_slot.get("utility", 0)) * 2 \
-		+ int(by_slot.get("core", 0))
+	# v24 (§94). THE MULTIPLICITIES ARE DERIVED, and both ships are measured.
+	# This used to read `weapon * 2 ... utility * 2`, hand-written multipliers
+	# that were the shipped hull's slot counts spelled out -- correct until the
+	# day a slot was added, at which point the invariant would have kept
+	# reporting green about a ship nobody flies. It now counts SLOT_CATEGORY.
+	var berth_slots := {}
+	for b_v in ModuleDB.BERTHS:
+		berth_slots[int((ModuleDB.BERTHS[b_v] as Dictionary)["slot"])] = true
+	var greedy := func(include_berths: bool) -> int:
+		var total := 0
+		for slot_v in ModuleDB.SLOT_CATEGORY:
+			if berth_slots.has(int(slot_v)) and not include_berths:
+				continue
+			total += int(by_slot.get(String(ModuleDB.SLOT_CATEGORY[slot_v]), 0))
+		return total
+	var all_best: int = greedy.call(false)
 	var top_power: int = int(ModuleDB.REACTOR_TIERS[ModuleDB.REACTOR_TIERS.size() - 1]["power"])
+	# AND THE BERTHED SHIP, which is the promise berths were sold on: every
+	# berth adds LESS power than the best module that could stand in its slot,
+	# so the gap widens with every one bought and all-best gets further away
+	# rather than closer. Measured as a margin comparison rather than restated
+	# as two numbers, so a generous berth cannot creep the cap up to meet the
+	# catalog.
+	var berthed_best: int = greedy.call(true)
+	var berthed_cap: int = top_power + ModuleDB.berth_power(ModuleDB.BERTHS.keys())
+	var margin_bare := all_best - top_power
+	var margin_full := berthed_best - berthed_cap
 	# And the step IS the product: the named fit Mk V exists to make possible must
 	# fit it exactly, or the number is arbitrary.
 	var named := 0
 	for id_v in ["lance_3", "torp_3", "drive_vector_2", "core_aegis", "util_torch"]:
 		named += int(ModuleDB.get_module(String(id_v))["power"])
-	print("[frontier] ALL-BEST IS STILL OUT OF REACH greedy best-per-slot draws %d against the top reactor's %d (margin %d); the named Mk V fit draws exactly %d -> %s" % [
-		all_best, top_power, all_best - top_power, named,
-		"PASS" if all_best > top_power and named == top_power else "FAIL"])
+	print("[frontier] ALL-BEST IS STILL OUT OF REACH bare hull draws %d against the top reactor's %d (margin %d); fully berthed draws %d against %d (margin %d, must not shrink); the named Mk V fit draws exactly %d -> %s" % [
+		all_best, top_power, margin_bare, berthed_best, berthed_cap, margin_full, named,
+		"PASS" if all_best > top_power and margin_full >= margin_bare
+			and named == top_power else "FAIL"])
 
 	# --- 14. the frontier's gear is not on the chart -------------------------
 	# The inverse of the shipped STOCKED sweep, and the point of the whole stage:

@@ -14,7 +14,13 @@ extends Object
 # a SECOND utility rather than a new category: the interesting question was never
 # "what kind of thing can I bolt on", it was "which two of these four do I want",
 # and one more utility slot turns a single pick into a real pairing decision.
-enum Slot { WEAPON_A, WEAPON_B, DRIVE, UTILITY, CORE, UTILITY_B }
+enum Slot { WEAPON_A, WEAPON_B, DRIVE, UTILITY, CORE, UTILITY_B,
+	# v24 (§94). THE BERTHS. Three slots no ship has until it is paid for, and
+	# they are appended rather than inserted: the enum's integer values are
+	# what `fit` is keyed by and what every save on disk holds, so putting a
+	# new name in the middle would silently re-slot every fitted module in
+	# every existing pilot's file.
+	UTILITY_C, DRIVE_B, WEAPON_C }
 
 const SLOT_NAMES := {
 	Slot.WEAPON_A: "WEAPON I",
@@ -23,6 +29,9 @@ const SLOT_NAMES := {
 	Slot.UTILITY: "UTILITY",
 	Slot.CORE: "CORE",
 	Slot.UTILITY_B: "UTILITY II",
+	Slot.UTILITY_C: "UTILITY III",
+	Slot.DRIVE_B: "DRIVE II",
+	Slot.WEAPON_C: "WEAPON III",
 }
 
 # Which catalog category may be equipped in which slot.
@@ -33,6 +42,47 @@ const SLOT_CATEGORY := {
 	Slot.UTILITY: "utility",
 	Slot.CORE: "core",
 	Slot.UTILITY_B: "utility",
+	Slot.UTILITY_C: "utility",
+	Slot.DRIVE_B: "drive",
+	Slot.WEAPON_C: "weapon",
+}
+
+# v24 (§94). THE BERTHS, AND WHY THEY CARRY POWER.
+#
+# The playtest asked for purchasable slots. Research (the horizon doc's commit-2
+# pass) found the obvious version is a bad product: greedy best-per-slot already
+# draws 32 against the Mk V reactor's 24, and this file's own reactor note ends
+# "and the second utility bay still empty". A pilot at the top of the game
+# ALREADY owns a slot the reactor cannot feed, so selling them another would be
+# ninety thousand credits for a bay that stays empty.
+#
+# So a berth is a slot AND the power to use it, and it is paid for in MASS --
+# permanently, in the one axis the deep punishes hardest. That is what makes a
+# fully berthed ship a deliberate build rather than a strict upgrade, and it
+# cannot be bought back.
+#
+# EVERY BERTH ADDS LESS POWER THAN THE BEST MODULE THAT COULD OCCUPY IT
+# (weapon 7, drive 4, utility 5), so the margin in ALL-BEST IS STILL OUT OF
+# REACH narrows and never closes: with all three bought, greedy is 48 against a
+# cap of 33. The assertion re-derives that from the live catalog rather than
+# being re-pinned to a new constant, so a cheap new module still cannot close
+# it and neither can a generous berth.
+const BERTHS := {
+	"berth_utility": {
+		"name": "UTILITY BERTH", "slot": Slot.UTILITY_C,
+		"price": 60000, "power": 3, "speed_cost": 0.25,
+		"desc": "A third tool bay cut into the spine, with the bus to feed it. The hull was not designed around it.",
+	},
+	"berth_drive": {
+		"name": "DRIVE BERTH", "slot": Slot.DRIVE_B,
+		"price": 80000, "power": 2, "speed_cost": 0.30,
+		"desc": "A second coil mount. Heavier bare — and the only berth whose own slot can pay the mass back.",
+	},
+	"berth_weapon": {
+		"name": "WEAPON BERTH", "slot": Slot.WEAPON_C,
+		"price": 120000, "power": 4, "speed_cost": 0.45,
+		"desc": "A third hardpoint and the capacitors under it. The heaviest thing you can bolt to this hull.",
+	},
 }
 
 # Budget curve. Starter fit draws 8, so Mk I leaves room to add a utility and
@@ -91,6 +141,13 @@ const REACTOR_TIERS := [
 # nothing but the price, so the deepest purchase in the game would have been for
 # sale at the Waypoint Anchor to anyone holding ninety thousand.
 const REACTOR_CAP_DEFAULT := 3
+
+# v24 (§94). WHICH COUNTERS CUT BERTHS IN. The same key that decides whether the
+# Mk V is on the rack, read as a floor: a yard that cannot sell the reactor to
+# run a berth has no business selling the berth. So berths appear exactly where
+# the Mk V does — the deep yards — and the Waypoint Anchor does not become the
+# place a new pilot buys a third hardpoint with their first windfall.
+const BERTH_YARD_TIER := 4
 
 # --- base hull stats, before modules ---------------------------------------
 const BASE := {
@@ -810,13 +867,51 @@ static func enforce_floors(s: Dictionary) -> Dictionary:
 	return s
 
 
-static func compute_stats(fit: Dictionary) -> Dictionary:
+static func berth_power(berths) -> int:
+	# What the bought berths add to the reactor's cap. Summed here rather than
+	# in GameState so the number and the table that defines it cannot drift.
+	var total := 0
+	for id_v in berths:
+		total += int((BERTHS.get(String(id_v), {}) as Dictionary).get("power", 0))
+	return total
+
+
+static func berth_mass(berths) -> float:
+	# And what they cost in speed, permanently. Same argument as berth_power:
+	# one table, one reader.
+	var total := 0.0
+	for id_v in berths:
+		total += float((BERTHS.get(String(id_v), {}) as Dictionary).get("speed_cost", 0.0))
+	return total
+
+
+static func slots_of(category: String) -> Array:
+	# EVERY SLOT OF A KIND, DERIVED. compute_stats used to carry two hand-written
+	# slot lists, which is a trap with a name: a slot added to the enum and
+	# forgotten in those lists would be purchasable, equippable and POWERED, and
+	# would contribute nothing at all to the ship -- silently, with no error
+	# anywhere. Reading SLOT_CATEGORY instead means the lists cannot go stale,
+	# and EVERY SLOT REACHES THE STATS asserts it from the same table.
+	var out: Array = []
+	for slot_v in SLOT_CATEGORY:
+		if String(SLOT_CATEGORY[slot_v]) == category:
+			out.append(slot_v)
+	return out
+
+
+static func compute_stats(fit: Dictionary, berths := []) -> Dictionary:
 	# Single source of truth for derived stats. Additive by design: it stays
 	# legible in the console, and nothing needs stacking-penalty rules yet.
+	#
+	# `berths` is an OPTIONAL trailing argument (v24, §94) carrying the mass a
+	# berthed hull is permanently down. Optional because this function is probed
+	# speculatively all over -- cargo_after, the refit sheet's delta rows -- and
+	# every one of those probes asks about cargo or DPS, where the berth mass is
+	# irrelevant; the callers that describe the ship's SPEED pass it.
 	var s := BASE.duplicate(true)
 	s["weapons"] = []
 
-	for slot in [Slot.WEAPON_A, Slot.WEAPON_B]:
+	for slot in slots_of("weapon"):
 		var id: String = fit.get(slot, "")
 		if not exists(id):
 			continue
@@ -827,12 +922,19 @@ static func compute_stats(fit: Dictionary) -> Dictionary:
 		w["slot"] = slot
 		(s["weapons"] as Array).append(w)
 
-	for slot in [Slot.DRIVE, Slot.UTILITY, Slot.UTILITY_B, Slot.CORE]:
+	for slot in slots_of("drive") + slots_of("utility") + slots_of("core"):
 		var id: String = fit.get(slot, "")
 		if not exists(id):
 			continue
 		for key in (MODULES[id]["stats"] as Dictionary):
 			s[key] = s.get(key, 0.0) + MODULES[id]["stats"][key]
+
+	# THE MASS, AFTER THE MODULES AND BEFORE THE FLOORS. A berth is welded to
+	# the hull, so it is not a module that can be unfitted to get the speed
+	# back -- and it goes through enforce_floors like everything else, so three
+	# berths on a hauler cannot reverse the ship.
+	if not berths.is_empty():
+		s["max_speed"] = float(s.get("max_speed", 0.0)) - berth_mass(berths)
 
 	var core_id: String = fit.get(Slot.CORE, "")
 	s["ability"] = MODULES[core_id].get("ability", {}) if exists(core_id) else {}

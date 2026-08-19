@@ -164,13 +164,18 @@ func _build_header() -> Control:
 
 
 func _build_chips() -> Control:
-	# HFlow and SLOT_NAMES, not an HBox and a hardcoded list: six chips no longer
-	# fit one row on a phone, and a seventh slot should cost a ModuleDB entry
-	# rather than an edit here.
+	# HFlow and the slot list, not an HBox and a hardcoded one: six chips no
+	# longer fit one row on a phone, and a seventh slot should cost a ModuleDB
+	# entry rather than an edit here. v24 collected on that: three berth slots
+	# arrived and this function did not change shape.
+	#
+	# open_slots(), not SLOT_NAMES: a berth this pilot has not bought is not a
+	# chip they can press. Drawing it greyed would be a shop advert inside the
+	# fitting console, and the console's job is the ship that exists.
 	_chip_row = HFlowContainer.new()
 	_chip_row.add_theme_constant_override("h_separation", 6)
 	_chip_row.add_theme_constant_override("v_separation", 4)
-	for slot in ModuleDB.SLOT_NAMES:
+	for slot in GameState.open_slots():
 		var chip := Button.new()
 		chip.text = _chip_text(slot)
 		chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL

@@ -47,10 +47,10 @@ behind a `PYXIS_*` environment variable and run headless:
 PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 ```
 
-Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 52 of them —
-the 52 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
-`TAGS` at all: it is one harness with 21 stateful modes, run as its own
-sequence. So a full sweep is 52 + 21 = **73 runs**.
+Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 53 of them —
+the 53 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
+`TAGS` at all: it is one harness with 22 stateful modes, run as its own
+sequence. So a full sweep is 53 + 22 = **75 runs**.
 
 Those three numbers are derivable from `run_harness.sh` and nothing else, so
 check them there rather than trusting this paragraph — it has been wrong before,
@@ -196,8 +196,10 @@ claimed it). The leg was fixed, not the code, and the re-sweep came back
 **Two commits ahead of that figure:** §92 added `DIRECTIVETEST`, one new run
 carrying six, and **no save bump at all** — both of its flags derive from the
 v23 store; that sweep came back green at **727 across 73**. §93 then added
-three legs to the same suite and no new run, and no save bump either. So the
-next full sweep should read **730 across 73**. A baseline is a MEASUREMENT and is only written here once
+three legs to the same suite and no new run, and no save bump either — that
+sweep came back green at **730 across 73**. §94 adds `BERTHTEST` (one new run
+carrying six) and the `migrate23` mode (one new run carrying one), at save
+format **v24**. So the next full sweep should read **737 across 75**. A baseline is a MEASUREMENT and is only written here once
 somebody has taken it; predicting one and typing it in as though it were taken
 is how the numbers this paragraph keeps correcting got wrong in the first
 place.

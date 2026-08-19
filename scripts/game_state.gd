@@ -33,7 +33,7 @@ signal lane_opened(id: String)
 signal standing_shifted(other: String, delta: int, band: int)
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 23
+const SAVE_VERSION := 24
 const SAVE_DEBOUNCE := 1.0
 
 # v6 defaults. Kept as one dictionary each so a migration only has to merge
@@ -106,6 +106,15 @@ var salvage := 0
 var owned: Array[String] = []
 var fit := {}
 var reactor_tier := 0
+# v24 (§94). WHICH BERTHS ARE BOUGHT — ids into ModuleDB.BERTHS. An Array
+# rather than a dictionary because a berth is owned or it is not, and because
+# `owned` next door has taught the loader's shape already: validate against the
+# catalog, drop what is not in it. Bounded by the table at three entries.
+#
+# One way only, and the loader enforces the consequence rather than trusting
+# it: a fit naming a slot no berth has opened is dropped on load, so a
+# hand-edited save cannot hand a pilot a free hardpoint.
+var berths: Array = []
 var stats := {}
 
 # Live power diversions: burned-out section id -> the section carrying its power.
@@ -1121,6 +1130,7 @@ func reset_to_starter() -> void:
 		owned.append(id)
 	fit = ModuleDB.STARTER_FIT.duplicate()
 	reactor_tier = 0
+	berths = []
 	current_system = SystemDB.START_SYSTEM
 	breached = []
 	lanes_open = []
@@ -1437,7 +1447,55 @@ func spend_salvage(amount: int) -> bool:
 # --- fitting ---------------------------------------------------------------
 
 func power_cap() -> int:
-	return ModuleDB.reactor_power(reactor_tier)
+	# v24 (§94). The reactor, plus whatever the bought berths brought with them.
+	# A berth is a slot AND the power to use it -- see ModuleDB.BERTHS for why
+	# the slot alone was not a product worth selling.
+	return ModuleDB.reactor_power(reactor_tier) + ModuleDB.berth_power(berths)
+
+
+func slot_unlocked(slot: int) -> bool:
+	# Every shipped slot is always open; a berth slot opens when it is bought.
+	# Asked of the BERTH TABLE rather than of a list of unlocked slots, so the
+	# two can never disagree about which slot a berth opens.
+	for id_v in ModuleDB.BERTHS:
+		if int((ModuleDB.BERTHS[id_v] as Dictionary).get("slot", -1)) == slot:
+			return berths.has(String(id_v))
+	return true
+
+
+func open_slots() -> Array:
+	# The slots this pilot actually has, in enum order. Every surface that draws
+	# or counts slots reads this rather than SLOT_NAMES -- the refit chips, the
+	# manual's fitting page, and the assertions that count them.
+	var out: Array = []
+	for slot_v in ModuleDB.SLOT_NAMES:
+		if slot_unlocked(int(slot_v)):
+			out.append(slot_v)
+	return out
+
+
+func berth_price(id: String) -> int:
+	return int((ModuleDB.BERTHS.get(id, {}) as Dictionary).get("price", 0))
+
+
+func can_buy_berth(id: String) -> bool:
+	return ModuleDB.BERTHS.has(id) and not berths.has(id) \
+		and salvage >= berth_price(id)
+
+
+func buy_berth(id: String) -> bool:
+	# ONE WAY, and that is the design rather than a missing feature. The mass is
+	# what makes a berth a trade instead of a strict upgrade, and a berth that
+	# could be sold back would make it a rental -- buy it for the fight, refund
+	# it for the flight home.
+	if not can_buy_berth(id):
+		return false
+	salvage -= berth_price(id)
+	berths.append(id)
+	salvage_changed.emit(salvage)
+	_recompute()
+	_queue_save()
+	return true
 
 
 func power_draw() -> int:
@@ -1468,6 +1526,8 @@ func can_equip(slot: int, id: String) -> bool:
 		# other system then had to tolerate as a silently invalid state. The
 		# refit console offers to jettison down to the threshold instead.
 		return cargo_overflow(slot, id) == 0
+	if not slot_unlocked(slot):
+		return false
 	if not ModuleDB.exists(id) or not owns(id):
 		return false
 	if ModuleDB.SLOT_CATEGORY.get(slot, "") != ModuleDB.get_module(id)["category"]:
@@ -3040,8 +3100,13 @@ func preview_stats(slot: int, id: String) -> Dictionary:
 	# meaningful between two comparable worlds.
 	var probe := fit.duplicate()
 	probe[slot] = id
+	# AND THE BERTHS RIDE THE PROBE (v24), by the same argument the paragraph
+	# above makes about diversions: a delta is only meaningful between two
+	# comparable worlds. GameState.stats is computed with the hull's mass in it,
+	# so an AFTER computed without it would advertise a speed gain on every swap
+	# a berthed pilot previewed -- the identical defect, from the other side.
 	return ModuleDB.enforce_floors(
-		SectionDB.apply(ModuleDB.compute_stats(probe), diverts))
+		SectionDB.apply(ModuleDB.compute_stats(probe, berths), diverts))
 
 
 func can_divert(source: String, target: String, integrity: float) -> bool:
@@ -3105,7 +3170,7 @@ func clear_diverts() -> bool:
 
 
 func _recompute() -> void:
-	stats = ModuleDB.compute_stats(fit)
+	stats = ModuleDB.compute_stats(fit, berths)
 	# AFTER the catalog, never inside it. compute_stats is pure over a fit and is
 	# probed speculatively by the refit sheet and by cargo_after(); folding a
 	# live diversion into it would make those previews describe a ship that only
@@ -3149,6 +3214,7 @@ func save_dict() -> Dictionary:
 		"owned": owned,
 		"fit": fit_out,
 		"reactor_tier": reactor_tier,
+		"berths": berths,
 		"current_system": current_system,
 		"breached": breached,
 		"contract_state": contract_state,
@@ -3344,14 +3410,31 @@ func load_game() -> bool:
 		if not owned.has(id):
 			owned.append(id)
 
+	# v24 BERTHS, and this must load BEFORE the fit below: the fit loop asks
+	# slot_unlocked, and a berth read afterwards would drop every module standing
+	# in a berth slot on every load. Validated against the catalog, deduplicated,
+	# dropping what it does not recognise -- `owned`'s posture one block up.
+	berths = []
+	for bid_v in (data.get("berths", []) as Array):
+		var bid := String(bid_v)
+		if ModuleDB.BERTHS.has(bid) and not berths.has(bid):
+			berths.append(bid)
+
 	# v7 adds Slot.UTILITY_B. Starting from STARTER_FIT means any slot a saved fit
 	# does not mention simply keeps its default — so a v6 fit loads with the new
-	# slot empty and needs no migration branch of its own.
+	# slot empty and needs no migration branch of its own. v24's berth slots are
+	# absent from STARTER_FIT for the same reason and arrive the same way.
 	fit = ModuleDB.STARTER_FIT.duplicate()
 	var saved_fit: Dictionary = data.get("fit", {})
 	for key in saved_fit:
 		var slot := int(key)
 		var id := str(saved_fit[key])
+		# v24. AND THE SLOT MUST EXIST ON THIS HULL. can_equip is not the only
+		# door into `fit` -- a hand-edited file is the other one -- so a module
+		# standing in a berth this pilot never bought is dropped here rather
+		# than being flown for free.
+		if not slot_unlocked(slot):
+			continue
 		if id == "" or (ModuleDB.exists(id) and owned.has(id)):
 			fit[slot] = id
 

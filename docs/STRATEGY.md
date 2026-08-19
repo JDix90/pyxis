@@ -6076,7 +6076,7 @@ the two items that remain open and are genuinely new design:
 |---|---|---|---|
 | 0 | the second register, STAGED: the private beat at the read, the living voices only at the whole record | none | **BUILT** — §92; no save bump, both flags derived from v23 |
 | 1 | the refusers' network: Directive 9's pages on band-3+ foreign beacons | none | **BUILT** — §93; the band gate lives in one pure function so no spawn site can re-decide the pacing |
-| 2 | purchasable slot expansion — now **berths**: a slot AND power together, paid for with a permanent penalty | likely v24 | **RESEARCHED**, spec in the horizon doc. The research killed the obvious version: greedy best-per-slot already draws 32 against the Mk V's 24, so a pilot at the top of the game owns a bay the reactor cannot feed, and selling them another would be selling an empty one. Awaiting the penalty-axis decision |
+| 2 | purchasable slot expansion — shipped as **berths**: a slot AND the power to use it, paid for in permanent mass | **v24** | **BUILT** — §94; the research killed the obvious version (a pilot at the top already owns a bay the reactor cannot feed), and the penalty axis was decided as mass |
 | 3 | faction contracts offered on hail | TBD | specced only as a row |
 
 **The finding that shaped it, and the rule it hands the pass.** The authority's
@@ -9408,3 +9408,94 @@ clipped to somebody else's mast is neither: it is something found, and the tap
 prompt teaches it at the moment it is in front of the player. Writing it into
 the manual would turn a discovery into a checklist item — the same argument
 §90 made for the Commission page not being a quest log.
+
+## 94. The berths (v24)
+
+Horizon 8 commit 2, and the horizon's headline: the playtest asked for
+purchasable slots, and the research found that selling slots alone would have
+been a bad product.
+
+### The finding, and why it changed the feature
+
+Power is the binding constraint on fitting, protected by a live assertion:
+greedy best-per-slot draws **32 against the Mk V reactor's 24**. `module_db`'s
+own reactor note ends the top-end product description with *"and the second
+utility bay still empty."*
+
+A pilot at the top of the game **already owns a slot the reactor cannot feed.**
+Selling them a Utility III would have been ninety thousand credits for a bay
+that stays empty — the players most likely to buy it are exactly the ones it
+does nothing for. That is not an argument against the note; it is the note's
+real content. What was being asked for underneath *"more slots"* is **more
+ship**, and slots are simply how the refit console renders that idea.
+
+So a berth is **a slot and the power to use it**, welded on, paid for in
+**mass** — permanently, in the one axis the deep punishes hardest. That is what
+makes a fully berthed hull a build rather than an upgrade, and it cannot be
+bought back: `buy_berth` is one-way by design, because a berth you could sell
+back is a rental — buy it for the fight, refund it for the flight home.
+
+| berth | slot | price | power | speed |
+|---|---|---|---|---|
+| UTILITY BERTH | UTILITY III | 60,000 | +3 | −0.25 |
+| DRIVE BERTH | DRIVE II | 80,000 | +2 | −0.30 |
+| WEAPON BERTH | WEAPON III | 120,000 | +4 | −0.45 |
+
+**Every berth adds less power than the best module that could stand in its
+slot** (weapon 7, drive 4, utility 5), so the invariant holds and strengthens:
+bare, greedy is 32 against 24 — a margin of 8; fully berthed, 48 against 33 — a
+margin of 15. `ALL-BEST IS STILL OUT OF REACH` now measures **both hulls** and
+requires the margin never to shrink, rather than being re-pinned to a new
+constant. Its hand-written `weapon * 2 … utility * 2` multipliers are gone,
+derived from `SLOT_CATEGORY` — they were the shipped hull's slot counts spelled
+out, correct until the day a slot was added, at which point the invariant would
+have gone on reporting green about a ship nobody flies.
+
+### The trap this commit was written around
+
+`compute_stats` carried **two hand-written slot lists**. A slot added to the
+enum and forgotten in them would have been purchasable, equippable and powered
+— and would have contributed *nothing at all*, silently, with no error
+anywhere. Both are now derived from `SLOT_CATEGORY`, and `EVERY SLOT REACHES
+THE STATS` fits the same module in every slot of its category and requires the
+stats to move each time.
+
+The enum's new names are **appended, never inserted**: those integers are what
+`fit` is keyed by and what every save on disk holds, so a name in the middle
+would silently re-slot every fitted module in every existing pilot's file.
+
+### Two doors into the fit, and both are locked
+
+`can_equip` refuses a slot no berth has opened. That is the door the console
+uses; **the loader is the other one**, and a hand-edited save is exactly the
+thing that walks through it — so `_load` drops any fit entry naming an unbought
+berth slot, and `A LOCKED SLOT HOLDS NOTHING` checks both doors. The berth list
+loads *before* the fit for this reason: read afterwards, every module standing
+in a berth slot would be dropped on every load.
+
+### Where they are sold
+
+Berths appear where the Mk V appears and nowhere else — counters naming
+`reactor_cap` ≥ 4, which today is one deep archetype at the far end of the
+Unsounded. A yard that cannot sell the reactor to run a berth has no business
+selling the berth, and the Waypoint Anchor does not become the place a new
+pilot buys a third hardpoint with their first windfall. `THE YARD IS AT THE FAR
+END` asserts that no charted counter sells one.
+
+They sit with the reactor row rather than in `stock`, because that is what they
+are: hull work, priced against the power budget. In `stock` they would have
+been modules — ownable, fittable, swappable — which is the one thing a welded
+hardpoint is not. The row states the mass on its own face rather than in a
+tooltip: it is permanent, and §58's rule applies to a purchase as much as to a
+refusal.
+
+### The count is the ship's, not the catalog's
+
+Three surfaces printed `SLOT_NAMES.size()`; all three now read
+`GameState.open_slots()`. A manual that kept printing the table's size would
+promise a berthed pilot's slots to a pilot who has none, and the refit console
+would draw chips for bays that do not exist. `SECOND SLOT` keeps its literal 6
+— that is the ship every pilot starts with, and it is the fact the leg was
+written to pin — but checks it against what a fresh hull can actually fit,
+plus the berth count separately, so a fourth berth cannot quietly change what a
+new pilot begins with.
