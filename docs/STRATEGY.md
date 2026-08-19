@@ -6064,9 +6064,36 @@ the two items that remain open and are genuinely new design:
 
 | what | status |
 |---|---|
-| purchasable slot expansion (Utility III, Weapon III…) with power/section/speed tradeoffs | **Horizon 8's headline** — touches the fit dict, refit UI, section damage, and every BALANCE/PACING assertion; deserves the full spec treatment |
-| faction contracts offered on hail, with standing gain; standing LOSS already exists (witnessed kills, fence deals) | **Horizon 8 second act** — the offer verb is the one new piece, rides existing contract + faction machinery |
-| rival-remnant inspection with staged reveals (hold on a foreign beacon = read it) | **PART BUILT** — commit 4 gives the rival a hull and a log to read (§91). The staged reveal on a *foreign beacon* is still open, and now has a shape to copy |
+| purchasable slot expansion (Utility III, Weapon III…) with power/section/speed tradeoffs | **Horizon 8 commit 2** — touches the fit dict, refit UI, section damage, and every BALANCE/PACING assertion; still wants its own research pass before it is specced in detail |
+| faction contracts offered on hail, with standing gain; standing LOSS already exists (witnessed kills, fence deals) | **Horizon 8 commit 3** — the offer verb is the one new piece, rides existing contract + faction machinery |
+| rival-remnant inspection with staged reveals (hold on a foreign beacon = read it) | **SPECCED as Horizon 8 commit 1** — the rival's hull and log shipped in §91; the foreign-beacon read is now the delivery channel for Directive 9's pages, pure function, zero save |
+
+**Horizon 8 — the closed file** (opened 2026-08-19; specced in
+`docs/HORIZON-8-THE-CLOSED-FILE.md`, prose gated on
+`docs/DIRECTIVE-NINE-DRAFT.md`). Four commits, **none built**:
+
+| # | what | save | status |
+|---|---|---|---|
+| 0 | the second register: what changes once the player has read Directive 9 | none | **SPECCED**, gated on the prose read-aloud (decisions R1–R4) |
+| 1 | the refusers' network: Directive 9's pages on foreign beacons | none | **SPECCED** |
+| 2 | purchasable slot expansion | likely v24 | specced only as a row; wants its own research pass |
+| 3 | faction contracts offered on hail | TBD | specced only as a row |
+
+**The finding that shaped it, and the rule it hands the pass.** The authority's
+voice CANNOT change, because bands 1–4 of `BROADCASTS` are recordings and THE
+LAST RETURN's final entry already says the machines were never told. So the
+chart-edge beacon goes on telling a commissioned pilot *"the bearing is yours,
+and it is written down"* forever — which becomes the most frightening line in
+the game the moment somebody has read the order. What changes is what is alive:
+bands 5 and 6 (never the GSA's), the player's own file, the player's own ship.
+`THE MACHINES DO NOT KNOW` is that rule as an assertion, and it goes red the
+moment somebody tries to finish the table.
+
+**And the verb the last fragment asks for is deferred on purpose.** Filing
+returns with the refusers instead of the Authority is what *"file a return for
+us"* is asking, it rides existing fence machinery, and it must not ship in the
+same horizon as the revelation. A discovery that immediately becomes a menu
+option was never a discovery.
 
 **The README's harness counts should be derived, not typed** (open 2026-08-17,
 §77). Three numbers — tag count, SAVETEST mode count, total runs — are
