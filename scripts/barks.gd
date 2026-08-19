@@ -23,6 +23,12 @@ const LINES := {
 	"first_band_4": "THE QUIET — NESTS ARM AHEAD OF US NOW. A STRAIGHT LINE IS A CHOICE",
 	"first_band_5": "THE FATHOMS — PAST THE COLONY NETWORK. FROM HERE, EVERY RETURN IS FLOWN",
 	"first_band_6": "THE UNSOUNDED — NO INSTRUMENT SPAN, NO PATROLS, WEATHER. WE ARE THE RECORD NOW",
+	# §92. The one line the ship says about the order, fired the moment
+	# the pilot reads Directive 9 and never again. It answers the band-6 line
+	# above -- "WE ARE THE RECORD NOW" was a boast about being past the
+	# instruments; this is the same sentence after finding out why there are no
+	# instruments. Nothing else in the world reacts, which is the point.
+	"read_directive": "WE ARE STILL FILING. SOMEBODY SHOULD KNOW THAT WE ARE STILL FILING",
 	"chart_unlocked": "NEW BEARING CHARTED — OPEN THE CHART",
 	"first_warp": "TRANSIT COMPLETE — UNFAMILIAR SPACE",
 	"apex_out_of_range": "SHOTS BREAKING ON THE SURVEY FIELD — CLOSE IN",

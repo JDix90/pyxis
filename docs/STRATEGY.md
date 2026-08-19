@@ -6074,7 +6074,7 @@ the two items that remain open and are genuinely new design:
 
 | # | what | save | status |
 |---|---|---|---|
-| 0 | the second register, STAGED: the private beat at the read, the living voices only at the whole record | none | **SPECCED**; first read-aloud answered R1–R4, draft revised, one more read wanted |
+| 0 | the second register, STAGED: the private beat at the read, the living voices only at the whole record | none | **BUILT** — §92; no save bump, both flags derived from v23 |
 | 1 | the refusers' network: Directive 9's pages on band-3+ foreign beacons | none | **SPECCED**; the band gate is R1's other half — ungated, the rival's shallows sweep would put pages at the chart edge in the first hours |
 | 2 | purchasable slot expansion | likely v24 | specced only as a row; wants its own research pass |
 | 3 | faction contracts offered on hail | TBD | specced only as a row |
@@ -9206,3 +9206,116 @@ the three things a chart is made of — and each one records the moment it stopp
 being able to tell the truth. The last fragment of THE LAST RETURN hands the
 job to whoever is reading it, which is the only ending a cartography game can
 honestly have.
+
+## 92. The machines were never told
+
+Horizon 8 commit 0, and no save bump — every flag here is derived from v23's
+`deep_logs` (§91). The frontier's answer has been readable since the UNSOUNDED
+shipped; this is the game hearing it.
+
+### What could not change, and why that is the feature
+
+The plan going in was that the authority's broadcasts would turn cold once the
+player had read Directive 9. Reading the table killed that and replaced it with
+something better. `BROADCASTS` bands 1–4 are an automated beacon, a relay, a
+degraded relay and a dead carrier — **every one of them a recording** — and THE
+LAST RETURN's final entry already says it out loud: *SOMEBODY DECIDED THE
+MACHINES DID NOT NEED TO KNOW.*
+
+So the chart-edge beacon goes on telling a commissioned pilot *"Charts on file.
+This marker stands on your readings… the bearing is yours, and it is written
+down"* forever, warmly, to somebody who now knows the returns were refused.
+That line was already in the game. It becomes the most frightening one in it
+without a word being edited.
+
+`THE MACHINES DO NOT KNOW` is that rule as an assertion: bands 1–4 resolve
+identically under every combination of both flags, in every system,
+commissioned or not. It goes red the moment somebody "finishes" the table —
+which is exactly what the first version of this design would have done.
+
+### The reveal is staged, because the first draft leaked
+
+The playtest note that shaped this: *shouldn't the game feel normal first, and
+only get unsettling after several eerie interactions?* Yes — and the first
+draft failed that badly. Directive 9's pages were to ride foreign beacons,
+which spawn wherever the rival has filed, from `CONTENT_MIN_DEPTH` (24u)
+outward. The rival takes the shallows in single sessions, so the order's text
+would have been sitting at the chart edge inside a new pilot's first hours.
+
+Three beats now, ordered by geography rather than by a quest flag:
+
+1. **Hints**, band 3 and deeper only (commit 1) — a page at a time, out of
+   order, understandable but incomplete.
+2. **The order**, past 5,200u — and it changes only what is PRIVATE: the ship
+   says one line, the log takes one entry, the Commission page grows one field.
+   The world does not react at all. You know, and nothing else does.
+3. **The answer**, once all nine fragments are held — the two voices out here
+   that were never the authority's say something different.
+
+`knows_directive_9()` and `holds_whole_record()` carry those, both derived by
+SCANNING `deep_logs` for a suffix rather than naming pyx03, so a future system
+authoring the datum is covered without a second place to edit.
+`THE WORLD WAITS FOR THE WHOLE RECORD` pins the staging: at 3/3/2 — two
+archives finished and the order itself read — every voice must still say what
+it always said.
+
+### The register rule, which outlives this horizon
+
+From the same note: the copy was more cryptic than it needed to be. The rule
+now, and it applies to everything written after this:
+
+> **Every line is understandable on first read. Eeriness comes from what a line
+> MEANS, never from being hard to parse.** The player always knows what they
+> were just told; what grows with depth is how much they wish they had not been
+> told it.
+
+The frontier was not closed because something was wrong with it. It was closed
+because repeated resurvey produced charts that did not agree, and an authority
+that sells charts cannot publish two that disagree. That is the whole twist,
+and it is said in those words — not implied, not encoded.
+
+### The two living voices, and the override that correctly wins
+
+Bands 5 and 6 gain `body_after` on the optional-key-with-fallback shape
+`broadcast_for` already uses. The sender never changes: it is the same voice
+saying more, so there is no `from_after` and no need for one.
+
+The clause sits BELOW the per-system override, and that is a decision rather
+than an ordering accident. Two of the three systems replace one of these rows
+with their own line — pyx01 speaks band 6 as a GSA repeater, pyx03 speaks band
+5 as a sounding mark — and **both of those are machines**. An after-line
+jumping the override there would break the governing rule to deliver the
+payoff. It does not have to: pyx01 keeps band 5, pyx02 keeps both, pyx03 keeps
+band 6, so every system still carries one living voice.
+`EVERY SYSTEM KEEPS ONE LIVING VOICE` asserts that per system, because a future
+override on the last living band in a system would delete the payoff there and
+nothing else would notice.
+
+### The field that was switched off
+
+The Commission page — the authority's file on you — gains one field once the
+order is read:
+
+> RETURNS LOGGED FROM THE RECLASSIFIED VOLUME: —
+> FIELD RETIRED AT RESURVEY 44. FILINGS FROM THE VOLUME ARE ACCEPTED AND
+> COUNTED ABOVE.
+
+Resurvey 44 is THE FIRST MERIDIAN's own fragment, the one that found the datum
+had moved. Two records agreeing about a date without either explaining the
+other.
+
+**It appears with the order rather than being there all along**, and that was
+the fourth review decision. An unexplained dash from the first dock is a
+teaser, and §90 settled that this page states rather than teases. After the
+order it is corroboration. `THE FIELD ARRIVES WITH THE ORDER` checks all three
+halves: absent before, present after, and unmoved by filing more charts — it is
+a statement, not a counter.
+
+### And it cost nothing, which is now checkable
+
+`save_dict()` is extracted out of `save_game` so a harness can compare two save
+images without writing a file. `NOTHING NEW IS STORED` walks every key and
+requires that reading Directive 9 moves `deep_logs` and nothing else. The claim
+"this horizon costs zero bytes" was worth exactly as much as the check behind
+it, and until this commit there was no way to make that check that did not
+involve the disk.

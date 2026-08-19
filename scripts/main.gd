@@ -55,6 +55,7 @@ const HARNESS_VARS := [
 	"PYXIS_DEEPSHOTS",
 	"PYXIS_DEEPTEST",
 	"PYXIS_DEMO",
+	"PYXIS_DIRECTIVETEST",
 	"PYXIS_DOCKTEST",
 	"PYXIS_ECONDEMO",
 	"PYXIS_ENVTEST",
@@ -1075,6 +1076,13 @@ func _ready() -> void:
 		_enter_playing()
 		_run_unsounded_test()
 		return
+	if OS.get_environment("PYXIS_DIRECTIVETEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_directive_test()
+		return
 	if OS.get_environment("PYXIS_PROFILETEST") != "":
 		# NOT lock_saving, and this is the second harness after SAVETEST that
 		# cannot use it: the whole subject is the file layer, and a suite that
@@ -1962,7 +1970,13 @@ func _tick_broadcast(depth: float) -> void:
 	# different voices (the authority on the plate, the ship in the corner).
 	if band >= 3 and band <= 6:
 		Barks.fire("first_band_%d" % band)
-	var msg := DeepSpace.broadcast_for(band, GameState.commissioned, system_id)
+	# §92. Read at fire time like the commissioned flag beside it, and for
+	# the same reason: a pilot who finished the record out at the terminus hears
+	# the difference on their NEXT trip out, at the crossing, rather than on
+	# their next launch. The archive is where you learn it; the deep is where it
+	# answers.
+	var msg := DeepSpace.broadcast_for(band, GameState.commissioned, system_id,
+		GameState.holds_whole_record())
 	if msg.is_empty() or hud == null:
 		return
 	# The glyph rides the sender line, so the band is named twice -- once in
@@ -14609,6 +14623,204 @@ func _run_unsounded_test() -> void:
 		UnsoundedSite.YIELD_UNITS, plate.substr(0, 40), str(read_ok), str(defer_ok),
 		"PASS" if read_ok and defer_ok else "FAIL"])
 
+	get_tree().quit()
+# --- directive 9 test --------------------------------------------------------
+
+func _run_directive_test() -> void:
+	# THE REVEAL, asserted as the three things that make it a slow burn rather
+	# than a twist dropped in the player's lap: the authority's recordings never
+	# change their words, the world waits for the WHOLE record before it answers,
+	# and the private beat lands exactly on the order and nowhere else. The
+	# fourth clause is the cheapest to break and the easiest to miss -- this
+	# horizon claims to cost zero bytes, and a claim like that wants a check.
+	var sid := GameState.current_system
+
+	# A pure fixture: the store is the only input either flag reads, so every
+	# state below is built by writing deep_logs directly and then asking the
+	# accessors. Saving is locked (dispatch), so none of it reaches a file.
+	var set_state := func(meridian: int, glass: int, ret: int) -> void:
+		GameState.deep_logs = {}
+		if meridian > 0:
+			GameState.deep_logs["pyx01:meridian"] = meridian
+		if glass > 0:
+			GameState.deep_logs["pyx02:glass"] = glass
+		if ret > 0:
+			GameState.deep_logs["pyx03:return"] = ret
+
+	# 1. THE MACHINES DO NOT KNOW. Bands 1-4 are an automated beacon, a relay, a
+	#    degraded relay and a dead carrier, and THE LAST RETURN's own final entry
+	#    says nobody told the machines. So the authority's text must be identical
+	#    under every combination of the two flags, in every system, commissioned
+	#    or not -- which also means the chart-edge beacon goes on telling a
+	#    commissioned pilot the bearing is theirs and written down forever. That
+	#    line is the horror; a "finished" table would delete it.
+	var machine_bad := ""
+	for band in range(1, 5):
+		for sid_v in SystemDB.ids():
+			for comm in [false, true]:
+				var base: Dictionary = DeepSpace.broadcast_for(band, comm, String(sid_v), false)
+				var after: Dictionary = DeepSpace.broadcast_for(band, comm, String(sid_v), true)
+				if String(base.get("from", "")) != String(after.get("from", "")) \
+						or String(base.get("body", "")) != String(after.get("body", "")):
+					machine_bad += "band %d in %s (commissioned=%s) " % [band, sid_v, str(comm)]
+	print("[directive] THE MACHINES DO NOT KNOW bands 1-4 across %d systems, commissioned and not: %s -> %s" % [
+		SystemDB.ids().size(),
+		"every recording says exactly what it always said" if machine_bad == ""
+			else "CHANGED: " + machine_bad,
+		"PASS" if machine_bad == "" else "FAIL"])
+
+	# 2. THE WORLD WAITS FOR THE WHOLE RECORD. The staged reveal, and the leg
+	#    that would have caught the version of this feature that lands the twist
+	#    in the first hours: two archives finished and the third HALF read -- the
+	#    pilot has the order itself and knows -- must still leave every voice out
+	#    here saying what it always said. Only 3/3/3 changes anything.
+	var early_bad := ""
+	set_state.call(3, 3, 2)
+	var knows_early := GameState.knows_directive_9()
+	var whole_early := GameState.holds_whole_record()
+	for band in [5, 6]:
+		for sid_v in SystemDB.ids():
+			var shipped: Dictionary = DeepSpace.broadcast_for(band, false, String(sid_v), false)
+			var live: Dictionary = DeepSpace.broadcast_for(band, false, String(sid_v),
+				GameState.holds_whole_record())
+			if String(live.get("body", "")) != String(shipped.get("body", "")):
+				early_bad += "band %d in %s " % [band, sid_v]
+	print("[directive] THE WORLD WAITS FOR THE WHOLE RECORD at 3/3/2 the pilot knows=%s but holds the record=%s; bands 5-6 unchanged in every system: %s -> %s" % [
+		str(knows_early), str(whole_early),
+		"yes" if early_bad == "" else "NO: " + early_bad,
+		"PASS" if knows_early and not whole_early and early_bad == "" else "FAIL"])
+
+	# 3. AND THEN IT ANSWERS, IN EVERY SYSTEM. Two of the three systems replace
+	#    one of these two bands with a line of their own -- pyx01 speaks band 6
+	#    as a GSA repeater, pyx03 speaks band 5 as a sounding mark -- and BOTH OF
+	#    THOSE ARE MACHINES, so the override correctly wins and those rows stay
+	#    put. What must hold is that no system is left without a living voice:
+	#    every one of them has at least one band out here that answers a pilot
+	#    holding the whole record. Asserted per system, because a future override
+	#    on the last living band in a system would silently delete the payoff
+	#    there and nothing else would notice.
+	set_state.call(3, 3, 3)
+	var answers_in := {}
+	var empty_after := ""
+	for sid_v in SystemDB.ids():
+		var sid2 := String(sid_v)
+		answers_in[sid2] = 0
+		for band in [5, 6]:
+			var shipped2: Dictionary = DeepSpace.broadcast_for(band, false, sid2, false)
+			var after2: Dictionary = DeepSpace.broadcast_for(band, false, sid2, true)
+			if String(after2.get("body", "")) != String(shipped2.get("body", "")):
+				answers_in[sid2] = int(answers_in[sid2]) + 1
+				if String(after2.get("body", "")).strip_edges() == "" \
+						or String(after2.get("from", "")).strip_edges() == "":
+					empty_after += "band %d in %s " % [band, sid2]
+	var silent_systems := ""
+	for k_v in answers_in:
+		if int(answers_in[k_v]) < 1:
+			silent_systems += String(k_v) + " "
+	print("[directive] EVERY SYSTEM KEEPS ONE LIVING VOICE answering bands per system %s; systems with none: %s; empty after-lines: %s -> %s" % [
+		str(answers_in), "none" if silent_systems == "" else silent_systems,
+		"none" if empty_after == "" else empty_after,
+		"PASS" if silent_systems == "" and empty_after == "" and GameState.holds_whole_record()
+			else "FAIL"])
+
+	# 4. THE GATE IS THE ORDER. knows_directive_9 turns on fragment 2 of the
+	#    bearing-terminus record and on nothing else: not on the first fragment,
+	#    not on the other two archives however completely they are read. Driven
+	#    by walking the real accessor, and the archive lengths are pinned against
+	#    DEEP_LOG_STAGE_MAX in the same line -- an archive that grew a fourth
+	#    fragment would make holds_whole_record permanently unreachable, which is
+	#    a feature that silently stops existing.
+	set_state.call(0, 0, 1)
+	var off_at_one := not GameState.knows_directive_9()
+	set_state.call(3, 3, 0)
+	var off_without_order := not GameState.knows_directive_9()
+	set_state.call(0, 0, 2)
+	var on_at_two := GameState.knows_directive_9()
+	set_state.call(0, 0, 3)
+	var on_at_three := GameState.knows_directive_9()
+	var lengths_ok := true
+	for kind_v in GameState.ARCHIVE_KINDS:
+		if (UnsoundedSite.FRAGMENTS.get(String(kind_v), []) as Array).size() \
+				!= GameState.DEEP_LOG_STAGE_MAX:
+			lengths_ok = false
+	print("[directive] THE GATE IS THE ORDER off at fragment 1=%s, off with both other archives complete=%s, on at 2=%s and 3=%s; every archive is %d fragments=%s -> %s" % [
+		str(off_at_one), str(off_without_order), str(on_at_two), str(on_at_three),
+		GameState.DEEP_LOG_STAGE_MAX, str(lengths_ok),
+		"PASS" if off_at_one and off_without_order and on_at_two and on_at_three
+			and lengths_ok else "FAIL"])
+
+	# 5. THE FIELD ARRIVES WITH THE ORDER. Rendered rather than reasoned about,
+	#    GSATEST's own method: queue_freed rows are skipped, because _refresh
+	#    frees the old body and builds the new one in the same frame and a naive
+	#    child walk would read both. Before the order the page must carry no
+	#    trace of the field -- an unexplained dash from the first dock would be
+	#    the teaser this page refuses to be.
+	var port_node: Port = null
+	for n in get_tree().get_nodes_in_group("dockable"):
+		port_node = n as Port
+		break
+	var before_page := ""
+	var after_page := ""
+	var after_selling := ""
+	if port_node != null:
+		port_node.def = SystemDB.port_def_by_id("anchor").duplicate(true)
+		port_node.def["services"] = PortPanel.TAB_LABELS.keys()
+		port_panel.open_for(port_node)
+		await get_tree().process_frame
+		var render := func() -> String:
+			port_panel._tab = "commission"
+			port_panel._refresh()
+			var out := ""
+			for c in port_panel._body.get_children():
+				if not c.is_queued_for_deletion() and c is Label:
+					out += String((c as Label).text) + "\n"
+			return out
+		set_state.call(0, 0, 1)
+		before_page = await render.call()
+		set_state.call(0, 0, 2)
+		after_page = await render.call()
+		# AND IT IS A STATEMENT, NOT A COUNTER: filing more charts must not move
+		# it. Driven through the real sale path, not by editing the ledger.
+		GameState.cargo = {}
+		GameState.load_cargo("chart_drift", 4)
+		file_charts_on_sale("chart_drift", 4)
+		after_selling = await render.call()
+		port_panel.close_panel()
+	var field_ok: bool = not before_page.contains("RECLASSIFIED VOLUME") \
+		and after_page.contains("RETURNS LOGGED FROM THE RECLASSIFIED VOLUME: —") \
+		and after_page.contains("RESURVEY 44") \
+		and after_selling.contains("RETURNS LOGGED FROM THE RECLASSIFIED VOLUME: —")
+	print("[directive] THE FIELD ARRIVES WITH THE ORDER absent before=%s, present after=%s, unmoved by four charts filed=%s -> %s" % [
+		str(not before_page.contains("RECLASSIFIED VOLUME")),
+		str(after_page.contains("RETURNS LOGGED FROM THE RECLASSIFIED VOLUME: —")),
+		str(after_selling.contains("RETURNS LOGGED FROM THE RECLASSIFIED VOLUME: —")),
+		"PASS" if field_ok else "FAIL"])
+
+	# 6. NOTHING NEW IS STORED. The whole claim of this commit. Both flags are
+	#    derived from the v23 store, so a save written by a pilot who has read
+	#    the order must differ from one written before it in the deep_logs entry
+	#    and NOWHERE ELSE -- not a flag, not a copy of the register, not a
+	#    "seen" set. Compared key by key over the real serializer so a new field
+	#    names itself instead of being guessed at.
+	set_state.call(0, 0, 1)
+	var before_dict := GameState.save_dict()
+	set_state.call(0, 0, 2)
+	var after_dict := GameState.save_dict()
+	var moved: Array = []
+	for k_v in after_dict:
+		var k := String(k_v)
+		if k == "deep_logs":
+			continue
+		if JSON.stringify(after_dict[k_v]) != JSON.stringify(before_dict.get(k_v)):
+			moved.append(k)
+	for k2_v in before_dict:
+		if not after_dict.has(k2_v):
+			moved.append("MISSING " + String(k2_v))
+	print("[directive] NOTHING NEW IS STORED %d save keys, moved by reading the order (deep_logs aside): %s -> %s" % [
+		after_dict.size(), str(moved) if not moved.is_empty() else "none",
+		"PASS" if moved.is_empty() else "FAIL"])
+
+	GameState.deep_logs = {}
 	get_tree().quit()
 
 # --- pilot profiles test ----------------------------------------------------

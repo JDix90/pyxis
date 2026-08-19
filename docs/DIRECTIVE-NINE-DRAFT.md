@@ -1,9 +1,17 @@
 # DIRECTIVE 9 — prose draft (Horizon 8 commit 0)
 
-**Status: SECOND DRAFT, revised after the first read-aloud (2026-08-19).** The
-four marked decisions came back answered and one general note came with them;
-both are folded in below and recorded here so the reasoning survives. Wants one
-more read before code.
+**Status: SHIPPED (§92) for everything in sections A, C and D; section B's
+pages wait for Horizon 8 commit 1.** Read and approved 2026-08-19. The four
+marked decisions came back answered and one general note came with them; both
+are folded in below and recorded here so the reasoning survives.
+
+**One change was found during the build and is recorded in §92 rather than
+here.** The band-5 and band-6 after-lines sit BELOW the per-system override,
+so in pyx01 (which speaks band 6 as a GSA repeater) and pyx03 (which speaks
+band 5 as a sounding mark) the shipped local line still wins — both of those
+overrides are machines, and the rule this pass is held to is that machines were
+never told. Every system still carries one living voice, and an assertion holds
+that per system. Edit these lines HERE and in `deep_space.gd` together.
 
 **R1 (the gate)** — the worry was the twist landing too early, before the game
 has earned it. Answered structurally: the reveal is now **staged** (see "The

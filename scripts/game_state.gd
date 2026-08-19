@@ -1724,6 +1724,55 @@ func note_deep_log(key: String, stages_total: int) -> int:
 	return cur + 1
 
 
+# §92. WHICH FRAGMENT IS THE ORDER. Directive 9 is fragment 2 of the
+# bearing-terminus record, and the two flags below are the whole reveal's
+# gating — derived from the store above, so this horizon costs zero bytes and a
+# pilot who read the fragments last week is already carrying both.
+const DIRECTIVE_STAGE := 2
+# The three ARCHIVES, which is DEEP_LOG_KINDS minus the wreck: the wreck is the
+# other cartographer's own log, not one of the authority's datums, and holding
+# it says nothing about how much of the record the pilot has.
+const ARCHIVE_KINDS := ["meridian", "glass", "return"]
+
+
+func knows_directive_9() -> bool:
+	# The PRIVATE beat: the pilot has read the order itself. Gates the ship's
+	# line, the log entry and the Commission field — things that belong to the
+	# player. The world does not react to this, deliberately (§92): you know,
+	# and nothing else does.
+	#
+	# Derived by SCANNING for any bearing-terminus record rather than asking
+	# pyx03 by name, so a future system authoring the `return` datum is covered
+	# without a second place to edit — the same reason unsounded_kind_of is data.
+	for key_v in deep_logs:
+		if String(key_v).ends_with(":return") \
+				and int(deep_logs[key_v]) >= DIRECTIVE_STAGE:
+			return true
+	return false
+
+
+func holds_whole_record() -> bool:
+	# The AFTERMATH beat: every archive read to its end. Gates the two voices
+	# out past the Quiet that were never the authority's — the deep speaks
+	# differently to somebody who knows all of it, and to nobody else.
+	#
+	# Stage-max rather than a per-kind length, because this file must not reach
+	# for UnsoundedSite (§39: the autoload never references a world class). The
+	# harness pins the two against each other so an archive that grew a fourth
+	# fragment cannot make this flag silently unreachable.
+	for kind_v in ARCHIVE_KINDS:
+		var suffix := ":" + String(kind_v)
+		var held := false
+		for key_v in deep_logs:
+			if String(key_v).ends_with(suffix) \
+					and int(deep_logs[key_v]) >= DEEP_LOG_STAGE_MAX:
+				held = true
+				break
+		if not held:
+			return false
+	return true
+
+
 func _load_deep_logs(saved: Dictionary) -> void:
 	# _load_structures_seen's posture, validated against what CAN exist: the
 	# system must still be authored, the kind must be one the generator places,
@@ -3082,13 +3131,19 @@ func _queue_save() -> void:
 	)
 
 
-func save_game() -> void:
-	if not save_enabled:
-		return
+func save_dict() -> Dictionary:
+	# EXACTLY WHAT GETS WRITTEN, and nothing about writing it. Extracted from
+	# save_game (§92) so a harness can ask "did this feature add a field?"
+	# by comparing two of these -- the claim that a horizon costs zero bytes is
+	# only worth as much as the check behind it, and every previous version of
+	# that check had to write a file to the disk to make it.
+	#
+	# Pure: it reads state and returns a dictionary. save_game keeps every
+	# decision about WHETHER and WHERE to write.
 	var fit_out := {}
 	for slot in fit:
 		fit_out[str(slot)] = fit[slot]
-	var data := {
+	return {
 		"version": SAVE_VERSION,
 		"salvage": salvage,
 		"owned": owned,
@@ -3144,6 +3199,12 @@ func save_game() -> void:
 		"commissioned": commissioned,
 		"faction_deltas": faction_deltas,
 	}
+
+
+func save_game() -> void:
+	if not save_enabled:
+		return
+	var data := save_dict()
 	var f := FileAccess.open(save_path, FileAccess.WRITE)
 	if f == null:
 		push_warning("Pyxis: could not open save for writing")

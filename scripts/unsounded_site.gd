@@ -240,6 +240,11 @@ func _read() -> void:
 			hud.show_toast("NO ROOM FOR THE READING", Palette.THREAT)
 		return
 	var before := stages_read()
+	# §92. WHETHER THE PILOT KNEW BEFORE THIS HOLD. Asked as a flag rather
+	# than as "is this the return record's second fragment", so the ship answers
+	# whichever record turns out to carry the order -- the accessor scans the
+	# data and this reads the accessor, with no third place to edit.
+	var knew := GameState.knows_directive_9()
 	var stage := GameState.note_deep_log(log_key(), stages_total())
 	_holding = false
 	_progress = 0.0
@@ -273,3 +278,11 @@ func _read() -> void:
 			Palette.RIVAL if kind == "wreck" else Palette.band_color(DeepSpace.BAND_NAMES.size() - 1))
 	Sfx.play("equip", -7.0, 0.7)
 	FX.ring_pulse(get_parent(), pick_anchor(), Palette.GOLD, 4.0, 0.9)
+	# THE ONE BEAT THAT IS THE PLAYER'S OWN. Reading the order changes nothing
+	# in the world -- no faction turns, no marker appears, nothing out here has
+	# heard. What it changes is the ship, the logbook and the file: you know,
+	# and nothing else does. Fired on the TRANSITION so a pilot who comes back
+	# and re-reads a finished record is not told twice.
+	if not knew and GameState.knows_directive_9():
+		Barks.fire("read_directive")
+		GameState.note_log("READ DIRECTIVE 9 — THE RETURNS WERE REFUSED")

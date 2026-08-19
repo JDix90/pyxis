@@ -47,10 +47,10 @@ behind a `PYXIS_*` environment variable and run headless:
 PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 ```
 
-Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 51 of them —
-the 51 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
+Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 52 of them —
+the 52 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
 `TAGS` at all: it is one harness with 21 stateful modes, run as its own
-sequence. So a full sweep is 51 + 21 = **72 runs**.
+sequence. So a full sweep is 52 + 21 = **73 runs**.
 
 Those three numbers are derivable from `run_harness.sh` and nothing else, so
 check them there rather than trusting this paragraph — it has been wrong before,
@@ -169,9 +169,9 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **707 PASS / 0 FAIL / 0 script errors** across **70 runs**,
-save intact, save format **v22** — measured on Godot 4.6.stable, headless
-(2026-08-18), at STRATEGY §85.
+Current baseline: **721 PASS / 0 FAIL / 0 script errors** across **72 runs**,
+save intact, save format **v23** — measured on Godot 4.6.stable, headless
+(2026-08-19), at STRATEGY §91.
 
 **The move from §81's 692 across 68 reconciles exactly.** §82 added four
 `CARTTEST` legs, one SAVETEST assertion to the read leg, and the `migrate21`
@@ -190,10 +190,16 @@ assertion to the SAVETEST read leg: 712 + 9 = **721**, and 70 + 2 = **72**.
 That sweep came back 720 PASS / 1 FAIL — `THE MONUMENT ANSWERS A TAP`, red on
 its FIRST EVER run, quoting a prompt that was correct (§88's own note records
 the diagnosis: the leg picked a monument by tree order and an earlier leg had
-claimed it). The leg was fixed, not the code. A baseline is a MEASUREMENT and
-is only written here once somebody has taken it; predicting one and typing it
-in as though it were taken is how the numbers this paragraph keeps correcting
-got wrong in the first place.
+claimed it). The leg was fixed, not the code, and the re-sweep came back
+**721 across 72, all green**, at save format **v23**.
+
+**One commit ahead of that figure, and not yet measured:** §92 adds
+`DIRECTIVETEST`, one new run carrying six, and **no save bump at all** — both
+of its flags derive from the v23 store. So the next full sweep should read
+**727 across 73**. A baseline is a MEASUREMENT and is only written here once
+somebody has taken it; predicting one and typing it in as though it were taken
+is how the numbers this paragraph keeps correcting got wrong in the first
+place.
 
 **The move from §75's 657 across 65 runs reconciles exactly, and that is why
 both numbers are kept.** §76 added `SIGTEST`, one new run carrying seven, and

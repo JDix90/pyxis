@@ -1103,6 +1103,35 @@ func _build_commission() -> void:
 
 	_body.add_child(_spacer_row(6))
 
+	# §92. THE FIELD THAT WAS SWITCHED OFF. Absent until the pilot has
+	# read Directive 9, and that placement is the decision rather than an
+	# accident: an unexplained dash sitting here from the first dock would be a
+	# teaser, and this page does not tease -- it states. After the order it is
+	# corroboration, in the registry's own plain voice, of something the player
+	# has already been told out at the terminus.
+	#
+	# ABOVE the complete/claim branch below, which returns early: the field
+	# belongs to the file, not to whether the file is finished.
+	#
+	# Resurvey 44 is THE FIRST MERIDIAN's own fragment -- the resurvey that found
+	# the datum had moved. The two records agree about the date without either
+	# one explaining the other.
+	if GameState.knows_directive_9():
+		var retired := Label.new()
+		retired.text = "RETURNS LOGGED FROM THE RECLASSIFIED VOLUME: —"
+		retired.add_theme_font_size_override("font_size", 12)
+		retired.add_theme_color_override("font_color", Palette.AMBER)
+		_body.add_child(retired)
+		var retired_why := Label.new()
+		retired_why.text = ("FIELD RETIRED AT RESURVEY 44. FILINGS FROM THE VOLUME "
+			+ "ARE ACCEPTED AND COUNTED ABOVE.")
+		retired_why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		retired_why.custom_minimum_size = Vector2(280, 0)
+		retired_why.add_theme_font_size_override("font_size", 10)
+		retired_why.add_theme_color_override("font_color", Palette.AMBER_DIM)
+		_body.add_child(retired_why)
+		_body.add_child(_spacer_row(6))
+
 	if GameState.commission_complete():
 		var closed := Label.new()
 		closed.text = "THE FILE IS CLOSED. THE REGISTRY CARRIES YOUR NAME."
