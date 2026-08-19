@@ -1,9 +1,14 @@
 # THE UNSOUNDED answers — fragment drafts (Horizon 7 commit 4)
 
-**Status: DRAFT FOR REVIEW. No code exists yet, deliberately.** The horizon
-plan's own gate: "the three fragments want drafting and reading aloud before
-any of the mesh work starts." This is that draft. Read it aloud. Veto freely —
-prose is cheap before the meshes exist and expensive after.
+**Status: APPROVED AND SHIPPED (§91, v23).** Read and approved as drafted on
+2026-08-19; the text below is verbatim what `scripts/unsounded_site.gd` carries,
+and this file is now the record of where it came from rather than a proposal.
+One structural change was made at ship time and is recorded in §91: the
+per-visit fragment cap was CUT. The fifteen-minute outbound flight, band-6
+weather and an unattended hull are the gate; a refusal with no fiction behind
+it is manufactured tedium. Edit the fragments HERE and in the class together —
+`EVERY FRAGMENT REACHABLE` and `THE WRECK QUOTES THE REAL CAP` police the
+class, not this file.
 
 ---
 

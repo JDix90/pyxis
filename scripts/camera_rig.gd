@@ -488,6 +488,14 @@ func _try_begin_hold(screen_pos: Vector2) -> void:
 		# claim range, so ANY contested tap near one should resolve to the
 		# smaller, more specific thing the player was aiming at.
 		target = _pick(screen_pos, "hyper")
+	if target == null:
+		# v23. The unsounded records, dead last for the same size argument --
+		# a seven-by-sixty-four monolith owns the whole screen at read range.
+		# Their own group, not "hyper": the harness cast-iterates hyper as
+		# HyperStructure, and not "crackable": the radar would hang a permanent
+		# band-6 arrow on a thing whose entire design is that you find the
+		# depth, not the marker.
+		target = _pick(screen_pos, "unsounded")
 	if target and target.has_method("hold_begin"):
 		_hold_target = target
 		target.hold_begin()
@@ -592,6 +600,13 @@ func _select(screen_pos: Vector2) -> bool:
 	var hyper := _pick(screen_pos, "hyper")
 	if hyper and hyper.has_method("on_tapped"):
 		hyper.on_tapped()
+		return true
+	# v23. And the unsounded records after even those, mirroring the hold
+	# ladder above -- both ladders gain the group in the same commit, per §88's
+	# lesson: a wired verb without an affordance is an unbuilt feature.
+	var unsounded := _pick(screen_pos, "unsounded")
+	if unsounded and unsounded.has_method("on_tapped"):
+		unsounded.on_tapped()
 		return true
 	return false
 

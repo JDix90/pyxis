@@ -47,10 +47,10 @@ behind a `PYXIS_*` environment variable and run headless:
 PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 ```
 
-Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 50 of them —
-the 50 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
-`TAGS` at all: it is one harness with 20 stateful modes, run as its own
-sequence. So a full sweep is 50 + 20 = **70 runs**.
+Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 51 of them —
+the 51 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
+`TAGS` at all: it is one harness with 21 stateful modes, run as its own
+sequence. So a full sweep is 51 + 21 = **72 runs**.
 
 Those three numbers are derivable from `run_harness.sh` and nothing else, so
 check them there rather than trusting this paragraph — it has been wrong before,
@@ -179,12 +179,14 @@ mode (one new run carrying one); §84 added `RIVALTEST`, one new run carrying
 five; §83 added three `CARTTEST` legs and one `PACINGTEST` leg. So
 692 + 6 + 4 + 5 = 707, and 68 + 2 = 70 — measured, not predicted.
 
-**Two commits ahead of that figure:** §86 moved `PACING_MIDTIER` to
-`rig_strike` and added `THE YARDSTICK IS MID-TIER` (confirmed green on a real
-run); §87 cut `BEACON_STOCK` to 3 and added `A RETUNE NEVER DELETES A BEACON`.
-So the next full sweep should read 709 across 70 before the playtest patch; §88–§90 (the nine-note playtest patch) added one leg each to
-`PLOTTEST`, `COLONYTEST` and `MUSICTEST`. So the next full sweep should read
-**712 across 70**. A
+**Four commits ahead of that figure, and none of them measured yet.** §86 moved
+`PACING_MIDTIER` to `rig_strike` and added `THE YARDSTICK IS MID-TIER`
+(confirmed green on a real run); §87 cut `BEACON_STOCK` to 3 and added
+`A RETUNE NEVER DELETES A BEACON`; §88–§90 (the nine-note playtest patch) added
+one leg each to `PLOTTEST`, `COLONYTEST` and `MUSICTEST` — 712 across 70. Then
+§91 added `UNSOUNDTEST` (one new run carrying seven), the `migrate22` mode (one
+new run carrying one) and one assertion to the SAVETEST read leg. So the next
+full sweep should read **721 across 72**, at save format **v23**. A
 baseline is a MEASUREMENT and is only written here once somebody has taken it;
 predicting one and typing it in as though it were taken is how the numbers this
 paragraph keeps correcting got wrong in the first place.

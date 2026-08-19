@@ -111,6 +111,7 @@ const HARNESS_VARS := [
 	"PYXIS_TORPTEST",
 	"PYXIS_TUTORIALTEST",
 	"PYXIS_UITEST",
+	"PYXIS_UNSOUNDTEST",
 	"PYXIS_WORLDTOUR",
 ]
 
@@ -1066,6 +1067,13 @@ func _ready() -> void:
 		_load_system(GameState.current_system)
 		_enter_playing()
 		_run_plot_test()
+		return
+	if OS.get_environment("PYXIS_UNSOUNDTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_unsounded_test()
 		return
 	if OS.get_environment("PYXIS_PROFILETEST") != "":
 		# NOT lock_saving, and this is the second harness after SAVETEST that
@@ -14399,6 +14407,209 @@ func _run_plot_test() -> void:
 
 	get_tree().quit()
 
+# --- the unsounded test ------------------------------------------------------
+
+func _run_unsounded_test() -> void:
+	# THE END OF THE MAP, asserted as the four promises it makes. That it is out
+	# there at all (past the last band edge, one per system, and reachable only
+	# by flying); that it is not a fight (no group a weapon or a scanner reads);
+	# that the record is finite and sequential; and that what it says is what the
+	# world does -- the wreck's "four hundred cells" is the player's own cap, and
+	# a retune of one that left the other alone would make the game's most
+	# load-bearing line of fiction into a lie.
+	var kinds_ok := true
+	for k_v in UnsoundedSite.FRAGMENTS:
+		if not GameState.DEEP_LOG_KINDS.has(String(k_v)):
+			kinds_ok = false
+	for k2_v in GameState.DEEP_LOG_KINDS:
+		if not UnsoundedSite.FRAGMENTS.has(String(k2_v)):
+			kinds_ok = false
+
+	# 1. EVERY FRAGMENT REACHABLE, AND THE RECORD IS FINITE. Walked one stage at
+	#    a time through the real accessor, so an off-by-one in note_deep_log --
+	#    the shape that would strand the last fragment forever, unreadable and
+	#    unfindable in play -- is caught here rather than by a player who flew
+	#    six thousand units for it.
+	var frag_bad := ""
+	for kind_v in UnsoundedSite.FRAGMENTS:
+		var kind := String(kind_v)
+		var frags: Array = UnsoundedSite.FRAGMENTS[kind]
+		var probe := "pyx01:%s" % kind
+		GameState.deep_logs.erase(probe)
+		for want in range(1, frags.size() + 1):
+			var got := GameState.note_deep_log(probe, frags.size())
+			if got != want:
+				frag_bad = "%s stage %d answered %d" % [kind, want, got]
+				break
+			if String(frags[want - 1]).strip_edges() == "":
+				frag_bad = "%s fragment %d is empty" % [kind, want]
+				break
+		if frag_bad != "":
+			break
+		# And one past the end, which must refuse rather than advance: the
+		# record has an end, and a fourteen-second hold at a finished archive
+		# pays nothing (unsounded_site._read's own branch).
+		if GameState.note_deep_log(probe, frags.size()) != frags.size():
+			frag_bad = "%s advanced past its last fragment" % kind
+		GameState.deep_logs.erase(probe)
+		if frag_bad != "":
+			break
+	print("[unsound] EVERY FRAGMENT REACHABLE %d records, kinds match the save's list=%s: %s -> %s" % [
+		UnsoundedSite.FRAGMENTS.size(), str(kinds_ok),
+		"all stages reachable, none past the end" if frag_bad == "" else frag_bad,
+		"PASS" if frag_bad == "" and kinds_ok else "FAIL"])
+
+	# 2. THE WRECK QUOTES THE REAL CAP. The rival's log says four hundred cells
+	#    because SURVEY_CELL_CAP is four hundred. Pinned in BOTH directions --
+	#    the number in the store and the words in the log -- so retuning the cap
+	#    without rewriting the line goes red instead of quietly making the
+	#    game's strongest sentence false.
+	var wreck_log := String((UnsoundedSite.FRAGMENTS["wreck"] as Array)[0])
+	var cap_words := {400: "FOUR HUNDRED", 300: "THREE HUNDRED", 500: "FIVE HUNDRED"}
+	var want_words := String(cap_words.get(GameState.SURVEY_CELL_CAP, "%d" % GameState.SURVEY_CELL_CAP))
+	var quote_ok: bool = wreck_log.contains(want_words) and GameState.SURVEY_CELL_CAP == 400
+	print("[unsound] THE WRECK QUOTES THE REAL CAP log says '%s', SURVEY_CELL_CAP is %d -> %s" % [
+		want_words, GameState.SURVEY_CELL_CAP, "PASS" if quote_ok else "FAIL"])
+
+	# 3. ONLY OUT THERE. Every authored record stands past the last band edge --
+	#    5,200 units, which is past the 4,200 the jump reaches (§79), so the
+	#    only way to one is the fifteen-minute outbound flight. The wreck is the
+	#    single exception BY DESIGN: the rival died on the way out, so their
+	#    hull sits in band 5 where a player who has never seen band 6 can find
+	#    it. Asserted per kind rather than as a minimum, or the exception would
+	#    let a mistake through.
+	var depth_bad := ""
+	for kind3_v in UnsoundedSite.DEPTHS:
+		var kind3 := String(kind3_v)
+		var d3 := float(UnsoundedSite.DEPTHS[kind3])
+		var band3 := DeepSpace.band_of(d3)
+		var want_band := 5 if kind3 == "wreck" else 6
+		if band3 != want_band:
+			depth_bad += "%s at %.0f is band %d (want %d) " % [kind3, d3, band3, want_band]
+	var jump_ceiling := SystemDB.HYPER_DEPTH_MAX
+	var past_the_jump := true
+	for kind4_v in UnsoundedSite.DEPTHS:
+		if String(kind4_v) == "wreck":
+			continue
+		if float(UnsoundedSite.DEPTHS[kind4_v]) <= jump_ceiling:
+			past_the_jump = false
+	print("[unsound] ONLY OUT THERE bands %s, all three archives past the %.0fu jump ceiling=%s -> %s" % [
+		"correct" if depth_bad == "" else depth_bad, jump_ceiling, str(past_the_jump),
+		"PASS" if depth_bad == "" and past_the_jump else "FAIL"])
+
+	# 4. ONE PER SYSTEM, AND THE WRECK IS PYX-01'S ALONE. Read off the DATA, so
+	#    authoring a second kind into a system fails here instead of building
+	#    two archives beside each other.
+	var author_bad := ""
+	var wrecks := 0
+	for sid_v in SystemDB.ids():
+		var sid3 := String(sid_v)
+		var k3 := SystemDB.unsounded_kind_of(sid3)
+		if k3 == "" or not UnsoundedSite.FRAGMENTS.has(k3):
+			author_bad += "%s authors '%s' " % [sid3, k3]
+		if SystemDB.rival_wreck_in(sid3):
+			wrecks += 1
+			if sid3 != "pyx01":
+				author_bad += "%s carries the wreck " % sid3
+	print("[unsound] ONE PER SYSTEM %d systems each author a record: %s; wrecks in the game: %d -> %s" % [
+		SystemDB.ids().size(), "yes" if author_bad == "" else author_bad, wrecks,
+		"PASS" if author_bad == "" and wrecks == 1 else "FAIL"])
+
+	# 5. IT IS NOT A FIGHT, AND NOTHING POINTS AT IT. The emptiness assertion
+	#    the instruments already carry, for the same reason: the archive joins
+	#    "unsounded" and NOTHING else. Not "hyper" (the harness casts that group
+	#    to HyperStructure), not "crackable" (the radar would hang a permanent
+	#    arrow on a thing whose whole design is that you find the depth, not the
+	#    marker), and no combat group at all.
+	_load_system("pyx01")
+	set_deep_generation(false)
+	await get_tree().physics_frame
+	var sites: Array = get_tree().get_nodes_in_group("unsounded")
+	var leak := ""
+	for g in ["apex", "dockable", "crackable", "hostiles", "combatants", "mineable",
+			"beacon", "hyper", "signature", "storm"]:
+		for n_v in get_tree().get_nodes_in_group(g):
+			if n_v is UnsoundedSite:
+				leak += "%s " % g
+	print("[unsound] IT IS NOT A FIGHT %d built in pyx01 (want 2: the archive and the wreck), leaked into: %s -> %s" % [
+		sites.size(), leak if leak != "" else "none",
+		"PASS" if sites.size() == 2 and leak == "" else "FAIL"])
+
+	# 6. CLEAR OF THE STATION, and standing at its authored depth. The placement
+	#    is a rolled bearing at a fixed radius with a reject loop against the
+	#    cell's planned station -- the same keep-out every other deep spawner
+	#    respects, checked here against the real plan rather than against the
+	#    loop's own opinion of itself.
+	var deep_node := deep_space
+	var place_bad := ""
+	for s_v in sites:
+		var site := s_v as UnsoundedSite
+		var want_depth := float(UnsoundedSite.DEPTHS[site.kind])
+		var got_depth := deep_node.depth_at(site.global_position) if deep_node else -1.0
+		if absf(got_depth - want_depth) > 1.0:
+			place_bad += "%s at depth %.0f (want %.0f) " % [site.kind, got_depth, want_depth]
+		if deep_node:
+			var cell := DeepSpace.cell_of(site.global_position)
+			var station: Dictionary = deep_node.plan_cell(cell.x, cell.y)["station"]
+			var sp: Vector3 = station.get("pos", Vector3(1e9, 0.0, 1e9))
+			if site.global_position.distance_to(sp) < DeepSpace.STATION_SAFE_RADIUS:
+				place_bad += "%s stands %.0fu from a station " % [
+					site.kind, site.global_position.distance_to(sp)]
+	print("[unsound] CLEAR OF THE STATION %d sites at their authored depth and outside %.0fu of any planned station: %s -> %s" % [
+		sites.size(), DeepSpace.STATION_SAFE_RADIUS,
+		"yes" if place_bad == "" else place_bad,
+		"PASS" if place_bad == "" and not sites.is_empty() else "FAIL"])
+
+	# 7. THE HOLD PAYS AND THE PLATE SPEAKS. The whole verb end to end, on the
+	#    real node: fly there, hold, and the record advances by one, two units
+	#    of band-6 chart data arrive, and the fragment is on the broadcast plate
+	#    where the bands announce themselves. Then the same hold against a FULL
+	#    hold, which must defer rather than burn the stage -- the mast's guard,
+	#    and the one that costs a player a fragment forever if it is missing.
+	var arch: UnsoundedSite = null
+	for s2_v in sites:
+		var s2 := s2_v as UnsoundedSite
+		if s2.kind != "wreck":
+			arch = s2
+			break
+	var pilot := get_tree().get_first_node_in_group("player")
+	var read_ok := false
+	var plate := ""
+	var defer_ok := false
+	if arch != null and pilot != null:
+		GameState.deep_logs.erase(arch.log_key())
+		GameState.cargo = {}
+		pilot.teleport_to(arch.global_position + Vector3(4.0, 0.0, 0.0))
+		var rig := get_tree().get_first_node_in_group("camera_rig")
+		if rig:
+			rig.global_position = pilot.global_position + Vector3(0, 0, 2)
+		await get_tree().create_timer(0.4).timeout
+		arch.hold_begin()
+		arch.hold_tick(UnsoundedSite.READ_TIME + 1.0)
+		await get_tree().create_timer(0.4).timeout
+		plate = hud.broadcast_text()
+		read_ok = arch.stages_read() == 1 \
+			and int(GameState.cargo.get("chart_unsounded", 0)) == UnsoundedSite.YIELD_UNITS \
+			and plate.contains("YOUR POSITION IS DEFINED")
+		# NOW FILL THE HOLD. Not by editing the store -- by loading real cargo,
+		# so can_load answers the way it will answer in play. A ONE-SPACE good,
+		# deliberately: quiet salvage takes three, so a hold filled with it can
+		# be left with two units of slack that a one-space chart fits into, and
+		# the fixture would be testing nothing.
+		GameState.cargo = {}
+		GameState.load_cargo("volatiles", GameState.cargo_free())
+		var stage_before := arch.stages_read()
+		arch.hold_begin()
+		arch.hold_tick(UnsoundedSite.READ_TIME + 1.0)
+		defer_ok = arch.stages_read() == stage_before \
+			and not GameState.can_load("chart_unsounded", UnsoundedSite.YIELD_UNITS)
+		GameState.cargo = {}
+		GameState.deep_logs.erase(arch.log_key())
+	print("[unsound] THE HOLD PAYS AND THE PLATE SPEAKS one hold -> stage 1, %d units of chart_unsounded, plate says '%s'=%s; on a full hold the stage did not move=%s -> %s" % [
+		UnsoundedSite.YIELD_UNITS, plate.substr(0, 40), str(read_ok), str(defer_ok),
+		"PASS" if read_ok and defer_ok else "FAIL"])
+
+	get_tree().quit()
 
 # --- pilot profiles test ----------------------------------------------------
 
@@ -14495,6 +14706,10 @@ func _run_profile_test() -> void:
 	# newest field is exactly when a leak ships.
 	GameState.note_survey_filed("pyx01:31:-7")
 	GameState.note_structure_seen(GameState.colony_key("pyx01", 0))
+	# v23: same argument a third time. A deep log is the longest-lived thing a
+	# pilot can own -- it is a fact about the world they learned -- which makes
+	# it exactly the field a reader would expect to be shared, and it is not.
+	GameState.note_deep_log("pyx01:meridian", 3)
 	GameState.save_game()
 	var b_id := Profiles.create("PILOT B", 3000.0)
 	GameState.switch_profile(b_id)
@@ -14518,6 +14733,8 @@ func _run_profile_test() -> void:
 		leaks.append("survey_filed")
 	if GameState.is_structure_seen(GameState.colony_key("pyx01", 0)):
 		leaks.append("structures_seen")
+	if GameState.deep_log_stage("pyx01:meridian") > 0:
+		leaks.append("deep_logs")
 	var bled := ", ".join(leaks)
 	print("[profile] NO BLEED BETWEEN PILOTS B sees salvage=%d name='%s' commissioned=%s accent=%d; leaked=%s -> %s" % [
 		GameState.salvage, GameState.ship_name, str(GameState.commissioned),
@@ -14733,6 +14950,13 @@ func _run_save_test() -> void:
 		# from the coverage sentinels for the six-distinct-sentinels reason.
 		GameState.note_survey_filed("pyx01:12:5")
 		GameState.note_structure_seen(GameState.colony_key("pyx01", 0))
+		# v23 DEEP LOGS. TWO records at DIFFERENT stages, in different systems:
+		# the six-distinct-sentinels rule again. One record at one stage would
+		# round-trip through a loader that clamped every entry to 1, or that
+		# crossed the key with its value.
+		GameState.note_deep_log("pyx01:meridian", 3)
+		GameState.note_deep_log("pyx01:meridian", 3)
+		GameState.note_deep_log("pyx02:glass", 3)
 		GameState.owned.append("mod_survey_array")
 		GameState.ledger = {
 			"deepest_depth": 611, "distance_flown": 4207, "hulks_cracked": 13,
@@ -15631,6 +15855,65 @@ func _run_save_test() -> void:
 			GameState.structures_seen.size(), str(cleaned22), str(subset22),
 			"PASS" if ok21 and carried and all_unfiled and no_sightings
 				and cleaned22 and subset22 else "FAIL"])
+	elif mode == "migrate22":
+		# v23 adds deep_logs. No migration branch, this file's standing rule: an
+		# absent key is an empty store, and "has read none of the unsounded" is
+		# exactly true of every v22 pilot -- the structures did not exist in the
+		# build that wrote their file.
+		var v22 := {
+			"version": 22,
+			"salvage": 7700,
+			"current_system": "pyx02",
+			"run_seed": 222222,
+			"tutorial_step": -1,
+			"survey_coverage": {"pyx02:3:3": true},
+			"survey_filed": {"pyx02:3:3": true},
+		}
+		var f22 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f22.store_string(JSON.stringify(v22))
+		f22.close()
+		var ok22 := GameState.load_game()
+		var fresh23: bool = GameState.deep_logs.is_empty() \
+			and GameState.deep_log_stage("pyx01:meridian") == 0
+		var kept22: bool = GameState.salvage == 7700 \
+			and GameState.is_survey_filed("pyx02:3:3")
+
+		# The rubbish pass. Every filter the loader owns, each on its own key,
+		# because a loader that dropped the whole dictionary on one bad entry
+		# would pass a test that only checked the survivors' count.
+		var dirty23 := {
+			"version": 23,
+			"salvage": 7700,
+			"run_seed": 222222,
+			"tutorial_step": -1,
+			"deep_logs": {
+				"pyx01:meridian": 2,      # good
+				"pyx01:wreck": 1,         # good -- the wreck is one fragment
+				"pyx99:glass": 1,         # unknown system
+				"pyx01:harbour": 2,       # not a kind the generator places
+				"pyx01:glass": 99,        # past DEEP_LOG_STAGE_MAX
+				"pyx01:return": 0,        # zero is absence, never a stored state
+				"pyx02:glass": -1,        # negative
+				"nocolon": 1,             # shape
+				"pyx03:return": {"stage": 2},  # value is not a number at all
+			},
+		}
+		var fd23 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fd23.store_string(JSON.stringify(dirty23))
+		fd23.close()
+		GameState.load_game()
+		var cleaned23: bool = GameState.deep_logs.size() == 2 \
+			and GameState.deep_log_stage("pyx01:meridian") == 2 \
+			and GameState.deep_log_stage("pyx01:wreck") == 1 \
+			and GameState.deep_log_stage("pyx99:glass") == 0 \
+			and GameState.deep_log_stage("pyx01:harbour") == 0 \
+			and GameState.deep_log_stage("pyx01:glass") == 0 \
+			and GameState.deep_log_stage("pyx01:return") == 0 \
+			and GameState.deep_log_stage("pyx02:glass") == 0 \
+			and GameState.deep_log_stage("pyx03:return") == 0
+		print("[savetest] v22->v23 A V22 SAVE HAS READ NOTHING empty=%s, state kept=%s; rubbish pass kept %d of 9 (unknown system, bad kind, stage 99, stage 0, negative, bad shape and a non-numeric value all dropped)=%s -> %s" % [
+			str(fresh23), str(kept22), GameState.deep_logs.size(), str(cleaned23),
+			"PASS" if ok22 and fresh23 and kept22 and cleaned23 else "FAIL"])
 	elif mode == "future":
 		# A SAVE FROM A NEWER BUILD. Refusing to load it was never the hard
 		# part — that clause has always been there. What it did NOT do was stop
@@ -15796,6 +16079,18 @@ func _run_save_test() -> void:
 			GameState.unfiled_cells().size(),
 			str(GameState.is_structure_seen(GameState.colony_key("pyx01", 0))),
 			"PASS" if filed_ok else "FAIL"])
+		# v23: two records at DIFFERENT stages, plus a record never read. The
+		# negative is what catches a loader that invents entries, and the two
+		# distinct stages catch one that clamps or crosses key with value.
+		var logs_ok: bool = GameState.deep_log_stage("pyx01:meridian") == 2 \
+			and GameState.deep_log_stage("pyx02:glass") == 1 \
+			and GameState.deep_log_stage("pyx03:return") == 0 \
+			and GameState.deep_logs.size() == 2
+		print("[savetest] v23 DEEP LOGS meridian at %d, glass at %d, unread record at %d, %d entries -> %s" % [
+			GameState.deep_log_stage("pyx01:meridian"),
+			GameState.deep_log_stage("pyx02:glass"),
+			GameState.deep_log_stage("pyx03:return"), GameState.deep_logs.size(),
+			"PASS" if logs_ok else "FAIL"])
 		print("[savetest] v10 LOGBOOK ledger %s, name '%s' (%d chars, cap %d) -> %s" % [
 			str(GameState.ledger), GameState.ship_name, GameState.ship_name.length(),
 			GameState.SHIP_NAME_MAX, "PASS" if led_ok and name_ok else "FAIL"])

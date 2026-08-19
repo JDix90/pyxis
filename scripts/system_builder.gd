@@ -60,6 +60,62 @@ static func _build_deep_space(def: Dictionary, container: Node3D, system_id: Str
 	deep.name = "DeepSpace"
 	container.add_child(deep)
 	deep.configure(def, system_id)
+	# The unsounded structures live PAST the last band edge, so they belong to
+	# the deep the way the hyper structures do -- always present, never waiting
+	# for the cell streamer, because a thing whose job is to stand at the end of
+	# the world must actually be standing there when the player arrives. Built
+	# here rather than in build() because placement needs this deep instance:
+	# the reject loop below asks plan_cell where the stations are.
+	_build_unsounded(deep, container, system_id)
+
+
+static func _build_unsounded(deep: DeepSpace, container: Node3D, system_id: String) -> void:
+	# v23, THE UNSOUNDED. One authored record per system plus, in PYX-01, the
+	# rival's wreck on the way out. Which kind stands where is DATA
+	# (SystemDB.unsounded_kind_of), consumed here and never by the generator:
+	# no draw moves, the world fingerprint stands.
+	if system_id == "":
+		return
+	var kinds: Array = []
+	var main_kind := SystemDB.unsounded_kind_of(system_id)
+	if main_kind != "" and UnsoundedSite.DEPTHS.has(main_kind):
+		kinds.append(main_kind)
+	if SystemDB.rival_wreck_in(system_id):
+		kinds.append("wreck")
+	for kind_v in kinds:
+		var kind := String(kind_v)
+		var site := UnsoundedSite.new()
+		site.kind = kind
+		site.system_id = system_id
+		container.add_child(site)
+		site.global_position = _unsounded_pos(deep, system_id, kind)
+
+
+static func _unsounded_pos(deep: DeepSpace, system_id: String, kind: String) -> Vector3:
+	# A fixed DEPTH and a rolled bearing, on its own salted stream -- the
+	# charted-seam rule: this thing persists a read across sessions, so its
+	# position must be a pure function of (system, kind, run_seed), and it must
+	# not touch the shared cell stream or every later draw in the system moves.
+	#
+	# The reject loop keeps it out of a deep station's keep-out. Sixteen tries
+	# is not hope arithmetic: a station occupies at most STATION_SAFE_RADIUS of
+	# a 64u cell on a circumference of thousands of units, so one rejection is
+	# already rare and sixteen consecutive is beyond the age of the universe --
+	# but the loop is bounded because unbounded loops in a builder are how a
+	# bad retune becomes a hang instead of a bad place.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("%s|unsounded|%s|%d" % [system_id, kind, GameState.run_seed])
+	var radius := SystemDB.bounds_of(system_id) + float(UnsoundedSite.DEPTHS[kind])
+	var pos := Vector3.ZERO
+	for _i in range(16):
+		var ang := rng.randf_range(0.0, TAU)
+		pos = Vector3(cos(ang), 0.0, sin(ang)) * radius
+		var cell := DeepSpace.cell_of(pos)
+		var station: Dictionary = deep.plan_cell(cell.x, cell.y)["station"]
+		if pos.distance_to(station.get("pos", Vector3(1e9, 0.0, 1e9))) \
+				>= DeepSpace.STATION_SAFE_RADIUS:
+			break
+	return pos
 
 
 static func _build_environment(def: Dictionary, container: Node3D) -> void:

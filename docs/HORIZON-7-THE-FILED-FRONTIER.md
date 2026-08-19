@@ -1,6 +1,6 @@
 # Horizon 7 — The Filed Frontier
 
-**Status: commits 0–3 BUILT (§82–§84, §86; the rival's wreck deferred to the writing pass). Commit 4 waits on the fragments read; commit 5 is fully BUILT (§85, §87 — stock 8 → 3).** When any of it is adopted, record it in
+**Status: COMPLETE — every commit BUILT (§82–§87, §91). Commit 4 shipped the fragments as approved, the rival's wreck with them, and cut the per-visit meter; commit 5 shipped teaching and stock 8 → 3.** When any of it is adopted, record it in
 `docs/STRATEGY.md` §64 in the same commit, per the house rule.
 
 ## What this answers

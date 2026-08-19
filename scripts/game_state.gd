@@ -33,7 +33,7 @@ signal lane_opened(id: String)
 signal standing_shifted(other: String, delta: int, band: int)
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 22
+const SAVE_VERSION := 23
 const SAVE_DEBOUNCE := 1.0
 
 # v6 defaults. Kept as one dictionary each so a migration only has to merge
@@ -292,6 +292,20 @@ var survey_filed := {}
 # hyper_positions returns at most HYPER_MAX per system, so this is bounded at
 # 15 entries across the whole game. Asserted against the generator.
 var structures_seen := {}
+# v23. DEEP LOGS READ, keyed "system:kind" -> highest fragment stage reached
+# (1..3). The unsounded structures out past band 6 each carry a short written
+# record; this remembers how much of each the pilot has stood still long enough
+# to pull. An int rather than the structures_seen booleans because the record
+# is SEQUENTIAL -- fragment two only makes sense after fragment one, and the
+# structure refuses to skip ahead.
+#
+# NEEDS NO CAP, generator-bounded like structures_seen: SystemDB authors one
+# unsounded kind per system plus a single wreck, so this tops out at four
+# entries across the whole game. The kind list is duplicated here as a const
+# rather than read off UnsoundedSite -- this autoload references no world
+# class, deep_space.gd's rule (§39), and four strings are a cheaper price
+# than a class-list edge.
+var deep_logs := {}
 
 # v16. THE INTEL DOSSIER. Keyed by system id; each value is an Array of hint
 # dictionaries the player has PAID FOR or EARNED, and together they are the only
@@ -1138,6 +1152,7 @@ func reset_to_starter() -> void:
 	survey_coverage = {}
 	survey_filed = {}
 	structures_seen = {}
+	deep_logs = {}
 	apex_intel = {}
 	beacons = {}
 	colonies = {}
@@ -1673,6 +1688,68 @@ func _load_survey(saved: Dictionary) -> void:
 			                                #    would span 8.6e9 units
 		survey_coverage[key] = true
 		_enforce_survey_cap(String(bits[0]))
+
+
+# --- deep logs (v23, THE UNSOUNDED) ------------------------------------------
+
+# The four records the generator can place. Mirrors UnsoundedSite's kind set by
+# hand -- see the deep_logs declaration for why this file will not read it off
+# the class -- and the harness pins the two lists against each other so they
+# cannot drift apart silently.
+const DEEP_LOG_KINDS := ["meridian", "glass", "return", "wreck"]
+# The longest record is three fragments; the wreck is one. The loader clamps
+# against this rather than trusting the file.
+const DEEP_LOG_STAGE_MAX := 3
+
+
+func deep_log_stage(key: String) -> int:
+	# 0 means "never read", which is not a stored state -- absence is the
+	# default, the same rule as every other store here.
+	return int(deep_logs.get(key, 0))
+
+
+func note_deep_log(key: String, stages_total: int) -> int:
+	# Advance the record by ONE fragment, never further. The fourteen-second
+	# hold in unsounded_site.gd is what makes each advance cost standing still
+	# in band-6 weather; this function's own contract is narrower -- no single
+	# call grants more than one stage, and none past the record's total.
+	# Returns the stage now held, unchanged when the record is already complete
+	# -- the caller reads "no advance" off equality, not off a second flag.
+	var cur := deep_log_stage(key)
+	var cap := clampi(stages_total, 1, DEEP_LOG_STAGE_MAX)
+	if cur >= cap:
+		return cur
+	deep_logs[key] = cur + 1
+	_queue_save()
+	return cur + 1
+
+
+func _load_deep_logs(saved: Dictionary) -> void:
+	# _load_structures_seen's posture, validated against what CAN exist: the
+	# system must still be authored, the kind must be one the generator places,
+	# and the stage must be a real fragment number. Anything else is dropped,
+	# not kept and not crashed on.
+	deep_logs = {}
+	for key_v in saved:
+		var key := String(key_v)
+		var bits := key.split(":")
+		if bits.size() != 2:
+			continue
+		if not SystemDB.exists(String(bits[0])):
+			continue
+		if not DEEP_LOG_KINDS.has(String(bits[1])):
+			continue
+		# THE VALUE'S TYPE, BEFORE ITS RANGE. JSON hands back whatever was in
+		# the file, and int() on a dictionary or an array is a conversion this
+		# loader should never be asked to make -- a hand-edited save must be
+		# dropped here, not turned into a plausible-looking stage number.
+		var raw_v = saved[key_v]
+		if typeof(raw_v) != TYPE_INT and typeof(raw_v) != TYPE_FLOAT:
+			continue
+		var stage := int(raw_v)
+		if stage < 1 or stage > DEEP_LOG_STAGE_MAX:
+			continue
+		deep_logs[key] = stage
 
 
 # --- waypoint beacons (v20, Hunt stage 5) ------------------------------------
@@ -3054,6 +3131,7 @@ func save_game() -> void:
 		"survey_coverage": survey_coverage,
 		"survey_filed": survey_filed,
 		"structures_seen": structures_seen,
+		"deep_logs": deep_logs,
 		"apex_intel": apex_intel,
 		"beacons": beacons,
 		"colonies": colonies,
@@ -3339,6 +3417,10 @@ func load_game() -> bool:
 	# run once coverage is populated or every filed key is dropped as unknown.
 	_load_survey_filed(data.get("survey_filed", {}))
 	_load_structures_seen(data.get("structures_seen", {}))
+	# v23. Defaults-not-branches again: a v22 file has no key, gets {}, and
+	# loads as a pilot who has read nothing -- true of every pilot before the
+	# unsounded existed.
+	_load_deep_logs(data.get("deep_logs", {}))
 	_load_apex_intel(data.get("apex_intel", {}))
 	# v20. Beacons: no migration branch, per this file's standing rule — an
 	# absent key is an empty store and a full stock, which is exactly what a

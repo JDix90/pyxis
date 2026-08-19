@@ -6029,15 +6029,15 @@ answer is a decision about yields or the band, taken in the open, not a nudge
 to whichever number makes it green.
 
 **Horizon 7 — the filed frontier** (opened 2026-08-18; specced in
-`docs/HORIZON-7-THE-FILED-FRONTIER.md`). Six commits, **none built**:
+`docs/HORIZON-7-THE-FILED-FRONTIER.md`). Six commits, **all built**:
 
 | # | what | save | status |
 |---|---|---|---|
 | 0 | pay §41's `MIDTIER` re-derivation | none | **PAID** — §86: the reference moves to `rig_strike`, the yields and band stand, `THE YARDSTICK IS MID-TIER` keeps it paid |
 | 1 | marks: `survey_filed` as a second set, and `structures_seen` for hyper structures seen but not claimed | **v22** | **BUILT** — §82 |
 | 2 | the counter pays a first-filing bonus, once ever per cell | none | **BUILT** — §83 |
-| 3 | a rival cartographer — evidence only, a pure function, zero save | none | **BUILT** — §84, wreck deferred to the writing pass |
-| 4 | THE UNSOUNDED answers: one authored multi-expedition structure per system past 5,200u | **v23** | **fragments DRAFTED** (`docs/UNSOUNDED-FRAGMENTS-DRAFT.md`) — code waits on the read-aloud, per the plan's own gate |
+| 3 | a rival cartographer — evidence only, a pure function, zero save | none | **BUILT** — §84; the wreck deferred to the writing pass landed in commit 4 |
+| 4 | THE UNSOUNDED answers: one authored structure per system past 5,200u, plus the rival's hull in band 5 | **v23** | **BUILT** — §91; fragments approved as drafted, the per-visit meter cut (the flight is the gate) |
 | 5 | beacon stock re-derived against §79's navigation; band-entry teaching through §76's broadcasts | none | **BUILT** — §85 (teaching), §87 (stock 8 → 3, decided from live play, legacy saves grandfathered) |
 
 **Commit 0 is PAID (§86).** The measurement found the reference at the 18th
@@ -6054,7 +6054,10 @@ stands; the missing record is not.
 
 **Long expeditions are deferred on purpose**, not forgotten: provisioning is the
 idea most likely to become tedium, and it only earns its place once commit 4
-gives THE UNSOUNDED something worth the trip.
+gives THE UNSOUNDED something worth the trip. Commit 4 has now shipped that
+trip, so the question is live again — and §91 records the argument against a
+first provisioning system dressed as a fragment cap: a refusal with no fiction
+behind it is manufactured tedium, whatever it is called.
 
 **From the nine-note playtest of 2026-08-18** (triage and fixes in §88–§90),
 the two items that remain open and are genuinely new design:
@@ -6063,7 +6066,7 @@ the two items that remain open and are genuinely new design:
 |---|---|
 | purchasable slot expansion (Utility III, Weapon III…) with power/section/speed tradeoffs | **Horizon 8's headline** — touches the fit dict, refit UI, section damage, and every BALANCE/PACING assertion; deserves the full spec treatment |
 | faction contracts offered on hail, with standing gain; standing LOSS already exists (witnessed kills, fence deals) | **Horizon 8 second act** — the offer verb is the one new piece, rides existing contract + faction machinery |
-| rival-remnant inspection with staged reveals (hold on a foreign beacon = read it) | folds into commit 4's writing pass, already gated on the fragments read |
+| rival-remnant inspection with staged reveals (hold on a foreign beacon = read it) | **PART BUILT** — commit 4 gives the rival a hull and a log to read (§91). The staged reveal on a *foreign beacon* is still open, and now has a shape to copy |
 
 **The README's harness counts should be derived, not typed** (open 2026-08-17,
 §77). Three numbers — tag count, SAVETEST mode count, total runs — are
@@ -9073,3 +9076,84 @@ recording: the answer to "is this implemented?" was yes four times over, and
 the player asking after weeks of play means the *surfaces* are quiet, not
 absent. If a future playtest asks again, the answer is louder surfaces — not
 doubt about the machinery.
+
+## 91. The unsounded answers (v23)
+
+Horizon 7 commit 4, and the last of the horizon. Past the last band edge each
+system carries one authored structure, and PYX-01 carries a second thing in
+band 5: the other cartographer's hull, found. They are the places that say what
+killed the frontier.
+
+Nothing here is a fight — §76's rule at full volume. The deep already has
+hulks, packs, traps and standing guards; these are graves with paperwork, and
+the reward for reaching one is an **answer**. `IT IS NOT A FIGHT` asserts that
+as an emptiness over ten groups: an `UnsoundedSite` joins `"unsounded"` and
+nothing else. Not `"hyper"` (the warden sweeps iterate that group and cast to
+`HyperStructure`), and not `"crackable"` — the radar collects that group, and a
+permanent arrow pointing 5,600 units out would spoil exactly the expedition the
+silhouette design exists to create. Both interaction ladders pick `"unsounded"`
+explicitly and last, in the same commit: §88's lesson is that a wired verb with
+no affordance is an unbuilt feature, so the hold path and the tap path grew the
+rung together.
+
+### One class, four kinds, and the meter that was cut
+
+`UnsoundedSite` is one class carrying four records — §17's "the gradient is
+parameters, not new classes", the signature sites' own pattern one shelf up.
+Which kind stands in which system is data (`SystemDB.unsounded_kind_of`,
+`rival_wreck_in`), consumed by the builder and never by the generator, so no
+draw moves and the world fingerprint stands untouched.
+
+The plan called for a per-visit fragment cap, forcing the record to take
+several expeditions. **It was cut**, and the reasoning is worth keeping: a cap
+like that is a refusal with no fiction behind it — the archive has no reason to
+stop talking halfway — and manufactured revisits are precisely the tedium the
+long-expedition work was deferred over. The gate is already real and already
+expensive: the structures sit past 5,200 units where §79's jump ceiling is
+4,200, so the only way to one is a fifteen-minute outbound flight, in band-6
+weather, leaving the hull unattended at the far end of it. `ONLY OUT THERE`
+pins that per kind rather than as a minimum, so the wreck's band-5 exception —
+the rival died *outbound*, which is what their log says — cannot quietly become
+a licence for the others to drift inward.
+
+What the hold pays is `chart_unsounded`: the band-6 chart good that shipped
+priced and unearnable now has its source. Two units a fragment, and the read
+defers on a full hold rather than burning a persisted stage — the survey mast's
+own guard, on the store where losing a stage costs the player a six-thousand-
+unit flight. A completed archive re-shows its last page and pays nothing, which
+keeps a fourteen-second hold from being an income faucet out where the fiction
+says everything has stopped, and states its own terms by *being* the last
+fragment again (§58).
+
+### The number in the log is the number in the store
+
+The rival's log says four hundred cells filed. `SURVEY_CELL_CAP` is four
+hundred (§80). `THE WRECK QUOTES THE REAL CAP` pins both directions, so a
+retune of the cap that left the line alone goes red instead of making the
+game's strongest sentence quietly false. That is the same posture as the
+manual-versus-cancel-ladder assertion: fiction that states a mechanic is
+checked against the mechanic.
+
+### The save (v23)
+
+`deep_logs`, keyed `"system:kind"` → the highest fragment reached. An int
+rather than a boolean because the record is sequential, and generator-bounded
+rather than capped: four entries across the whole game. `note_deep_log`
+advances by one and never past the record's total, so no caller can skip to the
+end. The loader validates entry-by-entry against what *can* exist — system
+authored, kind in `DEEP_LOG_KINDS`, stage in range — and drops rather than
+crashes. `migrate22` proves a v22 file arrives having read nothing and keeps
+everything else, then feeds it eight entries of rubbish and keeps the two that
+are real. No migration branch: defaults-not-branches, and "has read none of the
+unsounded" is exactly true of every pilot whose build had none to read.
+
+### What it is for
+
+Horizon 7 asked what the deep is *for* once the chart is legible and somebody
+else is racing you for it. This is the answer: the frontier is not a place that
+was never surveyed, it is a place that was surveyed, measured, and then
+classified out of existence. The three datums are position, time and bearing —
+the three things a chart is made of — and each one records the moment it stopped
+being able to tell the truth. The last fragment of THE LAST RETURN hands the
+job to whoever is reading it, which is the only ending a cartography game can
+honestly have.
