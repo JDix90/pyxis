@@ -168,15 +168,15 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **667 PASS / 0 FAIL / 0 script errors** across **66 runs**,
-save intact, save format **v20** — measured on Godot 4.6.stable, headless
-(2026-08-17), at STRATEGY §77.
+Current baseline: **707 PASS / 0 FAIL / 0 script errors** across **70 runs**,
+save intact, save format **v22** — measured on Godot 4.6.stable, headless
+(2026-08-18), at STRATEGY §85.
 
-**This figure is three commits behind.** §82 added four `CARTTEST` legs, one
-SAVETEST assertion to the read leg, and the `migrate21` mode (one new run
-carrying one); §83 added three `CARTTEST` legs and one `PACINGTEST` leg; §84
-added `RIVALTEST`, one new run carrying five. So the next sweep should read
-692 + 6 + 4 + 5 = **707 across 70**, save format **v22**. A
+**The move from §81's 692 across 68 reconciles exactly.** §82 added four
+`CARTTEST` legs, one SAVETEST assertion to the read leg, and the `migrate21`
+mode (one new run carrying one); §84 added `RIVALTEST`, one new run carrying
+five; §83 added three `CARTTEST` legs and one `PACINGTEST` leg. So
+692 + 6 + 4 + 5 = 707, and 68 + 2 = 70 — measured, not predicted. A
 baseline is a MEASUREMENT and is only written here once somebody has taken it;
 predicting one and typing it in as though it were taken is how the numbers this
 paragraph keeps correcting got wrong in the first place.
