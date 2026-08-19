@@ -6033,17 +6033,17 @@ to whichever number makes it green.
 
 | # | what | save | status |
 |---|---|---|---|
-| 0 | pay §41's `MIDTIER` re-derivation — measurement and a decision, not a feature | none | **not built** |
+| 0 | pay §41's `MIDTIER` re-derivation | none | **PAID** — §86: the reference moves to `rig_strike`, the yields and band stand, `THE YARDSTICK IS MID-TIER` keeps it paid |
 | 1 | marks: `survey_filed` as a second set, and `structures_seen` for hyper structures seen but not claimed | **v22** | **BUILT** — §82 |
 | 2 | the counter pays a first-filing bonus, once ever per cell | none | **BUILT** — §83 |
 | 3 | a rival cartographer — evidence only, a pure function, zero save | none | **BUILT** — §84, wreck deferred to the writing pass |
 | 4 | THE UNSOUNDED answers: one authored multi-expedition structure per system past 5,200u | **v23** | **fragments DRAFTED** (`docs/UNSOUNDED-FRAGMENTS-DRAFT.md`) — code waits on the read-aloud, per the plan's own gate |
 | 5 | beacon stock re-derived against §79's navigation; band-entry teaching through §76's broadcasts | none | **teaching BUILT** — §85; the stock number is a playtest question and stays open |
 
-**Commit 0 blocks the horizon and is not optional.** §80 moved surveys out of
-the recurring term, so `STEADY MIDTIER` now measures an honestly poorer loop
-against an unchanged band; adding a new income shape on top of an unresolved bar
-means tuning two things at once and knowing which moved neither.
+**Commit 0 is PAID (§86).** The measurement found the reference at the 18th
+percentile of the catalog; it moved to `rig_strike`, the yields and band stand,
+and `THE YARDSTICK IS MID-TIER` reddens the next drift instead of letting it
+sit for two more horizons.
 
 **One live gap is folded into commit 1 rather than filed separately.** A hyper
 structure the player has SEEN but not claimed has nowhere to be recorded —
@@ -8870,3 +8870,56 @@ ship keeps talking after the grid goes quiet.
 The other half of commit 5 — whether eight beacons is still the right stock
 now that §79 made each one a free destination — is a playtest question, is
 recorded as one in §64, and no number was moved without a session behind it.
+
+## 86. The yardstick was lying short (§41, paid)
+
+Horizon 7 commit 0, and the oldest debt in §64. §41 asked, when the Mk II
+tiers grew the catalog 84%, whether `lance_1` was still a mid-tier reference.
+The question sat unanswered through two horizons because answering it needed
+PACINGTEST's printed numbers from a real machine. 2026-08-18, it got them.
+
+### The measurement
+
+The sweep read: EARNED 16,788 per loop (2.89× the reference, brushing the 3.00
+ceiling), STEADY 11,095 (1.91×), PROSPECT parity 5.1% against 20% allowed,
+CEILING ratio 0.020 against 0.15. Everything green. And the distribution said
+why the green was too comfortable: **39 priced modules, median 14,000, and
+`lance_1` at 5,800 sitting at the 18th percentile.** The catalog's middle had
+moved and left the yardstick behind. "1.91× mid-tier per loop" was actually
+0.79× of a genuinely median module — the economy was on the design's target
+("a loop is worth roughly one mid-tier module") and the *instrument* was
+reporting nearly double, with the 0.60 floor so far below the reading that it
+had drifted most of the way to vacuous.
+
+### The decision, in §41's own terms
+
+Of the three things that could move — the band, the yields, the reference —
+**the reference moves and nothing else does.** The yields are demonstrably on
+target once measured against an honest middle; the band's semantics become
+true again the moment the ruler is right.
+
+`PACING_MIDTIER` is now `rig_strike` (Strike Frame, 14,500). Chosen over the
+exactly-median `drive_vector_2` because the reference's plain-language job is
+"the first real I-chose-this purchase", and in today's catalog that means a
+**frame** — a build identity — not a Mk II upgrade, which is more of what you
+already had. It carries the same power draw as `lance_1`, so `MINING COSTS A
+MOUNT` measures exactly what it measured before.
+
+Predicted post-change readings, from the same sweep's numbers: STEADY 0.77×,
+best-case 1.16×, PROSPECT 0.82× — all inside [0.60, 3.00], with the floor now
+22% below the steady reading instead of 219%. The floor can bite again, which
+is the whole point of having one.
+
+### And the instrument that keeps it paid
+
+`THE YARDSTICK IS MID-TIER`: the reference must sit in the middle third of the
+priced catalog, computed from the live module list at run time. The next 84%
+of catalog growth turns a leg red and forces this conversation again, instead
+of quietly shortening the ruler for another year. Red-verify by pointing the
+reference back at `lance_1` — the leg names the middle third it fell out of.
+
+Worth recording beside it: the best-case loop brushing the old ceiling (2.89
+of 3.00) dissolves under the honest ruler to 1.16 — that near-red was the
+mis-calibration, not the economy. And the CEILING catalog-fraction ratio at
+0.020 against 0.15 is now pure catastrophic-printer insurance; the MIDTIER
+band is the working bound, which is what §41 predicted when it split them.

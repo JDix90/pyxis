@@ -170,7 +170,20 @@ const PACING_MAX_RATIO := 0.15
 # catalog grows, which is the property a pacing assertion needs.
 const PACING_MIN_MODULES := 0.60
 const PACING_MAX_MODULES := 3.00
-const PACING_MIDTIER := "lance_1"
+# v22: RIG_STRIKE, NOT LANCE_1 — §41's re-derivation, paid at last (§86). The
+# Lance Array was "the first real I-chose-this purchase" when it was named, and
+# the Mk II tiers then grew the catalog 84% and moved the middle out from under
+# it: measured 2026-08-18, lance_1's 5,800 sat at the 18TH PERCENTILE of 39
+# priced modules against a median of 14,000. The steady loop read 1.91x
+# "mid-tier" while actually buying four-fifths of a median module — the economy
+# was on target and the YARDSTICK was lying short. Strike Frame is today's
+# version of the same idea (a frame is a build identity, not an upgrade), sits
+# beside the median at 14,500, and carries the same power draw, so MINING COSTS
+# A MOUNT measures exactly what it measured before. THE YARDSTICK IS MID-TIER
+# keeps this paid: the reference must sit in the middle third of the priced
+# catalog, asserted against the live module list, so the next 84% of growth
+# turns a leg red instead of quietly shortening the ruler for another year.
+const PACING_MIDTIER := "rig_strike"
 
 # How fast the scripted bots circle-strafe an apex core, in units/second of
 # tangential speed. The stand-in for a human refusing to stand still, and the
@@ -12045,6 +12058,25 @@ func _run_pacing_test() -> void:
 		steady_modules, PACING_MIDTIER, PACING_MIN_MODULES, PACING_MAX_MODULES,
 		"PASS" if steady_modules >= PACING_MIN_MODULES and steady_modules <= PACING_MAX_MODULES
 			else "FAIL"])
+
+	# v22 (§86). THE REFERENCE ITSELF IS MEASURED, not trusted. §41's debt was
+	# exactly this drifting silently: the catalog grew 84% and the "mid-tier"
+	# module quietly became an 18th-percentile one, so every MIDTIER line here
+	# measured against a short ruler while staying green. The middle third is
+	# computed from the live catalog, so the next growth spurt reddens this leg
+	# and forces the re-derivation instead of waiting for someone to wonder.
+	var yard_prices: Array = []
+	for yid_v in ModuleDB.MODULES:
+		var ypr := int((ModuleDB.MODULES[yid_v] as Dictionary).get("price", 0))
+		if ypr > 0:
+			yard_prices.append(ypr)
+	yard_prices.sort()
+	var yard_ref := int(ModuleDB.get_module(PACING_MIDTIER).get("price", 0))
+	var yard_lo := int(yard_prices[int(floorf(yard_prices.size() / 3.0))])
+	var yard_hi := int(yard_prices[int(floorf(yard_prices.size() * 2.0 / 3.0))])
+	print("[pacing] THE YARDSTICK IS MID-TIER %s at %d sits in the middle third of %d priced modules [%d..%d] -> %s" % [
+		PACING_MIDTIER, yard_ref, yard_prices.size(), yard_lo, yard_hi,
+		"PASS" if yard_ref >= yard_lo and yard_ref <= yard_hi else "FAIL"])
 
 	# The same target stated the way the design states it, so a failure reads as
 	# "a loop now buys four modules" rather than as an abstract ratio.

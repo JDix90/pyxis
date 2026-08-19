@@ -28,9 +28,10 @@ anyone is watching — which is the trade the whole game rests on.
 **Before asking "what is left to build", read `docs/STRATEGY.md` §64.** Every
 other section of that file records what SHIPPED, so searching it for gaps returns
 nothing — the outstanding work is not in the numbered record, by construction.
-§64 is the inventory: today it holds the frontier's stage 4 (optional polish)
-and one named piece of debt — §41's re-derivation of the `MIDTIER` bar, which
-stage 4 is the first work in a while that could actually move.
+§64 is the inventory: today it holds the frontier's stage 4 (optional polish),
+Horizon 7's two review-gated commits, and no named debt — §41's `MIDTIER`
+re-derivation, the long-standing one, was paid in §86 and is now held paid by
+an assertion rather than by memory.
 
 **Read the relevant `docs/STRATEGY.md` section before touching an adjacent
 system.** Most sections record a defect and explain why the current shape
@@ -176,7 +177,12 @@ save intact, save format **v22** — measured on Godot 4.6.stable, headless
 `CARTTEST` legs, one SAVETEST assertion to the read leg, and the `migrate21`
 mode (one new run carrying one); §84 added `RIVALTEST`, one new run carrying
 five; §83 added three `CARTTEST` legs and one `PACINGTEST` leg. So
-692 + 6 + 4 + 5 = 707, and 68 + 2 = 70 — measured, not predicted. A
+692 + 6 + 4 + 5 = 707, and 68 + 2 = 70 — measured, not predicted.
+
+**One commit ahead of that figure:** §86 moved `PACING_MIDTIER` to `rig_strike`
+and added `THE YARDSTICK IS MID-TIER`, so the next sweep should read **708
+across 70**, with the three MIDTIER lines at ~0.77× / ~1.16× / ~0.82× — the
+same economy under an honest ruler. A
 baseline is a MEASUREMENT and is only written here once somebody has taken it;
 predicting one and typing it in as though it were taken is how the numbers this
 paragraph keeps correcting got wrong in the first place.

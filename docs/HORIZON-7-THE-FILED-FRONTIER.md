@@ -1,6 +1,6 @@
 # Horizon 7 — The Filed Frontier
 
-**Status: commits 1–3 BUILT (§82–§84; the rival's wreck deferred to the writing pass). Commits 0, 4–5 specced, not built.** When any of it is adopted, record it in
+**Status: commits 0–3 BUILT (§82–§84, §86; the rival's wreck deferred to the writing pass). Commit 4 waits on the fragments read; commit 5's stock half is a playtest question.** When any of it is adopted, record it in
 `docs/STRATEGY.md` §64 in the same commit, per the house rule.
 
 ## What this answers
