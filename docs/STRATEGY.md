@@ -8998,12 +8998,34 @@ will rest and fails a correct layout.
 The claim hold was wired from the day hyper structures shipped: `hold_begin`
 prompts the warden count, `_approach` flies you in, the gauge runs. The
 playtest still reported "no way to interact" — because the verb every player
-tries first on the biggest object in the game is a *click*, and the select
-ladder did not include `hyper`. Clicking a 140-unit monument did nothing at
-all. `on_tapped` now states the terms through the real prompt (claimed /
-wardens standing / hold-to-claim), starts the approach, and joins the ladder
-last, for the hold ladder's own stated reason: the biggest thing on screen
-should lose every contested tap to the smaller thing in front of it.
+tries first on the biggest object in the game is a *click*, and CameraRig's
+select ladder picked crackable / mineable / dockable and never `hyper`.
+
+**`on_tapped` already existed.** The first version of this section said it did
+not, and that was written from inference rather than from the file — the
+select ladder's silence was read as the function's absence, and the fix
+duplicated a function the file already had, which GDScript rejects outright.
+The correction matters more than the typo: the defect was ONE line in the
+ladder, and the file was collateral damage from not looking.
+
+What the tap genuinely lacked was answers. It returned silently when claimed,
+and in the unlocked case — a player standing in front of a takeable monument —
+it said nothing at all while quietly flying them in. A tap that moves the ship
+without a word is the affordance problem one layer down. Every branch now
+prompts, and `hyper` joins the ladder last, for the hold ladder's own stated
+reason: the biggest thing on screen should lose every contested tap to the
+smaller thing in front of it.
+
+### And the checker gained a third rule
+
+The duplicate above passed `check_scripts.py` clean and detonated on Godot as
+the §77 cascade — `Could not parse global class "HyperStructure"`, with the
+duplicate named nowhere in the output and the gate's own hint pointing at
+`--import`, which could not have helped: `HyperStructure` was never a new
+class. Duplicate declarations at file scope are exactly what scripted editing
+produces, so they are now the checker's third rule, alongside the body-less
+block and the unresolved member. File scope only — an inner `class` may
+legitimately redeclare a name, and its members are indented by construction.
 
 The general lesson, worth its sentence: **a wired verb without an affordance
 is indistinguishable from an unbuilt feature, and the player's report will

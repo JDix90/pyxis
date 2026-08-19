@@ -227,26 +227,6 @@ func hold_begin() -> void:
 	_holding = true
 
 
-func on_tapped() -> void:
-	# v22 (88). THE INVITATION. The claim hold was wired from the day these
-	# shipped and the playtest still reported "no way to interact" -- because a
-	# player who finds a 140-unit monument CLICKS it, and nothing answered.
-	# The tap states the terms (58: which refusal, what to do about it) and
-	# starts the approach; the hold at the base stays the claiming verb.
-	var hud := get_tree().get_first_node_in_group("hud")
-	if hud:
-		if is_claimed():
-			hud.prompt("%s — CLAIMED. THE CHART CARRIES ITS JUMP." % designation())
-		elif is_locked():
-			hud.prompt("%s — %d WARDEN(S) STANDING. CLEAR THEM, THEN HOLD AT THE BASE TO CLAIM."
-				% [designation(), wardens_standing()])
-		else:
-			hud.prompt("%s — HOLD AT THE BASE TO CLAIM." % designation())
-	FX.ring_pulse(get_parent(), pick_anchor(), Palette.GOLD, 3.0, 0.8)
-	if not _player_in_range():
-		_approach()
-
-
 func hold_release() -> void:
 	_holding = false
 	var hud := get_tree().get_first_node_in_group("hud")
@@ -267,14 +247,30 @@ func hold_tick(delta: float) -> void:
 
 
 func on_tapped() -> void:
+	# v22 (88). THIS FUNCTION EXISTED AND NOTHING CALLED IT. CameraRig's select
+	# ladder picked crackable / mineable / dockable and never `hyper`, so a tap
+	# on the biggest object in the game reached nothing -- which is what the
+	# playtest reported as "no way to interact". The ladder is the fix; these
+	# two added branches are the other half of it.
+	#
+	# EVERY BRANCH ANSWERS NOW. Claimed returned silently, and the unlocked
+	# case -- the one where the player is standing in front of a takeable
+	# monument -- said nothing at all while quietly flying them in. A tap that
+	# moves the ship without a word is the affordance problem one layer down.
+	var hud := get_tree().get_first_node_in_group("hud")
+	FX.ring_pulse(get_parent(), pick_anchor(), Palette.GOLD, 3.0, 0.8)
 	if is_claimed():
+		if hud:
+			hud.prompt("%s — CLAIMED. THE CHART CARRIES ITS JUMP." % designation())
 		return
 	if is_locked():
-		var hud := get_tree().get_first_node_in_group("hud")
 		if hud:
-			hud.prompt("%d WARDEN(S) STILL STANDING — CLEAR THEM TO FOUND THIS COLONY"
-				% wardens_standing())
+			hud.prompt("%s — %d WARDEN(S) STILL STANDING, CLEAR THEM TO FOUND THIS COLONY"
+				% [designation(), wardens_standing()])
 		return
+	# The verb, stated at the moment the player is trying to use it.
+	if hud:
+		hud.prompt("%s — HOLD AT THE BASE TO CLAIM IT" % designation())
 	if not _player_in_range():
 		_approach()
 
