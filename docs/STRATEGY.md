@@ -6028,6 +6028,43 @@ the next sweep turns that leg red, that IS the re-derivation arriving: the
 answer is a decision about yields or the band, taken in the open, not a nudge
 to whichever number makes it green.
 
+**Horizon 7 — the filed frontier** (opened 2026-08-18; specced in
+`docs/HORIZON-7-THE-FILED-FRONTIER.md`). Six commits, **none built**:
+
+| # | what | save | status |
+|---|---|---|---|
+| 0 | pay §41's `MIDTIER` re-derivation | none | **PAID** — §86: the reference moves to `rig_strike`, the yields and band stand, `THE YARDSTICK IS MID-TIER` keeps it paid |
+| 1 | marks: `survey_filed` as a second set, and `structures_seen` for hyper structures seen but not claimed | **v22** | **BUILT** — §82 |
+| 2 | the counter pays a first-filing bonus, once ever per cell | none | **BUILT** — §83 |
+| 3 | a rival cartographer — evidence only, a pure function, zero save | none | **BUILT** — §84, wreck deferred to the writing pass |
+| 4 | THE UNSOUNDED answers: one authored multi-expedition structure per system past 5,200u | **v23** | **fragments DRAFTED** (`docs/UNSOUNDED-FRAGMENTS-DRAFT.md`) — code waits on the read-aloud, per the plan's own gate |
+| 5 | beacon stock re-derived against §79's navigation; band-entry teaching through §76's broadcasts | none | **BUILT** — §85 (teaching), §87 (stock 8 → 3, decided from live play, legacy saves grandfathered) |
+
+**Commit 0 is PAID (§86).** The measurement found the reference at the 18th
+percentile of the catalog; it moved to `rig_strike`, the yields and band stand,
+and `THE YARDSTICK IS MID-TIER` reddens the next drift instead of letting it
+sit for two more horizons.
+
+**One live gap is folded into commit 1 rather than filed separately.** A hyper
+structure the player has SEEN but not claimed has nowhere to be recorded —
+`colonies_in` reads the claimed store and there is no radar tier — so flying
+past one and being driven off by its wardens loses information the player
+earned. The silhouette design (`hyper_structure.gd:15`) is deliberate and
+stands; the missing record is not.
+
+**Long expeditions are deferred on purpose**, not forgotten: provisioning is the
+idea most likely to become tedium, and it only earns its place once commit 4
+gives THE UNSOUNDED something worth the trip.
+
+**From the nine-note playtest of 2026-08-18** (triage and fixes in §88–§90),
+the two items that remain open and are genuinely new design:
+
+| what | status |
+|---|---|
+| purchasable slot expansion (Utility III, Weapon III…) with power/section/speed tradeoffs | **Horizon 8's headline** — touches the fit dict, refit UI, section damage, and every BALANCE/PACING assertion; deserves the full spec treatment |
+| faction contracts offered on hail, with standing gain; standing LOSS already exists (witnessed kills, fence deals) | **Horizon 8 second act** — the offer verb is the one new piece, rides existing contract + faction machinery |
+| rival-remnant inspection with staged reveals (hold on a foreign beacon = read it) | folds into commit 4's writing pass, already gated on the fragments read |
+
 **The README's harness counts should be derived, not typed** (open 2026-08-17,
 §77). Three numbers — tag count, SAVETEST mode count, total runs — are
 maintained by hand in a paragraph that itself warns the reader it has been
@@ -8600,3 +8637,439 @@ name and joined to the PASS clause. That single word is what turned the second
 red from three files of digging into one glance — `accepted=false` names the
 refusal — and it is why the wrong first fix cost one re-run rather than an
 afternoon.
+
+## 82. What the chart records (v22)
+
+Horizon 7's first build, and the smallest useful piece of it: the two stores the
+rest of the horizon needs, with no pricing attached to either. §80 made the deep
+remember where you worked; this records **what that memory is worth so far** —
+which of those cells you have sold, and which structures you have merely seen.
+
+### Two sets, not a flag, and the migration is the reason
+
+The obvious shape is `survey_coverage[key] = {"filed": bool}` — one store, one
+concept. It was rejected for what it does to the file: changing the value shape
+means every v21 pilot's real work migrates through a new branch on load.
+
+`survey_filed` as a **separate set** means `survey_coverage` is untouched, byte
+for byte, and loads through the loader it always did. An absent `survey_filed`
+is "nothing filed yet", which is exactly true of every v21 pilot — and it is the
+generous reading as well as the correct one: work already done keeps its
+first-filing bonus. Defaults-not-branches with no branch at all.
+
+The cost is an invariant to hold rather than a shape that enforces itself:
+**filed is a subset of coverage.** `note_survey_filed` refuses a cell that is
+not in coverage, `_load_survey_filed` filters against coverage rather than
+against a shape, and `_enforce_survey_cap` evicts from both together — because a
+filed key outliving its coverage key would be a second store growing without a
+bound of its own, which is the thing §17 refuses and §80 answered by
+construction. Three enforcement points, one assertion each way.
+
+### A sighting was information the player earned and the game threw away
+
+Hyper structures are 3–5 per system, always present, at depth 1600–4200, with no
+radar tier and no chart layer until claimed. The silhouette argument in
+`hyper_structure.gd` is deliberate and stands: the mesh reads at ~1000u, so
+finding one is roughly a fifty-minute circumferential sweep — an expedition, not
+a lottery.
+
+What did not stand is losing the result. Fly past one, get driven off by its
+three wardens, and there was **nowhere for "it is THERE" to live.** Fifty
+minutes of search, and the only record was the player's memory.
+
+`structures_seen` is keyed `"system:index"` — `colonies`' own shape, because it
+is the same thing at an earlier stage — and the sighting is recorded at
+`SIGHT_RANGE`, derived from the silhouette argument rather than picked. It is
+checked **before** the claimed/woken early return in `_process`, because being
+driven off is precisely the case it exists for.
+
+It stores **no position.** `hyper_positions` is a pure function of
+`(system, run_seed)` and the chart already calls it, so a stored coordinate
+would be a second copy that could disagree with the generator. The store answers
+one question — *have you seen this one* — and the generator answers where.
+
+**It needs no cap**, and that is a property rather than an oversight: the
+generator authors at most `HYPER_MAX` per system, so the store is bounded at
+fifteen entries across the whole game. Asserted against `hyper_positions()`
+rather than against a literal, so a retune of `HYPER_MIN`/`HYPER_MAX` moves the
+bound with it.
+
+The chart draws a sighting as a **hollow diamond** — the colony's square turned
+forty-five degrees. The shape says "this kind of thing", the rotation says "not
+yours yet", and neither reading depends on colour (§30).
+
+### What is deliberately not here
+
+**No pricing.** The first-filing bonus is the next commit, and it lands *after*
+§41's `MIDTIER` re-derivation, because adding an income shape on top of an
+unresolved bar means tuning two things at once and knowing which moved neither.
+This commit adds a store and changes no economy at all.
+
+Worth recording alongside it: §80 spent **0.097 mid-tier modules** of the
+[0.60, 3.00] band — 4% of its width — so the debt §64 has been carrying is
+smaller than it reads. What §41 actually asks is whether `lance_1` is still a
+mid-tier reference after the Mk II tiers grew the catalog 84%, and that is a
+question for PACINGTEST's printed numbers rather than its verdict.
+
+## 83. The counter pays for being first
+
+Horizon 7 commit 2, and the point of the whole horizon: the premise — *selling
+charts of places nobody has filed a return from* — finally has a mechanic that
+knows which places, and whether anybody had.
+
+### The sale splits into a market half and a provenance half
+
+The market half is untouched: `port_panel._sell` unloads the units and pays
+`Market.sell_price`, with every fence rule, pressure effect and smuggling feed
+exactly where it was. The provenance half runs after it: selling a reading's
+worth of a band's chart data files your oldest unfiled cells of that band — one
+cell per `YIELD_UNITS` sold, because one reading is what a mast yields — and
+pays `FIRST_FILING_RATE` (0.5) of the reading's **base** value per cell, once
+ever.
+
+Base price, deliberately not market price. The market half answers "where did
+you sell it and what does this port think of that good today"; provenance is a
+fact about the *cell*, and a fact should not pay differently at a fence.
+
+Depth is carried by the existing price ladder rather than a second table: a
+band-5 cell pays more than a band-2 cell only because `chart_fathom`'s base is
+higher than `chart_drift`'s. One rate, no new numbers to keep in step.
+
+### What this converts
+
+§80 recorded, as an accepted trade, that persistence burns the near ring and
+turns chart income into an outward treadmill. The bonus is what makes that a
+pull rather than a tax: the near ring is *filed*, so first-filings — the good
+money — are always further out than the last trip. The sentence the game rests
+on ("the further out you go the better it pays") stops being only about band
+tables and starts being about the player's own history.
+
+The ledger gains `cells_filed` beside `chart_data_sold` — volume versus firsts,
+and the first version of "places I put on the map".
+
+### The three refusals that keep it honest
+
+- **The bonus is a bonus.** `file_charts_on_sale` touches the filed set and the
+  wallet and nothing else — no cargo, no coverage. A player who never thinks
+  about filing loses nothing they had yesterday. Asserted as a property.
+- **A half-reading files nothing, and the remainder does not carry.** Selling
+  one unit of a two-unit reading is selling half a coordinate. The counter
+  files whole cells or none, statelessly — a carried remainder would be save
+  state for a bookkeeping trick.
+- **Filing is not a raise.** The bonus is once-only by construction, so
+  `PACING_LOOP` must never name it — the exact over-report §80 removed from
+  surveys, rebuilt one commit later, is what `FILING IS NOT A RAISE` goes red
+  on. Both profiles are checked, because `PACING_PROSPECT` surveys too and
+  would be the quieter place to slip it in.
+
+### The sequencing note, honestly
+
+The plan ordered this after §41's `MIDTIER` re-derivation. It landed first, and
+the reason is structural rather than impatient: the bonus never enters the
+recurring loop — asserted, not promised — so it cannot move the bar §41 is
+about. What §41 still owes is a judgement (is `lance_1` still mid-tier after
+the catalog grew 84%?) that needs PACINGTEST's printed numbers from a real run,
+and it stays open in §64 until those numbers exist. A one-time income stream
+orthogonal to the bar does not have to wait on a question about the bar.
+
+## 84. The other cartographer
+
+Horizon 7 commit 3. Somebody else is working the same deep, and the player only
+ever meets the evidence: a cell already filed when they sell, a mast whose
+reading comes back annotated *somebody was first*, a beacon in a livery that is
+not theirs. Nothing is ever seen moving. Nothing shoots.
+
+### A rival with no save, racing the player's own clock
+
+`Rival` is a leaf class of two pure functions. A cell's rival-arrival time
+derives from `(cell key, depth, run_seed)`; whether the rival has filed it is
+that arrival compared against `played_seconds`. Zero bytes of save — §17's
+"revisiting a sector costs zero bytes" untouched — and because `played_seconds`
+is the player's own accumulated clock, the rival races exactly the person
+playing. Pause the run for a month and nothing moves. There is no rival while
+nobody is flying, which is both the cheapest implementation and the right
+fiction.
+
+The gradient is the design. `BASE_S` (half an hour) means a brand-new pilot's
+first sortie is never pre-empted — `A FRESH PILOT MEETS NOBODY` holds that at
+zero played seconds nothing anywhere is filed. `S_PER_U` (60) means the
+shallows go in single sessions while the earliest possible arrival at the
+band-4 floor is ~18.8 hours of play — `THE DEEP OUTRUNS THEM` measures that
+over the jitter rather than restating the formula, and holds the latest
+200u arrival strictly before the earliest 1100u one. The near ring burns with
+a hand attached to it; the deep belongs to whoever flies there.
+
+Per-cell jitter of [1, 3] exists for `hyper_positions`' reason: a flat front
+would let one found cell date every other cell at its depth, and denying that
+inference is a pillar, not a preference.
+
+### The stride holds the world still
+
+The clock is quantised to ten-minute strides before any comparison. This is
+not flavour: the cell streamer consults `Rival.filed` when it dresses a cell,
+and STREAMTEST's `SAME WORLD EITHER WAY` compares a synchronous build against
+an amortised one — two builds seconds apart must not disagree about whether a
+beacon stands in a cell. Within a stride the world is stable; progress happens
+between strides, like a tide coming in while you looked away. Which is also
+the right fiction for somebody you never see.
+
+### They take the chance, never the goods
+
+The one design risk named in the horizon plan was a rival that punishes. The
+implementation makes the safe property structural:
+
+- **At the mast**, a rival-filed cell still pays its full cargo — the data is
+  yours; only the counter's first-filing bonus is gone, and the toast says so
+  in the deep rather than letting the counter be the first to mention it a
+  session later.
+- **At the counter**, rival-filed cells are swept out of the unfiled ledger
+  without pay and **without consuming a reading slot** — your readings' bonus
+  slots go to cells that can still pay. Coverage never loses an entry: the
+  chart you drew stays drawn.
+- **A player-filed cell can never be un-filed** by any amount of rival
+  advance. `THE RIVAL NEVER TAKES WHAT YOU HAVE` drives all three through the
+  real counter with the clock pushed past the shallows.
+
+Both the mast's heads-up and the counter's verdict read depth through
+`main.cell_depth_of_key` — one source, so the two surfaces cannot disagree
+about where a cell is.
+
+### The evidence in the world
+
+A sparse fraction (4%) of rival-reached cells carry one of their beacons — the
+same `Beacon` node the player drops, reusing mesh, breath, pick group and
+radar tier, because it *is* a beacon; what differs is a `foreign` flag. It
+lives and dies with its cell, never touches `GameState.beacons`, never counts
+against stock, and refuses the recovery hold with copy that says why. Its
+presence, angle and radius all derive from one salted hash: no draw from any
+stream, so `THE DRAW COUNT DID NOT MOVE` cannot see it — correctly, because
+there is nothing to see.
+
+`Palette.RIVAL` (violet) is the one new colour: not a band (place), not the
+livery accent (yours), not THREAT (danger), because a rival beacon is none of
+those things. Per §30 the hue is the at-a-glance channel and ownership is
+carried by the refusal itself.
+
+Beacon also gained `marker_color()` — own beacons now wear the livery accent
+on the radar as well as in the world, closing a small radar/world disagreement
+the Horizon 6 plan had noted and not built.
+
+### Deferred from this commit, deliberately
+
+**The rival's wreck** — the one authored site where the rival stops being a
+rate and becomes a person. It is content rather than arithmetic, it wants the
+same writing pass as THE UNSOUNDED's fragments, and it should land with them.
+
+## 85. The deep teaches itself
+
+Horizon 7 commit 5, the half that could ship: four lines, one per band from
+THE REACHES out, fired beside the band's own broadcast on first crossing —
+once ever, on the bark contract, so a returning player is never re-taught.
+The tutorial covers the first hour and band 4 is where the interesting game
+lives; until these, nothing between the two said a word about mechanics.
+
+Each line teaches exactly one true thing the band contains — convoy etiquette
+at 3, nest geometry at 4, the end of the jump network at 5, weather and
+self-reliance at 6 — and none names a gesture, so the manual's device sweep
+stays clean on every input. Two voices on one threshold, deliberately: the
+authority on the broadcast plate, the ship in the corner. The bark fires even
+where a band has no authored broadcast, which is itself in character — the
+ship keeps talking after the grid goes quiet.
+
+The other half of commit 5 — whether eight beacons is still the right stock
+now that §79 made each one a free destination — is a playtest question, is
+recorded as one in §64, and no number was moved without a session behind it.
+
+## 86. The yardstick was lying short (§41, paid)
+
+Horizon 7 commit 0, and the oldest debt in §64. §41 asked, when the Mk II
+tiers grew the catalog 84%, whether `lance_1` was still a mid-tier reference.
+The question sat unanswered through two horizons because answering it needed
+PACINGTEST's printed numbers from a real machine. 2026-08-18, it got them.
+
+### The measurement
+
+The sweep read: EARNED 16,788 per loop (2.89× the reference, brushing the 3.00
+ceiling), STEADY 11,095 (1.91×), PROSPECT parity 5.1% against 20% allowed,
+CEILING ratio 0.020 against 0.15. Everything green. And the distribution said
+why the green was too comfortable: **39 priced modules, median 14,000, and
+`lance_1` at 5,800 sitting at the 18th percentile.** The catalog's middle had
+moved and left the yardstick behind. "1.91× mid-tier per loop" was actually
+0.79× of a genuinely median module — the economy was on the design's target
+("a loop is worth roughly one mid-tier module") and the *instrument* was
+reporting nearly double, with the 0.60 floor so far below the reading that it
+had drifted most of the way to vacuous.
+
+### The decision, in §41's own terms
+
+Of the three things that could move — the band, the yields, the reference —
+**the reference moves and nothing else does.** The yields are demonstrably on
+target once measured against an honest middle; the band's semantics become
+true again the moment the ruler is right.
+
+`PACING_MIDTIER` is now `rig_strike` (Strike Frame, 14,500). Chosen over the
+exactly-median `drive_vector_2` because the reference's plain-language job is
+"the first real I-chose-this purchase", and in today's catalog that means a
+**frame** — a build identity — not a Mk II upgrade, which is more of what you
+already had. It carries the same power draw as `lance_1`, so `MINING COSTS A
+MOUNT` measures exactly what it measured before.
+
+Predicted post-change readings, from the same sweep's numbers: STEADY 0.77×,
+best-case 1.16×, PROSPECT 0.82× — all inside [0.60, 3.00], with the floor now
+22% below the steady reading instead of 219%. The floor can bite again, which
+is the whole point of having one.
+
+### And the instrument that keeps it paid
+
+`THE YARDSTICK IS MID-TIER`: the reference must sit in the middle third of the
+priced catalog, computed from the live module list at run time. The next 84%
+of catalog growth turns a leg red and forces this conversation again, instead
+of quietly shortening the ruler for another year. Red-verify by pointing the
+reference back at `lance_1` — the leg names the middle third it fell out of.
+
+Worth recording beside it: the best-case loop brushing the old ceiling (2.89
+of 3.00) dissolves under the honest ruler to 1.16 — that near-red was the
+mis-calibration, not the economy. And the CEILING catalog-fraction ratio at
+0.020 against 0.15 is now pure catastrophic-printer insurance; the MIDTIER
+band is the working bound, which is what §41 predicted when it split them.
+
+## 87. Three beacons (§79's number, re-derived)
+
+The last open half of Horizon 7's commit 5, decided the way §85 said it had to
+be — from play, not from a desk. Weeks of sessions on both sides of §79 are the
+derivation: before navigation, eight beacons threaded a route and the recover
+verb existed; after navigation made every beacon a free course destination and
+a jump target, eight was a fast-travel network and recovery went unused — the
+exact failure `beacon.gd`'s own header warned about ("the recover verb would
+never once be used"), arrived from the opposite direction it expected.
+
+**`BEACON_STOCK` is 3.** At three, placing a beacon is a commitment again, and
+recovering one is routine rather than never.
+
+### A retune must never delete a placed beacon
+
+The loader capped entries at `BEACON_STOCK`, which was correct until the day
+the constant moved — then it would have silently deleted beacons from any save
+standing more than three, on load, with the player's own markers as the
+casualty. The cap now bounds against `BEACON_LEGACY_CAP` (8, the largest stock
+ever shipped): a corrupt file is still refused, a retune deletes nothing, and a
+grandfathered pilot simply cannot drop until recovery brings them under the new
+stock. `beacon_stock_left()` clamps at zero for the same reason — "-2 IN
+STOCK" in a toast would be the arithmetic showing through the fiction.
+`A RETUNE NEVER DELETES A BEACON` drives the whole arc: five legacy entries
+kept, stock clamped, drop refused, recovery re-opening it.
+
+### And the prose is derived now
+
+The manual said "eight in stock" in two hand-written places, which is exactly
+the drift class the cancel-ladder lesson closed for rungs: both now format
+`GameState.BEACON_STOCK` into the sentence, so this number cannot go stale in
+copy again. The ledger leg's print derives its count the same way.
+
+## 88. The features that existed and could not be seen
+
+A nine-note playtest, and the triage is the finding: of nine notes, one was a
+real layout bug, one was a wired verb with no invitation, one was
+architectural, and *six* were systems working as built that the game never
+introduced. The best possible playtest result, and the most damning — the work
+was done and the door was shut. This section covers the two interaction fixes;
+§89 the audio; §90 the teaching verdicts.
+
+### The sheet grew upward (the chart bug)
+
+`SHEET_RATIO` is a portrait constant: 55% of 1280 holds the chart column's
+~680px of minimums. On a wide desktop window, 55% of ~1090 does not — and a
+VBoxContainer refuses to shrink children below their minimums, so the overflow
+came out of the *bottom*, which is the WARP button. The playtest filed it as
+two symptoms — "the chart opens too low" and "cannot travel to the new Pyx" —
+and both were one bug: the button was there, below the window edge, while the
+top 45% of the screen sat empty.
+
+`_apply_layout` now treats the ratio as a floor: the sheet takes more of a
+short window only when the column's own measured minimums demand it, capped at
+95%. Portrait is untouched byte for byte. `AND EVERY WINDOW FITS THE SHEET`
+asserts both directions at a landscape resolution — the leg the portrait-only
+model of leg 12 was structurally unable to provide — and it measures *after*
+the slide animation, because a rect read mid-slide sits below where the sheet
+will rest and fails a correct layout.
+
+### The monument answers a tap
+
+The claim hold was wired from the day hyper structures shipped: `hold_begin`
+prompts the warden count, `_approach` flies you in, the gauge runs. The
+playtest still reported "no way to interact" — because the verb every player
+tries first on the biggest object in the game is a *click*, and CameraRig's
+select ladder picked crackable / mineable / dockable and never `hyper`.
+
+**`on_tapped` already existed.** The first version of this section said it did
+not, and that was written from inference rather than from the file — the
+select ladder's silence was read as the function's absence, and the fix
+duplicated a function the file already had, which GDScript rejects outright.
+The correction matters more than the typo: the defect was ONE line in the
+ladder, and the file was collateral damage from not looking.
+
+What the tap genuinely lacked was answers. It returned silently when claimed,
+and in the unlocked case — a player standing in front of a takeable monument —
+it said nothing at all while quietly flying them in. A tap that moves the ship
+without a word is the affordance problem one layer down. Every branch now
+prompts, and `hyper` joins the ladder last, for the hold ladder's own stated
+reason: the biggest thing on screen should lose every contested tap to the
+smaller thing in front of it.
+
+### And the checker gained a third rule
+
+The duplicate above passed `check_scripts.py` clean and detonated on Godot as
+the §77 cascade — `Could not parse global class "HyperStructure"`, with the
+duplicate named nowhere in the output and the gate's own hint pointing at
+`--import`, which could not have helped: `HyperStructure` was never a new
+class. Duplicate declarations at file scope are exactly what scripted editing
+produces, so they are now the checker's third rule, alongside the body-less
+block and the unresolved member. File scope only — an inner `class` may
+legitimately redeclare a name, and its members are indented by construction.
+
+The general lesson, worth its sentence: **a wired verb without an affordance
+is indistinguishable from an unbuilt feature, and the player's report will
+correctly say "cannot interact" either way.**
+
+## 89. Combat sound has a distance
+
+`Sfx.play` is a flat sixteen-player pool — every caller anywhere in the
+streamed window played at authored volume. A swarm fighting a picket three
+hundred units away was as loud as one on the hull, forever; the playtest
+called it "really annoying," which for a mobile game is a death sentence
+politely phrased.
+
+`play_at(pos, …)` reads the player's distance: unchanged inside 40u, a linear
+dB roll-off to −22 at 120u, culled entirely past it. The world's fire, hit and
+explode calls route through it; the cockpit — UI, pickups, the player's own
+ship — keeps the flat path, because feedback for your own actions is not
+diegetic and must never fade. The curve is a pure static (`attenuation_for`),
+so `COMBAT SOUND FALLS OFF WITH DISTANCE` holds it without listening: flat
+zone, floor at the cull edge, monotone between, and the cull strictly beyond
+the flat zone so the two constants cannot be tuned past each other.
+
+## 90. Three verdicts of teaching, one of evidence
+
+**The forge (§4 of the playtest).** The loop was intact end to end — crack,
+carry unread, read at your archeology tier, components fall from reads, forge
+consumes them — and deliberately market-proof. The comment above `_build_forge`
+even claimed "a component names the read that produces it." **It never did**:
+the bill printed have/need and nothing else — prose above code with nothing
+connecting the two, §73's oldest shape. The bill now derives each missing
+component's source from `READS_AS` itself ("SRV-P FALLS FROM READING BAND 2+
+SALVAGE"), so the line cannot drift from the table that makes it true.
+
+**The Commission (§5).** Working as designed, failing as communication. The
+statement-of-record posture stands — but a page that refuses to be a quest log
+still owes the reader one sentence saying what it *is*. It now opens with what
+the registry does, the stages-on-file count, and what the full commission
+confers. Describing the page is not instructing the player.
+
+**The skills (§8).** The verdict is evidence, not code: all four skills have
+live feeds, XP tables, tier walks, tier-up toasts, refusal copy that names the
+tier you need (the hold screen's locked-reads strip), and a permanent home on
+the pause menu's root page. Nothing was added, and that is the finding worth
+recording: the answer to "is this implemented?" was yes four times over, and
+the player asking after weeks of play means the *surfaces* are quiet, not
+absent. If a future playtest asks again, the answer is louder surfaces — not
+doubt about the machinery.

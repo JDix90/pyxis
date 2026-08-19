@@ -233,10 +233,33 @@ func _complete() -> void:
 	remove_from_group("crackable")
 	var taken := GameState.load_cargo(good, YIELD_UNITS)
 
+	# v22. THE EVIDENCE AT THE MAST. If the rival has already filed this cell,
+	# the reading still pays its cargo in full -- the DATA is yours, only the
+	# first-filing bonus at the counter is gone -- and the toast says so here,
+	# in the deep, rather than letting the counter be the first to mention it
+	# a session later. ONE toast, folded into the survey line, because a second
+	# show_toast in the same frame overwrites the first.
+	#
+	# Through main.cell_depth_of_key, the same single source the counter reads,
+	# so the mast's heads-up and the counter's verdict cannot disagree about
+	# where this cell is. The sentinel guard mirrors note_surveyed's: a rift
+	# mast has no cell, so it has no rival either.
+	var rival_here := false
+	var main_r := get_tree().get_first_node_in_group("main")
+	if main_r != null and absi(cell.x) <= 1 << 20 and absi(cell.y) <= 1 << 20 \
+			and main_r.has_method("cell_depth_of_key"):
+		var ck := DeepSpace.cell_key(main_r.system_id, cell.x, cell.y)
+		rival_here = Rival.filed(ck, float(main_r.cell_depth_of_key(ck)),
+			GameState.run_seed, GameState.played_seconds)
+
 	if hud:
 		hud.crack_progress(-1.0)
-		hud.show_toast("SURVEY LOGGED — %s x%d" % [
-			CommodityDB.short_name(good), taken], CommodityDB.color_of(good))
+		if rival_here:
+			hud.show_toast("SURVEY LOGGED — %s x%d · FILED ALREADY, SOMEBODY WAS FIRST" % [
+				CommodityDB.short_name(good), taken], CommodityDB.color_of(good))
+		else:
+			hud.show_toast("SURVEY LOGGED — %s x%d" % [
+				CommodityDB.short_name(good), taken], CommodityDB.color_of(good))
 		hud.refresh_cargo()
 
 	Sfx.play("equip", -7.0, 1.35)

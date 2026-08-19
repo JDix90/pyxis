@@ -308,7 +308,7 @@ func _physics_process(delta: float) -> void:
 			and Obstacles.blocked(global_position, target.global_position) == null:
 		_fire_cooldown = FIRE_INTERVAL
 		FX.beam(get_parent(), global_position, target.global_position, Palette.THREAT, 0.035, 0.1)
-		Sfx.play("fire", -18.0, 1.5)
+		Sfx.play_at(global_position, "fire", -18.0, 1.5)
 		if target.has_method("take_hit"):
 			# THE HOLLOWING'S TELL. Its fire cannot take the last point of
 			# shield, so it strips a ship to a sliver and CANNOT finish it.
@@ -567,7 +567,7 @@ func take_damage(amount: float, attacker: Node3D) -> void:
 			and attacker.is_in_group("combatants") and not muster:
 		hp = maxf(hp, MAX_HP * difficulty * hp_scale * FactionDB.SKIRMISH_HP_FLOOR)
 	FX.flash(get_parent(), global_position, Palette.WHITE_HOT, 0.4, 0.08)
-	Sfx.play("hit", -15.0, 1.4)
+	Sfx.play_at(global_position, "hit", -15.0, 1.4)
 	if hp <= 0.0:
 		_die(attacker)
 
@@ -622,7 +622,7 @@ func _die(attacker: Node3D) -> void:
 
 	FX.flash(parent, pos, Palette.WHITE_HOT, 1.1, 0.14)
 	FX.burst(parent, pos, Color(1.0, 0.5, 0.2), 22, 6.0, 0.16, 0.45)
-	Sfx.play("explode", -14.0, 1.55)
+	Sfx.play_at(global_position, "explode", -14.0, 1.55)
 	var rig := get_tree().get_first_node_in_group("camera_rig")
 	if rig:
 		rig.shake(0.03)

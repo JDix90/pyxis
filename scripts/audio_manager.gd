@@ -108,6 +108,42 @@ func is_muted() -> bool:
 	return AudioServer.is_bus_mute(AudioServer.get_bus_index("Master"))
 
 
+# v22 (89). COMBAT SOUND HAS A DISTANCE NOW. The pool below is flat -- every
+# caller everywhere in the streamed window played at authored volume, so a
+# swarm fighting a picket three hundred units away was as loud as one on the
+# hull, forever, and a battle the player could not even see became a noise
+# complaint. Two numbers: inside FULL_RANGE nothing changes; past CULL_RANGE
+# the sound does not exist; between them a linear dB roll-off.
+#
+# The WORLD calls play_at with a position; the COCKPIT (UI, pickups, the
+# player's own ship) keeps play(), because feedback for your own actions is
+# not diegetic and must never fade.
+const SFX_FULL_RANGE := 40.0
+const SFX_CULL_RANGE := 120.0
+const SFX_FALLOFF_DB := 22.0
+
+
+static func attenuation_for(dist: float) -> float:
+	# Pure, so the harness can hold the curve without listening: 0 inside full
+	# range, linear to -SFX_FALLOFF_DB at the cull edge. The CULL itself is the
+	# caller's test (dist > SFX_CULL_RANGE) -- a function that returned a magic
+	# "silent" number would be a sentinel wearing a float's clothes.
+	var t := clampf((dist - SFX_FULL_RANGE) / (SFX_CULL_RANGE - SFX_FULL_RANGE), 0.0, 1.0)
+	return -SFX_FALLOFF_DB * t
+
+
+func play_at(pos: Vector3, name: String, volume_db := 0.0, pitch := 1.0,
+		pitch_jitter := 0.06) -> void:
+	var listener: Node3D = get_tree().get_first_node_in_group("player")
+	if listener == null:
+		play(name, volume_db, pitch, pitch_jitter)
+		return
+	var d := pos.distance_to(listener.global_position)
+	if d > SFX_CULL_RANGE:
+		return
+	play(name, volume_db + attenuation_for(d), pitch, pitch_jitter)
+
+
 func play(name: String, volume_db := 0.0, pitch := 1.0, pitch_jitter := 0.06) -> void:
 	if not _streams.has(name):
 		return

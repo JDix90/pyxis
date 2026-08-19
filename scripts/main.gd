@@ -95,6 +95,7 @@ const HARNESS_VARS := [
 	"PYXIS_PROFILETEST",
 	"PYXIS_RAIDTEST",
 	"PYXIS_RIFTTEST",
+	"PYXIS_RIVALTEST",
 	"PYXIS_SALVAGETEST",
 	"PYXIS_SAVETEST",
 	"PYXIS_SHIPTEST",
@@ -169,7 +170,20 @@ const PACING_MAX_RATIO := 0.15
 # catalog grows, which is the property a pacing assertion needs.
 const PACING_MIN_MODULES := 0.60
 const PACING_MAX_MODULES := 3.00
-const PACING_MIDTIER := "lance_1"
+# v22: RIG_STRIKE, NOT LANCE_1 — §41's re-derivation, paid at last (§86). The
+# Lance Array was "the first real I-chose-this purchase" when it was named, and
+# the Mk II tiers then grew the catalog 84% and moved the middle out from under
+# it: measured 2026-08-18, lance_1's 5,800 sat at the 18TH PERCENTILE of 39
+# priced modules against a median of 14,000. The steady loop read 1.91x
+# "mid-tier" while actually buying four-fifths of a median module — the economy
+# was on target and the YARDSTICK was lying short. Strike Frame is today's
+# version of the same idea (a frame is a build identity, not an upgrade), sits
+# beside the median at 14,500, and carries the same power draw, so MINING COSTS
+# A MOUNT measures exactly what it measured before. THE YARDSTICK IS MID-TIER
+# keeps this paid: the reference must sit in the middle third of the priced
+# catalog, asserted against the live module list, so the next 84% of growth
+# turns a leg red instead of quietly shortening the ruler for another year.
+const PACING_MIDTIER := "rig_strike"
 
 # How fast the scripted bots circle-strafe an apex core, in units/second of
 # tangential speed. The stand-in for a human refusing to stand still, and the
@@ -1039,6 +1053,13 @@ func _ready() -> void:
 		_enter_playing()
 		_run_sig_test()
 		return
+	if OS.get_environment("PYXIS_RIVALTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_rival_test()
+		return
 	if OS.get_environment("PYXIS_PLOTTEST") != "":
 		GameState.lock_saving()
 		state = State.PLAYING
@@ -1197,6 +1218,111 @@ func _build_beacons() -> void:
 		b.system_id = system_id
 		system_root.add_child(b)
 		b.global_position = Vector3(float(e["x"]), 0.0, float(e["z"]))
+
+
+# --- first-filing settlement (v22, Horizon 7 commit 2) ------------------------
+
+# The premium for being FIRST, as a fraction of the reading's base value. A
+# band-2 cell pays 140 on top of the market sale; a band-5 cell pays more only
+# because its chart good's base is higher -- one rate, depth carried by the
+# existing price ladder rather than by a second table.
+#
+# BASE price, deliberately not the market price. The market half of a sale is
+# where you sold it and what the port thinks of that good today; provenance is
+# a fact about the CELL, and a fact should not pay differently at a fence.
+const FIRST_FILING_RATE := 0.5
+
+
+func cell_depth_of_key(key: String) -> float:
+	# "pyx01:7:-3" -> the depth of that cell's centre. Main owns this glue for
+	# drop_beacon_here's reason inverted: GameState deliberately holds coverage
+	# as opaque strings and never references DeepSpace (the class-name edge
+	# would point back at a file that already reaches the GameState autoload),
+	# so the world half of the question is answered here, where both ends are
+	# safe to name. ONE source: the counter's band join, the rival check and the
+	# mast's heads-up all read this, so they cannot disagree about where a cell
+	# is.
+	var bits := key.split(":")
+	if bits.size() != 3:
+		return -1.0
+	var centre := DeepSpace.cell_centre(int(String(bits[1])), int(String(bits[2])))
+	return maxf(Vector2(centre.x, centre.z).length()
+		- SystemDB.bounds_of(String(bits[0])), 0.0)
+
+
+func cell_band_of_key(key: String) -> int:
+	var depth := cell_depth_of_key(key)
+	return -1 if depth < 0.0 else DeepSpace.band_of(depth)
+
+
+func file_charts_on_sale(good: String, units: int) -> int:
+	# THE PROVENANCE HALF OF A CHART SALE, called by the port counter after the
+	# market half has already settled. Selling a reading's worth of a band's
+	# chart data files your oldest unfiled cells of that band -- one cell per
+	# YIELD_UNITS sold, because one reading IS what a mast yields -- and pays
+	# the first-filing bonus for each. Returns the bonus paid.
+	#
+	# THE BONUS IS A BONUS, NOT THE PRICE. This function touches no cargo and
+	# no coverage: the sale already unloaded and paid market price before it was
+	# called, and a player who never thinks about filing loses nothing they had
+	# yesterday. What it touches is the filed set and the wallet, and both only
+	# ever move forward.
+	#
+	# Cross-system on purpose. Chart data is data -- you carry pyx01's readings
+	# to a pyx03 counter and they file just the same. The band must match the
+	# good because the good IS the band; that is the only join there is.
+	#
+	# A HALF-READING FILES NOTHING, and the remainder does not carry. Selling
+	# one unit of a two-unit reading is selling half a coordinate; the counter
+	# files whole cells or none, statelessly, and the next two-unit sale starts
+	# fresh. A carried remainder would be save state for a bookkeeping trick.
+	var band := CommodityDB.chart_band_of(good)
+	if band < 0 or units <= 0:
+		return 0
+	@warning_ignore("integer_division")
+	var readings := units / SurveyMast.YIELD_UNITS
+	if readings <= 0:
+		return 0
+	var per := int(round(float(CommodityDB.base_price(good))
+		* float(SurveyMast.YIELD_UNITS) * FIRST_FILING_RATE))
+	# v22 commit 3: THE RIVAL GETS THERE FIRST SOMETIMES, and the counter is
+	# where you find out. A rival-filed cell is swept out of the unfiled ledger
+	# without pay and WITHOUT consuming a reading slot -- your readings' bonus
+	# slots go to cells that can still pay, which is the concrete form of THE
+	# RIVAL NEVER TAKES WHAT YOU HAVE: they take the chance, never the goods,
+	# and never another cell's bonus with it.
+	var filed := 0
+	var lost := 0
+	for key_v in GameState.unfiled_cells():
+		var key := String(key_v)
+		if cell_band_of_key(key) != band:
+			continue
+		if Rival.filed(key, cell_depth_of_key(key), GameState.run_seed,
+				GameState.played_seconds):
+			if GameState.note_survey_filed(key):
+				lost += 1
+			continue
+		if filed < readings and GameState.note_survey_filed(key):
+			filed += 1
+	if filed <= 0 and lost <= 0:
+		return 0
+	var bonus := per * filed
+	if filed > 0:
+		GameState.add_salvage(bonus)
+		GameState.note_ledger("cells_filed", filed)
+	if hud:
+		# One toast, not two: a second show_toast in the same frame overwrites
+		# the first, and the money is the headline.
+		if filed > 0 and lost > 0:
+			hud.show_toast("FILED FIRST — %d CELL%s · +%d (%d ALREADY FILED BY ANOTHER HAND)" % [
+				filed, "" if filed == 1 else "S", bonus, lost], Palette.GOLD)
+		elif filed > 0:
+			hud.show_toast("FILED FIRST — %d CELL%s ON THE RECORD · +%d" % [
+				filed, "" if filed == 1 else "S", bonus], Palette.GOLD)
+		else:
+			hud.show_toast("%d CELL%s ALREADY FILED — SOMEBODY IS OUT HERE" % [
+				lost, "" if lost == 1 else "S"], Palette.RIVAL)
+	return bonus
 
 
 func drop_beacon_here() -> bool:
@@ -1821,6 +1947,13 @@ func _tick_broadcast(depth: float) -> void:
 	# the Anchor hears the answer on their next trip out rather than on their next
 	# launch -- which is the right beat: the beacon is where the acknowledgement
 	# lands, not the dock where the paperwork was filed.
+	# v22. The ship's own line rides the same crossing, once EVER rather than
+	# once per visit -- Barks' persisted contract, so a returning player is not
+	# re-taught. Fired before the broadcast's empty-check on purpose: a band
+	# with no authored broadcast still teaches, and the two surfaces are
+	# different voices (the authority on the plate, the ship in the corner).
+	if band >= 3 and band <= 6:
+		Barks.fire("first_band_%d" % band)
 	var msg := DeepSpace.broadcast_for(band, GameState.commissioned, system_id)
 	if msg.is_empty() or hud == null:
 		return
@@ -6745,6 +6878,146 @@ func _run_cart_test() -> void:
 		"PASS" if mine_count == GameState.SURVEY_CELL_CAP and oldest_gone
 			and newest_kept and neighbour_kept else "FAIL"])
 	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+
+	# 7f. A FILED CELL IS NOT AN UNFILED ONE (v22). Filing is what the counter
+	#     will pay a first-filing bonus against, so the two states have to be
+	#     distinguishable in BOTH directions -- a store that marked everything
+	#     filed, or nothing, passes half of this perfectly.
+	#
+	#     And filed is a SUBSET of coverage, enforced rather than assumed:
+	#     filing a cell nobody surveyed is refused at the accessor, or the two
+	#     stores become parallel truths that can disagree.
+	GameState.note_survey_worked(DeepSpace.cell_key(system_id, 2, 2))
+	GameState.note_survey_worked(DeepSpace.cell_key(system_id, 3, 3))
+	var file_first := GameState.note_survey_filed(DeepSpace.cell_key(system_id, 2, 2))
+	var file_again := GameState.note_survey_filed(DeepSpace.cell_key(system_id, 2, 2))
+	var file_unknown := GameState.note_survey_filed(DeepSpace.cell_key(system_id, 8, 8))
+	var unfiled := GameState.unfiled_cells(system_id)
+	print("[cart] A FILED CELL IS NOT AN UNFILED ONE first file=%s, refiled=%s, unsurveyed cell refused=%s, %d unfiled of 2 -> %s" % [
+		str(file_first), str(file_again), str(not file_unknown), unfiled.size(),
+		"PASS" if file_first and not file_again and not file_unknown
+			and unfiled.size() == 1
+			and String(unfiled[0]) == DeepSpace.cell_key(system_id, 3, 3) else "FAIL"])
+
+	# 7g. AND THE CAP TAKES BOTH. filed rides coverage's cap rather than
+	#     carrying one of its own -- a filed key outliving its coverage key
+	#     would be a second store growing without a bound, which is the thing
+	#     17 refuses and 80 answered by construction.
+	for i in GameState.SURVEY_CELL_CAP + 3:
+		GameState.note_survey_worked(DeepSpace.cell_key(system_id, i, 7))
+	var evicted_filed := GameState.is_survey_filed(DeepSpace.cell_key(system_id, 2, 2))
+	var cov_has := GameState.survey_coverage.has(DeepSpace.cell_key(system_id, 2, 2))
+	var subset_ok := true
+	for k_v in GameState.survey_filed:
+		if not GameState.survey_coverage.has(String(k_v)):
+			subset_ok = false
+	print("[cart] AND THE CAP TAKES BOTH evicted cell still filed=%s (coverage has it=%s), filed is a subset of coverage=%s -> %s" % [
+		str(evicted_filed), str(cov_has), str(subset_ok),
+		"PASS" if not evicted_filed and not cov_has and subset_ok else "FAIL"])
+
+	# 7h. THE STRUCTURE STORE IS BOUNDED BY THE GENERATOR (v22). No cap, and
+	#     that is a property rather than an oversight: hyper_positions returns
+	#     at most HYPER_MAX per system, so the store cannot exceed what the
+	#     generator authored. Asserted AGAINST the generator, not against a
+	#     literal -- a retune of HYPER_MIN/MAX moves this with it.
+	GameState.structures_seen = {}
+	var authored := 0
+	for sid_v in SystemDB.ids():
+		var sid_s := String(sid_v)
+		var n := SystemDB.hyper_positions(sid_s, GameState.run_seed).size()
+		authored += n
+		# One past the end, which the loader must reject and the accessor must
+		# never have been handed -- so the bound holds even against a bad file.
+		for i in n + 2:
+			GameState.note_structure_seen(GameState.colony_key(sid_s, i))
+	GameState._load_structures_seen(GameState.structures_seen.duplicate())
+	print("[cart] THE STRUCTURE STORE IS BOUNDED BY THE GENERATOR %d kept of %d offered, generator authored %d -> %s" % [
+		GameState.structures_seen.size(), authored + SystemDB.ids().size() * 2,
+		authored, "PASS" if GameState.structures_seen.size() == authored else "FAIL"])
+
+	# 7i. AND A SIGHTING IS NOT A CLAIM. The whole point of the store: a
+	#     structure you found and could not take is recorded, and recording it
+	#     must not hand you the colony.
+	var probe_key := GameState.colony_key(system_id, 0)
+	var seen_only := GameState.is_structure_seen(probe_key) \
+		and not GameState.is_colony_claimed(probe_key)
+	print("[cart] AND A SIGHTING IS NOT A CLAIM seen=%s, claimed=%s -> %s" % [
+		str(GameState.is_structure_seen(probe_key)),
+		str(GameState.is_colony_claimed(probe_key)),
+		"PASS" if seen_only else "FAIL"])
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+	GameState.structures_seen = {}
+
+	# 7j. THE COUNTER PAYS FOR BEING FIRST (v22, Horizon 7 commit 2). Two band-2
+	#     cells surveyed and a reading's worth of chart_drift sold twice: the
+	#     first sale files both and pays the bonus, the second files nothing and
+	#     pays nothing. The PRECONDITION is asserted through the world's own
+	#     depth_at rather than through cell_band_of_key -- the same helper the
+	#     code under test uses would make a shared band error invisible, which
+	#     is the scale bar's lesson from 78.
+	var c_a := DeepSpace.cell_key(system_id, 4, 0)
+	var c_b := DeepSpace.cell_key(system_id, 0, 4)
+	var band_ok: bool = DeepSpace.band_of(deep_space.depth_at(
+		DeepSpace.cell_centre(4, 0))) == 2 \
+		and DeepSpace.band_of(deep_space.depth_at(DeepSpace.cell_centre(0, 4))) == 2
+	GameState.note_survey_worked(c_a)
+	GameState.note_survey_worked(c_b)
+	var salv_file := GameState.salvage
+	var bonus1 := file_charts_on_sale("chart_drift", 2 * SurveyMast.YIELD_UNITS)
+	var bonus2 := file_charts_on_sale("chart_drift", 2 * SurveyMast.YIELD_UNITS)
+	var half := file_charts_on_sale("chart_drift", 1)
+	var want_per := int(round(float(CommodityDB.base_price("chart_drift"))
+		* float(SurveyMast.YIELD_UNITS) * FIRST_FILING_RATE))
+	print("[cart] THE COUNTER PAYS FOR BEING FIRST both cells band 2=%s; first sale +%d (want %d), second +%d, half-reading +%d, wallet moved %d -> %s" % [
+		str(band_ok), bonus1, want_per * 2, bonus2, half,
+		GameState.salvage - salv_file,
+		"PASS" if band_ok and bonus1 == want_per * 2 and bonus2 == 0
+			and half == 0 and GameState.salvage - salv_file == bonus1 else "FAIL"])
+
+	# 7k. AND THE BAND IS THE JOIN. A band-3 cell must not be filed by a band-2
+	#     sale, and its bonus must be larger -- depth carried by the price
+	#     ladder, not by a second table. The band-2 sale above already ran with
+	#     the band-3 cell ABSENT; here it is present and a chart_drift sale must
+	#     skip it.
+	var c_deep := DeepSpace.cell_key(system_id, 9, 0)
+	var deep_band := DeepSpace.band_of(deep_space.depth_at(DeepSpace.cell_centre(9, 0)))
+	GameState.note_survey_worked(c_deep)
+	GameState.note_survey_worked(DeepSpace.cell_key(system_id, 0, 9))
+	# The band-2 sale runs FIRST, with only band-3 cells unfiled, and must pay
+	# nothing and file nothing -- deep_before is read between the two sales,
+	# because reading it only at the end cannot tell "filed by the right sale"
+	# from "filed by the wrong one".
+	var skipped := file_charts_on_sale("chart_drift", SurveyMast.YIELD_UNITS)
+	var deep_before := GameState.is_survey_filed(c_deep)
+	var deep_bonus := file_charts_on_sale("chart_reaches", SurveyMast.YIELD_UNITS)
+	var want_deep := int(round(float(CommodityDB.base_price("chart_reaches"))
+		* float(SurveyMast.YIELD_UNITS) * FIRST_FILING_RATE))
+	print("[cart] AND THE BAND IS THE JOIN band-3 cell (band %d): band-2 sale paid %d and filed it=%s; band-3 sale +%d (want %d, > band-2's %d) filed it=%s -> %s" % [
+		deep_band, skipped, str(deep_before), deep_bonus, want_deep, want_per,
+		str(GameState.is_survey_filed(c_deep)),
+		"PASS" if deep_band == 3 and skipped == 0 and not deep_before
+			and deep_bonus == want_deep and want_deep > want_per
+			and GameState.is_survey_filed(c_deep) else "FAIL"])
+
+	# 7l. THE BONUS IS NOT THE PRICE. The settlement touches the filed set and
+	#     the wallet and nothing else -- no cargo, no coverage. A player who
+	#     never thinks about filing loses nothing they had yesterday, and that
+	#     is a property to hold, not a hope.
+	GameState.cargo = {}
+	GameState.load_cargo("alloys", 2)
+	GameState.note_survey_worked(DeepSpace.cell_key(system_id, 5, 0))
+	var used_file := GameState.cargo_used()
+	var cov_file := GameState.survey_coverage.size()
+	file_charts_on_sale("chart_drift", SurveyMast.YIELD_UNITS)
+	print("[cart] THE BONUS IS NOT THE PRICE cargo %d -> %d, coverage %d -> %d -> %s" % [
+		used_file, GameState.cargo_used(), cov_file, GameState.survey_coverage.size(),
+		"PASS" if GameState.cargo_used() == used_file
+			and GameState.survey_coverage.size() == cov_file else "FAIL"])
+	GameState.cargo = {}
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
 
 	# 8. Masts ride deep hulks and nothing else. No mast may sit near a dock ring
 	#    either — CameraRig checks `crackable` BEFORE `dockable`, so one parked on
@@ -11659,6 +11932,33 @@ func _run_music_test() -> void:
 	await get_tree().process_frame
 	print("[music] TITLE playing=%s (must be false)  ambient loop=%s (must be true)" % [
 		str(Music.is_playing()), str(Sfx.is_looping("ambient"))])
+
+	# v22 (89). COMBAT SOUND FALLS OFF WITH DISTANCE. The curve, held without
+	# listening: flat inside full range, monotone to the floor at the cull edge,
+	# and the cull strictly beyond the flat zone so the two constants cannot be
+	# tuned past each other. The world's fire/hit/explode all route through
+	# play_at now; a battle past SFX_CULL_RANGE does not exist to the ear.
+	var att_bad := ""
+	if Sfx.attenuation_for(0.0) != 0.0 or Sfx.attenuation_for(Sfx.SFX_FULL_RANGE) != 0.0:
+		att_bad = "not flat inside full range"
+	elif absf(Sfx.attenuation_for(Sfx.SFX_CULL_RANGE) + Sfx.SFX_FALLOFF_DB) > 0.001:
+		att_bad = "cull edge is not the floor"
+	elif Sfx.SFX_CULL_RANGE <= Sfx.SFX_FULL_RANGE:
+		att_bad = "cull inside full range"
+	else:
+		var att_prev := 0.0
+		var att_d := 0.0
+		while att_d <= Sfx.SFX_CULL_RANGE + 20.0:
+			var a := Sfx.attenuation_for(att_d)
+			if a > att_prev + 0.001:
+				att_bad = "curve rises at %.0fu" % att_d
+				break
+			att_prev = a
+			att_d += 5.0
+	print("[music] COMBAT SOUND FALLS OFF WITH DISTANCE flat to %.0fu, -%.0fdB at %.0fu, monotone: %s -> %s" % [
+		Sfx.SFX_FULL_RANGE, Sfx.SFX_FALLOFF_DB, Sfx.SFX_CULL_RANGE,
+		"yes" if att_bad == "" else att_bad,
+		"PASS" if att_bad == "" else "FAIL"])
 	get_tree().quit()
 
 
@@ -11786,6 +12086,25 @@ func _run_pacing_test() -> void:
 		"PASS" if steady_modules >= PACING_MIN_MODULES and steady_modules <= PACING_MAX_MODULES
 			else "FAIL"])
 
+	# v22 (§86). THE REFERENCE ITSELF IS MEASURED, not trusted. §41's debt was
+	# exactly this drifting silently: the catalog grew 84% and the "mid-tier"
+	# module quietly became an 18th-percentile one, so every MIDTIER line here
+	# measured against a short ruler while staying green. The middle third is
+	# computed from the live catalog, so the next growth spurt reddens this leg
+	# and forces the re-derivation instead of waiting for someone to wonder.
+	var yard_prices: Array = []
+	for yid_v in ModuleDB.MODULES:
+		var ypr := int((ModuleDB.MODULES[yid_v] as Dictionary).get("price", 0))
+		if ypr > 0:
+			yard_prices.append(ypr)
+	yard_prices.sort()
+	var yard_ref := int(ModuleDB.get_module(PACING_MIDTIER).get("price", 0))
+	var yard_lo := int(yard_prices[int(floorf(yard_prices.size() / 3.0))])
+	var yard_hi := int(yard_prices[int(floorf(yard_prices.size() * 2.0 / 3.0))])
+	print("[pacing] THE YARDSTICK IS MID-TIER %s at %d sits in the middle third of %d priced modules [%d..%d] -> %s" % [
+		PACING_MIDTIER, yard_ref, yard_prices.size(), yard_lo, yard_hi,
+		"PASS" if yard_ref >= yard_lo and yard_ref <= yard_hi else "FAIL"])
+
 	# The same target stated the way the design states it, so a failure reads as
 	# "a loop now buys four modules" rather than as an abstract ratio.
 	var modules := earned / maxf(mid, 1.0)
@@ -11827,6 +12146,17 @@ func _run_pacing_test() -> void:
 	print("[pacing] MINING IS A ROUTE, NOT A RAISE standard loop names %s, seam among them=%s -> %s" % [
 		str(PACING_LOOP.keys()), str(PACING_LOOP.has("seam")),
 		"PASS" if not PACING_LOOP.has("seam") else "FAIL"])
+
+	# v22. The same fence for the first-filing bonus, which is once-only BY
+	# CONSTRUCTION (a cell files once, ever) and therefore must never appear as
+	# a recurring term -- the exact over-report 80 removed from surveys, rebuilt
+	# one commit later, is what this goes red on. Both profiles checked, because
+	# PACING_PROSPECT surveys too and would be the quieter place to slip it in.
+	var names_filing: bool = PACING_LOOP.has("filing") or PACING_LOOP.has("filed") \
+		or PACING_PROSPECT.has("filing") or PACING_PROSPECT.has("filed")
+	print("[pacing] FILING IS NOT A RAISE loop names a filing term=%s (rate %.2f rides the once-only filed set) -> %s" % [
+		str(names_filing), FIRST_FILING_RATE,
+		"PASS" if not names_filing else "FAIL"])
 	get_tree().quit()
 
 
@@ -13638,6 +13968,117 @@ func _run_sig_test() -> void:
 	get_tree().quit()
 
 
+# --- rival cartographer test -------------------------------------------------
+
+func _run_rival_test() -> void:
+	# The rival is arithmetic wearing a jacket, so what gets asserted is the
+	# arithmetic's promises: purity, the stride, the depth gradient, and above
+	# all that nothing the player HAS can ever be taken by it.
+	var seed_r := GameState.run_seed
+	var t_save := GameState.played_seconds
+
+	# 1. A PURE FUNCTION ON A QUANTISED CLOCK. Same inputs, same answer;
+	#    monotone in time (a filed cell never un-files); and stable within a
+	#    stride, which is what lets the cell streamer call it from two builds
+	#    seconds apart without the world disagreeing with itself.
+	var pure_bad := ""
+	for i in 200:
+		var k := "pyx01:%d:%d" % [i, i * 3 % 17]
+		var d := 100.0 + float(i) * 37.0
+		var a1 := Rival.arrival_seconds(k, d, seed_r)
+		var a2 := Rival.arrival_seconds(k, d, seed_r)
+		if a1 != a2:
+			pure_bad = "%s answered twice differently" % k
+			break
+		var t := float(i) * 977.0
+		if Rival.filed(k, d, seed_r, t) and not Rival.filed(k, d, seed_r, t + Rival.STRIDE_S * 5.0):
+			pure_bad = "%s un-filed itself" % k
+			break
+		var stride_base := floorf(t / Rival.STRIDE_S) * Rival.STRIDE_S
+		if Rival.filed(k, d, seed_r, stride_base) != Rival.filed(k, d, seed_r,
+				stride_base + Rival.STRIDE_S - 1.0):
+			pure_bad = "%s moved inside a stride" % k
+			break
+	print("[rival] A PURE FUNCTION ON A QUANTISED CLOCK 200 cells: %s -> %s" % [
+		"pure, monotone, stride-stable" if pure_bad == "" else pure_bad,
+		"PASS" if pure_bad == "" else "FAIL"])
+
+	# 2. THE SHALLOWS GO FIRST AND THE DEEP OUTRUNS THEM. Measured over the
+	#    jitter, not restated from the constants: the LATEST arrival at depth
+	#    200 must precede the EARLIEST at the band-4 floor, and that earliest
+	#    must be past fifteen hours of play -- the deep belongs to a player who
+	#    flies there, for as long as anyone plays a run.
+	var max_shallow := 0.0
+	var min_deep := 1.0e18
+	for i in 500:
+		max_shallow = maxf(max_shallow, Rival.arrival_seconds("pyx02:%d:1" % i, 200.0, seed_r))
+		min_deep = minf(min_deep, Rival.arrival_seconds("pyx02:%d:2" % i, 1100.0, seed_r))
+	print("[rival] THE DEEP OUTRUNS THEM latest 200u arrival %.0fs, earliest 1100u arrival %.0fs (bar 54000s = 15h) -> %s" % [
+		max_shallow, min_deep,
+		"PASS" if max_shallow < min_deep and min_deep >= 54000.0 else "FAIL"])
+
+	# 3. A FRESH PILOT MEETS NOBODY. At zero played seconds the rival has filed
+	#    nothing anywhere -- the first sortie is never pre-empted, which is the
+	#    difference between a rival and a hazing.
+	var fresh_bad := ""
+	for i in 100:
+		if Rival.filed("pyx01:%d:0" % i, 50.0 + float(i) * 60.0, seed_r, 0.0):
+			fresh_bad = "cell %d filed at t=0" % i
+			break
+	print("[rival] A FRESH PILOT MEETS NOBODY 100 cells at t=0: %s -> %s" % [
+		"none filed" if fresh_bad == "" else fresh_bad,
+		"PASS" if fresh_bad == "" else "FAIL"])
+
+	# 4. THE RIVAL NEVER TAKES WHAT YOU HAVE. With the clock pushed far enough
+	#    that the rival has swept the shallows: a cell the player FILED stays
+	#    filed and stays paid-for; a cell they surveyed but had not filed is
+	#    consumed without pay at the counter -- and coverage, the thing the
+	#    chart draws, never loses an entry to any of it.
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+	var rk_a := DeepSpace.cell_key(system_id, 4, 0)
+	var rk_b := DeepSpace.cell_key(system_id, 0, 4)
+	GameState.note_survey_worked(rk_a)
+	GameState.note_survey_worked(rk_b)
+	GameState.note_survey_filed(rk_a)
+	GameState.played_seconds = 100000.0
+	var rival_took_b := Rival.filed(rk_b, cell_depth_of_key(rk_b), seed_r, 100000.0)
+	var salv_r := GameState.salvage
+	var paid_r := file_charts_on_sale("chart_drift", SurveyMast.YIELD_UNITS)
+	print("[rival] THE RIVAL NEVER TAKES WHAT YOU HAVE player-filed cell still filed=%s; rival-reached cell (%s) paid %d and salvage moved %d; coverage still %d of 2 -> %s" % [
+		str(GameState.is_survey_filed(rk_a)), str(rival_took_b), paid_r,
+		GameState.salvage - salv_r, GameState.survey_coverage.size(),
+		"PASS" if GameState.is_survey_filed(rk_a) and rival_took_b and paid_r == 0
+			and GameState.salvage == salv_r
+			and GameState.survey_coverage.size() == 2 else "FAIL"])
+	GameState.played_seconds = t_save
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+
+	# 5. EVIDENCE IS NOT AN ATTACK. A foreign beacon is furniture: it joins the
+	#    beacon pick group and no combat group, it refuses the recovery hold,
+	#    and neither the store nor the stock ever hears about it.
+	var fb := Beacon.new()
+	fb.foreign = true
+	fb.system_id = system_id
+	add_child(fb)
+	fb.global_position = Vector3(500.0, 0.0, 0.0)
+	await get_tree().process_frame
+	var stock_before := GameState.beacon_stock_left()
+	fb.hold_begin()
+	fb.hold_tick(10.0)
+	var groups_ok: bool = fb.is_in_group("beacon") \
+		and not fb.is_in_group("hostiles") and not fb.is_in_group("combatants")
+	print("[rival] EVIDENCE IS NOT AN ATTACK groups beacon/hostiles/combatants=%s/%s/%s, a 10s hold recovered nothing (stock %d -> %d, store %d entries) -> %s" % [
+		str(fb.is_in_group("beacon")), str(fb.is_in_group("hostiles")),
+		str(fb.is_in_group("combatants")), stock_before,
+		GameState.beacon_stock_left(), GameState.beacons.size(),
+		"PASS" if groups_ok and GameState.beacon_stock_left() == stock_before
+			and GameState.beacons.is_empty() else "FAIL"])
+	fb.queue_free()
+	get_tree().quit()
+
+
 # --- survey plot test -------------------------------------------------------
 
 func _run_plot_test() -> void:
@@ -13924,6 +14365,38 @@ func _run_plot_test() -> void:
 		sheet_h, fixed, spare, before_min, after_min, str(pinned),
 		"PASS" if spare >= 0.0 and pinned else "FAIL"])
 
+	# 13. AND EVERY WINDOW FITS THE SHEET (v22, 88). Leg 12 models the PORTRAIT
+	#     design size, which is why a landscape overflow lived through every
+	#     sweep: on a wide, short window the 0.55 sheet is smaller than the
+	#     column's minimums, the VBox refuses to shrink its children, and the
+	#     overflow comes out of the bottom -- which is the WARP button, so the
+	#     bug reads as "cannot travel". The sheet now grows UPWARD when the
+	#     window is short. Asserted in both directions: landscape pulls the top
+	#     anchor up and keeps WARP on screen; portrait remains exactly the
+	#     0.55 it always was.
+	get_window().size = Vector2i(2000, 1090)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	cp.open()
+	# PAST THE SLIDE, not past a frame: open() animates the sheet up over
+	# SLIDE_TIME by offsetting its position, so a rect read mid-slide sits
+	# below where the sheet will rest and fails a correct layout.
+	await get_tree().create_timer(ChartPanel.SLIDE_TIME + 0.15).timeout
+	var land_top := cp._sheet.anchor_top
+	var land_vh := cp._sheet.get_viewport_rect().size.y
+	var warp_bottom := cp._travel_button.get_global_rect().end.y
+	var grew_up: bool = land_top < 1.0 - ChartPanel.SHEET_RATIO - 0.001
+	var warp_on: bool = warp_bottom <= land_vh + 1.0
+	cp.close_panel()
+	get_window().size = Vector2i(720, 1280)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var portrait_back: bool = absf(cp._sheet.anchor_top - (1.0 - ChartPanel.SHEET_RATIO)) < 0.001
+	print("[plot] AND EVERY WINDOW FITS THE SHEET landscape: top anchor %.3f (grew up=%s), WARP bottom %.0f of %.0f on-screen=%s; portrait restored to %.2f=%s -> %s" % [
+		land_top, str(grew_up), warp_bottom, land_vh, str(warp_on),
+		1.0 - ChartPanel.SHEET_RATIO, str(portrait_back),
+		"PASS" if grew_up and warp_on and portrait_back else "FAIL"])
+
 	get_tree().quit()
 
 
@@ -14018,6 +14491,10 @@ func _run_profile_test() -> void:
 	# exactly when a leak ships -- the five below were all leaking when the leg
 	# was written.
 	GameState.note_survey_worked("pyx01:31:-7")
+	# v22: both new stores, for the reason the coverage line above gives -- the
+	# newest field is exactly when a leak ships.
+	GameState.note_survey_filed("pyx01:31:-7")
+	GameState.note_structure_seen(GameState.colony_key("pyx01", 0))
 	GameState.save_game()
 	var b_id := Profiles.create("PILOT B", 3000.0)
 	GameState.switch_profile(b_id)
@@ -14037,6 +14514,10 @@ func _run_profile_test() -> void:
 		leaks.append("breached")
 	if GameState.is_survey_worked("pyx01:31:-7"):
 		leaks.append("survey_coverage")
+	if GameState.is_survey_filed("pyx01:31:-7"):
+		leaks.append("survey_filed")
+	if GameState.is_structure_seen(GameState.colony_key("pyx01", 0)):
+		leaks.append("structures_seen")
 	var bled := ", ".join(leaks)
 	print("[profile] NO BLEED BETWEEN PILOTS B sees salvage=%d name='%s' commissioned=%s accent=%d; leaked=%s -> %s" % [
 		GameState.salvage, GameState.ship_name, str(GameState.commissioned),
@@ -14247,6 +14728,11 @@ func _run_save_test() -> void:
 		GameState.note_survey_worked("pyx01:7:-3")
 		GameState.note_survey_worked("pyx01:12:5")
 		GameState.note_survey_worked("pyx02:-4:19")
+		# v22: one of the three FILED and a structure sighted, so the round trip
+		# covers both new stores and the subset invariant between them. Distinct
+		# from the coverage sentinels for the six-distinct-sentinels reason.
+		GameState.note_survey_filed("pyx01:12:5")
+		GameState.note_structure_seen(GameState.colony_key("pyx01", 0))
 		GameState.owned.append("mod_survey_array")
 		GameState.ledger = {
 			"deepest_depth": 611, "distance_flown": 4207, "hulks_cracked": 13,
@@ -15070,6 +15556,81 @@ func _run_save_test() -> void:
 			str(not GameState.is_survey_worked("pyx01:0:0")),
 			str(not GameState.is_survey_worked("pyx99:1:1")),
 			"PASS" if ok20 and fresh21 and kept21 and flood_ok else "FAIL"])
+	elif mode == "migrate21":
+		# v22 adds survey_filed and structures_seen. NO MIGRATION BRANCH, and
+		# survey_coverage is deliberately UNCHANGED in shape -- that was the
+		# whole argument for two sets rather than a `filed` flag on the value.
+		# A v21 file's coverage loads through the loader it always did, byte for
+		# byte, and an absent survey_filed means "nothing filed yet", which is
+		# exactly true of every v21 pilot. The generous reading and the correct
+		# one: work already done stays worth its first-filing bonus.
+		var v21 := {
+			"version": 21,
+			"salvage": 8100,
+			"current_system": "pyx01",
+			"run_seed": 212121,
+			"tutorial_step": -1,
+			"survey_coverage": {"pyx01:5:5": true, "pyx01:6:6": true},
+		}
+		var f21 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f21.store_string(JSON.stringify(v21))
+		f21.close()
+		var ok21 := GameState.load_game()
+		var carried: bool = GameState.survey_coverage.size() == 2 \
+			and GameState.is_survey_worked("pyx01:5:5")
+		var all_unfiled: bool = GameState.survey_filed.is_empty() \
+			and GameState.unfiled_cells("pyx01").size() == 2
+		var no_sightings: bool = GameState.structures_seen.is_empty()
+
+		# The rubbish pass. Both stores at once, because each has a filter the
+		# other does not: filed is validated against COVERAGE (a filed key for a
+		# cell you never surveyed is meaningless whatever its shape), and
+		# structures_seen is validated against the GENERATOR (an index past what
+		# hyper_positions returns names a structure that is not there).
+		var n0 := SystemDB.hyper_positions("pyx01", 212121).size()
+		var dirty22 := {
+			"version": 22,
+			"salvage": 8100,
+			"run_seed": 212121,
+			"tutorial_step": -1,
+			"survey_coverage": {"pyx01:5:5": true, "pyx01:6:6": true},
+			"survey_filed": {
+				"pyx01:5:5": true,        # good -- in coverage
+				"pyx01:9:9": true,        # not in coverage: dropped
+				"pyx01:6:6": false,       # falsey: dropped
+				"rubbish": true,          # not in coverage either
+			},
+			"structures_seen": {
+				"pyx01:0": true,          # good, if the generator authored one
+				"pyx01:%d" % (n0 + 5): true,   # index past the end
+				"pyx99:0": true,          # unknown system
+				"pyx01:abc": true,        # index not a number
+				"nocolon": true,          # shape
+				"pyx01:-1": true,         # negative
+			},
+		}
+		var fd22 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fd22.store_string(JSON.stringify(dirty22))
+		fd22.close()
+		GameState.load_game()
+		var want_seen := 1 if n0 > 0 else 0
+		var cleaned22: bool = GameState.survey_filed.size() == 1 \
+			and GameState.is_survey_filed("pyx01:5:5") \
+			and not GameState.is_survey_filed("pyx01:9:9") \
+			and GameState.structures_seen.size() == want_seen \
+			and not GameState.is_structure_seen("pyx99:0")
+		# AND THE INVARIANT SURVIVES A FILE, which is the one a loader can break
+		# on its own: filed must still be a subset of coverage after loading
+		# rubbish that tried to put a stranger in it.
+		var subset22 := true
+		for k_v in GameState.survey_filed:
+			if not GameState.survey_coverage.has(String(k_v)):
+				subset22 = false
+		print("[savetest] v21->v22 A V21 SAVE ARRIVES WITH EVERYTHING UNFILED coverage carried=%s, nothing filed=%s, no sightings=%s; rubbish pass kept 1 of 4 filed and %d of 6 sightings=%s, filed still a subset=%s -> %s" % [
+			str(carried), str(all_unfiled), str(no_sightings),
+			GameState.structures_seen.size(), str(cleaned22), str(subset22),
+			"PASS" if ok21 and carried and all_unfiled and no_sightings
+				and cleaned22 and subset22 else "FAIL"])
 	elif mode == "future":
 		# A SAVE FROM A NEWER BUILD. Refusing to load it was never the hard
 		# part — that clause has always been there. What it did NOT do was stop
@@ -15222,6 +15783,19 @@ func _run_save_test() -> void:
 			str(GameState.survey_coverage.size() == 3),
 			str(not GameState.is_survey_worked("pyx02:7:-3")),
 			"PASS" if cov_ok else "FAIL"])
+		# v22: exactly ONE of the three is filed, which is the state that
+		# distinguishes a working filed store from one that lost or invented
+		# entries -- all-filed and none-filed both round-trip a broken loader.
+		var filed_ok: bool = GameState.is_survey_filed("pyx01:12:5") \
+			and not GameState.is_survey_filed("pyx01:7:-3") \
+			and not GameState.is_survey_filed("pyx02:-4:19") \
+			and GameState.unfiled_cells().size() == 2 \
+			and GameState.is_structure_seen(GameState.colony_key("pyx01", 0))
+		print("[savetest] v22 FILED AND SIGHTED 1 of 3 cells filed=%s, %d unfiled, 1 structure sighted=%s -> %s" % [
+			str(GameState.is_survey_filed("pyx01:12:5")),
+			GameState.unfiled_cells().size(),
+			str(GameState.is_structure_seen(GameState.colony_key("pyx01", 0))),
+			"PASS" if filed_ok else "FAIL"])
 		print("[savetest] v10 LOGBOOK ledger %s, name '%s' (%d chars, cap %d) -> %s" % [
 			str(GameState.ledger), GameState.ship_name, GameState.ship_name.length(),
 			GameState.SHIP_NAME_MAX, "PASS" if led_ok and name_ok else "FAIL"])
@@ -21144,6 +21718,29 @@ func _run_colony_test() -> void:
 	print("[colony] A JUMP IS NOT A RAISE PACING_LOOP names a colony term=%s -> %s" % [
 		str(named), "PASS" if not named else "FAIL"])
 
+	# --- K. the monument answers a tap (v22, 88) -----------------------------
+	# The claim hold was wired from the day these shipped and a playtest still
+	# reported "no way to interact", because the tap -- the verb every player
+	# tries first on the biggest object in the game -- did nothing. on_tapped
+	# states the terms through the real prompt, and the alpha-zero trap from
+	# BEACONTEST applies: the prompt fades in, so it cannot be read on the
+	# frame it is set.
+	var monument: HyperStructure = null
+	for h_v2 in get_tree().get_nodes_in_group("hyper"):
+		monument = h_v2 as HyperStructure
+		break
+	var tap_ok := false
+	var tap_text := ""
+	if monument != null and hud != null:
+		hud.clear_prompt()
+		monument.on_tapped()
+		await get_tree().create_timer(0.4).timeout
+		tap_text = hud.prompt_text()
+		tap_ok = tap_text.contains(monument.designation()) \
+			and (tap_text.contains("HOLD AT THE BASE") or tap_text.contains("WARDEN"))
+	print("[colony] THE MONUMENT ANSWERS A TAP prompt '%s' names it and the verb -> %s" % [
+		tap_text, "PASS" if tap_ok else "FAIL"])
+
 	GameState.colonies = {}
 	get_tree().quit()
 
@@ -21171,9 +21768,33 @@ func _run_beacon_test() -> void:
 		if GameState.beacon_stock_left() != GameState.BEACON_STOCK - i - 1:
 			stock_walk_ok = false
 	var ninth := GameState.drop_beacon("pyx01", 900.0, 900.0, 50.0)
-	print("[beacon] THE STOCK IS THE LEDGER 8 drops accepted with the derivation tracking each=%s, the ninth refused=%s -> %s" % [
-		str(stock_walk_ok), str(not ninth),
+	print("[beacon] THE STOCK IS THE LEDGER %d drops accepted with the derivation tracking each=%s, one more refused=%s -> %s" % [
+		GameState.BEACON_STOCK, str(stock_walk_ok), str(not ninth),
 		"PASS" if stock_walk_ok and not ninth else "FAIL"])
+
+	# 1b. A RETUNE NEVER DELETES A BEACON (v22, §87). The stock went 8 -> 3 with
+	#     live saves standing more than 3, so the property that matters is
+	#     grandfathering: the loader keeps every legacy entry (it bounds against
+	#     BEACON_LEGACY_CAP, never the stock), the derived stock clamps at zero
+	#     rather than going negative through a toast, dropping is refused until
+	#     recovery brings the field under stock, and then works again. The whole
+	#     arc, driven through the real loader and the real verbs.
+	var legacy := {"pyx01": []}
+	for i in 5:
+		(legacy["pyx01"] as Array).append({"x": 100.0 + float(i) * 40.0, "z": 300.0})
+	GameState._load_beacons(legacy)
+	var kept_all := GameState.beacons_in("pyx01").size() == 5
+	var clamped := GameState.beacon_stock_left() == 0
+	var refused_over := not GameState.drop_beacon("pyx01", 999.0, 999.0, 50.0)
+	for i in 3:
+		GameState.recover_beacon("pyx01", 100.0 + float(i) * 40.0, 300.0)
+	var after_rec := GameState.beacon_stock_left()
+	var drop_again := GameState.drop_beacon("pyx01", 999.0, 999.0, 50.0)
+	print("[beacon] A RETUNE NEVER DELETES A BEACON 5 legacy entries kept=%s, stock clamps to 0=%s, drop refused=%s; 3 recovered -> stock %d, drop works=%s -> %s" % [
+		str(kept_all), str(clamped), str(refused_over), after_rec, str(drop_again),
+		"PASS" if kept_all and clamped and refused_over and after_rec == 1
+			and drop_again else "FAIL"])
+	GameState.beacons = {}
 
 	# 2. THE CHART REFUSES A BEACON. Depth is an argument, so the rule is a
 	#    pure call — at depth 0 and inside the chart it refuses with stock in

@@ -896,7 +896,7 @@ func _weapon(delta: float) -> void:
 			FX.beam(get_parent(), muzzle, cover, Palette.THREAT, 0.05, 0.12)
 			return
 		FX.beam(get_parent(), muzzle, target.global_position, Palette.THREAT, 0.05, 0.14)
-		Sfx.play("fire", -14.0, 0.72)
+		Sfx.play_at(global_position, "fire", -14.0, 0.72)
 		# The player has a shield model and take_hit; a machine has take_damage.
 		# Same shot, two bookkeepings.
 		if target.has_method("take_hit"):
@@ -984,7 +984,7 @@ func take_damage(amount: float, attacker: Node3D) -> void:
 	_hp_fill.scale.x = maxf(frac, 0.001)
 	_hp_fill.position.x = -1.3 * (1.0 - frac) * 0.5
 	FX.flash(get_parent(), global_position + Vector3(0, 0.3, 0), Palette.WHITE_HOT, 0.6, 0.1)
-	Sfx.play("hit", -11.0)
+	Sfx.play_at(global_position, "hit", -11.0)
 	var rig := get_tree().get_first_node_in_group("camera_rig")
 	if rig:
 		rig.shake(0.012)
@@ -1113,7 +1113,7 @@ func _die(attacker: Node3D) -> void:
 		rig.punch_zoom(-0.7)
 	FX.flash(parent, pos, Palette.WHITE_HOT, 2.4, 0.18)
 	FX.shockwave(parent, pos, Palette.WHITE_HOT, 4.5, 0.5)
-	Sfx.play("explode", -3.0, 1.0)
+	Sfx.play_at(global_position, "explode", -3.0, 1.0)
 	for part in _body_parts:
 		var dir := Vector3(randf_range(-1, 1), randf_range(0, 0.5), randf_range(-1, 1)).normalized()
 		var tw := part.create_tween()

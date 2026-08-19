@@ -241,7 +241,7 @@ func _build_flying() -> void:
 		_body.add_child(_row(GameState.binding_name("chart"),
 			"Open the chart. Shut while docked and during an apex fight, exactly like the button."))
 		_body.add_child(_row(GameState.binding_name("drop_beacon"),
-			"Drop a beacon where you are standing. Deep space only, eight in stock, and holding on one takes it back."))
+			"Drop a beacon where you are standing. Deep space only, %d in stock, and holding on one takes it back." % GameState.BEACON_STOCK))
 		# v21. The two verbs the chart adds to a beacon, taught beside the one
 		# that creates them. THREE verbs, named together on purpose: a bookmark
 		# you cannot return to is half a feature, and until this row the only
@@ -291,7 +291,7 @@ func _build_hud() -> void:
 	_body.add_child(_legend(Palette.THREAT, "HOSTILE", "Something that will fire on you. Red means exactly that and nothing else — a flagged ship that is not hunting you wears its faction's colour instead."))
 	_body.add_child(_legend(Palette.HULL, "SEAM", "Ore on a rock. Grey until MINING teaches it to show its colour."))
 	_body.add_child(_legend(Palette.GOLD, "GHOST", "Where your readings agree the engine is. It is a guess, and it moves as you gather more."))
-	_body.add_child(_legend(Palette.GOLD, "BEACON", "A waypoint you dropped. Eight in stock; hold on one to take it back."))
+	_body.add_child(_legend(Palette.GOLD, "BEACON", "A waypoint you dropped. %d in stock; hold on one to take it back." % GameState.BEACON_STOCK))
 	_body.add_child(_legend(Palette.band_color(DeepSpace.BAND_NAMES.size() - 1), "STORM", "Weather in the deepest band. It pulls you in and it kills drives. Fly around it, or carry a Thermal Sink through it."))
 	_body.add_child(_legend(Palette.HULL, "ODDITY", "Something only this system has, standing in its own bands. One will talk to you, one will burn you, one will give you a bearing for nothing."))
 	_body.add_child(_back())

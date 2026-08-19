@@ -123,6 +123,15 @@ const BAND_SETS := {
 # UI font has them.
 const BAND_GLYPHS := ["", "◈", "▲", "●", "◆", "◇", "∙"]
 
+# v22. THE OTHER CARTOGRAPHER'S ACCENT. One colour that means "somebody else's"
+# the way the livery accent means "yours". Violet on purpose: it is in neither
+# BAND_SETS (place) nor the livery accents (you) nor THREAT (danger), because a
+# rival beacon is none of those things. Per 30 the colour is never the only
+# tell -- a foreign beacon is the same SHAPE as your own, and ownership is
+# carried by the refusal when you try to recover it, with the hue as the
+# at-a-glance channel.
+const RIVAL := Color(0.70, 0.54, 0.86)
+
 static var vision := Vision.NORMAL
 
 

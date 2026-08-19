@@ -18,8 +18,8 @@ that are not about strength:
    survives review, gets committed, and is discovered by whoever pulls next.
    That has happened (STRATEGY §77). Python 3 is everywhere Godot is not.
 
-Two checks, both chosen because they cause the class-registry cascade above and
-neither is visible when reading a diff.
+Three checks, all chosen because they cause the class-registry cascade above
+and none is visible when reading a diff.
 
     tools/check_scripts.py            # scripts/**/*.gd
     tools/check_scripts.py a.gd b.gd  # just these
@@ -135,6 +135,37 @@ def check_indent(path: str):
     return bad
 
 
+# -------------------------------------------------------------- duplicates ---
+
+def check_duplicates(path: str):
+    """Two declarations of the same name at file scope.
+
+    THE THIRD RULE, added after the second time a scripted edit inserted a
+    function the file already had (STRATEGY §88). GDScript rejects the file
+    outright, which means the class never registers, which means the §77
+    cascade: four hundred "could not resolve class" lines in files nobody
+    touched, and the actual duplicate named nowhere in them.
+
+    FILE SCOPE ONLY -- indent 0. An inner `class Foo:` may legitimately declare
+    a `_ready` that the outer class also declares, and its members are indented
+    by construction, so restricting to column zero excludes them without
+    needing to model scope at all.
+    """
+    bad, seen = [], {}
+    decl = re.compile(r'^(func|const|var|signal|enum|class)\s+([A-Za-z_]\w*)')
+    for n, line in enumerate(open(path, encoding="utf-8").read().split("\n"), 1):
+        m = decl.match(line)
+        if not m:
+            continue
+        kind, name = m.group(1), m.group(2)
+        if name in seen:
+            bad.append((n, "%s %s is already declared at line %d (file scope)"
+                        % (kind, name, seen[name]), line.strip()))
+        else:
+            seen[name] = n
+    return bad
+
+
 # -------------------------------------------------------------- reference ---
 
 # Reachable through any class name without being declared anywhere in this
@@ -246,7 +277,7 @@ def main(argv):
 
     found = 0
     for path in targets:
-        for lineno, why, text in check_indent(path) + \
+        for lineno, why, text in check_indent(path) + check_duplicates(path) + \
                 check_refs(path, members, parent, home):
             rel = os.path.relpath(path, root)
             print("%s:%d: %s\n    %s" % (rel, lineno, why, text[:88]))

@@ -5,11 +5,14 @@ extends Node3D
 # readout, and a place worth returning to — a rich cell, a station, and next
 # stage a hyper-structure — could only be remembered by writing its bearing on
 # paper. A beacon is that memory, dropped in the world and persisted in the
-# save: eight in stock, each one standing somewhere until it is recovered.
+# save: three in stock, each one standing somewhere until it is recovered.
 #
-# THE STOCK IS THE DESIGN. Eight is enough to thread a route across a system's
-# deep and few enough that a beacon is a decision — an unlimited supply would
-# be spray-paint, and the recover verb would never once be used. Stock is
+# THE STOCK IS THE DESIGN, and it was re-derived once (§87): eight, when a
+# beacon was a passive bookmark, was route-threading; after §79 made each one
+# a free course destination and a jump target, eight was a fast-travel network
+# and the recover verb went unused — the exact failure this paragraph warned
+# about, arrived from the other direction. At three, placing one is a
+# commitment and recovering one is routine. Stock is
 # DERIVED (BEACON_STOCK minus every dropped entry across every system), never
 # stored: §59's derived-not-tracked rule, so the save cannot disagree with
 # itself about how many beacons exist.
@@ -28,6 +31,13 @@ const DECAY_RATE := 0.8
 # POSITION, not by index — an index held on a node goes stale the moment a
 # sibling in the same system is recovered first, and a position cannot.
 var system_id := ""
+# v22. NOT YOURS. A rival beacon reuses this whole node -- mesh, breath, pick
+# group, radar tier -- because it IS a beacon; what differs is small enough to
+# be a flag. Foreign beacons are world dressing, not store entries: they are
+# spawned by the cell streamer from the rival function, never live in
+# GameState.beacons, never count against stock, and refuse recovery -- the
+# anchor code is not yours to release.
+var foreign := false
 
 var _holding := false
 var _progress := 0.0
@@ -70,7 +80,7 @@ func _build_mesh() -> void:
 	sm.height = 0.6
 	lamp.mesh = sm
 	lamp.position.y = 2.4
-	_pulse_mat = Palette.emissive(_accent(), 2.5)
+	_pulse_mat = Palette.emissive(Palette.RIVAL if foreign else _accent(), 2.5)
 	lamp.material_override = _pulse_mat
 	add_child(lamp)
 
@@ -95,6 +105,16 @@ func _player_in_range() -> bool:
 
 
 func hold_begin() -> void:
+	if foreign:
+		# WHICH refusal, per 58 -- and a refusal, not a silence: the hold
+		# gesture on a beacon has meant "recover" since v19, so a foreign one
+		# that simply did nothing would read as a bug.
+		var hud := get_tree().get_first_node_in_group("hud")
+		if hud and hud.has_method("show_toast"):
+			hud.show_toast("NOT YOUR ANCHOR CODE — THIS BEACON ANSWERS TO SOMEBODY ELSE",
+				Palette.RIVAL)
+		Sfx.play("hit", -12.0, 0.7)
+		return
 	if not _player_in_range():
 		_approach()
 		return
@@ -120,8 +140,16 @@ func hold_tick(delta: float) -> void:
 		_recover()
 
 
+func marker_color() -> Color:
+	# The radar override hud.gd already honours. Own beacons wear the livery
+	# accent there too -- the same colour the world mesh already breathes, which
+	# closes a small radar/world disagreement -- and foreign ones wear RIVAL.
+	return Palette.RIVAL if foreign else _accent()
+
+
 func on_tapped() -> void:
-	FX.ring_pulse(get_parent(), pick_anchor(), _accent(), 1.2)
+	FX.ring_pulse(get_parent(), pick_anchor(),
+		Palette.RIVAL if foreign else _accent(), 1.2)
 	if not _player_in_range():
 		_approach()
 
