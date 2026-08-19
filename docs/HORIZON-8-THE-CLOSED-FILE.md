@@ -1,7 +1,7 @@
 # Horizon 8 — The Closed File
 
-**Status: COMMITS 0, 1 AND 2 BUILT (§92, §93 — no save bump; §94 — v24).
-Commit 3 specced, nothing built.** The read-aloud answered R1–R4 and set the register rule; the prose in
+**Status: COMPLETE — all four commits BUILT (§92, §93 — no save bump; §94 —
+v24; §95 — no save bump).** The read-aloud answered R1–R4 and set the register rule; the prose in
 `docs/DIRECTIVE-NINE-DRAFT.md` shipped as drafted, with one design change found
 during the build and recorded there (the per-system override correctly wins on
 two of the four living-voice rows, because both of those overrides are
@@ -47,7 +47,7 @@ The pass therefore has a rule it can be held to, and an assertion that holds it:
 | 0 | The second register, staged — the private beat at the read, the two living voices at the whole record | **none** | **BUILT (§92)** — the reveal itself. Data and copy; both flags derived from v23 `deep_logs` |
 | 1 | The refusers' network — Directive 9 pages on band-3+ foreign beacons | **none** | **BUILT (§93)** — the mid-game hint channel. Built second, but in play it is met FIRST — the pages foreshadow the archive, not the other way round |
 | 2 | The berths — a slot AND the power to use it, paid for in permanent mass | **v24** | **BUILT (§94)** — the research below killed the slots-only version; the penalty axis was decided as mass |
-| 3 | Faction contracts offered on hail | TBD | §64's second act; the offer verb is the one new piece, riding existing contract + faction machinery |
+| 3 | Commissions — work a faction posts for a pilot it already trusts | **none** | **BUILT (§95)** — standing and contract state both already persist, so the whole commit is behaviour over two existing stores |
 
 Commits 0 and 1 are small, save-free and independently shippable. Commit 2 is
 the largest single mechanical change since the horizon system itself; its

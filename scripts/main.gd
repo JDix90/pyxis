@@ -10800,6 +10800,122 @@ func _run_contract_test() -> void:
 	await get_tree().process_frame
 	print("[contract] STAYS EMPTY after dropping both: %d active -> %s" % [
 		emptied.active.size(), "PASS" if emptied.active.is_empty() else "FAIL"])
+
+	# --- commissions (§95) ---------------------------------------------------
+	# A COMMISSION IS NOT A WAY IN. The rule that keeps standing worth having:
+	# work posted by a faction is offered only to a pilot they already trust, so
+	# it is not a ladder to climb from NEUTRAL -- it is what being trusted is
+	# FOR. Asked of the catalog directly, at both standings, over every system,
+	# so a commission leaking onto a stranger's board anywhere goes red.
+	var comm_ids: Array = []
+	for cid_v in ContractDB.CONTRACTS:
+		if ContractDB.faction_of(String(cid_v)) != "":
+			comm_ids.append(String(cid_v))
+	GameState.faction_deltas = {}
+	var stranger_leak := ""
+	for sid_v in SystemDB.ids():
+		for id_v in ContractDB.available_for(String(sid_v), []):
+			if ContractDB.faction_of(String(id_v)) != "":
+				stranger_leak += "%s " % String(id_v)
+	# And with trust, the same catalog offers them. Both halves matter: a filter
+	# that dropped every commission always would pass the first clause alone.
+	var trusted_pool := ContractDB.available_for(system_id,
+		[ContractDB.faction_of(String(comm_ids[0]))])
+	var offered_when_trusted: bool = trusted_pool.has(String(comm_ids[0]))
+	print("[contract] A COMMISSION IS NOT A WAY IN %d commissions in the catalog; offered to a stranger: %s; offered once trusted: %s -> %s" % [
+		comm_ids.size(), "none" if stranger_leak == "" else stranger_leak,
+		str(offered_when_trusted),
+		"PASS" if comm_ids.size() >= 1 and stranger_leak == "" and offered_when_trusted
+			else "FAIL"])
+
+	# THE TRUST LIST IS THE HAIL'S OWN BAND. One definition of "they know you",
+	# shared by the convoy that speaks to you and the board that posts for you --
+	# two thresholds that drifted apart would mean a faction that talks to you
+	# but will not hire you, with nothing on screen explaining the difference.
+	var comm_flag := ContractDB.faction_of(String(comm_ids[0]))
+	GameState.faction_deltas = {}
+	var live := contracts
+	var cold := live.trusted_factions().has(comm_flag)
+	GameState.shift_faction(FactionDB.SURVEYOR, comm_flag,
+		FactionDB.ATTITUDE_MAX, true)
+	var warm := live.trusted_factions().has(comm_flag)
+	var band_now := GameState.faction_band(FactionDB.SURVEYOR, comm_flag)
+	print("[contract] THE TRUST LIST IS THE HAIL'S OWN BAND %s at a cold start=%s, once ALLIED (band %d, hail bar %d)=%s -> %s" % [
+		comm_flag, str(cold), band_now, DeepSpace.CONVOY_HAIL_MIN_BAND, str(warm),
+		"PASS" if not cold and warm and band_now <= DeepSpace.CONVOY_HAIL_MIN_BAND
+			else "FAIL"])
+
+	# FILLING ONE PAYS A NAME, AND WALKING AWAY COSTS DOUBLE. Both driven
+	# through the real verbs -- _complete via the progress feed, drop via drop --
+	# because the asymmetry IS the design and a test that poked the store would
+	# not notice if either path forgot to call shift_faction.
+	var comm_id := String(comm_ids[0])
+	var comm_def := ContractDB.get_contract(comm_id)
+	# HEADROOM FIRST, and this is not incidental setup. faction_attitude CLAMPS
+	# at read time (±6), so a fixture that walked standing to the ceiling to buy
+	# trust would then measure a +1 reward as zero movement and report a working
+	# payout as broken. Trust costs FRIENDLY, not ALLIED, so the fixture buys
+	# exactly that and leaves room in both directions -- +1 to gain and −2 to
+	# lose, from a baseline of 0.
+	GameState.faction_deltas = {}
+	GameState.shift_faction(FactionDB.SURVEYOR, comm_flag, 2, true)
+	var att_start := GameState.faction_attitude(FactionDB.SURVEYOR, comm_flag)
+	live.active = []
+	live.accept(comm_id)
+	var salv_start := GameState.salvage
+	live._advance(String(comm_def["kind"]), int(comm_def["target"]))
+	var att_filled := GameState.faction_attitude(FactionDB.SURVEYOR, comm_flag)
+	var paid_credits := GameState.salvage - salv_start
+	# Now take it again and abandon it.
+	live.active = []
+	live.accept(comm_id)
+	var att_before_drop := GameState.faction_attitude(FactionDB.SURVEYOR, comm_flag)
+	live.drop(comm_id)
+	var att_dropped := GameState.faction_attitude(FactionDB.SURVEYOR, comm_flag)
+	var gained := att_filled - att_start
+	var lost := att_before_drop - att_dropped
+	print("[contract] FILLING ONE PAYS A NAME %s from attitude %d: +%d standing (want %d) and %d credits (want %d); abandoning cost %d (want %d, %dx) -> %s" % [
+		comm_id, att_start, gained, ContractDB.standing_of(comm_id), paid_credits,
+		int(comm_def["reward"]), lost, ContractDB.break_cost(comm_id),
+		ContractDB.COMMISSION_BREAK_MULT,
+		"PASS" if gained == ContractDB.standing_of(comm_id)
+			and paid_credits == int(comm_def["reward"])
+			and lost == ContractDB.break_cost(comm_id)
+			and lost > gained else "FAIL"])
+
+	# AND THE ROW SAYS SO BEFORE THE BUTTON. The affordance half of §88: a cost
+	# a player can only discover by paying it is not a cost they agreed to. The
+	# board's own dict is checked rather than the pixels, but it is the dict the
+	# row renders from, and it carries all three terms.
+	GameState.faction_deltas = {}
+	GameState.shift_faction(FactionDB.SURVEYOR, comm_flag, FactionDB.ATTITUDE_MAX, true)
+	# SWEPT OVER BUCKETS, NOT ASKED ONCE. The board is a seeded five-of-twelve
+	# shuffle, so "is this commission on today's board" is a coin flip and a leg
+	# that asked once would be a flake wearing an assertion's clothes. The
+	# shuffle is deterministic per (port, time bucket), so walking the buckets
+	# is exhaustive rather than lucky: it must turn up at least once, and every
+	# time it turns up it must carry all three terms.
+	var seen_rows := 0
+	var bad_terms := 0
+	var clock := GameState.played_seconds
+	for b in 40:
+		GameState.played_seconds = float(b) * ContractDB.BOARD_ROTATE_SECONDS + 1.0
+		for offer_v in live.board(port_id):
+			var offer: Dictionary = offer_v
+			if String(offer["id"]) != comm_id:
+				continue
+			seen_rows += 1
+			if String(offer.get("faction", "")) != comm_flag \
+					or int(offer.get("standing", 0)) != ContractDB.standing_of(comm_id):
+				bad_terms += 1
+	GameState.played_seconds = clock
+	print("[contract] THE ROW STATES ITS TERMS %s appeared on %d of 40 boards, rows missing their terms: %d (faction, +%d standing, abandon −%d) -> %s" % [
+		comm_id, seen_rows, bad_terms, ContractDB.standing_of(comm_id),
+		ContractDB.break_cost(comm_id),
+		"PASS" if seen_rows > 0 and bad_terms == 0 else "FAIL"])
+
+	live.active = []
+	GameState.faction_deltas = {}
 	get_tree().quit()
 
 
@@ -12443,6 +12559,13 @@ func _pacing_seam_yield() -> float:
 func _pacing_contract_yield() -> float:
 	# The mean reward of what is actually on offer in the starting system: a
 	# steady-income lever, so the band has to see it move when rewards change.
+	#
+	# THE STRANGER'S BOARD, deliberately (§95): no `trusted` argument, so the
+	# commissions are not in this mean. They are not steady income -- they are
+	# gated on standing a new pilot does not have, they pay BELOW the survey row
+	# beside them, and folding them in would quietly lower the measured band for
+	# every pilot including the ones who cannot see them. Leave the argument
+	# off; the omission is the model.
 	var pool := ContractDB.available_for(SystemDB.START_SYSTEM)
 	if pool.is_empty():
 		return 0.0

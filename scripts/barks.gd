@@ -29,6 +29,11 @@ const LINES := {
 	# instruments; this is the same sentence after finding out why there are no
 	# instruments. Nothing else in the world reacts, which is the point.
 	"read_directive": "WE ARE STILL FILING. SOMEBODY SHOULD KNOW THAT WE ARE STILL FILING",
+	# §95. Fired the first time a convoy speaks to us, which is the first proof
+	# a faction knows who we are. It names the surface, not the gesture — the
+	# work is on the ordinary contract board, and the point of the line is that
+	# the player has no reason to look for it there otherwise.
+	"first_convoy_hail": "THEY TALK TO US NOW. FACTIONS POST WORK FOR PEOPLE THEY TRUST — READ A CONTRACT BOARD",
 	"chart_unlocked": "NEW BEARING CHARTED — OPEN THE CHART",
 	"first_warp": "TRANSIT COMPLETE — UNFAMILIAR SPACE",
 	"apex_out_of_range": "SHOTS BREAKING ON THE SURVEY FIELD — CLOSE IN",

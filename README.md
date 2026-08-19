@@ -199,7 +199,12 @@ v23 store; that sweep came back green at **727 across 73**. §93 then added
 three legs to the same suite and no new run, and no save bump either — that
 sweep came back green at **730 across 73**. §94 adds `BERTHTEST` (one new run
 carrying six) and the `migrate23` mode (one new run carrying one), at save
-format **v24**. So the next full sweep should read **737 across 75**. A baseline is a MEASUREMENT and is only written here once
+format **v24**; §95 adds four legs to the existing `CONTRACTTEST`, no new run
+and no save bump. So the next full sweep should read **741 across 75**.
+
+Neither §94 nor §95 has been swept yet — they were built back to back while no
+machine with Godot on it was available, so the 741 is arithmetic, not a
+measurement, and the two of them stack unverified. A baseline is a MEASUREMENT and is only written here once
 somebody has taken it; predicting one and typing it in as though it were taken
 is how the numbers this paragraph keeps correcting got wrong in the first
 place.

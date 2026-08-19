@@ -6077,7 +6077,7 @@ the two items that remain open and are genuinely new design:
 | 0 | the second register, STAGED: the private beat at the read, the living voices only at the whole record | none | **BUILT** — §92; no save bump, both flags derived from v23 |
 | 1 | the refusers' network: Directive 9's pages on band-3+ foreign beacons | none | **BUILT** — §93; the band gate lives in one pure function so no spawn site can re-decide the pacing |
 | 2 | purchasable slot expansion — shipped as **berths**: a slot AND the power to use it, paid for in permanent mass | **v24** | **BUILT** — §94; the research killed the obvious version (a pilot at the top already owns a bay the reactor cannot feed), and the penalty axis was decided as mass |
-| 3 | faction contracts offered on hail | TBD | specced only as a row |
+| 3 | faction contracts offered on hail — shipped as **commissions**: work a faction posts for a pilot it already trusts, paying standing, costing double to abandon | none | **BUILT** — §95; no save bump, standing and contract state both already persist |
 
 **The finding that shaped it, and the rule it hands the pass.** The authority's
 voice CANNOT change, because bands 1–4 of `BROADCASTS` are recordings and THE
@@ -9499,3 +9499,85 @@ would draw chips for bays that do not exist. `SECOND SLOT` keeps its literal 6
 written to pin — but checks it against what a fresh hull can actually fit,
 plus the berth count separately, so a fourth berth cannot quietly change what a
 new pilot begins with.
+
+## 95. Commissions — what being trusted is for
+
+Horizon 8 commit 3, and no save bump: standing already persists (`faction_deltas`,
+§18) and contract state already persists, so this is entirely new behaviour over
+two stores that existed.
+
+The playtest note was *"convoy Hail does nothing — faction contracts that raise
+standing, and a way to LOSE influence."* The first clause was already half
+false: a hail files an apex-intel fix (§28). What was true is that standing had
+no use it could not already have — you earned FRIENDLY and the game said thank
+you.
+
+### A commission is not a way in
+
+Two keys turn a contract into a commission: `faction` (who posted it) and
+`standing` (what filling it is worth). The rule that makes them worth anything
+is the gate: **a commission is offered only to a pilot the faction already
+trusts** — FRIENDLY or better, *the same band their convoys will speak to you
+at*. So it is not a ladder to climb from NEUTRAL. It is what being trusted is
+FOR.
+
+That one definition is shared rather than duplicated: `Contracts.trusted_factions()`
+answers "who knows this pilot", the board reads it, and `THE TRUST LIST IS THE
+HAIL'S OWN BAND` pins it against `DeepSpace.CONVOY_HAIL_MIN_BAND`. Two
+thresholds drifting apart would mean a faction that talks to you but will not
+hire you, with nothing on screen explaining the difference.
+
+### Keeping a promise is ordinary; breaking one is news
+
+Filling a commission pays **+1** standing. Abandoning one costs **−2**, and the
+asymmetry is the design — `COMMISSION_BREAK_MULT`, stated on the board row
+before the ACCEPT button, because a cost a player can only discover by paying
+it is not a cost they agreed to.
+
+`drop()` still works, and that is not in tension with its own "free, and
+deliberately so" comment. That rule is about never trapping a player, and
+nothing here traps them. A commission that could be dropped for free would make
+standing a thing you accumulate rather than a thing you keep.
+
+The credit rewards sit **below** the equivalent survey contract on the same
+board. A commission trades money for a name, and a pilot who only wants money
+should take the other row — that choice is the whole feature.
+
+### Two things the build had to get right
+
+**The catalog stays pure.** `ContractDB` has zero references to `GameState`, and
+keeping it that way is what lets a harness ask what a board would hold for a
+standing the player does not have. So `available_for` takes `trusted` as an
+argument; `Contracts.board` is the one caller that knows the player, and the one
+that fills it in.
+
+**Pacing measures the stranger's board, deliberately.** `_pacing_contract_yield`
+calls `available_for` with no `trusted`, so commissions are not in the mean
+reward. They are not steady income — gated on standing a new pilot does not
+have, and paying below the row beside them — and folding them in would quietly
+lower the measured band for every pilot, including the ones who cannot see
+them. The omission is the model, and it is written where the omission is.
+
+### The hail points at it, once
+
+Commissions live on the ordinary contract board, where a player has no reason to
+go looking for something new. So the first time a convoy ever speaks to you —
+the first proof a faction knows who you are — the ship says one line, once ever,
+naming the surface and not a gesture. Fired from the hail rather than announced
+by the board itself: a board that advertises is a quest log (§90).
+
+### Two fixture bugs caught before they shipped, both the same shape
+
+Neither is in the feature; both are worth recording because they are the third
+and fourth instances of a leg measuring something true but not the thing it
+claimed.
+
+1. The standing fixture walked attitude to `ATTITUDE_MAX` to buy trust, then
+   measured a +1 reward — but `faction_attitude` **clamps at read time (±6)**,
+   so the payout would have measured as zero and reported working code as
+   broken. Trust costs FRIENDLY, not ALLIED; the fixture now buys exactly that
+   and leaves headroom in both directions.
+2. The board-row leg asked one board for one commission. The board is a seeded
+   **five-of-twelve** shuffle, so that is a coin flip — a flake wearing an
+   assertion's clothes. It now sweeps forty time buckets, which is exhaustive
+   rather than lucky because the shuffle is deterministic per (port, bucket).

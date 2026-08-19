@@ -2199,6 +2199,13 @@ func _check_convoy_hails(at: Vector3) -> void:
 		# next: a hail retried every frame for the rest of the session is a
 		# worse failure than a hail that had nothing to say.
 		_convoy_hailed[key] = true
+		# §95. THE ONE LINE THAT POINTS AT THE COMMISSIONS. A faction talking to
+		# you at all is the proof they know who you are, and being known is what
+		# commissions are FOR -- but they appear on the ordinary contract board,
+		# where a player has no reason to go looking for something new. Fired
+		# here, once ever (the bark contract), rather than being announced by
+		# the board itself: a board that advertises is a quest log.
+		Barks.fire("first_convoy_hail")
 		var main := get_tree().get_first_node_in_group("main")
 		if main == null or not main.has_method("file_apex_intel"):
 			return

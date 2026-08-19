@@ -1664,6 +1664,23 @@ func _contract_row(offer: Dictionary, slots_free: int) -> Control:
 	pay.add_theme_color_override("font_color", Palette.AMBER)
 	left.add_child(pay)
 
+	# §95. WHO POSTED IT, WHAT IT IS WORTH, AND WHAT WALKING AWAY COSTS — all
+	# three before the button, because the third is the one a player can only
+	# learn the expensive way otherwise. A commission's credit reward is
+	# deliberately below the survey row beside it, so this line is also the
+	# answer to "why would I take the worse-paying one".
+	var flag := String(offer.get("faction", ""))
+	if flag != "":
+		var terms := Label.new()
+		terms.text = "%s COMMISSION  ·  +%d STANDING  ·  ABANDON: −%d" % [
+			FactionDB.display_name(flag), int(offer.get("standing", 0)),
+			ContractDB.break_cost(String(offer["id"]))]
+		terms.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		terms.custom_minimum_size = Vector2(180, 0)
+		terms.add_theme_font_size_override("font_size", 10)
+		terms.add_theme_color_override("font_color", FactionDB.tint_of(flag))
+		left.add_child(terms)
+
 	var id := String(offer["id"])
 	if accepted:
 		box.add_child(_mini_button("DROP", func() -> void: _drop_contract(id)))
