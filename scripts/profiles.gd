@@ -67,7 +67,12 @@ static func load_registry() -> Dictionary:
 		if typeof(row_v) != TYPE_DICTIONARY:
 			continue
 		var row: Dictionary = row_v
-		var id := String(row.get("id", ""))
+		# str(), not String(): every value below comes out of JSON, where a
+		# hand-edited or corrupted registry can hold a number where a name
+		# belongs -- and String() has no constructor for one, so the read would
+		# THROW on the way to rejecting the row. A validating reader may not
+		# crash on the input it exists to validate.
+		var id := str(row.get("id", ""))
 		if id == "" or seen.has(id):
 			continue
 		if not DirAccess.dir_exists_absolute("%s/%s" % [base_dir, id]):
@@ -75,7 +80,7 @@ static func load_registry() -> Dictionary:
 		seen[id] = true
 		out["profiles"].append({
 			"id": id,
-			"name": _clean_name(String(row.get("name", ""))),
+			"name": _clean_name(str(row.get("name", ""))),
 			"created": float(row.get("created", 0.0)),
 			"last_played": float(row.get("last_played", 0.0)),
 			"summary": row.get("summary", {}) if typeof(row.get("summary", {})) == TYPE_DICTIONARY else {},
@@ -84,7 +89,7 @@ static func load_registry() -> Dictionary:
 			break
 	# The active id has to name a pilot that survived the pass above, or the
 	# title screen offers CONTINUE into a folder that is not there.
-	var active := String(data.get("active", ""))
+	var active := str(data.get("active", ""))
 	out["active"] = active if seen.has(active) else ""
 	if out["active"] == "" and not (out["profiles"] as Array).is_empty():
 		out["active"] = String((out["profiles"][0] as Dictionary)["id"])
@@ -289,7 +294,7 @@ static func _legacy_ship_name() -> String:
 	f.close()
 	if typeof(parsed) != TYPE_DICTIONARY:
 		return "SURVEYOR"
-	return _clean_name(String((parsed as Dictionary).get("ship_name", "")))
+	return _clean_name(str((parsed as Dictionary).get("ship_name", "")))
 
 
 # --- helpers ----------------------------------------------------------------

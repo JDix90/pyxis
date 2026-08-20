@@ -2189,17 +2189,22 @@ func _load_apex_intel(saved: Dictionary) -> void:
 			if not (h_v is Dictionary):
 				continue                   # 3. every entry is a hint dict
 			var h: Dictionary = h_v
-			var kind := String(h.get("kind", ""))
+			# Values, not keys: JSON can hand back a number here, and String()
+			# has no constructor for one. Normalised through str(), which
+			# accepts anything and lets the checks below reject it on its
+			# merits -- the same outcome, without a thrown call. No shipped
+			# fixture reaches this today; the berths loader's did.
+			var kind := str(h.get("kind", ""))
 			if kind == "":
 				continue                   # 4. an unattributed hint is unplottable
 			if kind == "ring":
 				var band := int(h.get("band", -1))
 				if band < 0 or band >= DeepSpace.BAND_NAMES.size():
 					continue               # 5. must name a band that exists
-				if not DeepSpace.QUADRANTS.has(String(h.get("quadrant", ""))):
+				if not DeepSpace.QUADRANTS.has(str(h.get("quadrant", ""))):
 					continue               # 6. and a real compass sector
 				kept.append({"kind": "ring", "band": band,
-					"quadrant": String(h.get("quadrant", ""))})
+					"quadrant": str(h.get("quadrant", ""))})
 				continue
 			# Bearing hints: every number finite, the error a sane half-angle.
 			var ox := float(h.get("ox", 0.0))
@@ -3508,6 +3513,15 @@ func load_game() -> bool:
 	# dropping what it does not recognise -- `owned`'s posture one block up.
 	berths = []
 	for bid_v in (data.get("berths", []) as Array):
+		# TYPE FIRST. This is an ARRAY out of JSON, not a dictionary key, so its
+		# elements can be anything a file holds -- and `String(7)` is not a
+		# constructor GDScript has. Written bare, migrate23's own rubbish
+		# fixture (which puts a 7 in this list precisely to be rejected) threw a
+		# script error on the way to rejecting it: the leg passed, the loader
+		# was right, and the run logged an error. A loader's contract is DROP,
+		# NEVER CRASH, and a thrown call is not a drop.
+		if typeof(bid_v) != TYPE_STRING:
+			continue
 		var bid := String(bid_v)
 		if ModuleDB.BERTHS.has(bid) and not berths.has(bid):
 			berths.append(bid)

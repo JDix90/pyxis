@@ -9809,6 +9809,34 @@ this is the first time in nine horizons the third one has been the only one
 that fired. The check reads the value's TYPE now, which is what the loader
 beside it was already doing.
 
+### The JSON boundary, audited once and given a rule
+
+The same shape then appeared a second time, in `SAVETEST=migrate23`: the berths
+loader (§94) read its array elements through `String(bid_v)`, and that leg's own
+rubbish fixture puts a `7` in the list **precisely so it will be rejected**. The
+loader rejected it correctly and threw on the way, so the leg printed PASS and
+the run logged an error. *A validating reader may not crash on the input it
+exists to validate* — "drop, never crash" means a thrown call is not a drop.
+
+The audit that followed is worth recording because of where it stopped. Thirty
+`String()` calls live inside loaders, and all but two are safe by construction:
+**JSON dictionary keys are always strings, and so are `split()` results.** The
+exposure is only ever on VALUES and ARRAY ELEMENTS, and only at the four places
+this project parses JSON — the save, the prefs, the profile registry, and the
+legacy-name peek. Every one is fixed; the prefs reader was already correct and
+carries a comment about this exact class, written the last time it bit.
+
+**The rule, stated so it can be applied by eye:** at a JSON boundary use
+`str()`, which accepts anything and lets the validation below reject it on its
+merits; `String()` is for keys, for `split()` results, and for values from
+authored in-code tables, where the type is guaranteed.
+
+**And it is deliberately NOT a checker rule.** `String(x.get(...))` appears 132
+times in this codebase and 130 of them read authored tables where the value
+cannot be anything else. A rule that fired on all of them would be the
+28-false-positive shadow rule again — a check nobody runs twice. The bounded
+audit was the right tool, because the boundary is four files long.
+
 ### The generator ships before the nodes
 
 `FarMarks` is pure arithmetic — positions, and which legend stands at each — so
