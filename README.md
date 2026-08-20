@@ -218,7 +218,8 @@ with no new run, mode or bump — but it introduces three new `class_name`s
 should read **764 across 77**. §103 (the orrery) then adds two more
 `RETURNTEST` legs and one more `class_name` (`Orrery`) — still no new run, no
 new mode and no save bump — so the sweep after that should read **766 across
-77**.
+77**. §104 (the forge) then adds one more leg and one more `class_name`
+(`PatternForge`), again with no new run, mode or bump: **767 across 77**.
 
 (§96's adversarial pass reported after both commits shipped; its two confirmed
 findings were folded back in without changing any count — one strengthened an

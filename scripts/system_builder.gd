@@ -187,6 +187,12 @@ static func build_legend(container: Node3D, system_id: String, index: int,
 			if GameState.is_mark_spent(key):
 				return null
 			return _build_orrery(container, key, at)
+		"forge":
+			# NEVER SPENDS ITS MARK -- a forge is a place, the serpent's rule.
+			# It pays nothing (escorts are not currency), the wing it prints
+			# cannot survive a warp, and arming it costs a kill, so rebuilding
+			# it whole on every visit is a journey rather than a farm.
+			return _build_forge(container, key, at)
 		"serpent":
 			# NEVER spent -- S2's rule enforced by never asking. The serpent
 			# leaves rather than dies, so the mark keeps its warning and the
@@ -303,6 +309,14 @@ static func _build_orrery(container: Node3D, key: String, at: Vector3) -> Node3D
 	container.add_child(o)
 	o.global_position = at + Vector3(LEGEND_STANDOFF, 0.0, 0.0)
 	return o
+
+
+static func _build_forge(container: Node3D, key: String, at: Vector3) -> Node3D:
+	var f := PatternForge.new()
+	f.owns_mark = key
+	container.add_child(f)
+	f.global_position = at + Vector3(LEGEND_STANDOFF, 0.0, 0.0)
+	return f
 
 
 static func _build_serpent(container: Node3D, key: String, at: Vector3) -> Node3D:

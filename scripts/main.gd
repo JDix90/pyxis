@@ -16572,6 +16572,103 @@ func _run_return_test() -> void:
 		"PASS" if raise_named == "" and top_stage > 0 and stage_share < 0.5
 			else "FAIL"])
 
+	# 23. THE FORGE COPIES WHAT DIES THERE. The verb is a journey: the bed is
+	#     empty until something dies in range, and the refusal says so. Then the
+	#     wing, and the four IFF properties that are the whole reason a friendly
+	#     armed ship is safe to put in the sky -- each one a defect this
+	#     codebase has already paid for once, asserted rather than trusted.
+	var forge_key := GameState.mark_key(msid, 3)
+	GameState.marks_seen = {}
+	GameState.marks_seen[forge_key] = GameState.MARK_READ
+	var forge_at := Vector3(2000.0, 0.0, 2000.0)
+	var forge := SystemBuilder.build_legend(system_root, msid, 3, "forge",
+		forge_at) as PatternForge
+	var forge_stood := forge != null
+	var bed_empty := false
+	var refused_empty_bed := false
+	var took_pattern := false
+	var printed_n := 0
+	var not_my_enemy := true
+	var costs_no_standing := true
+	var nobody_opens := true
+	var can_never_finish := true
+	var bed_cold := false
+	var forge_stays := false
+	if forge_stood:
+		bed_empty = not forge.has_pattern()
+		forge.hold_begin()
+		refused_empty_bed = not forge._holding
+		# FEED IT: a hull dies in range, and the forge takes the pattern.
+		var donor := Hostile.new()
+		donor.faction = FactionDB.FERAL
+		system_root.add_child(donor)
+		donor.global_position = forge_at + Vector3(10.0, 0.0, 0.0)
+		await get_tree().process_frame
+		donor.take_damage(9.9e9, pilot_m)
+		forge._watch_the_bed()
+		took_pattern = forge.has_pattern()
+		# PRINT.
+		if pilot_m != null:
+			pilot_m.teleport_to(forge_at)
+		# DUPLICATED, NOT JSON-ROUND-TRIPPED. faction_deltas holds ints, and
+		# JSON.parse_string would hand every one of them back as a float --
+		# restoring a store with the right numbers in the wrong type, which is
+		# the sort of thing that goes wrong three suites later.
+		var deltas_before_f: Dictionary = GameState.faction_deltas.duplicate(true)
+		forge.hold_begin()
+		forge.hold_tick(PatternForge.PRINT_TIME + 0.1)
+		await get_tree().process_frame
+		var wing: Array = []
+		for h_v in get_tree().get_nodes_in_group("hostiles"):
+			var hh := h_v as Hostile
+			if hh != null and hh.printed:
+				wing.append(hh)
+		printed_n = wing.size()
+		for w_v in wing:
+			var w := w_v as Hostile
+			# 1. The player's own guns must never pick their wing.
+			if GameState.hostile_to_player(w):
+				not_my_enemy = false
+			# 2. Splashing it must cost nothing: an unregistered flag is in no
+			#    roster, so shift_faction has no pair to move.
+			if FactionDB.is_faction(w.faction):
+				costs_no_standing = false
+			# 3. Nothing in the world opens on it unprovoked -- it is in no
+			#    faction's enemy list, because it is in no faction.
+			for other_v in FactionDB.ids():
+				if GameState.enemies_of(String(other_v)).has(w.faction):
+					nobody_opens = false
+			# 4. And it can never land a kill: in `combatants`, so the ambient
+			#    floor clamps what it can take a target down to and the player
+			#    keeps every attribution, every crate and every contract tick.
+			if not w.is_in_group("combatants"):
+				can_never_finish = false
+		GameState.faction_deltas = deltas_before_f
+		bed_cold = not forge.has_pattern()
+		# A forge is a PLACE: it never spends its mark, so it stands again.
+		var forge2 := SystemBuilder.build_legend(system_root, msid, 3, "forge",
+			forge_at)
+		forge_stays = forge2 != null and not GameState.is_mark_spent(forge_key)
+		if forge2 != null:
+			forge2.queue_free()
+		# THE SUITE LEAVES NO FRIENDLY IN THE SKY. A printed hull left in the
+		# `hostiles` group would be picked as live[0] by _pacing_kill_yield and
+		# force-attacked for 5400 frames, corrupting the bar the whole economy
+		# rests on -- so the wing is torn down here, deliberately and by name.
+		for w2_v in wing:
+			(w2_v as Node).free()
+		donor.free()
+		_clear_loot_cubes()
+		forge.queue_free()
+	print("[return] THE FORGE COPIES WHAT DIES THERE the bed starts empty=%s and refuses the hold=%s; a hull dying in range arms it=%s; the hold printed %d of %d; the wing is not the player's enemy=%s, costs no standing to splash=%s, is nobody's enemy unprovoked=%s, and can never land a kill=%s; the bed goes cold=%s and the forge itself stands again=%s -> %s" % [
+		str(bed_empty), str(refused_empty_bed), str(took_pattern), printed_n,
+		PatternForge.PRINT_COUNT, str(not_my_enemy), str(costs_no_standing),
+		str(nobody_opens), str(can_never_finish), str(bed_cold), str(forge_stays),
+		"PASS" if forge_stood and bed_empty and refused_empty_bed and took_pattern
+			and printed_n == PatternForge.PRINT_COUNT and not_my_enemy
+			and costs_no_standing and nobody_opens and can_never_finish
+			and bed_cold and forge_stays else "FAIL"])
+
 	GameState.survey_coverage = {}
 	GameState.survey_filed = {}
 	GameState.deep_logs = {}

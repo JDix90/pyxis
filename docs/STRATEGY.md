@@ -6116,7 +6116,7 @@ decisions R1–R4). Six commits, **five built** (commit 3 split at build time in
 | 3a | THE PROVING DRIFT, plus the encounter machinery all nine legends share, plus the prototype tier | rides v25 | **BUILT** — §99; `MARK_STATES` gained one word and nothing else changed, which is what §98's validated-string decision was for |
 | 3b | LEGENDS I, the rest of the common three: THE VEIN, THE LAYUP (deposit and withdrawal) | rides v25 | **BUILT** — §101; the state ladder became a four-word lattice, and "no tally" is asserted as byte-equality of save images |
 | 4 | LEGENDS II, the dangerous three: THE STILLNESS' GROUND, THE STANDING ORDER (it hails first), THE SOUNDING SERPENT | none | **BUILT** — §102; the asset flies feral and wears teal, the becalming is its own mechanism, and the serpent never spends its mark |
-| 5 | LEGENDS III, the ongoing four — **orrery BUILT (§103)**; forge, procession (gated on the nine names, `docs/THE-NINE-NAMES-DRAFT.md`) and nursery remain | **v26** (nursery store only) | **RESEARCH DONE** (2026-08-20, `docs/LEGENDS-III-RESEARCH.md`) — decisions S4–S8 open; the nine names need a writing pass before the procession can build. The pass killed three naive versions: the escort wing already ships (REQUEST ESCORT — the forge needs a spawner and a lifetime, not a class), the nursery cannot ride `colonies` (byte-identical key formats collide, and a deep jump anchor breaks `A FOOTHOLD, NOT A FARM` silently), and a sold orrery windfall would clear the Grand Commission's chart pillar in one ALL press because `chart_data_sold` counts units with no cell join |
+| 5 | LEGENDS III, the ongoing four — **orrery BUILT (§103), forge BUILT (§104)**; procession (names approved, `docs/THE-NINE-NAMES-DRAFT.md`) and nursery (v26) remain | **v26** (nursery store only) | **RESEARCH DONE** (2026-08-20, `docs/LEGENDS-III-RESEARCH.md`) — decisions S4–S8 open; the nine names need a writing pass before the procession can build. The pass killed three naive versions: the escort wing already ships (REQUEST ESCORT — the forge needs a spawner and a lifetime, not a class), the nursery cannot ride `colonies` (byte-identical key formats collide, and a deep jump anchor breaks `A FOOTHOLD, NOT A FARM` silently), and a sold orrery windfall would clear the Grand Commission's chart pillar in one ALL press because `chart_data_sold` counts units with no cell join |
 
 **The prototype tier is under a research pass the player is running** (opened
 2026-08-20). §99 shipped the mechanism, the laws and provisional entries in one
@@ -10559,3 +10559,88 @@ shared group, `"legend"`**, added to both ladders now. Getting this rung
 wrong would leave the forge and the procession unreachable by a finger
 without either file changing again, which is §96's lesson stated forward
 instead of paid for twice.
+
+---
+
+## 104. The pattern forge (rides v25)
+
+Horizon 9 commit 5, second of four. A machine that copies: feed it a hull and
+it prints the pattern, and it does not ask whose hull.
+
+### The research's biggest single return
+
+The spec called the escort wing "genuinely new" and the largest unbuilt piece
+of the horizon. **It was already shipped.** `REQUEST ESCORT` — the ALLIED rung
+of the contact menu — has flown a Cordon picket on the player's wing since
+v18: a station off the shoulder, guard reach measured from the *player*,
+firing only at what `hostile_to_player` says fights the player, an ambient HP
+floor, a staged death, and radar paint that reads friendly. Every hazard a
+friendly armed ship raises had already been found and paid for there,
+including the one nobody would guess: `ESCORT_FOLLOW` (8.0) is deliberately
+larger than `OVERCHARGE_RADIUS` (7.0) so an escort does not sit inside the
+player's own free ability blast.
+
+So the forge needed **a different spawner and two policies lifted**, not a
+class. `Hostile.printed` lifts exactly two, and both are policy rather than
+mechanism: the 60-second courtesy clock (a favour asked of a picket, not a
+thing built to fly with you) and the chart-edge release (the promise that
+patrols do not operate past the marker — which a hull printed 7,000u *outside*
+the marker cannot be breaking). Three more touches follow from an empty
+patrol: `begin_escort`'s route gate (which exists to stop station-keepers
+teleporting home, a reason that does not reach a hull with no home),
+`_process`'s station-keeping branch, and a general guard in `_walk_beat` so a
+routeless walker holds position instead of indexing an empty array.
+
+### The unregistered flag does four jobs at once
+
+`faction = "printed"` is in no roster, and every consequence is one the design
+wanted:
+
+- `baseline_attitude` answers 0 → NEUTRAL → `fights_the_player` is false, so
+  **the player's own guns never auto-target their wing**.
+- `is_faction` is false → `shift_faction` no-ops, so **splashing your own
+  escort costs nothing in standing**. This matters more than it sounds: three
+  player weapons (overcharge, arc chain, torpedo splash) sweep the `hostiles`
+  group with **no IFF filter, by documented design**, and a wing of three is
+  far likelier than a single escort to have somebody inside the blast.
+- `enemies_of` never lists it → **nothing opens on a printed hull
+  unprovoked**. They are shot at only once they have fired, which is precisely
+  what "they follow, and when something shoots at you they answer" means when
+  you write it down as code.
+- `marker_color` falls through to the spawner's `tint` — the branch whose own
+  comment reserves it for "a ship that flies no flag at all".
+
+### They cannot land the kill, and that is the design
+
+A printed hull joins `combatants` like every other, so `SKIRMISH_HP_FLOOR`
+clamps what it can take a non-muster target down to: **the player lands every
+killing blow.** The alternative was measured and refused — drop the wing out
+of `combatants` and `_die`'s `player_kill` goes false on anything they finish:
+no loot, no contract tick, and the world depleting itself without paying
+anyone. The floor is what keeps §51 (ONLY THE PLAYER DEPLETES THE WORLD) true
+with three friendly guns in the sky.
+
+### The verb is a journey
+
+"Bring it a hull" is taken literally: the forge takes the pattern of anything
+that **dies within `FEED_RANGE`**, so arming it means leading something out
+there or choosing to fight on that ground. The bed is empty until you put
+something on it and the tap says so; the pattern is **spent with the
+printing**, so a second wing costs a second hull. It does not ask whose hull —
+a printed wing that dies here can be reprinted from its own corpse, which is
+the machine's whole character and costs nothing to allow.
+
+The forge **never spends its mark**: a forge is a place, the serpent's rule.
+That is not a farm — escorts are not currency, they do not survive a warp
+(structural: children of `system_root` are freed wholesale by `_load_system`,
+which is why the spawner parents to `get_parent()` and never to the player),
+and every printing costs a kill.
+
+### The leg tears its own wing down
+
+`THE FORGE COPIES WHAT DIES THERE` asserts the empty bed, its refusal, the
+feeding, the print count, all four IFF properties, the cold bed and the
+standing forge — and then **frees the wing by name**. A printed hull left in
+the `hostiles` group would be picked as `live[0]` by `_pacing_kill_yield` and
+force-attacked for 5400 frames, corrupting the `MIDTIER` bar the whole economy
+rests on. The cleanup is part of the assertion, not housekeeping after it.
