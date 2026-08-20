@@ -35,6 +35,12 @@ const LINES := {
 	# the player has no reason to look for it there otherwise.
 	"first_convoy_hail": "THEY TALK TO US NOW. FACTIONS POST WORK FOR PEOPLE THEY TRUST — READ A CONTRACT BOARD",
 	"chart_unlocked": "NEW BEARING CHARTED — OPEN THE CHART",
+	# §102. The ship's voice, once, from inside the becalming. The register rule
+	# at its strictest: three plain sentences, and the eeriness is entirely that
+	# the second and third are TRUE and the mark is the reason we know it.
+	"stillness_passage": "DRIVES QUIET. THE MARK SAID THIS HAPPENS. THE MARK SAID THEY COME BACK",
+	# §102. First close sight of the serpent. What it drops is that you saw it.
+	"serpent_seen": "IT IS LONG. IT IS NOT A MACHINE. THE MARK SAID BOTH",
 	"first_warp": "TRANSIT COMPLETE — UNFAMILIAR SPACE",
 	"apex_out_of_range": "SHOTS BREAKING ON THE SURVEY FIELD — CLOSE IN",
 	"first_dock_range": "DOCKING CLAMPS AVAILABLE — TAP THE PORT",

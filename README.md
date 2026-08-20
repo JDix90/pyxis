@@ -211,7 +211,11 @@ therefore been checking nothing for three commits). §99 then adds three more
 legs to `RETURNTEST`, again with no new run, no new mode and no save bump —
 green at **758 across 77**. §100 then adds one more `RETURNTEST` leg (the
 overdraw mechanism), no new run and no bump; §101 adds two more (the vein and
-the layup), likewise. The next full sweep should read **761 across 77**.
+the layup), likewise; §102 adds three more (the dangerous three legends), also
+with no new run, mode or bump — but it introduces three new `class_name`s
+(`StillnessGround`, `StandingOrder`, `SoundingSerpent`), so run
+`"$GODOT" --headless --path . --import` before the next sweep. That sweep
+should read **764 across 77**.
 
 (§96's adversarial pass reported after both commits shipped; its two confirmed
 findings were folded back in without changing any count — one strengthened an

@@ -174,8 +174,23 @@ static func build_legend(container: Node3D, system_id: String, index: int,
 			return _build_vein(container, key, at)
 		"layup":
 			return _build_layup(container, key, at)
+		"stillness":
+			# The ground outlives its reading -- the layup's posture. The mark
+			# spends when the reading is finally carried home, but every entry
+			# becalms, forever: the place stays what it is.
+			return _build_stillness(container, key, at)
+		"order":
+			if GameState.is_mark_spent(key):
+				return null
+			return _build_standing_order(container, key, at)
+		"serpent":
+			# NEVER spent -- S2's rule enforced by never asking. The serpent
+			# leaves rather than dies, so the mark keeps its warning and the
+			# fight rebuilds whole on every visit. Not a respawn exploit,
+			# because it has never once paid.
+			return _build_serpent(container, key, at)
 		_:
-			# THE OTHER SEVEN ARRIVE IN LATER COMMITS, and until they do a read
+			# THE ONGOING FOUR ARRIVE IN COMMIT 5, and until they do a read
 			# mark is exactly what its plate says it is: a record of a sounding,
 			# in the past tense, which is why the plates were written that way.
 			# The absence is stated here rather than left as a silent fallthrough
@@ -255,6 +270,39 @@ static func _build_layup(container: Node3D, key: String, at: Vector3) -> Node3D:
 	d.global_position = at + Vector3(LEGEND_STANDOFF, 0.0, 0.0)
 	d.rotation_degrees.y = -28.0
 	return d
+
+
+static func _build_stillness(container: Node3D, key: String, at: Vector3) -> Node3D:
+	# §102. Centred ON the mark, no standoff, and that is the drama working as
+	# designed rather than an ambush: the buoy that warned you stands inside
+	# the ground it warned you about, so the first becalming can begin where
+	# you finished reading -- and the plate's promise ("they will come back")
+	# is kept ninety seconds later, exactly as written.
+	var g := StillnessGround.new()
+	g.owns_mark = key
+	container.add_child(g)
+	g.global_position = at
+	return g
+
+
+static func _build_standing_order(container: Node3D, key: String, at: Vector3) -> Node3D:
+	var o := StandingOrder.new()
+	o.owns_mark = key
+	container.add_child(o)
+	o.global_position = at + Vector3(LEGEND_STANDOFF, 0.0, 0.0)
+	return o
+
+
+static func _build_serpent(container: Node3D, key: String, at: Vector3) -> Node3D:
+	# Standing off twice the usual distance: the serpent's idle circuit is a
+	# forty-unit orbit of its home point, and a home on the buoy would drag
+	# the fight through the one thing out here the player must stay able to
+	# tap calmly.
+	var sp := SoundingSerpent.new()
+	sp.owns_mark = key
+	container.add_child(sp)
+	sp.global_position = at + Vector3(LEGEND_STANDOFF * 2.0, 0.0, LEGEND_STANDOFF)
+	return sp
 
 
 static func _mark_pos(deep: DeepSpace, nominal: Vector3) -> Vector3:

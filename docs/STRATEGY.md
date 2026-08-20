@@ -6106,7 +6106,7 @@ option was never a discovery. It is now Horizon 9's spine — see below.
 
 **Horizon 9 — the true copy** (opened 2026-08-20; specced in
 `docs/HORIZON-9-THE-TRUE-COPY.md`, prose gated on `docs/FAR-MARKS-DRAFT.md`,
-decisions R1–R4). Six commits, **four built** (commit 3 split at build time into 3a/3b, both now shipped; §100's overdraw mechanism rode between them):
+decisions R1–R4). Six commits, **five built** (commit 3 split at build time into 3a/3b; §100's overdraw mechanism rode between them; only commit 5 remains, behind its research pass):
 
 | # | what | save | status |
 |---|---|---|---|
@@ -6115,7 +6115,7 @@ decisions R1–R4). Six commits, **four built** (commit 3 split at build time in
 | 2 | THE FAR MARKS: the network's sounding buoys at 6,500–9,000u, five per system on `hyper_positions`' pattern; visible to all, readable only by filers | rides v25 | **BUILT** — §98; `marks_seen` carries a validated STATE from its first line rather than a boolean that grows a vocabulary later |
 | 3a | THE PROVING DRIFT, plus the encounter machinery all nine legends share, plus the prototype tier | rides v25 | **BUILT** — §99; `MARK_STATES` gained one word and nothing else changed, which is what §98's validated-string decision was for |
 | 3b | LEGENDS I, the rest of the common three: THE VEIN, THE LAYUP (deposit and withdrawal) | rides v25 | **BUILT** — §101; the state ladder became a four-word lattice, and "no tally" is asserted as byte-equality of save images |
-| 4 | LEGENDS II, the dangerous three: THE STILLNESS' GROUND, THE STANDING ORDER (it hails first), THE SOUNDING SERPENT | none | **SPECCED** |
+| 4 | LEGENDS II, the dangerous three: THE STILLNESS' GROUND, THE STANDING ORDER (it hails first), THE SOUNDING SERPENT | none | **BUILT** — §102; the asset flies feral and wears teal, the becalming is its own mechanism, and the serpent never spends its mark |
 | 5 | LEGENDS III, the ongoing three: THE TALLY'S NURSERY (takeable, and they come back for it), THE PATTERN FORGE (escorts), THE PROCESSION'S END | v26 | **SPECCED as a row** — the largest mechanical addition since the horizon system; wants its own research pass, as the berths did |
 
 **The prototype tier is under a research pass the player is running** (opened
@@ -10388,3 +10388,104 @@ Three of ten built (drift §99, vein and layup here). The seven singulars are
 commits 4–5, unchanged: STILLNESS, ORDER, SERPENT (commit 4); ORRERY, NURSERY,
 FORGE, PROCESSION (commit 5, its own research pass first). Every unbuilt plate
 remains true as written — a record of a sounding, past tense.
+
+---
+
+## 102. The dangerous three (rides v25)
+
+Horizon 9 commit 4 — LEGENDS II: THE STILLNESS' GROUND, THE STANDING ORDER,
+THE SOUNDING SERPENT. Six of ten plates now have something standing behind
+them, and these three are the ones whose plates are warnings.
+
+### The becalming is not an EMP, and the difference is mechanism
+
+The Stillness stops the drives. `PlayerShip` gained a second quiet —
+`_becalmed`, beside `_emp`, never instead of it — because every property of
+the EMP is wrong here: an EMP is halved by thermal sinks (the mitigation runs
+inside `emp_stun`, so nothing calls it), tumbles the hull, clears the player's
+targets, and announces its own recovery with a teal pulse. The becalming does
+none of that. No mitigation exists or ever will; the hull sits still (the name
+is THE STILLNESS); targets stay, because nothing is attacking; and the drives
+simply return, without ceremony, because the mark already said they would.
+An EMP landing inside a becalming is absorbed by it — a stun must not outlive
+the stillness around it. Both hard-reset sites (`begin_warp_charge`, the
+death path) clear it alongside `_emp`.
+
+The ground is the layup's posture, not the drift's: **the reading pays once
+(the mark spends), the place becalms forever.** A full hold DEFERS the reading
+— the passage is repeatable, so the archives' rule (a reading that paid
+nothing must not burn its stage) holds harder for a reading whose moment the
+pilot cannot choose. The ground is centred ON the buoy, deliberately: read the
+plate, and the first becalming begins where you finished reading — the plate
+keeping its promise immediately, not an ambush, because the promise is that
+they come back. Nothing joins any combat group, and the harness asserts the
+emptiness: the strangest fact in the encounter is that nothing here is
+attacking you.
+
+### The Standing Order flies feral and wears teal
+
+Two deviations from the spec's own table, both argued:
+
+**Not ApexBoss.** The apex fight IS the survey-engine puzzle — plates, seals,
+probes — and its death path charts the next system, calls
+`main.on_apex_defeated` and spawns an `ApexWreck`: three things a station
+asset must never do. Flagging all of that out would have been a subclass
+wearing a const's clothes. The wardens are the honest precedent — the deepest
+guards in the game are parameter-tuned `Hostile`s — and the asset is one more,
+tuned past all of them (difficulty 3.0, hp_scale 6.0, no leash).
+
+**Not faction `"gsa"`.** `Hostile._die` docks standing for killing a
+non-hostile flag and pays loot only for a hostile one — so a GSA-flagged asset
+would make the kill cost standing (the Authority noticing, the one thing this
+horizon must never allow) and pay nothing (a windfall the design promised).
+The asset **wears** Authority teal — tint, designation, the hail's letterhead
+— and **flies** `FactionDB.FERAL`, the raider precedent carrying the arc's
+thesis: mechanically it is what the fiction says it is, a machine nobody ever
+told anything, never in the Authority's books. THE MACHINES DO NOT KNOW,
+enforced by a faction id.
+
+The politeness is structural: before the hails complete there is *nothing in
+the hostiles group to be shot by* — the fighter does not exist until the
+instruction has been given twice — which is the strongest form of "it does not
+fire first" a harness can assert. A pilot who takes the instruction and leaves
+resets it to the top: it holds no grudge, because nobody ever told it anything,
+including that this happened.
+
+### The serpent leaves, and never spends its mark
+
+New movement, no new AI framework — the spec's bounds kept literally. The head
+steers at a bounded turn rate and never hovers; each segment closes up on the
+one ahead along the line between them, which is the whole of the body's
+intelligence and what makes seven nodes read as one animal. Segments answer
+the player's fire through the same duck-typed `take_damage` every combatant
+answers, deal contact damage through the same `take_hit` every hazard uses,
+and join `"hostiles"` so the radar and every targeting surface work
+unmodified. A silenced segment reads as `is_dying` so auto-fire moves on to
+the parts that still answer.
+
+Silencing a majority (4 of 7) breaks it off — S2 adopted: the body turns and
+goes back down where the line found no bottom. **It pays nothing anywhere
+money is kept** — no loot, no salvage, no ledger, no contract kind, no faction
+delta (it has no faction to shift) — asserted as five equalities, because "it
+does not drop salvage" is exactly the kind of sentence that quietly becomes
+false when someone wires a generic death path later. And the serpent is the
+one legend that **never spends its mark**: the place stays dangerous instead
+of becoming a cleared room, the fight rebuilds whole on every visit, and that
+is not a respawn exploit because it has never once paid.
+
+### Three new classes, one import
+
+`StillnessGround`, `StandingOrder`, `SoundingSerpent` are new `class_name`s —
+the sweep handoff must run `"$GODOT" --headless --path . --import` first. The
+serpent's segment is an inner class with an untyped back-reference (an inner
+class naming its owner's `class_name` would be a cycle in a trench coat).
+
+### Harness
+
+Three RETURNTEST legs (17 → 20). `THE GROUND BECALMS AND PAYS ONCE` drives the
+real becalm and asserts the command verb refused, the full-hold deferral, the
+one-time payout, and the forever-becalming. `THE ORDER HAILS BEFORE IT FIRES`
+asserts the pre-arm group emptiness, the paint/flag split, and that silencing
+moves no GSA standing and no delta. `THE SERPENT LEAVES AND THE MARK STANDS`
+asserts the break-off, the board emptying, the five-way pays-nothing, and the
+rebuild. No new run, no new mode, no save bump.

@@ -16311,6 +16311,181 @@ func _run_return_test() -> void:
 		"PASS" if lay_stood and lay_spent and lay_stands_open and refused_empty
 			and deposit_took and plate_clause and no_tally else "FAIL"])
 
+	# 18. THE GROUND BECALMS, AND PAYS ONCE. The no-combat legend, all four
+	#     promises: entering stops the drives (through the real becalm, with the
+	#     command verb asserted refused, not just a flag read), the reading pays
+	#     ONCE and defers on a full hold rather than burning, the place keeps
+	#     becalming forever after it has paid, and NOTHING here is hostile --
+	#     the strangest fact in the encounter, asserted as a group emptiness.
+	var still_key := GameState.mark_key(msid, 4)
+	GameState.marks_seen = {}
+	GameState.marks_seen[still_key] = GameState.MARK_READ
+	var hostiles_pre_g := get_tree().get_nodes_in_group("hostiles").size()
+	var ground := SystemBuilder.build_legend(system_root, msid, 4, "stillness",
+		Vector3(1200.0, 0.0, 1200.0)) as StillnessGround
+	var ground_stood := ground != null
+	var ground_neutral: bool = 		get_tree().get_nodes_in_group("hostiles").size() == hostiles_pre_g
+	var becalmed_held := false
+	var move_refused := false
+	var deferred_full := false
+	var released := false
+	var paid_once := false
+	var still_becalms := false
+	var pays_never_again := false
+	var ground_outlives := false
+	if ground_stood and pilot_m != null:
+		# Full hold first: the reading must DEFER, not burn.
+		GameState.cargo = {}
+		GameState.load_cargo("alloys", 9999)
+		ground._begin_passage()
+		becalmed_held = pilot_m.is_becalmed()
+		pilot_m.command_move(Vector3(999.0, 0.0, 999.0))
+		move_refused = not pilot_m.has_move_target
+		ground._finish_passage()
+		deferred_full = not GameState.is_mark_spent(still_key) \
+			and GameState.cargo_count(StillnessGround.READING_GOOD) == 0
+		released = not pilot_m.is_becalmed()
+		# Room made: the next passage pays, once.
+		GameState.cargo = {}
+		ground._begin_passage()
+		ground._finish_passage()
+		paid_once = GameState.cargo_count(StillnessGround.READING_GOOD) \
+			== StillnessGround.READING_UNITS and GameState.is_mark_spent(still_key)
+		# And the place stays what it is: a third passage still becalms and
+		# pays nothing more.
+		ground._begin_passage()
+		still_becalms = pilot_m.is_becalmed()
+		ground._finish_passage()
+		pays_never_again = GameState.cargo_count(StillnessGround.READING_GOOD) \
+			== StillnessGround.READING_UNITS
+		# Spent, the ground still BUILDS -- the layup's posture, not the
+		# drift's: the reading is once, the becalming is forever.
+		var ground2 := SystemBuilder.build_legend(system_root, msid, 4,
+			"stillness", Vector3(1200.0, 0.0, 1200.0))
+		ground_outlives = ground2 != null
+		if ground2 != null:
+			ground2.queue_free()
+		pilot_m.clear_becalm()
+		ground.queue_free()
+	print("[return] THE GROUND BECALMS AND PAYS ONCE stands when read=%s, spawns nothing hostile=%s; the passage stops the drives=%s and refuses the move verb=%s; a full hold DEFERS the reading=%s and the drives return=%s; with room it pays %d once=%s; the third passage still becalms=%s and pays nothing=%s; spent, the ground still stands=%s -> %s" % [
+		str(ground_stood), str(ground_neutral), str(becalmed_held),
+		str(move_refused), str(deferred_full), str(released),
+		StillnessGround.READING_UNITS, str(paid_once), str(still_becalms),
+		str(pays_never_again), str(ground_outlives),
+		"PASS" if ground_stood and ground_neutral and becalmed_held
+			and move_refused and deferred_full and released and paid_once
+			and still_becalms and pays_never_again and ground_outlives
+			else "FAIL"])
+
+	# 19. THE ORDER HAILS BEFORE IT FIRES. R4's politeness as a structural
+	#     fact -- before the hails complete there is NOTHING IN THE HOSTILES
+	#     GROUP to be shot by, which is the strongest form of "it does not fire
+	#     first" a harness can ask -- and the arc's thesis as a faction id: the
+	#     asset WEARS Authority teal and FLIES FactionDB.FERAL, so the kill
+	#     pays like the windfall it is and the Authority's standing does not
+	#     move one point. Nobody reports this fight.
+	var ord_key := GameState.mark_key(msid, 0)
+	GameState.marks_seen = {}
+	GameState.marks_seen[ord_key] = GameState.MARK_READ
+	var hostiles_pre_o := get_tree().get_nodes_in_group("hostiles").size()
+	var order_node := SystemBuilder.build_legend(system_root, msid, 0, "order",
+		Vector3(1400.0, 0.0, 1400.0)) as StandingOrder
+	var order_stood := order_node != null
+	var polite: bool = 		get_tree().get_nodes_in_group("hostiles").size() == hostiles_pre_o
+	var armed_one := false
+	var wears_paint := false
+	var flies_feral := false
+	var kill_would_pay := false
+	var order_spent := false
+	var authority_blind := false
+	var order_gone := false
+	if order_stood:
+		var gsa_before_o := GameState.faction_attitude(FactionDB.SURVEYOR, "gsa")
+		var deltas_before_o := JSON.stringify(GameState.faction_deltas)
+		order_node._arm()
+		var asset: Hostile = null
+		for h_v in get_tree().get_nodes_in_group("hostiles"):
+			if (h_v as Node).has_meta("standing_order"):
+				asset = h_v as Hostile
+		armed_one = asset != null \
+			and get_tree().get_nodes_in_group("hostiles").size() == hostiles_pre_o + 1
+		if asset != null:
+			wears_paint = asset.tint == FactionDB.tint_of("gsa")
+			flies_feral = String(asset.faction) == FactionDB.FERAL
+			# The pays-gate is the faction BAND, so the windfall claim is the
+			# band claim: feral is HOSTILE to the surveyor, always.
+			kill_would_pay = GameState.faction_band(FactionDB.FERAL,
+				FactionDB.SURVEYOR) == FactionDB.Band.HOSTILE
+			asset.take_damage(9.9e9, pilot_m)
+			order_node._check_silenced()
+			order_spent = GameState.is_mark_spent(ord_key)
+			authority_blind = GameState.faction_attitude(FactionDB.SURVEYOR, "gsa") \
+				== gsa_before_o \
+				and JSON.stringify(GameState.faction_deltas) == deltas_before_o
+		order_gone = SystemBuilder.build_legend(system_root, msid, 0, "order",
+			Vector3(1400.0, 0.0, 1400.0)) == null
+		_clear_loot_cubes()
+		order_node.queue_free()
+	print("[return] THE ORDER HAILS BEFORE IT FIRES the station stands=%s with nothing in the hostiles group=%s; arming launches exactly one asset=%s wearing Authority teal=%s while flying feral=%s (so the kill pays: band HOSTILE=%s); silencing it spends the mark=%s, moves no GSA standing and no delta=%s, and the asset does not re-post=%s -> %s" % [
+		str(order_stood), str(polite), str(armed_one), str(wears_paint),
+		str(flies_feral), str(kill_would_pay), str(order_spent),
+		str(authority_blind), str(order_gone),
+		"PASS" if order_stood and polite and armed_one and wears_paint
+			and flies_feral and kill_would_pay and order_spent
+			and authority_blind and order_gone else "FAIL"])
+
+	# 20. THE SERPENT LEAVES, AND THE MARK STANDS. S2 as mechanics: silencing a
+	#     majority of the body drives it off rather than killing it, the
+	#     departure pays NOTHING anywhere money is kept (no loot, no salvage,
+	#     no ledger, no faction delta -- it has no faction to shift), and the
+	#     mark is never spent, so the fight rebuilds whole. Not a respawn
+	#     exploit, because it has never once paid.
+	var serp_key := GameState.mark_key(msid, 1)
+	GameState.marks_seen = {}
+	GameState.marks_seen[serp_key] = GameState.MARK_READ
+	var hostiles_pre_s := get_tree().get_nodes_in_group("hostiles").size()
+	var loot_pre_s := _count_loot_cubes()
+	var salv_pre_s := GameState.salvage
+	var ledger_pre_s := JSON.stringify(GameState.ledger)
+	var deltas_pre_s := JSON.stringify(GameState.faction_deltas)
+	var serp := SystemBuilder.build_legend(system_root, msid, 1, "serpent",
+		Vector3(1600.0, 0.0, 1600.0)) as SoundingSerpent
+	var serp_stood := serp != null
+	var body_armed := false
+	var broke_off := false
+	var board_clear := false
+	var paid_nothing_s := false
+	var mark_stands := false
+	var comes_back := false
+	if serp_stood:
+		body_armed = get_tree().get_nodes_in_group("hostiles").size() \
+			== hostiles_pre_s + SoundingSerpent.SEGMENTS \
+			and serp.answering_count() == SoundingSerpent.SEGMENTS
+		for i in range(SoundingSerpent.BREAK_AT):
+			var sgm := serp.segments()[i] as Node3D
+			sgm.take_damage(SoundingSerpent.SEGMENT_HP + 1.0, pilot_m)
+		broke_off = serp.is_leaving()
+		board_clear = get_tree().get_nodes_in_group("hostiles").size() \
+			== hostiles_pre_s
+		paid_nothing_s = _count_loot_cubes() == loot_pre_s \
+			and GameState.salvage == salv_pre_s \
+			and JSON.stringify(GameState.ledger) == ledger_pre_s \
+			and JSON.stringify(GameState.faction_deltas) == deltas_pre_s
+		mark_stands = GameState.is_mark_read(serp_key) \
+			and not GameState.is_mark_spent(serp_key)
+		var serp2 := SystemBuilder.build_legend(system_root, msid, 1, "serpent",
+			Vector3(1600.0, 0.0, 1600.0))
+		comes_back = serp2 != null
+		if serp2 != null:
+			serp2.queue_free()
+		serp.queue_free()
+	print("[return] THE SERPENT LEAVES AND THE MARK STANDS %d segments answer=%s; silencing %d breaks it off=%s, empties the board=%s, and pays nothing anywhere money is kept=%s; the mark is read and NEVER spent=%s, so it comes back whole=%s -> %s" % [
+		SoundingSerpent.SEGMENTS, str(body_armed), SoundingSerpent.BREAK_AT,
+		str(broke_off), str(board_clear), str(paid_nothing_s),
+		str(mark_stands), str(comes_back),
+		"PASS" if serp_stood and body_armed and broke_off and board_clear
+			and paid_nothing_s and mark_stands and comes_back else "FAIL"])
+
 	GameState.survey_coverage = {}
 	GameState.survey_filed = {}
 	GameState.deep_logs = {}
