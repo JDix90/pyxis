@@ -15691,10 +15691,34 @@ func _run_return_test() -> void:
 	for kind2_v in FarMarks.kinds():
 		if not seen_kinds.has(String(kind2_v)):
 			every_kind_reachable = false
-	print("[return] A SINGULAR LEGEND IS SINGULAR 60 seeds: singular kinds appearing twice in one run: %s; all %d kinds reachable across seeds=%s -> %s" % [
+	# AND A RUN MUST MISS SOME. This clause is the one the adversarial pass was
+	# filed about, and neither of the two above could have caught what it found:
+	# with fifteen slots against seven singular kinds the deal handed EVERY run
+	# all seven, so "at most once per run" was trivially true and "all kinds
+	# reachable" was trivially true, while the pacing rule the whole class
+	# exists for -- a run that has no serpent in it is a normal run -- was false
+	# on every seed. Two green assertions over a dead design.
+	var carried_all := 0
+	var omissions := {}
+	for seed_j in 60:
+		var plan_o := FarMarks.run_plan(seed_j * 7919 + 13, SystemDB.ids())
+		var here := {}
+		for k5_v in plan_o:
+			here[String(plan_o[k5_v])] = true
+		var missing := 0
+		for kind3_v in FarMarks.SINGULAR:
+			if not here.has(String(kind3_v)):
+				missing += 1
+				omissions[String(kind3_v)] = true
+		if missing == 0:
+			carried_all += 1
+	var varies: bool = carried_all == 0 \
+		and omissions.size() >= FarMarks.SINGULAR.size() - FarMarks.SINGULAR_PER_RUN
+	print("[return] A SINGULAR LEGEND IS SINGULAR 60 seeds: appearing twice in one run: %s; all %d kinds reachable across seeds=%s; runs carrying ALL %d singulars: %d (want 0), distinct kinds a run can miss: %d -> %s" % [
 		"none" if dupes == "" else dupes, FarMarks.kinds().size(),
-		str(every_kind_reachable),
-		"PASS" if dupes == "" and every_kind_reachable else "FAIL"])
+		str(every_kind_reachable), FarMarks.SINGULAR.size(), carried_all,
+		omissions.size(),
+		"PASS" if dupes == "" and every_kind_reachable and varies else "FAIL"])
 
 	# 8. THE RIVAL'S CELLS COME HOME FREE, and this path was DEAD to the harness
 	#    until this leg: reset_to_starter leaves played_seconds at 0, the suite

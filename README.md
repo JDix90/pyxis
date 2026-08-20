@@ -204,6 +204,10 @@ and no save bump. §96 then adds `RETURNTEST` (one new run carrying eight) and t
 mode (one new run carrying one), at save format **v25**. §97 then adds two legs to the existing `PLOTTEST`, with no new run and no
 save bump. So the next full sweep should read **752 across 77**.
 
+(§96's adversarial pass reported after both commits shipped; its two confirmed
+findings were folded back in without changing any count — one strengthened an
+existing `RETURNTEST` clause rather than adding a leg.)
+
 Neither §94 nor §95 has been swept yet — they were built back to back while no
 machine with Godot on it was available, so the 741 is arithmetic, not a
 measurement, and the two of them stack unverified. A baseline is a MEASUREMENT and is only written here once

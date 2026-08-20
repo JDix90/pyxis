@@ -9896,6 +9896,47 @@ the player is looking at. And it is off for a counter filing, which the
 assertion checks — the register is about where returns went, and a cell sold at
 a port went to the Authority.
 
+### What the verified pass returned, including one refutation of my own fix
+
+The adversarial workflow finished after §96 had already shipped, and its
+verdicts are worth recording because of the shape of them. **Fifteen raw
+findings, two confirmed, thirteen refuted** — and most of the refutations read
+*"stale: the fix the finding demands is already in the tree"*, because the
+review ran against a moving target. That is a real cost of reviewing
+uncommitted work in parallel with fixing it, and the answer is not to stop: the
+same pass produced both confirmed findings, and one of them was a design rule
+that had never been true.
+
+**The far-marks finding stood, and my fix was right but my assertions were
+not.** `SINGULAR_PER_RUN` closes it — but the pass pointed out that *neither*
+existing clause could have caught it: with fifteen slots against seven kinds,
+"at most once per run" was trivially true and "all kinds reachable across
+seeds" was trivially true, while the rule they were guarding was false on every
+seed. **Two green assertions over a dead design.** `A SINGULAR LEGEND IS
+SINGULAR` now also requires that no run carries all seven and that the omitted
+set varies.
+
+**And the gauge-label finding stood while my fix for it did not.** One skeptic
+of three dissented, and the dissent was correct: `hold_begin` never resets
+`_progress`, so after a release the residual genuinely *is* progress toward
+reading — which makes "READING THE PAGE" the honest label for the drain, and
+made my captured-label fix a promise the next hold would not keep. It was also
+inert: `_process` calls `_sync_gauge` every frame of the drain and
+`_gauge_label` re-derives from the live stage, overwriting the captured string
+a frame later.
+
+The defect underneath both readings is that **an abandoned filing's progress
+was being spent on the read stage** — abandon at 87% and a re-grab is
+seven-eighths of the way to re-reading a page you already hold. Zeroing
+`_progress` when leaving the filing stage settles it: the bar clears instead of
+draining under a borrowed verb, a re-grab starts a fresh read, and no surface
+has to name a verb the next hold will not perform.
+
+Worth stating plainly: **a majority vote confirmed the finding and a minority
+vote corrected the fix.** Had I taken only the verdict and not read the
+dissent, the commit would carry a change that does nothing, defended by a
+comment claiming it does something.
+
 ### The same defect, written again, eight minutes later
 
 `files_with_the_network` was first written as

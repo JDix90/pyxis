@@ -266,12 +266,23 @@ func hold_release() -> void:
 	# §96. THE STAGE ENDS WITH THE HOLD. One continuous hold is the commitment;
 	# letting go and taking hold again starts at the page, which is the right
 	# price for an irreversible act.
-	# THE LABEL IS READ BEFORE THE STAGE IS CLEARED. Reversed, this stamps
-	# "READING THE PAGE" onto a bar the player was using to file -- the exact
-	# mislabelling _read_page's own comment says it is guarding against, and
-	# hud.crack_progress commits the label before its negative-t early return, so
-	# it is the word left on screen for the whole drain.
-	var label := _gauge_label()
+	#
+	# AND THE FILING'S PROGRESS GOES WITH IT (§97, from the adversarial pass).
+	# hold_begin does not reset _progress -- a released READ resumes where it
+	# stopped, which is shipped behaviour and good. Carried into the filing
+	# stage that becomes nonsense: abandon a filing at 87% and the residual
+	# would be spent on the READ stage instead, so the bar drains under
+	# "READING THE PAGE" (correctly, since that is what it now measures) after
+	# the player filled it while filing, and a re-grab is 87% of the way to
+	# re-reading a page they already have.
+	#
+	# The first fix for this captured the label before clearing the stage, and
+	# it did nothing: _process calls _sync_gauge every frame of the drain and
+	# _gauge_label re-derives from the live stage, overwriting it a frame later.
+	# Zeroing is the fix that holds -- an abandoned filing simply clears, and
+	# nothing anywhere has to name a verb the next hold will not perform.
+	if _stage == 1:
+		_progress = 0.0
 	_stage = 0
 	var hud := get_tree().get_first_node_in_group("hud")
 	# CLEARED UNCONDITIONALLY, and the old `_progress < 1.0` guard is why. It
@@ -281,7 +292,7 @@ func hold_release() -> void:
 	# it back down, which is the exact "released holds drain" feel the gauge
 	# exists to give.
 	if hud:
-		hud.crack_progress(-1.0, label)
+		hud.crack_progress(-1.0, _gauge_label())
 
 
 func hold_tick(delta: float) -> void:
