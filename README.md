@@ -47,10 +47,10 @@ behind a `PYXIS_*` environment variable and run headless:
 PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 ```
 
-Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 53 of them —
-the 53 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
-`TAGS` at all: it is one harness with 22 stateful modes, run as its own
-sequence. So a full sweep is 53 + 22 = **75 runs**.
+Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 54 of them —
+the 54 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
+`TAGS` at all: it is one harness with 23 stateful modes, run as its own
+sequence. So a full sweep is 54 + 23 = **77 runs**.
 
 Those three numbers are derivable from `run_harness.sh` and nothing else, so
 check them there rather than trusting this paragraph — it has been wrong before,
@@ -200,7 +200,9 @@ three legs to the same suite and no new run, and no save bump either — that
 sweep came back green at **730 across 73**. §94 adds `BERTHTEST` (one new run
 carrying six) and the `migrate23` mode (one new run carrying one), at save
 format **v24**; §95 adds four legs to the existing `CONTRACTTEST`, no new run
-and no save bump. So the next full sweep should read **741 across 75**.
+and no save bump. §96 then adds `RETURNTEST` (one new run carrying seven) and the `migrate24`
+mode (one new run carrying one), at save format **v25**. So the next full sweep
+should read **749 across 77**.
 
 Neither §94 nor §95 has been swept yet — they were built back to back while no
 machine with Godot on it was available, so the 741 is arithmetic, not a

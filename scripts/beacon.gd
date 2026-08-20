@@ -30,6 +30,10 @@ const DECAY_RATE := 0.8
 # fourteen seconds because a page on a beacon is not an expedition -- it is
 # something left where the next person through would find it.
 const READ_TIME := 3.0
+# §96. The second stop of the same hold: filing the return itself. Longer than
+# the read, because it is the irreversible half and the bar is the only warning
+# a player gets between deciding and having decided.
+const FILE_TIME := 4.0
 
 # THE SHALLOWEST BAND A PAGE IS EVER LEFT IN. Foreign beacons stand wherever
 # the rival has filed, which begins at CONTENT_MIN_DEPTH (24u) -- and the rival
@@ -92,6 +96,13 @@ var foreign := false
 # building a world. Zero bytes of save: the authority's records persist, the
 # refusers leave nothing behind.
 var page := 0
+
+# §96. WHICH STOP OF THE HOLD THIS IS: 0 reads the page (or recovers, on an own
+# beacon), 1 files the return. A latch rather than a taller _progress, because
+# the gauge is clamped to 0..1 by hud.crack_progress -- a progress that ran to
+# 2.0 would pin the bar full for the entire second stage and show the player
+# nothing at all.
+var _stage := 0
 
 var _holding := false
 var _progress := 0.0
@@ -182,11 +193,50 @@ func _player_in_range() -> bool:
 	return p != null and global_position.distance_to(p.global_position) <= HOLD_RANGE
 
 
+func filing() -> bool:
+	# §96. Stage two: the return itself. Asked rather than inferred from
+	# _progress, because _progress is reset at every stage boundary and a float
+	# cannot express "already read".
+	return _stage == 1
+
+
+func _stage_time() -> float:
+	if filing():
+		return FILE_TIME
+	return READ_TIME if reading() else RECOVER_TIME
+
+
+func _gauge_label() -> String:
+	# The label IS the statement of terms (§58), and it rides the same call as
+	# the value because crack_progress takes it as a second argument rather
+	# than through a setter -- so a bare crack_progress(-1.0) anywhere would
+	# stamp the derelict's "BREACHING HULL" over this bar on the way out.
+	if filing():
+		return "FILING WITH THE NETWORK — NO PAYMENT, NO REGISTRY"
+	return "READING THE PAGE" if reading() else "RECOVERING BEACON"
+
+
+func _can_file() -> bool:
+	# Whether the filing stage is offered at this mast, at all. Every clause is
+	# a fact about the pilot or the world, never about this node: a foreign
+	# beacon is a projection of a streamed cell (it dies with the cell and is
+	# rebuilt on a warp), so anything remembered ON it would evaporate and the
+	# verb would silently re-offer itself.
+	if not foreign or page <= 0 or not GameState.heard_the_request():
+		return false
+	var main := get_tree().get_first_node_in_group("main")
+	if main == null or not main.has_method("network_filing_plan"):
+		return false
+	var plan: Dictionary = main.network_filing_plan()
+	return not (plan["cells"] as Array).is_empty() \
+		or not (plan["lost"] as Array).is_empty()
+
+
 func reading() -> bool:
 	# What this hold IS. A foreign mast with a page on it is read; a foreign
 	# mast without one still refuses, and an own beacon is still recovered. One
 	# question, asked in four places, so the three verbs cannot drift apart.
-	return foreign and page > 0
+	return foreign and page > 0 and _stage == 0
 
 
 func hold_begin() -> void:
@@ -213,9 +263,19 @@ func hold_begin() -> void:
 
 func hold_release() -> void:
 	_holding = false
+	# §96. THE STAGE ENDS WITH THE HOLD. One continuous hold is the commitment;
+	# letting go and taking hold again starts at the page, which is the right
+	# price for an irreversible act.
+	_stage = 0
 	var hud := get_tree().get_first_node_in_group("hud")
-	if hud and _progress < 1.0:
-		hud.crack_progress(-1.0)
+	# CLEARED UNCONDITIONALLY, and the old `_progress < 1.0` guard is why. It
+	# was correct while a completion always zeroed _progress; with a second
+	# stage the value can sit anywhere, and a release above 1.0 skipped the
+	# clear entirely -- leaving a full, static bar on screen until decay walked
+	# it back down, which is the exact "released holds drain" feel the gauge
+	# exists to give.
+	if hud:
+		hud.crack_progress(-1.0, _gauge_label())
 
 
 func hold_tick(delta: float) -> void:
@@ -224,13 +284,42 @@ func hold_tick(delta: float) -> void:
 	if not _player_in_range():
 		hold_release()
 		return
-	_progress += delta / (READ_TIME if reading() else RECOVER_TIME)
-	_sync_gauge()
-	if _progress >= 1.0:
-		if reading():
-			_read_page()
-		else:
-			_recover()
+	_progress += delta / _stage_time()
+	if _progress < 1.0:
+		_sync_gauge()
+		return
+	# ONE COMPLETION PER TICK, AND THE OVERSHOOT IS DISCARDED. Both halves are
+	# load-bearing:
+	#
+	# The `>= 1.0` test has no stage of its own, so without an explicit latch a
+	# hold that stayed alive past a completion would re-fire it on every frame
+	# -- a broadcast plate redrawn sixty times a second.
+	#
+	# And the leftover delta must NOT roll into the next stage. §93's own
+	# assertion drives a single 4.0-second tick against a 3.0-second READ_TIME,
+	# reaching 1.333 in one call, and then requires that nothing was stored and
+	# no cargo moved. If that overshoot could carry into the filing stage, a
+	# green assertion about the page would go red because of a verb it was never
+	# testing. Resetting to zero here makes each stage cost a fresh hold's worth
+	# of seconds, which is also what the player is being told the bar means.
+	_progress = 0.0
+	if _stage == 1:
+		_stage = 0
+		_holding = false
+		_file_return()
+		return
+	if reading():
+		_read_page()
+		# THE SECOND STOP, only when there is something to file. _read_page has
+		# already dropped _holding for the ordinary case; this picks the hold
+		# back up and relabels the bar, so one gesture carries two verbs and the
+		# deeper commitment sits literally deeper in the hold.
+		if _can_file():
+			_stage = 1
+			_holding = true
+			_sync_gauge()
+		return
+	_recover()
 
 
 func marker_color() -> Color:
@@ -250,7 +339,10 @@ func on_tapped() -> void:
 		Palette.RIVAL if foreign else _accent(), 1.2)
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud and hud.has_method("prompt"):
-		if reading():
+		if reading() and _can_file():
+			# §96. Both stops named in one sentence, because they are one hold.
+			hud.prompt("SOMEBODY ELSE'S BEACON — A PAGE IS CLIPPED TO THE MAST. HOLD TO READ IT, AND KEEP HOLDING TO FILE YOUR RETURN")
+		elif reading():
 			hud.prompt("SOMEBODY ELSE'S BEACON — A PAGE IS CLIPPED TO THE MAST. HOLD TO READ IT")
 		elif foreign:
 			hud.prompt("SOMEBODY ELSE'S BEACON — THE ANCHOR CODE IS NOT YOURS")
@@ -269,8 +361,7 @@ func _approach() -> void:
 func _sync_gauge() -> void:
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud:
-		hud.crack_progress(_progress if _progress > 0.001 else -1.0,
-			"READING THE PAGE" if reading() else "RECOVERING BEACON")
+		hud.crack_progress(_progress if _progress > 0.001 else -1.0, _gauge_label())
 
 
 func _read_page() -> void:
@@ -284,11 +375,46 @@ func _read_page() -> void:
 	_progress = 0.0
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud:
-		hud.crack_progress(-1.0)
+		# LABELLED, not bare: hud.crack_progress writes the label BEFORE its
+		# negative-t early return, so a bare clear stamps the derelict's
+		# "BREACHING HULL" onto this bar for the whole drain. Shipped that way
+		# in §93 and invisible only because the box was usually already fading.
+		hud.crack_progress(-1.0, _gauge_label())
 		hud.show_broadcast("DIRECTIVE 9 — PAGE %d OF %d · PASSED HAND TO HAND"
 			% [page, DIRECTIVE_PAGES.size()], page_text(), Palette.RIVAL)
 	Sfx.play("equip", -10.0, 0.8)
 	FX.ring_pulse(get_parent(), global_position, Palette.RIVAL, 2.4, 0.7)
+
+
+func _file_return() -> void:
+	# §96. THE RETURN GOES OUT. Everything that decides WHAT is filed lives in
+	# main (network_filing_plan / file_charts_with_network), beside the
+	# counter's own verb and the cell/band glue -- this node's whole job is the
+	# gesture that asks for it.
+	var hud := get_tree().get_first_node_in_group("hud")
+	var main := get_tree().get_first_node_in_group("main")
+	if hud:
+		hud.crack_progress(-1.0, _gauge_label())
+	if main == null or not main.has_method("file_charts_with_network"):
+		return
+	var cells: int = main.file_charts_with_network()
+	if cells <= 0:
+		# The refusal states its own terms, and it is reachable: the plan is
+		# recomputed at completion rather than trusted from four seconds ago,
+		# because a hold is long enough for a hold to fill or a rival to arrive.
+		if hud and hud.has_method("show_toast"):
+			hud.show_toast("NOTHING NEW TO FILE — THE NETWORK ALREADY HOLDS YOUR MARKS",
+				Palette.RIVAL)
+		return
+	if hud and hud.has_method("show_toast"):
+		hud.show_toast("RETURN FILED — %d CELL%s, PASSED HAND TO HAND" % [
+			cells, "" if cells == 1 else "S"], Palette.RIVAL)
+	Sfx.play("equip", -8.0, 0.65)
+	FX.ring_pulse(get_parent(), global_position, Palette.RIVAL, 3.2, 0.9)
+	# AND THE CHANNEL ANSWERS, at the mast rather than at the next band
+	# crossing: the crossing is unreachable from the deep where filing happens.
+	if main.has_method("network_reply"):
+		main.network_reply(cells, global_position)
 
 
 func _recover() -> void:
@@ -300,7 +426,7 @@ func _recover() -> void:
 	GameState.recover_beacon(system_id, global_position.x, global_position.z)
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud:
-		hud.crack_progress(-1.0)
+		hud.crack_progress(-1.0, _gauge_label())
 		hud.show_toast("BEACON RECOVERED — %d IN STOCK" % GameState.beacon_stock_left(),
 			_accent())
 	Sfx.play("equip", -10.0, 1.1)

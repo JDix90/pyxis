@@ -592,6 +592,21 @@ func _select(screen_pos: Vector2) -> bool:
 	if port and port.has_method("on_tapped"):
 		port.on_tapped()
 		return true
+	# §96. BEACONS, AND THIS BRANCH WAS MISSING. The hold ladder above has
+	# picked "beacon" since v20, but this ladder never has -- so Beacon.on_tapped
+	# existed, was improved in §93 to answer all three of its cases, and was
+	# never once reachable from a finger or a mouse. That is §88's exact lesson
+	# repeating on the file §88 was written about: a wired verb with no
+	# affordance is an unbuilt feature, and the only reliable way to catch it is
+	# to check the LADDER rather than the function.
+	#
+	# Placed here to mirror the hold ladder's own order (crackable, mineable,
+	# beacon, hyper, unsounded), so the two ladders resolve a contested tap the
+	# same way.
+	var beacon := _pick(screen_pos, "beacon")
+	if beacon and beacon.has_method("on_tapped"):
+		beacon.on_tapped()
+		return true
 	# v22 (88). The instruments, last for the hold ladder's own reason: they are
 	# the biggest thing on screen when they are on it, so any contested tap
 	# should resolve to the smaller thing first. Before this line, CLICKING the

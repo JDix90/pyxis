@@ -33,7 +33,7 @@ signal lane_opened(id: String)
 signal standing_shifted(other: String, delta: int, band: int)
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 24
+const SAVE_VERSION := 25
 const SAVE_DEBOUNCE := 1.0
 
 # v6 defaults. Kept as one dictionary each so a migration only has to merge
@@ -1633,6 +1633,58 @@ func is_survey_filed(key: String) -> bool:
 	return survey_filed.has(key)
 
 
+# v25 (§96). THE VALUE OF A FILED CELL, and until this horizon there was not
+# one -- every write was the literal `true`. A cell filed with the refusers'
+# network instead of an Authority counter carries HELD instead, so the store
+# says WHERE the return went rather than only that it went.
+#
+# A VALUE, NOT A SECOND SET. A parallel `survey_held` dictionary would be a
+# second store needing its own bound, its own loader and its own eviction, and
+# §17 refuses exactly that; as a value it inherits the subset invariant and the
+# cap for free -- a held cell is evicted with its coverage key like any other,
+# and the wreck's four-hundred-cell log stays true.
+const HELD := "held"
+
+
+func is_survey_held(key: String) -> bool:
+	# The accessor that did not exist before this horizon: every reader of this
+	# store asked `.has()` and nothing anywhere looked at a value.
+	return String(survey_filed.get(key, "")) == HELD
+
+
+func note_survey_held(key: String) -> bool:
+	# THE SIBLING MUTATOR, and it exists because note_survey_filed CANNOT do
+	# this. That function's first line refuses a key already in the store --
+	# correctly, for its own job, since filing twice at a counter must not pay
+	# twice -- so promoting a cell the pilot already sold at a port is a no-op
+	# through it. This one upgrades.
+	#
+	# Still refuses a cell that is not in coverage, which is where the subset
+	# invariant is actually enforced, and still queues the save: a held mark
+	# that only reached disk on the next ambient write would be lost to a crash
+	# in exactly the session the player flew six thousand units for it.
+	if not survey_coverage.has(key) or is_survey_held(key):
+		return false
+	survey_filed[key] = HELD
+	_queue_save()
+	return true
+
+
+func held_cells(system_id := "") -> Array:
+	# Coverage that went to the network, optionally for one system. unfiled_cells'
+	# shape and unfiled_cells' reason: a UI that wants to say "eleven held"
+	# should not be walking the store itself.
+	var prefix := system_id + ":"
+	var out: Array = []
+	for k_v in survey_coverage:
+		var k := String(k_v)
+		if system_id != "" and not k.begins_with(prefix):
+			continue
+		if is_survey_held(k):
+			out.append(k)
+	return out
+
+
 func unfiled_cells(system_id := "") -> Array:
 	# Coverage minus filed, optionally for one system. The pricing half of this
 	# lands in the next commit; the accessor is here because the store is here,
@@ -1692,10 +1744,26 @@ func _load_survey_filed(saved: Dictionary) -> void:
 	# same reason.
 	survey_filed = {}
 	for key_v in saved:
-		if not bool(saved[key_v]):
-			continue
 		var key := String(key_v)
-		if survey_coverage.has(key):
+		if not survey_coverage.has(key):
+			continue
+		# v25 (§96). THE VALUE IS PRESERVED, and it was not before -- this line
+		# wrote the literal `true` and dropped whatever the file held, which was
+		# harmless for two versions because the only value that ever existed WAS
+		# true. The moment a cell can be HELD, that same line silently converts
+		# every network filing back into a counter filing on the next load: the
+		# store would be right all session and wrong forever after, with nothing
+		# dropped and no error anywhere.
+		#
+		# Validated by TYPE rather than by bool() coercion, _load_deep_logs'
+		# posture for a store whose value means something. Exactly two values are
+		# legal; anything else -- a number, a dictionary, "nonsense" -- is not a
+		# third state to be tolerated, it is a corrupt entry to drop. `false`
+		# drops here as it always did, which keeps migrate21's rubbish pass true.
+		var raw = saved[key_v]
+		if typeof(raw) == TYPE_STRING and String(raw) == HELD:
+			survey_filed[key] = HELD
+		elif typeof(raw) == TYPE_BOOL and bool(raw):
 			survey_filed[key] = true
 
 
@@ -1807,6 +1875,22 @@ func knows_directive_9() -> bool:
 	for key_v in deep_logs:
 		if String(key_v).ends_with(":return") \
 				and int(deep_logs[key_v]) >= DIRECTIVE_STAGE:
+			return true
+	return false
+
+
+func heard_the_request() -> bool:
+	# v25 (§96). THE THIRD RUNG, and the last one the record has. Fragment 3 of
+	# the bearing-terminus archive is the ASK -- "file a return for us" -- and
+	# this gates the verb that answers it. One step past knows_directive_9,
+	# which gates only knowing the order was given.
+	#
+	# Scanned for a suffix rather than asked of pyx03 by name, its two siblings'
+	# rule: a future system authoring the `return` datum is covered with no
+	# second place to edit.
+	for key_v in deep_logs:
+		if String(key_v).ends_with(":return") \
+				and int(deep_logs[key_v]) >= DEEP_LOG_STAGE_MAX:
 			return true
 	return false
 

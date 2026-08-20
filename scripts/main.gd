@@ -94,6 +94,7 @@ const HARNESS_VARS := [
 	"PYXIS_PAUSETEST",
 	"PYXIS_PHASE2SHOTS",
 	"PYXIS_RADARTEST",
+	"PYXIS_RETURNTEST",
 	"PYXIS_PROFILETEST",
 	"PYXIS_RAIDTEST",
 	"PYXIS_RIFTTEST",
@@ -1091,6 +1092,13 @@ func _ready() -> void:
 		_enter_playing()
 		_run_berth_test()
 		return
+	if OS.get_environment("PYXIS_RETURNTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_return_test()
+		return
 	if OS.get_environment("PYXIS_PROFILETEST") != "":
 		# NOT lock_saving, and this is the second harness after SAVETEST that
 		# cannot use it: the whole subject is the file layer, and a suite that
@@ -1347,6 +1355,142 @@ func file_charts_on_sale(good: String, units: int) -> int:
 			hud.show_toast("%d CELL%s ALREADY FILED — SOMEBODY IS OUT HERE" % [
 				lost, "" if lost == 1 else "S"], Palette.RIVAL)
 	return bonus
+
+
+func network_filing_plan() -> Dictionary:
+	# WHAT A FILING AT THIS MAST WOULD DO, computed and never applied. Returned
+	# as {cells, goods, lost} so the beacon can decide whether to offer the verb
+	# at all, and so an assertion can ask the question without performing it.
+	#
+	# THE GOODS ARE THE PRICE, so the goods are also the LIMIT. The counter's
+	# join is "the band must match the good because the good IS the band"; this
+	# is that join read the other way -- for every chart good in the hold, the
+	# whole readings it holds file that many cells of the good's own band. A
+	# pilot with two units of chart_drift files one band-2 cell and nothing
+	# else, however many thousand cells their coverage holds.
+	#
+	# That bound matters twice: unfiled_cells() spans EVERY system and can carry
+	# a thousand keys, while a hold caps near a hundred units -- so "file
+	# everything at once" without the goods join would file cells the pilot has
+	# nothing to pay with, and the two halves would drift apart silently.
+	var plan := {"cells": [], "goods": {}, "lost": []}
+	for good_v in GameState.cargo:
+		var good := String(good_v)
+		var band := CommodityDB.chart_band_of(good)
+		if band < 0:
+			continue
+		@warning_ignore("integer_division")
+		var readings := int(GameState.cargo[good_v]) / SurveyMast.YIELD_UNITS
+		if readings <= 0:
+			continue
+		var taken := 0
+		for key_v in GameState.unfiled_cells():
+			var key := String(key_v)
+			if cell_band_of_key(key) != band:
+				continue
+			# THE RIVAL'S CELLS COME HOME FREE, and this is the counter's sweep
+			# with its meaning inverted. At a counter a rival-filed cell is a
+			# loss: swept out of the ledger, no bonus, somebody was first. Here
+			# the somebody IS the network -- their colleague already clipped
+			# that mark to a mast -- so it is held without costing a reading.
+			# THE RIVAL NEVER TAKES WHAT YOU HAVE still holds: they took the
+			# chance, and out here the chance was never money.
+			if Rival.filed(key, cell_depth_of_key(key), GameState.run_seed,
+					GameState.played_seconds):
+				(plan["lost"] as Array).append(key)
+				continue
+			if taken >= readings:
+				continue
+			(plan["cells"] as Array).append(key)
+			taken += 1
+		if taken > 0:
+			(plan["goods"] as Dictionary)[good] = taken * SurveyMast.YIELD_UNITS
+	return plan
+
+
+func file_charts_with_network() -> int:
+	# THE VERB THE LAST FRAGMENT ASKS FOR. Deliberately NOT a branch inside
+	# file_charts_on_sale: that function is the counter's, it pays a bonus and
+	# moves the ledger, and THE BONUS IS NOT THE PRICE asserts that it touches
+	# no cargo at all. Two verbs, two functions, no flag between them.
+	#
+	# Returns how many cells were filed, so the caller can say a number.
+	var plan := network_filing_plan()
+	var cells: Array = plan["cells"]
+	var lost: Array = plan["lost"]
+	if cells.is_empty() and lost.is_empty():
+		return 0
+	for key_v in cells:
+		GameState.note_survey_held(String(key_v))
+	for key_v in lost:
+		GameState.note_survey_held(String(key_v))
+	# THE GOODS LEAVE LAST, after the marks are safe. No credits, no bonus, no
+	# cells_filed, no chart_data_sold: the Commission cannot hear about this and
+	# the wallet does not move. The whole payment is that somebody reads it.
+	for good_v in (plan["goods"] as Dictionary):
+		GameState.unload_cargo(String(good_v), int(plan["goods"][good_v]))
+	if hud:
+		hud.refresh_cargo()
+	return cells.size()
+
+
+# The channel never gives the same name twice, and never gives a real one.
+# Every name in this arc is what somebody ELSE calls them; this is the one
+# surface where they speak for themselves, so it is the one surface that must
+# not settle into an identity.
+const CHANNEL_SENDERS := [
+	"A CHANNEL, KEPT OPEN — LISTENING",
+	"A CHANNEL, KEPT OPEN — NO CALL SIGN OFFERED",
+	"SOMEBODY'S RELAY — THE HANDSHAKE IS OLD",
+	"A KEPT CHANNEL",
+	"· · · — A CARRIER THAT ANSWERS",
+]
+
+
+func network_reply(cells: int, at: Vector3) -> void:
+	# THE ANSWER, SPOKEN AT THE MAST. The draft hung this on the next outward
+	# band crossing, riding the after-register's slot -- and that is unreachable
+	# where it matters: _tick_broadcast fires only on band > _broadcast_band,
+	# band tops out at 6, and this verb lives on band-3+ beacons. A pilot who
+	# files in THE UNSOUNDED has already spent every crossing getting there, so
+	# the reply would have been silent in exactly the place a filing is most
+	# likely. Two per-system overrides would have eaten it in two more.
+	#
+	# Answering at the mast is also the better beat: an irreversible act that
+	# costs cargo should be answered where it happens, not fifteen minutes later
+	# somewhere else.
+	if hud == null:
+		return
+	var sender := String(CHANNEL_SENDERS[
+		absi(hash("%s|%d|%d" % [system_id, cells, int(GameState.played_seconds)]))
+		% CHANNEL_SENDERS.size()])
+	# NOTHING IS SEEN YET, and the empty dictionary is the honest argument until
+	# commit 2 gives marks a store. A pilot cannot resolve a mark before buoys
+	# exist, so "unseen" is "all of them" and passing a real store now would be
+	# inventing state for a feature that has not shipped.
+	var mark := FarMarks.nearest_unseen(system_id, GameState.run_seed, at, {})
+	var body := ("Your return is read. It is held, and it is true, and somebody "
+		+ "knows it. ")
+	if mark.is_empty():
+		# A SENTENCE FOR THE EMPTY CASE, because the alternative is quoting a
+		# bearing of zero. A pilot who has resolved every mark in this system
+		# has earned a different answer, not a broken one.
+		body += "You have read every mark we keep in this system. There is nothing here we know that you do not."
+	else:
+		# The DIFFERENCE, never the world position (§60): a bearing is where the
+		# player must turn, and at six thousand units an origin-relative number
+		# is one nobody can fly.
+		var player: PlayerShip = get_tree().get_first_node_in_group("player")
+		var from: Vector3 = player.global_position if player else at
+		var deg := DeepSpace.compass_deg((mark["pos"] as Vector3) - from)
+		body += "There is a mark at bearing %03d, %s out — it is ours, and now it is yours to read." % [
+			deg, _comma_int(int(mark["range"]))]
+		# 48 CHARACTERS IS THE WHOLE LINE (note_log truncates at LOG_LINE_MAX
+		# with no warning), and the bearing is the payload -- so the bearing goes
+		# early enough to survive. The draft's version was 63 characters and
+		# would have been cut exactly where the number started.
+		GameState.note_log("NETWORK HOLDS IT — A MARK AT %03d" % deg)
+	hud.show_broadcast(sender, body, Palette.RIVAL)
 
 
 func drop_beacon_here() -> bool:
@@ -15223,6 +15367,208 @@ func _run_berth_test() -> void:
 	get_tree().quit()
 
 
+# --- the filed return test ---------------------------------------------------
+
+func _run_return_test() -> void:
+	# THE VERB THE LAST FRAGMENT ASKS FOR, asserted as the five promises it
+	# makes: it is gated on hearing the ask, it pays nothing at all, the goods
+	# are its limit, held survives a save, and the rival's cells come home free.
+	var sid := GameState.current_system
+
+	var arm := func(stage: int) -> void:
+		GameState.deep_logs = {}
+		if stage > 0:
+			GameState.deep_logs["pyx03:return"] = stage
+
+	# 1. THE ASK IS THE GATE. heard_the_request turns on the LAST fragment of
+	#    the bearing-terminus record and nothing earlier -- knowing the order
+	#    was given (stage 2, §92's gate) is not being asked to answer it.
+	arm.call(1)
+	var off_1 := not GameState.heard_the_request()
+	arm.call(2)
+	var off_2 := not GameState.heard_the_request() and GameState.knows_directive_9()
+	arm.call(3)
+	var on_3 := GameState.heard_the_request()
+	print("[return] THE ASK IS THE GATE off at fragment 1=%s, still off at 2 while the order IS known=%s, on at 3=%s -> %s" % [
+		str(off_1), str(off_2), str(on_3),
+		"PASS" if off_1 and off_2 and on_3 else "FAIL"])
+
+	# 2. THE GOODS ARE THE LIMIT. A hold of two units of one band files exactly
+	#    one cell of that band and nothing else, however much coverage the pilot
+	#    is carrying -- unfiled_cells() spans every system and can hold a
+	#    thousand keys, so without the join the two halves drift apart silently.
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+	GameState.cargo = {}
+	var band2 := ""
+	var band3 := ""
+	for cx in range(1, 400):
+		var k := DeepSpace.cell_key(sid, cx, 0)
+		var b := cell_band_of_key(k)
+		if b == 2 and band2 == "":
+			band2 = k
+		elif b == 3 and band3 == "":
+			band3 = k
+		if band2 != "" and band3 != "":
+			break
+	GameState.note_survey_worked(band2)
+	GameState.note_survey_worked(band3)
+	# Two units is exactly one reading, and the good IS the band.
+	GameState.load_cargo("chart_drift", SurveyMast.YIELD_UNITS)
+	var plan := network_filing_plan()
+	var only_matching: bool = (plan["cells"] as Array).size() == 1 \
+		and String((plan["cells"] as Array)[0]) == band2
+	print("[return] THE GOODS ARE THE LIMIT 2 cells surveyed in 2 bands, one reading of band-2 charts held: plan files %d (band-2 only=%s) -> %s" % [
+		(plan["cells"] as Array).size(), str(only_matching),
+		"PASS" if only_matching else "FAIL"])
+
+	# 3. IT PAYS NOTHING. The whole design in one leg, driven through the real
+	#    verb: the wallet, the ledger, the Commission's own counter and GSA
+	#    standing must all be byte-identical across a filing, and the goods must
+	#    be gone. A single number moving here would make the network a worse
+	#    counter instead of a different act.
+	var salv_before := GameState.salvage
+	var ledger_before := JSON.stringify(GameState.ledger)
+	var gsa_before := GameState.faction_attitude(FactionDB.SURVEYOR, "gsa")
+	var cargo_before := GameState.cargo_used()
+	var filed := file_charts_with_network()
+	var paid_nothing: bool = GameState.salvage == salv_before \
+		and JSON.stringify(GameState.ledger) == ledger_before \
+		and GameState.faction_attitude(FactionDB.SURVEYOR, "gsa") == gsa_before \
+		and GameState.cargo_used() == cargo_before - SurveyMast.YIELD_UNITS \
+		and GameState.is_survey_held(band2) \
+		and not GameState.is_survey_held(band3)
+	print("[return] IT PAYS NOTHING filed %d cell; salvage %d->%d, ledger unmoved=%s, GSA standing unmoved=%s, goods gone=%s; the band-3 cell is untouched=%s -> %s" % [
+		filed, salv_before, GameState.salvage,
+		str(JSON.stringify(GameState.ledger) == ledger_before),
+		str(GameState.faction_attitude(FactionDB.SURVEYOR, "gsa") == gsa_before),
+		str(GameState.cargo_used() == cargo_before - SurveyMast.YIELD_UNITS),
+		str(not GameState.is_survey_held(band3)),
+		"PASS" if filed == 1 and paid_nothing else "FAIL"])
+
+	# 4. HELD SURVIVES THE FILE, and this is the one the loader would have
+	#    eaten. _load_survey_filed wrote the literal `true` for two versions and
+	#    discarded whatever the file held -- harmless while true was the only
+	#    value that existed, and silently fatal the moment a cell can be HELD:
+	#    right all session, wrong forever after, with nothing dropped and no
+	#    error. Driven through the real serializer and the real loader.
+	var probe := "user://returntest_probe.json"
+	var real_path := GameState.save_path
+	var dict := GameState.save_dict()
+	var f := FileAccess.open(probe, FileAccess.WRITE)
+	f.store_string(JSON.stringify(dict))
+	f.close()
+	GameState.save_path = probe
+	GameState.load_game()
+	GameState.save_path = real_path
+	var survived: bool = GameState.is_survey_held(band2) \
+		and GameState.is_survey_filed(band2)
+	# AND A COUNTER FILING IS STILL A COUNTER FILING after the round trip: a
+	# loader that promoted everything would pass the clause above.
+	GameState.note_survey_filed(band3)
+	var dict2 := GameState.save_dict()
+	var f2 := FileAccess.open(probe, FileAccess.WRITE)
+	f2.store_string(JSON.stringify(dict2))
+	f2.close()
+	GameState.save_path = probe
+	GameState.load_game()
+	GameState.save_path = real_path
+	var not_promoted: bool = GameState.is_survey_filed(band3) \
+		and not GameState.is_survey_held(band3)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(probe))
+	print("[return] HELD SURVIVES THE FILE a network cell reloads held=%s; a counter cell reloads filed and NOT held=%s -> %s" % [
+		str(survived), str(not_promoted),
+		"PASS" if survived and not_promoted else "FAIL"])
+
+	# 5. HELD IS STILL A SUBSET, AND THE CAP STILL TAKES IT. §17's bound is not
+	#    suspended for a cell the network holds -- an exemption would be exactly
+	#    the second unbounded store the cap exists to refuse, and it would make
+	#    the wreck's four-hundred-cell log false.
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+	for i in range(GameState.SURVEY_CELL_CAP + 12):
+		var k2 := DeepSpace.cell_key(sid, 900 + i, 7)
+		GameState.note_survey_worked(k2)
+		GameState.note_survey_held(k2)
+	var capped: bool = GameState.survey_coverage.size() == GameState.SURVEY_CELL_CAP
+	var subset := true
+	for k_v in GameState.survey_filed:
+		if not GameState.survey_coverage.has(String(k_v)):
+			subset = false
+	print("[return] THE CAP TAKES HELD CELLS TOO %d worked and held, coverage settled at %d (cap %d)=%s, filed still a subset=%s -> %s" % [
+		GameState.SURVEY_CELL_CAP + 12, GameState.survey_coverage.size(),
+		GameState.SURVEY_CELL_CAP, str(capped), str(subset),
+		"PASS" if capped and subset and GameState.survey_filed.size() <= GameState.SURVEY_CELL_CAP
+			else "FAIL"])
+
+	# 6. THE MARKS ARE OUT THERE AND THEY ARE BOUNDED. The generator commit 2
+	#    builds buoys from, swept here because a placement rule at nine thousand
+	#    units cannot be checked by flying to it. Deterministic, capped, past
+	#    every archive, and separated.
+	var det := true
+	var too_close := ""
+	var out_of_window := ""
+	var total := 0
+	for sid_v in SystemDB.ids():
+		var s2 := String(sid_v)
+		var a := FarMarks.positions(s2, GameState.run_seed)
+		var b2 := FarMarks.positions(s2, GameState.run_seed)
+		if str(a) != str(b2):
+			det = false
+		total += a.size()
+		var bounds := SystemDB.bounds_of(s2)
+		for i in range(a.size()):
+			var d := (a[i] as Vector3).length() - bounds
+			if d < FarMarks.DEPTH_MIN - 1.0 or d > FarMarks.DEPTH_MAX + 1.0:
+				out_of_window += "%s:%d " % [s2, i]
+			for j in range(i + 1, a.size()):
+				if (a[i] as Vector3).distance_to(a[j] as Vector3) < FarMarks.MIN_SEPARATION:
+					too_close += "%s:%d/%d " % [s2, i, j]
+	var deepest_archive := 0.0
+	for k3_v in UnsoundedSite.DEPTHS:
+		deepest_archive = maxf(deepest_archive, float(UnsoundedSite.DEPTHS[k3_v]))
+	print("[return] THE MARKS ARE BOUNDED %d marks over %d systems (cap %d each), deterministic=%s, all inside [%.0f,%.0f]: %s, separated: %s; past the deepest archive (%.0f)=%s -> %s" % [
+		total, SystemDB.ids().size(), FarMarks.PER_SYSTEM, str(det),
+		FarMarks.DEPTH_MIN, FarMarks.DEPTH_MAX,
+		"yes" if out_of_window == "" else out_of_window,
+		"yes" if too_close == "" else too_close, deepest_archive,
+		str(FarMarks.DEPTH_MIN > deepest_archive),
+		"PASS" if det and out_of_window == "" and too_close == ""
+			and total <= FarMarks.PER_SYSTEM * SystemDB.ids().size()
+			and FarMarks.DEPTH_MIN > deepest_archive else "FAIL"])
+
+	# 7. A SINGULAR LEGEND IS SINGULAR. The rule that makes a legend worth
+	#    telling somebody about, and the one a rejection-test implementation
+	#    would fail open on. Swept over many seeds rather than one, because
+	#    "at most once" is a claim about every run, not about this one.
+	var dupes := ""
+	var seen_kinds := {}
+	for seed_i in 60:
+		var plan_r := FarMarks.run_plan(seed_i * 7919 + 13, SystemDB.ids())
+		var count := {}
+		for k4_v in plan_r:
+			var kind := String(plan_r[k4_v])
+			count[kind] = int(count.get(kind, 0)) + 1
+			seen_kinds[kind] = true
+		for kind_v in FarMarks.SINGULAR:
+			if int(count.get(String(kind_v), 0)) > 1:
+				dupes += "%s x%d " % [String(kind_v), int(count[kind_v])]
+	var every_kind_reachable := true
+	for kind2_v in FarMarks.kinds():
+		if not seen_kinds.has(String(kind2_v)):
+			every_kind_reachable = false
+	print("[return] A SINGULAR LEGEND IS SINGULAR 60 seeds: singular kinds appearing twice in one run: %s; all %d kinds reachable across seeds=%s -> %s" % [
+		"none" if dupes == "" else dupes, FarMarks.kinds().size(),
+		str(every_kind_reachable),
+		"PASS" if dupes == "" and every_kind_reachable else "FAIL"])
+
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+	GameState.deep_logs = {}
+	GameState.cargo = {}
+	get_tree().quit()
+
+
 # --- pilot profiles test ----------------------------------------------------
 
 const SAVE_TEST_PREFS := "user://test_prefs.json"
@@ -16579,6 +16925,68 @@ func _run_save_test() -> void:
 			str(no_berths), str(kept23), str(free_slot_refused), str(cleaned24),
 			"PASS" if ok23 and no_berths and kept23 and free_slot_refused
 				and cleaned24 else "FAIL"])
+	elif mode == "migrate24":
+		# v25 gives survey_filed a VALUE. No migration branch, the standing rule:
+		# every v24 entry is the literal `true`, which is exactly what a cell
+		# filed at a counter still means -- so a v24 pilot loads with every cell
+		# filed and none held, which is true of them.
+		#
+		# THE RUBBISH PASS IS THE POINT HERE. The value used to be checked with
+		# bool() and then thrown away; now it is checked by TYPE, and this leg
+		# holds both halves: the two legal values survive, and a hand-edited
+		# third state is dropped rather than becoming a new kind of filing.
+		var v24 := {
+			"version": 24,
+			"salvage": 5200,
+			"current_system": "pyx01",
+			"run_seed": 242424,
+			"tutorial_step": -1,
+			"survey_coverage": {"pyx01:8:8": true, "pyx01:9:9": true},
+			"survey_filed": {"pyx01:8:8": true},
+		}
+		var f24 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f24.store_string(JSON.stringify(v24))
+		f24.close()
+		var ok24 := GameState.load_game()
+		var kept24: bool = GameState.salvage == 5200 \
+			and GameState.is_survey_filed("pyx01:8:8") \
+			and GameState.survey_coverage.size() == 2
+		var none_held: bool = GameState.held_cells().is_empty() \
+			and not GameState.is_survey_held("pyx01:8:8")
+
+		var dirty25 := {
+			"version": 25,
+			"salvage": 5200,
+			"run_seed": 242424,
+			"tutorial_step": -1,
+			"survey_coverage": {
+				"pyx01:8:8": true, "pyx01:9:9": true, "pyx01:10:10": true,
+				"pyx01:11:11": true, "pyx01:12:12": true,
+			},
+			"survey_filed": {
+				"pyx01:8:8": "held",      # good -- the network holds it
+				"pyx01:9:9": true,        # good -- a counter filed it
+				"pyx01:10:10": false,     # falsey: dropped, as it always was
+				"pyx01:11:11": "nonsense",  # not a state this store has
+				"pyx01:12:12": 3,         # not a state either
+				"pyx01:99:99": "held",    # held, but never surveyed: not a subset
+			},
+		}
+		var fd25 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fd25.store_string(JSON.stringify(dirty25))
+		fd25.close()
+		GameState.load_game()
+		var cleaned25: bool = GameState.survey_filed.size() == 2 \
+			and GameState.is_survey_held("pyx01:8:8") \
+			and GameState.is_survey_filed("pyx01:9:9") \
+			and not GameState.is_survey_held("pyx01:9:9") \
+			and not GameState.is_survey_filed("pyx01:10:10") \
+			and not GameState.is_survey_filed("pyx01:11:11") \
+			and not GameState.is_survey_filed("pyx01:12:12") \
+			and not GameState.is_survey_filed("pyx01:99:99")
+		print("[savetest] v24->v25 A V24 SAVE HAS FILED, NEVER HELD state kept=%s, nothing held=%s; rubbish pass kept 2 of 6 (falsey, two impostor values and a non-subset key dropped, held preserved as held)=%s -> %s" % [
+			str(kept24), str(none_held), str(cleaned25),
+			"PASS" if ok24 and kept24 and none_held and cleaned25 else "FAIL"])
 	elif mode == "future":
 		# A SAVE FROM A NEWER BUILD. Refusing to load it was never the hard
 		# part — that clause has always been there. What it did NOT do was stop

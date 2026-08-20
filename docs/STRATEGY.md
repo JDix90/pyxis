@@ -6110,7 +6110,7 @@ decisions R1–R4). Four commits, **none built**:
 
 | # | what | save | status |
 |---|---|---|---|
-| 0 | THE FILED RETURN: two-stage hold on deep foreign beacons — give the goods, no credits, no Commission; the channel answers with a bearing | v25 | **SPECCED**, prose gated on the read-aloud |
+| 0 | THE FILED RETURN: two-stage hold on deep foreign beacons — give the goods, no credits, no Commission; the channel answers with a bearing | **v25** | **BUILT** — §96; a research fan-out killed four parts of the design first, including a loader that would have eaten the feature whole |
 | 1 | THE TRUE CHART: held cells marked on the plot (shape, not hue); the rival annotation re-read as colleagueship | none | **SPECCED** |
 | 2 | THE FAR MARKS: the network's sounding buoys at 6,500–9,000u, five per system on `hyper_positions`' pattern; visible to all, readable only by filers | rides v25 | **SPECCED** |
 | 3 | LEGENDS I, the common three: THE VEIN, THE LAYUP (deposit and withdrawal), THE PROVING DRIFT | rides v25 | **SPECCED** |
@@ -9644,3 +9644,105 @@ legal reuse and one illegal one.
 Four rules now, and all four came from a defect that had already shipped:
 bad indent (§77), unresolved static reference (§77), duplicate declaration
 (§88), shadowed loop variable (here).
+
+## 96. The filed return (v25)
+
+Horizon 9 commit 0. The verb the last fragment asks for: a pilot at a deep
+foreign beacon can file their surveyed cells with the refusers' network instead
+of selling charts at an Authority counter. No credits, no first-filing bonus,
+no Commission progress. The goods leave the hold and the cells become **held**.
+
+The whole payment is that somebody reads it.
+
+### The research pass, and the four things it killed
+
+This commit was preceded by a five-way research fan-out over every subsystem it
+touches, and the design that went in is not the design that came out. Four
+findings, each of which would have shipped a silent defect:
+
+**1. The loader would have eaten the feature whole.** `_load_survey_filed` wrote
+the hard-coded literal `true` and discarded the file's value — harmless for two
+versions, because `true` was the only value that had ever existed. The moment a
+cell can be `"held"`, that line converts every network filing back into a
+counter filing on the next load: right all session, wrong forever after,
+nothing dropped and no error. **Every existing save assertion would have stayed
+green**, because all of them test key presence and none has ever looked at a
+value. The loader now validates by TYPE (`_load_deep_logs`' posture for a store
+whose value means something) and preserves both legal states; `false` still
+drops, which is what keeps migrate21's rubbish pass true.
+
+**2. `note_survey_filed` cannot upgrade.** Its first line refuses a key already
+in the store — correct for a counter that must not pay twice, useless for a
+promotion. Hence `note_survey_held`, a sibling that upgrades and still refuses a
+cell outside coverage.
+
+**3. §93's own assertion would have gone red.** `THE PAGE LEAVES NOTHING BEHIND`
+drives `hold_tick(READ_TIME + 1.0)` — a single 4.0-second tick against a
+3.0-second read, reaching 1.333 in one call — and then requires the save, the
+cargo and the wallet unmoved. Had the overshoot rolled into the filing stage, a
+green assertion about the page would have failed because of a verb it was never
+testing. The stage boundary now **discards the overshoot**: each stage costs a
+fresh hold's worth of seconds, which is also what the bar is telling the player.
+
+**4. The reply had nowhere to fire.** The draft hung it on the next outward band
+crossing. `_tick_broadcast` fires only on `band > _broadcast_band`, band tops out
+at 6, and this verb lives on band-3+ beacons — so a pilot filing in THE
+UNSOUNDED has already spent every crossing getting there, and two per-system
+overrides would have eaten it in two more systems. **The channel answers at the
+mast instead**, which is the better beat regardless: an irreversible act that
+costs cargo should be answered where it happens, not fifteen minutes later
+somewhere else.
+
+The same pass measured the draft's log line at 63 characters against `note_log`'s
+silent 48-character truncation — the bearing, which is the entire payload, would
+have been cut off. It is 32 now.
+
+### And a bug of my own, two horizons old
+
+**`Beacon.on_tapped` has never been reachable.** The hold ladder has picked
+`"beacon"` since v20; the select ladder never has. So the function existed, was
+improved in §93 to answer all three of its cases, and could not be reached by a
+finger or a mouse on any device. That is §88's exact lesson — *a wired verb with
+no affordance is an unbuilt feature* — repeating on the file §88 was written
+about, and the tell is that §93 improved the FUNCTION without checking the
+LADDER. `camera_rig._select` gains the missing branch, in the hold ladder's own
+order so both resolve a contested tap the same way.
+
+### The shape of the verb
+
+**Two stops in one hold** (R1): the first completion reads the page as it
+always did; keeping the finger down rolls into the filing, with the gauge
+relabelled to the terms — the deeper commitment literally deeper in the
+gesture. A `_stage` latch rather than a taller `_progress`, because
+`crack_progress` clamps to 0..1 and a progress running to 2.0 would pin the bar
+full for the whole second stage and show nothing.
+
+**The goods are the price, so the goods are the limit.** The counter's join is
+*"the band must match the good because the good IS the band"*; the network's is
+that join read backwards — every chart good in the hold files as many cells of
+its own band as it holds whole readings. That bound is load-bearing:
+`unfiled_cells()` spans every system and can carry a thousand keys while a hold
+caps near a hundred units, so filing "everything" without the join would file
+cells the pilot has nothing to pay with.
+
+**The rival's cells come home free**, and this is the counter's sweep with its
+meaning inverted. At a counter a rival-filed cell is a loss. Here the somebody
+who was first IS the network — their colleague already clipped that mark to a
+mast — so it is held without costing a reading. `THE RIVAL NEVER TAKES WHAT YOU
+HAVE` still holds: they took the chance, and out here the chance was never
+money.
+
+**No exemption from the cap.** A held cell ages out of the 400-cell window like
+any other. An exemption would be precisely the second unbounded store §17
+refuses, and it would make the wreck's four-hundred-cell log false.
+
+### The generator ships before the nodes
+
+`FarMarks` is pure arithmetic — positions, and which legend stands at each — so
+the channel's reply can name a real bearing a full two commits before any buoy
+is built. §84's own shape: `Rival` shipped as arithmetic the world read before
+anything drew it. A generator can also be swept exhaustively by an assertion,
+which is the only way to prove a placement rule at nine thousand units without
+flying there. The singular rule is enforced **by construction** — kinds are
+dealt off a shrinking list — rather than by a rejection test that could fail
+open and place a second serpent.
