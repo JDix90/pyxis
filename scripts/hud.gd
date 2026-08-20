@@ -1541,6 +1541,14 @@ func broadcast_text() -> String:
 	return _broadcast_body.text if _broadcast_box.visible else ""
 
 
+func broadcast_busy() -> bool:
+	# §96. The plate's counterpart to toast_busy, and it exists for the same
+	# reason: show_broadcast has no queue and explicitly kills the previous
+	# tween, so a second sentence raised while the first is still up does not
+	# stack -- it erases. A caller with something that can WAIT asks first.
+	return _broadcast_box != null and _broadcast_box.visible
+
+
 func toast_busy() -> bool:
 	# Whether a toast is mid-flight. This label has no queue by design (see
 	# show_toast), so a caller with something to say that can WAIT asks first

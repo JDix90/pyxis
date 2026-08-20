@@ -266,6 +266,12 @@ func hold_release() -> void:
 	# §96. THE STAGE ENDS WITH THE HOLD. One continuous hold is the commitment;
 	# letting go and taking hold again starts at the page, which is the right
 	# price for an irreversible act.
+	# THE LABEL IS READ BEFORE THE STAGE IS CLEARED. Reversed, this stamps
+	# "READING THE PAGE" onto a bar the player was using to file -- the exact
+	# mislabelling _read_page's own comment says it is guarding against, and
+	# hud.crack_progress commits the label before its negative-t early return, so
+	# it is the word left on screen for the whole drain.
+	var label := _gauge_label()
 	_stage = 0
 	var hud := get_tree().get_first_node_in_group("hud")
 	# CLEARED UNCONDITIONALLY, and the old `_progress < 1.0` guard is why. It
@@ -275,7 +281,7 @@ func hold_release() -> void:
 	# it back down, which is the exact "released holds drain" feel the gauge
 	# exists to give.
 	if hud:
-		hud.crack_progress(-1.0, _gauge_label())
+		hud.crack_progress(-1.0, label)
 
 
 func hold_tick(delta: float) -> void:
@@ -341,7 +347,11 @@ func on_tapped() -> void:
 	if hud and hud.has_method("prompt"):
 		if reading() and _can_file():
 			# §96. Both stops named in one sentence, because they are one hold.
-			hud.prompt("SOMEBODY ELSE'S BEACON — A PAGE IS CLIPPED TO THE MAST. HOLD TO READ IT, AND KEEP HOLDING TO FILE YOUR RETURN")
+			# SHORT ENOUGH TO RENDER. hud's prompt label is a bare Label with no
+			# autowrap and no width constraint, so it takes its own text width
+			# and centres it -- a hundred-odd characters runs off both ends of a
+			# phone. Both stops still named.
+			hud.prompt("HOLD TO READ THE PAGE — KEEP HOLDING TO FILE YOUR RETURN")
 		elif reading():
 			hud.prompt("SOMEBODY ELSE'S BEACON — A PAGE IS CLIPPED TO THE MAST. HOLD TO READ IT")
 		elif foreign:

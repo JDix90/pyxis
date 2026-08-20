@@ -41,6 +41,18 @@ const MIN_SEPARATION := 1400.0
 const COMMON := ["vein", "layup", "drift"]
 const SINGULAR := ["stillness", "order", "serpent", "orrery", "nursery",
 	"forge", "procession"]
+# HOW MANY OF THE SEVEN A RUN ACTUALLY CARRIES, and this constant is the whole
+# pacing rule rather than a tuning knob. Without it the rule does not exist:
+# three systems x five marks is fifteen slots against seven singulars, so a
+# deal that stops at pool.size() hands EVERY run all seven, every time --
+# "a run with no serpent in it is a normal run" would have been a sentence in a
+# document that the code contradicted on every seed.
+#
+# Four of seven means a run carries a majority of its legends and misses three,
+# and which three is the run's character. It also means the player who has met
+# the serpent and the player who has met the forge have played different games
+# and can say so to each other, which is the entire argument for singulars.
+const SINGULAR_PER_RUN := 4
 
 
 static func kinds() -> Array:
@@ -121,15 +133,19 @@ static func run_plan(run_seed: int, all_systems: Array) -> Dictionary:
 		slots[i] = slots[j]
 		slots[j] = tmp
 	# Deal the singulars first, one each, in a shuffled order of their own — so
-	# which singulars a run carries is itself a draw. A run with more marks than
-	# singulars gets all of them; a run with fewer gets a subset, and the
-	# subset is the run's character.
+	# WHICH singulars a run carries is itself a draw, and the ones it does not
+	# carry simply are not in the world this time.
+	#
+	# The slice is what makes that true. Dealing the whole pool would fill every
+	# run with all seven (there are always more slots than singulars), which is
+	# the opposite of the rule it was meant to implement.
 	var pool := SINGULAR.duplicate()
 	for i in range(pool.size() - 1, 0, -1):
 		var j := rng.randi_range(0, i)
 		var tmp = pool[i]
 		pool[i] = pool[j]
 		pool[j] = tmp
+	pool = pool.slice(0, mini(SINGULAR_PER_RUN, pool.size()))
 	for i in range(slots.size()):
 		if i < pool.size():
 			out[String(slots[i])] = String(pool[i])

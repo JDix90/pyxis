@@ -200,9 +200,9 @@ three legs to the same suite and no new run, and no save bump either — that
 sweep came back green at **730 across 73**. §94 adds `BERTHTEST` (one new run
 carrying six) and the `migrate23` mode (one new run carrying one), at save
 format **v24**; §95 adds four legs to the existing `CONTRACTTEST`, no new run
-and no save bump. §96 then adds `RETURNTEST` (one new run carrying seven) and the `migrate24`
+and no save bump. §96 then adds `RETURNTEST` (one new run carrying eight) and the `migrate24`
 mode (one new run carrying one), at save format **v25**. So the next full sweep
-should read **749 across 77**.
+should read **750 across 77**.
 
 Neither §94 nor §95 has been swept yet — they were built back to back while no
 machine with Godot on it was available, so the 741 is arithmetic, not a

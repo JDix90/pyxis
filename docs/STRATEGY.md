@@ -9736,6 +9736,61 @@ money.
 any other. An exemption would be precisely the second unbounded store §17
 refuses, and it would make the wreck's four-hundred-cell log false.
 
+### And then an adversarial pass found seven more
+
+The build was reviewed by six lenses and each finding refuted by three
+skeptics before it was believed. Fifteen raw findings, and the ones that
+survived are recorded here because four of them are the same defect class this
+project keeps meeting.
+
+**A filing of only rival-reached cells announced a refusal.**
+`file_charts_with_network` returned `cells.size()`, counting the cells the hold
+paid readings for and not the ones a colleague had already filed — so a hold
+where every matching cell was rival-reached moved N cells to held, queued a
+save, and told the player NOTHING NEW TO FILE. Routine rather than exotic: the
+rival takes the shallows within a couple of hours of play.
+
+**And the harness could not have caught it**, which is the more useful half.
+`reset_to_starter` leaves `played_seconds` at 0, RETURNTEST runs synchronously
+so no frame advances it, and `Rival.filed` is false for every cell at t=0 —
+so the entire sweep branch ran in play and never once under test. `THE RIVAL'S
+CELLS COME HOME FREE` now winds the clock forward and drives it.
+
+**The reply destroyed the page it followed.** The filing hold raises two plates
+four seconds apart — the page at the read stop, the channel at the filing stop
+— and `show_broadcast` has no queue: the second kills the first. So obeying the
+prompt's own instruction wiped the page the player had held three seconds to
+earn, and page 5 is the one this arc calls its spine. The reply now waits on a
+new `hud.broadcast_busy()`, `_standing_pending`'s shape and its argument, and
+it is HELD rather than dropped — Barks' rule that a once-per-act payload must
+not be consumed by being suppressed.
+
+**Three assertions were vacuous**, all in the way this project has now met four
+times — measuring something true, but not the thing they claimed:
+
+- `THE ASK IS THE GATE` tested only the accessor's truth table. The gate's sole
+  enforcement point is `Beacon._can_file`, so deleting it from the beacon
+  entirely left the leg green. It now drives a real node.
+- `THE GOODS ARE THE LIMIT` surveyed ONE band-2 cell against one reading, so
+  the `taken >= readings` guard was never reached — the leg measured the band
+  join and nothing else. Four cells now make the budget binding.
+- `THE CAP TAKES HELD CELLS TOO` was satisfied by an EMPTY filed store: a
+  subset loop is vacuously true over nothing, and a size check only bounds from
+  above. A cap that wiped every held mark on the four-hundred-and-first cell
+  would have printed PASS. It now requires equality.
+
+**And `far_marks` contradicted its own spec.** Fifteen slots against seven
+singular kinds meant `run_plan` dealt all seven into every run — *"a run with
+no serpent in it is a normal run"* was a sentence in a document that the code
+disproved on every seed. `SINGULAR_PER_RUN` (four of seven) is the rule; the
+constant is the pacing, not a knob.
+
+Two smaller ones: `hold_release` cleared the stage before reading the gauge
+label, stamping READING THE PAGE on a bar the player was filing with — the
+exact mislabelling the commit's own comment claimed to guard against — and the
+two-stop prompt was 109 characters against a label with no autowrap, which runs
+off both ends of a phone.
+
 ### The generator ships before the nodes
 
 `FarMarks` is pure arithmetic — positions, and which legend stands at each — so

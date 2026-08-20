@@ -1414,7 +1414,14 @@ func file_charts_with_network() -> int:
 	# moves the ledger, and THE BONUS IS NOT THE PRICE asserts that it touches
 	# no cargo at all. Two verbs, two functions, no flag between them.
 	#
-	# Returns how many cells were filed, so the caller can say a number.
+	# Returns HOW MANY CELLS THE NETWORK NOW HOLDS -- both the cells this hold
+	# paid readings for and the ones a colleague had already filed. Counting only
+	# the paid half would be a lie the store could contradict: a hold where every
+	# matching cell was rival-reached moves N cells from unfiled to held, queues
+	# a save, and would have returned zero -- so the caller would announce
+	# "NOTHING NEW TO FILE" for an irreversible act that had just happened. That
+	# is routine rather than exotic, since the rival takes the shallows inside a
+	# couple of hours of play.
 	var plan := network_filing_plan()
 	var cells: Array = plan["cells"]
 	var lost: Array = plan["lost"]
@@ -1431,7 +1438,7 @@ func file_charts_with_network() -> int:
 		GameState.unload_cargo(String(good_v), int(plan["goods"][good_v]))
 	if hud:
 		hud.refresh_cargo()
-	return cells.size()
+	return cells.size() + lost.size()
 
 
 # The channel never gives the same name twice, and never gives a real one.
@@ -1445,6 +1452,16 @@ const CHANNEL_SENDERS := [
 	"A KEPT CHANNEL",
 	"· · · — A CARRIER THAT ANSWERS",
 ]
+
+
+# §96. The channel's answer, waiting its turn. The filing hold raises TWO
+# plates four seconds apart -- the page at the read stop, the reply at the
+# filing stop -- and show_broadcast has no queue: the second kills the first.
+# So following the prompt's own instruction ("keep holding") would destroy the
+# page the player had just held three seconds to earn, and page 5 is the one
+# this arc calls its spine. Deferred behind broadcast_busy, _standing_pending's
+# shape and _standing_pending's argument.
+var _network_reply_pending := {}
 
 
 func network_reply(cells: int, at: Vector3) -> void:
@@ -1461,6 +1478,14 @@ func network_reply(cells: int, at: Vector3) -> void:
 	# somewhere else.
 	if hud == null:
 		return
+	# THE PAGE GETS ITS FULL DWELL. Held rather than dropped: a reply that
+	# simply refused to speak while the plate was busy would lose the bearing
+	# entirely, which is the payload -- Barks' own rule that a once-per-act
+	# payload must not be consumed by being suppressed.
+	if hud.has_method("broadcast_busy") and hud.broadcast_busy():
+		_network_reply_pending = {"cells": cells, "at": at}
+		return
+	_network_reply_pending = {}
 	var sender := String(CHANNEL_SENDERS[
 		absi(hash("%s|%d|%d" % [system_id, cells, int(GameState.played_seconds)]))
 		% CHANNEL_SENDERS.size()])
@@ -2398,6 +2423,14 @@ func _process(delta: float) -> void:
 		air.set_depth(depth)
 		air.set_threat(1.0 if _threat_near_player() else 0.0)
 	_tick_broadcast(depth)
+	# §96. The held reply, flushed the moment the page's plate lets go. Polled
+	# here beside the standing volley rather than timed, so it lands exactly
+	# when the surface is free instead of at a guessed delay.
+	if not _network_reply_pending.is_empty() \
+			and hud != null and not hud.broadcast_busy():
+		var pending := _network_reply_pending
+		_network_reply_pending = {}
+		network_reply(int(pending["cells"]), pending["at"] as Vector3)
 	if not _standing_pending.is_empty():
 		_standing_settle -= delta
 		# WAITS FOR THE SURFACE, not merely for the clock. Three of the movers
@@ -15389,9 +15422,30 @@ func _run_return_test() -> void:
 	var off_2 := not GameState.heard_the_request() and GameState.knows_directive_9()
 	arm.call(3)
 	var on_3 := GameState.heard_the_request()
-	print("[return] THE ASK IS THE GATE off at fragment 1=%s, still off at 2 while the order IS known=%s, on at 3=%s -> %s" % [
-		str(off_1), str(off_2), str(on_3),
-		"PASS" if off_1 and off_2 and on_3 else "FAIL"])
+	# AND THE VERB IS ACTUALLY GATED ON IT. The flag's truth table is not the
+	# feature: the only enforcement point is Beacon._can_file, so a leg that
+	# checked the accessor alone would stay green with the gate deleted from the
+	# beacon entirely. Driven on a real node.
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+	GameState.cargo = {}
+	var gate_cell := DeepSpace.cell_key(sid, 3, 0)
+	GameState.note_survey_worked(gate_cell)
+	GameState.load_cargo("chart_drift", SurveyMast.YIELD_UNITS)
+	var gb := Beacon.new()
+	gb.foreign = true
+	gb.system_id = sid
+	gb.page = 1
+	add_child(gb)
+	await get_tree().process_frame
+	arm.call(2)
+	var node_off := not gb._can_file()
+	arm.call(3)
+	var node_on := gb._can_file()
+	gb.queue_free()
+	print("[return] THE ASK IS THE GATE off at fragment 1=%s, still off at 2 while the order IS known=%s, on at 3=%s; and the mast itself refuses the verb until the ask=%s then offers it=%s -> %s" % [
+		str(off_1), str(off_2), str(on_3), str(node_off), str(node_on),
+		"PASS" if off_1 and off_2 and on_3 and node_off and node_on else "FAIL"])
 
 	# 2. THE GOODS ARE THE LIMIT. A hold of two units of one band files exactly
 	#    one cell of that band and nothing else, however much coverage the pilot
@@ -15411,16 +15465,29 @@ func _run_return_test() -> void:
 			band3 = k
 		if band2 != "" and band3 != "":
 			break
-	GameState.note_survey_worked(band2)
+	# FOUR band-2 cells against ONE reading, so the budget is BINDING. With a
+	# single candidate the `taken >= readings` guard is never reached and the leg
+	# measures only the band join -- it would stay green with the whole reading
+	# budget deleted, which is half the rule it is named for.
+	var band2_all: Array = []
+	for cx in range(1, 400):
+		var k := DeepSpace.cell_key(sid, cx, 0)
+		if cell_band_of_key(k) == 2:
+			band2_all.append(k)
+		if band2_all.size() >= 4:
+			break
+	for k_v in band2_all:
+		GameState.note_survey_worked(String(k_v))
 	GameState.note_survey_worked(band3)
 	# Two units is exactly one reading, and the good IS the band.
 	GameState.load_cargo("chart_drift", SurveyMast.YIELD_UNITS)
 	var plan := network_filing_plan()
 	var only_matching: bool = (plan["cells"] as Array).size() == 1 \
-		and String((plan["cells"] as Array)[0]) == band2
-	print("[return] THE GOODS ARE THE LIMIT 2 cells surveyed in 2 bands, one reading of band-2 charts held: plan files %d (band-2 only=%s) -> %s" % [
-		(plan["cells"] as Array).size(), str(only_matching),
-		"PASS" if only_matching else "FAIL"])
+		and cell_band_of_key(String((plan["cells"] as Array)[0])) == 2
+	band2 = String((plan["cells"] as Array)[0]) if only_matching else band2
+	print("[return] THE GOODS ARE THE LIMIT %d band-2 cells surveyed and 1 band-3, one reading held: plan files %d (band-2 only=%s) -> %s" % [
+		band2_all.size(), (plan["cells"] as Array).size(), str(only_matching),
+		"PASS" if only_matching and band2_all.size() >= 4 else "FAIL"])
 
 	# 3. IT PAYS NOTHING. The whole design in one leg, driven through the real
 	#    verb: the wallet, the ledger, the Commission's own counter and GSA
@@ -15495,10 +15562,19 @@ func _run_return_test() -> void:
 	for k_v in GameState.survey_filed:
 		if not GameState.survey_coverage.has(String(k_v)):
 			subset = false
-	print("[return] THE CAP TAKES HELD CELLS TOO %d worked and held, coverage settled at %d (cap %d)=%s, filed still a subset=%s -> %s" % [
+	# AND THE SURVIVORS ARE STILL HELD. Both original clauses were satisfied by
+	# an EMPTY filed store -- the subset loop is vacuously true over nothing and
+	# a size check only bounds from above -- so a cap that wiped every held mark
+	# on the four-hundred-and-first cell would have printed PASS. The equality
+	# is what makes the leg refuse that: every surviving coverage key was held,
+	# so filed must have exactly as many entries as coverage does.
+	var still_held := GameState.held_cells().size()
+	print("[return] THE CAP TAKES HELD CELLS TOO %d worked and held, coverage settled at %d (cap %d)=%s, filed still a subset=%s, and %d of them are STILL HELD=%s -> %s" % [
 		GameState.SURVEY_CELL_CAP + 12, GameState.survey_coverage.size(),
-		GameState.SURVEY_CELL_CAP, str(capped), str(subset),
-		"PASS" if capped and subset and GameState.survey_filed.size() <= GameState.SURVEY_CELL_CAP
+		GameState.SURVEY_CELL_CAP, str(capped), str(subset), still_held,
+		str(still_held == GameState.SURVEY_CELL_CAP),
+		"PASS" if capped and subset and still_held == GameState.SURVEY_CELL_CAP
+			and GameState.survey_filed.size() == GameState.SURVEY_CELL_CAP
 			else "FAIL"])
 
 	# 6. THE MARKS ARE OUT THERE AND THEY ARE BOUNDED. The generator commit 2
@@ -15534,7 +15610,7 @@ func _run_return_test() -> void:
 		"yes" if too_close == "" else too_close, deepest_archive,
 		str(FarMarks.DEPTH_MIN > deepest_archive),
 		"PASS" if det and out_of_window == "" and too_close == ""
-			and total <= FarMarks.PER_SYSTEM * SystemDB.ids().size()
+			and total == FarMarks.PER_SYSTEM * SystemDB.ids().size()
 			and FarMarks.DEPTH_MIN > deepest_archive else "FAIL"])
 
 	# 7. A SINGULAR LEGEND IS SINGULAR. The rule that makes a legend worth
@@ -15561,6 +15637,51 @@ func _run_return_test() -> void:
 		"none" if dupes == "" else dupes, FarMarks.kinds().size(),
 		str(every_kind_reachable),
 		"PASS" if dupes == "" and every_kind_reachable else "FAIL"])
+
+	# 8. THE RIVAL'S CELLS COME HOME FREE, and this path was DEAD to the harness
+	#    until this leg: reset_to_starter leaves played_seconds at 0, the suite
+	#    runs synchronously so no frame advances it, and Rival.filed is false for
+	#    every cell at t=0 (arrival is never below BASE_S). So the sweep branch
+	#    ran in play and never once under test -- which is exactly where the
+	#    counting bug lived: a filing made up ENTIRELY of rival-reached cells
+	#    moves them all to held, queues a save, and used to report zero, so the
+	#    mast announced "NOTHING NEW TO FILE" for an irreversible act that had
+	#    just happened. Routine, not exotic: the rival takes the shallows inside
+	#    a couple of hours of play.
+	var t_save := GameState.played_seconds
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+	GameState.cargo = {}
+	GameState.played_seconds = 400000.0
+	var rival_cells: Array = []
+	for cx in range(1, 400):
+		var k5 := DeepSpace.cell_key(sid, cx, 0)
+		if cell_band_of_key(k5) != 2:
+			continue
+		if not Rival.filed(k5, cell_depth_of_key(k5), GameState.run_seed,
+				GameState.played_seconds):
+			continue
+		rival_cells.append(k5)
+		if rival_cells.size() >= 3:
+			break
+	for k6_v in rival_cells:
+		GameState.note_survey_worked(String(k6_v))
+	GameState.load_cargo("chart_drift", SurveyMast.YIELD_UNITS)
+	var cargo_r := GameState.cargo_used()
+	var salv_r := GameState.salvage
+	var reported := file_charts_with_network()
+	var all_held := true
+	for k7_v in rival_cells:
+		if not GameState.is_survey_held(String(k7_v)):
+			all_held = false
+	var free_ok: bool = not rival_cells.is_empty() \
+		and all_held and reported == rival_cells.size() \
+		and GameState.cargo_used() == cargo_r \
+		and GameState.salvage == salv_r
+	GameState.played_seconds = t_save
+	print("[return] THE RIVAL'S CELLS COME HOME FREE %d cells the rival reached first: all held=%s, the verb reported %d (not 0), no reading spent (cargo %d->%d) and no pay -> %s" % [
+		rival_cells.size(), str(all_held), reported, cargo_r,
+		GameState.cargo_used(), "PASS" if free_ok else "FAIL"])
 
 	GameState.survey_coverage = {}
 	GameState.survey_filed = {}
