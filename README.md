@@ -208,8 +208,12 @@ bump, since `marks_seen` rides v25 — that sweep came back green at **755 acros
 77**, after one red leg it found in §94 (`MINING COSTS A MOUNT` had been
 counting utility slots off the static table since berths grew it, and had
 therefore been checking nothing for three commits). §99 then adds three more
-legs to `RETURNTEST`, again with no new run, no new mode and no save bump —
-green at **758 across 77**. §100 then adds one more `RETURNTEST` leg (the
+legs to `RETURNTEST`, again with no new run, no new mode and no save bump,
+for a predicted **758 across 77** — **never confirmed by a recorded count**,
+and an earlier revision of this paragraph called it "green" on the strength of
+a passing remark. That was a prediction typed as a measurement, which is the
+one thing this paragraph exists to refuse. **755 across 77 (through §98) is
+the last hard number in this repo.** §100 then adds one more `RETURNTEST` leg (the
 overdraw mechanism), no new run and no bump; §101 adds two more (the vein and
 the layup), likewise; §102 adds three more (the dangerous three legends), also
 with no new run, mode or bump — but it introduces three new `class_name`s
