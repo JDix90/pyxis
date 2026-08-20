@@ -6102,7 +6102,31 @@ and the two living voices answer only a pilot holding all nine fragments.
 returns with the refusers instead of the Authority is what *"file a return for
 us"* is asking, it rides existing fence machinery, and it must not ship in the
 same horizon as the revelation. A discovery that immediately becomes a menu
-option was never a discovery.
+option was never a discovery. It is now Horizon 9's spine — see below.
+
+**Horizon 9 — the true copy** (opened 2026-08-20; specced in
+`docs/HORIZON-9-THE-TRUE-COPY.md`, prose gated on `docs/FAR-MARKS-DRAFT.md`,
+decisions R1–R4). Four commits, **none built**:
+
+| # | what | save | status |
+|---|---|---|---|
+| 0 | THE FILED RETURN: the write verb on deep foreign beacons — give the goods, no credits, no Commission; the plate answers with a bearing | v25 | **SPECCED**, gated on the read-aloud |
+| 1 | THE TRUE CHART: held cells marked on the plot (shape, not hue); the rival annotation re-read as colleagueship | none | **SPECCED** |
+| 2 | THE FAR MARKS: the network's sounding buoys at 6,500–9,000u, bounded at four per system on `hyper_positions`' pattern; visible to all, readable only by filers | rides v25 | **SPECCED** |
+| 3 | THE LEGENDS: four authored encounter kinds at the marks — THE VEIN and THE LAYUP (generous), THE STILLNESS' GROUND (dread), THE STANDING ORDER (the fight) | none | **SPECCED** |
+
+The ideation decisions are settled and recorded in the spec: filing point is
+foreign beacons, all three payoffs ship, and filing stays a donation — the
+goods are the price, the response is the pay, and the network pays in
+bearings, the only currency it has. The far marks are the answer to "what
+makes it worth surveying past the archives": legends are WINDFALLS, never
+income (the charted seams' own posture, no pacing term), so a network filer
+trades steady counter money for access to the deep's windfalls. The Authority
+never notices any of it — no standing shift, no Cordon reaction, and the
+Commission's retired field never moves, which is the horror register keeping
+its own rule. Refused in advance, in the spec's own words: a loyalty system, a
+punishment for filing with the GSA, an eviction exemption for held cells, an
+anatomy for the Stillness, and any counter or checklist for the marks.
 
 **The README's harness counts should be derived, not typed** (open 2026-08-17,
 §77). Three numbers — tag count, SAVETEST mode count, total runs — are

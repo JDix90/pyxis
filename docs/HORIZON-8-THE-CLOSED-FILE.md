@@ -54,11 +54,9 @@ the largest single mechanical change since the horizon system itself; its
 research pass is below, and it found that the obvious version of the feature
 does not work.
 
-**Deferred on purpose:** filing returns with the refusers instead of the
-Authority. It is the verb the last fragment asks for (*"file a return for us"*),
-it rides existing fence machinery, and it must not ship in the same horizon as
-the revelation. A discovery that immediately becomes a menu option was never a
-discovery.
+**Deferred on purpose, and now claimed:** filing returns with the refusers is
+Horizon 9's spine (`docs/HORIZON-9-THE-TRUE-COPY.md`). The deferral did its
+job — the revelation shipped a horizon before the choice it creates.
 
 ---
 
