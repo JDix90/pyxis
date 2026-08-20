@@ -1649,7 +1649,15 @@ const HELD := "held"
 func is_survey_held(key: String) -> bool:
 	# The accessor that did not exist before this horizon: every reader of this
 	# store asked `.has()` and nothing anywhere looked at a value.
-	return String(survey_filed.get(key, "")) == HELD
+	#
+	# TYPE FIRST, and this is not defensive style -- it is required. The store
+	# now holds TWO types: `true` for a counter filing and HELD for a network
+	# one, and `String(true)` is not a constructor GDScript has. Written as a
+	# bare String() this errored on every counter-filed cell it was asked about
+	# and then returned false anyway, so the assertions around it PASSED while
+	# the run logged a script error: a green leg standing on a broken call.
+	var v = survey_filed.get(key, false)
+	return typeof(v) == TYPE_STRING and String(v) == HELD
 
 
 func note_survey_held(key: String) -> bool:

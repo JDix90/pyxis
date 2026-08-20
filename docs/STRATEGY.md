@@ -9791,6 +9791,24 @@ exact mislabelling the commit's own comment claimed to guard against — and the
 two-stop prompt was 109 characters against a label with no autowrap, which runs
 off both ends of a phone.
 
+### And the sweep's third signal is what caught the last one
+
+`RETURNTEST` came back **8 pass, 0 fail, 1 script error** — every assertion
+green over a broken call. `is_survey_held` read the store's value through a
+bare `String()`, and the store now holds two types: `true` for a counter filing
+and `HELD` for a network one. **`String(true)` is not a constructor GDScript
+has.** Asked about any counter-filed cell it errored, returned false anyway,
+and the assertions around it passed on the correct answer arrived at by
+accident.
+
+Nothing in the assertion vocabulary could have caught that: a PASS line is a
+claim about a value, and the value was right. What caught it is
+`run_harness.sh` counting `SCRIPT ERROR` as its own signal beside PASS and
+FAIL, and exiting non-zero on it — the sweep has three signals, not two, and
+this is the first time in nine horizons the third one has been the only one
+that fired. The check reads the value's TYPE now, which is what the loader
+beside it was already doing.
+
 ### The generator ships before the nodes
 
 `FarMarks` is pure arithmetic — positions, and which legend stands at each — so
