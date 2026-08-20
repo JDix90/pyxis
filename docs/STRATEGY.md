@@ -6106,13 +6106,13 @@ option was never a discovery. It is now Horizon 9's spine — see below.
 
 **Horizon 9 — the true copy** (opened 2026-08-20; specced in
 `docs/HORIZON-9-THE-TRUE-COPY.md`, prose gated on `docs/FAR-MARKS-DRAFT.md`,
-decisions R1–R4). Four commits, **none built**:
+decisions R1–R4). Six commits, **three built**:
 
 | # | what | save | status |
 |---|---|---|---|
 | 0 | THE FILED RETURN: two-stage hold on deep foreign beacons — give the goods, no credits, no Commission; the channel answers with a bearing | **v25** | **BUILT** — §96; a research fan-out killed four parts of the design first, including a loader that would have eaten the feature whole |
 | 1 | THE TRUE CHART: held cells marked on the plot (shape, not hue); the rival annotation re-read as colleagueship | none | **BUILT** — §97 |
-| 2 | THE FAR MARKS: the network's sounding buoys at 6,500–9,000u, five per system on `hyper_positions`' pattern; visible to all, readable only by filers | rides v25 | **SPECCED** |
+| 2 | THE FAR MARKS: the network's sounding buoys at 6,500–9,000u, five per system on `hyper_positions`' pattern; visible to all, readable only by filers | rides v25 | **BUILT** — §98; `marks_seen` carries a validated STATE from its first line rather than a boolean that grows a vocabulary later |
 | 3 | LEGENDS I, the common three: THE VEIN, THE LAYUP (deposit and withdrawal), THE PROVING DRIFT | rides v25 | **SPECCED** |
 | 4 | LEGENDS II, the dangerous three: THE STILLNESS' GROUND, THE STANDING ORDER (it hails first), THE SOUNDING SERPENT | none | **SPECCED** |
 | 5 | LEGENDS III, the ongoing three: THE TALLY'S NURSERY (takeable, and they come back for it), THE PATTERN FORGE (escorts), THE PROCESSION'S END | v26 | **SPECCED as a row** — the largest mechanical addition since the horizon system; wants its own research pass, as the berths did |
@@ -9949,3 +9949,129 @@ exactly ONE function that knows how to ask** — `is_survey_held` — and every
 other reader calls it. A rule that says "remember to check typeof at the JSON
 boundary" survives exactly as long as the person remembering; a single guarded
 accessor survives the person.
+
+---
+
+## 98. The far marks (rides v25)
+
+Horizon 9 commit 2. Fifteen buoys — five per system at 6,500–9,000u, past every
+archive — built from the `FarMarks` generator §96 shipped two commits ahead of
+them. **Everyone sees a mark; only a filer can read one**, and the store that
+remembers which ones you have read is what the channel's reply has been reading
+since the day it was written.
+
+### The generator shipped first, and this is what that bought
+
+§96 shipped `far_marks.gd` with no nodes behind it, on §84's precedent (`Rival`
+was arithmetic the world read before anything drew it). The bill for that
+decision came due here, and it was small: the buoys are five lines of spawner
+over a function that was already swept exhaustively over sixty seeds. Nothing
+about placement had to be discovered at build time, and nothing about the
+bearing the channel quotes had to be renegotiated — commit 0's best line was
+true when it shipped and is still true now that there is something standing at
+the end of it.
+
+### The mark is not the legend
+
+Reading a mark shows the network's **plate** for that volume, verbatim from the
+approved draft, and resolves the mark. The encounters those plates name are
+commits 3–5, and they will stand at these same positions. That is not a
+placeholder: the plate is written in the past tense as a record of a sounding,
+so it is a true sentence the day it ships and the same true sentence the day
+the thing it describes is built. **Nothing in this commit has to be rewritten
+later** — which is the test a commit that ships half of a two-part idea has to
+pass.
+
+**It pays nothing.** Not one unit, not one credit, no cargo guard, no deferral
+branch — because there is no state in which reading a mark can fail. The
+legends are windfalls; a signpost that paid would turn fifteen buoys into a
+milk round, which is the "second salary" the horizon document refuses by name.
+
+### The refusal is the teaching
+
+An unread mark answers a non-filer's tap in its own words, and names the act
+that would change it (§58):
+
+> A SOUNDING MARK — THE NOTATION IS NOT THE AUTHORITY'S, AND YOU CANNOT READ
+> IT. FILE A RETURN AT A FOREIGN MAST AND YOU WILL.
+
+That branch deliberately does **not** fly the ship closer. A tap that moves the
+player twelve units toward something they were just told they cannot read is
+§88's affordance problem inverted — motion instead of an answer. It names the
+act rather than the gate (`heard_the_request`), so the sentence is true for a
+pilot who cannot yet file and becomes actionable the hour they can.
+
+### The value is a state from the first line
+
+`marks_seen` is keyed `"system:index"` — `structures_seen`' shape — and rides
+v25 with no bump. Its value is a **validated string** (`MARK_STATES`, one
+member today), not a boolean, and that is the whole lesson of §96 applied
+forward instead of relearned: `survey_filed` held `true` for two versions, its
+loader wrote the literal back, and the day a second value appeared every
+network filing silently reverted on load. Commits 3–5 need per-mark state — a
+layup deposited into, a nursery held — and they will add a string to a list
+rather than a type to a store.
+
+The loader validates **by type and by membership**, then preserves what it
+read. `if bool(saved[key_v])` is the correct line one function up, where the
+value carries no information; here it would accept `7` and `"nonsense"` as
+marks. And it validates the index against `FarMarks.positions`, the
+`structures_seen` posture: a retune of the depth window must not leave a pilot
+holding a reading of something that is no longer there.
+
+### The nudge, and where it parts company with the archives
+
+Band 6 runs to the end of the world and `STATION_CHANCE[6]` is 0.135, so a deep
+station can stand at eight thousand units. A station's keep-out is 34u across a
+64u cell, which makes "a buoy inside one" a **routine** event rather than a
+curiosity — roughly one mark per run, sitting where the tap ladder resolves to
+the dock ring and the mark cannot be reached at all.
+
+`_unsounded_pos` solved the same problem by rerolling its angle, because it IS
+the generator for its own positions. A mark's position has a **second
+consumer** — the channel quotes a bearing and a range to it — so the builder
+may only nudge: arc offsets at a fixed radius, capped at 204u, which at seven
+thousand units is 1.7 degrees and no change of range. The quoted bearing still
+flies you to the lamp. The check is over the **3×3 cell neighbourhood** rather
+than the containing cell, because `STATION_INSET` (22) is smaller than
+`STATION_SAFE_RADIUS` (34) and a station can therefore sit inside the keep-out
+of a point in the next cell over — a band the archives' narrower check does not
+see, at depths where a station is rarer.
+
+The harness does not assert "every mark is clear", which would be a flake
+waiting for a seed: `_mark_pos` is allowed to give up and stand where it was
+told. It asserts the thing that is actually forbidden — **giving up while a
+clear candidate existed**.
+
+### Both ladders, in the same commit
+
+`"farmark"` joins the hold ladder and the select ladder together, which is §96's
+lesson taken as a construction rule: `Beacon.on_tapped` was written, improved
+once, and unreachable from a finger for two horizons because only one of those
+two lists knew about it. It goes last in both. By the size argument a
+forty-unit spar should outrank a sixty-four-unit monolith — but a mark stands
+6,500u out where nothing else in either ladder can be on screen at all, so
+there is no contest to resolve and the cheapest correct thing is to leave every
+earlier rung untouched.
+
+### What the three new legs are for
+
+`THE MARKS STAND WHERE THE GENERATOR SAYS` — the world agrees with the
+arithmetic leg 6 already proved: five built, kinds off the run plan, drift
+inside the builder's own arc list (read from `SystemBuilder.MARK_ARCS`, not
+retyped), no avoidable station overlap, no leak into any scanned group, and the
+world fingerprint unmoved.
+
+`A MARK IS THE NETWORK'S TO READ` — the read/unread split driven through the
+**real** ladder and the **real** hold in both directions. The gate is not the
+feature; the affordance is.
+
+`THE CHANNEL NAMES A MARK YOU HAVE NOT READ` — `marks_read()` feeds
+`nearest_unseen`, reading the named mark moves the answer on, reading all five
+leaves the empty-case sentence to fire, and the store survives the real
+serializer with its state intact and four kinds of rubbish dropped.
+
+**One reader that knows how to ask**, again (§97). `nearest_unseen` asks
+`bool()` of what it is given and the store holds state strings, so the world
+hands it `marks_read()` rather than the store itself — the day a state should
+not hide a mark from the channel, there is exactly one function to edit.

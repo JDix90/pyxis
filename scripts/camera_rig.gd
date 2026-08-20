@@ -496,6 +496,14 @@ func _try_begin_hold(screen_pos: Vector2) -> void:
 		# band-6 arrow on a thing whose entire design is that you find the
 		# depth, not the marker.
 		target = _pick(screen_pos, "unsounded")
+	if target == null:
+		# 98. The network's buoys, after even those. A mark is SMALL -- a
+		# forty-unit spar against the archive's sixty-four-unit monolith -- so
+		# by the size argument it should outrank them; it goes last anyway,
+		# because a mark stands 6,500u out where nothing else in this ladder can
+		# be on screen at all. There is no contest to resolve, so the cheapest
+		# correct thing is to leave every earlier rung untouched.
+		target = _pick(screen_pos, "farmark")
 	if target and target.has_method("hold_begin"):
 		_hold_target = target
 		target.hold_begin()
@@ -622,6 +630,14 @@ func _select(screen_pos: Vector2) -> bool:
 	var unsounded := _pick(screen_pos, "unsounded")
 	if unsounded and unsounded.has_method("on_tapped"):
 		unsounded.on_tapped()
+		return true
+	# 98. And the marks last, mirroring the hold ladder above. BOTH LADDERS IN
+	# THE SAME COMMIT, which is the rule 96 paid for: Beacon.on_tapped was
+	# written, improved once, and never reachable from a finger for two
+	# horizons because only one of these two lists knew about it.
+	var mark := _pick(screen_pos, "farmark")
+	if mark and mark.has_method("on_tapped"):
+		mark.on_tapped()
 		return true
 	return false
 

@@ -1497,11 +1497,15 @@ func network_reply(cells: int, at: Vector3) -> void:
 	var sender := String(CHANNEL_SENDERS[
 		absi(hash("%s|%d|%d" % [system_id, cells, int(GameState.played_seconds)]))
 		% CHANNEL_SENDERS.size()])
-	# NOTHING IS SEEN YET, and the empty dictionary is the honest argument until
-	# commit 2 gives marks a store. A pilot cannot resolve a mark before buoys
-	# exist, so "unseen" is "all of them" and passing a real store now would be
-	# inventing state for a feature that has not shipped.
-	var mark := FarMarks.nearest_unseen(system_id, GameState.run_seed, at, {})
+	# §98. THE REAL STORE, which is what the empty dictionary here was a
+	# placeholder for. Through marks_read() rather than handing over marks_seen:
+	# the generator asks bool() of what it is given and the store holds state
+	# strings, so the conversion belongs to the one function that knows what a
+	# state means. The channel now names a mark this pilot has NOT read, which
+	# is the whole point of it naming one — repeating a bearing to a buoy they
+	# already stood at would make the reply furniture.
+	var mark := FarMarks.nearest_unseen(system_id, GameState.run_seed, at,
+		GameState.marks_read())
 	var body := ("Your return is read. It is held, and it is true, and somebody "
 		+ "knows it. ")
 	if mark.is_empty():
@@ -15765,9 +15769,202 @@ func _run_return_test() -> void:
 		rival_cells.size(), str(all_held), reported, cargo_r,
 		GameState.cargo_used(), "PASS" if free_ok else "FAIL"])
 
+	# 9. THE MARKS STAND WHERE THE GENERATOR SAYS. Leg 6 proves the arithmetic;
+	#    this proves the WORLD agrees with it. Driven on pyx01 by name rather
+	#    than on current_system, because the fingerprint clause below is compared
+	#    against a constant recorded over pyx01's cells.
+	_load_system("pyx01")
+	set_deep_generation(false)
+	await get_tree().physics_frame
+	var msid := "pyx01"
+	var nominal := FarMarks.positions(msid, GameState.run_seed)
+	var plan_m := FarMarks.run_plan(GameState.run_seed, SystemDB.ids())
+	var max_arc := 0.0
+	for a_v in SystemBuilder.MARK_ARCS:
+		max_arc = maxf(max_arc, absf(float(a_v)))
+	var seen_idx := {}
+	var kind_bad := ""
+	var drift_bad := ""
+	var station_bad := ""
+	for n_v in get_tree().get_nodes_in_group("farmark"):
+		var m := n_v as SoundingMark
+		if m == null or m.system_id != msid:
+			continue
+		seen_idx[m.index] = true
+		if m.index < 0 or m.index >= nominal.size():
+			drift_bad += "%d(no such mark) " % m.index
+			continue
+		if m.kind != String(plan_m.get("%s:%d" % [msid, m.index], "")):
+			kind_bad += "%d " % m.index
+		# THE NUDGE IS BOUNDED BY THE LIST THE BUILDER READS, not by a literal
+		# repeated here. The offset is an arc and this is a chord, so the chord
+		# can only be shorter -- an over-budget drift means the buoy is not the
+		# mark the channel quotes.
+		var nom: Vector3 = nominal[m.index]
+		var drift := m.global_position.distance_to(nom)
+		if drift > max_arc + 1.0:
+			drift_bad += "%d(%.0fu) " % [m.index, drift]
+		if not SystemBuilder._clear_of_stations(deep_space, m.global_position):
+			# NOT AUTOMATICALLY A DEFECT, and asserting otherwise would be a
+			# flake waiting for a seed: _mark_pos is allowed to give up and stand
+			# where it was told when every candidate is blocked. What must never
+			# happen is giving up while a clear candidate existed, so that is
+			# what this asks.
+			var radius := Vector2(nom.x, nom.z).length()
+			var base := atan2(nom.z, nom.x)
+			var could := false
+			for a2_v in SystemBuilder.MARK_ARCS:
+				var ang := base + float(a2_v) / radius
+				if SystemBuilder._clear_of_stations(deep_space,
+						Vector3(cos(ang), 0.0, sin(ang)) * radius):
+					could = true
+			if could:
+				station_bad += "%d " % m.index
+	# NOTHING POINTS AT THEM, COLONYTEST's own clause: no radar tier and no
+	# scanned group, which this far out is the difference between an expedition
+	# and an arrow.
+	var mark_leak := ""
+	for g in ["apex", "dockable", "crackable", "hostiles", "mineable", "beacon",
+			"signature", "hyper", "unsounded"]:
+		for l_v in get_tree().get_nodes_in_group(g):
+			if l_v is SoundingMark:
+				mark_leak += "%s " % g
+	# AND THE BUILD MOVED NO DRAW. _mark_pos reads plan_cell, which is pure --
+	# but "pure" is a claim about a function, and this is the measurement.
+	var fp_marks := _world_fingerprint()
+	print("[return] THE MARKS STAND WHERE THE GENERATOR SAYS %d/%d built in %s, kinds off plan: %s, drift over %.0fu: %s, avoidably inside a station keep-out: %s, leaked into scanned groups: %s; world fingerprint %s vs %s -> %s" % [
+		seen_idx.size(), FarMarks.PER_SYSTEM, msid,
+		"none" if kind_bad == "" else kind_bad, max_arc,
+		"none" if drift_bad == "" else drift_bad,
+		"none" if station_bad == "" else station_bad,
+		"none" if mark_leak == "" else mark_leak,
+		fp_marks, WORLD_FINGERPRINT_BEFORE_SEAMS,
+		"PASS" if seen_idx.size() == FarMarks.PER_SYSTEM and kind_bad == ""
+			and drift_bad == "" and station_bad == "" and mark_leak == ""
+			and fp_marks == WORLD_FINGERPRINT_BEFORE_SEAMS else "FAIL"])
+
+	# 10. A MARK IS THE NETWORK'S TO READ. The read/unread split, driven through
+	#     the REAL ladder and the REAL hold in both directions -- because the
+	#     gate is not the feature, the affordance is, and 96 spent two horizons
+	#     with a fully wired Beacon.on_tapped that no finger could reach.
+	#
+	#     On a probe rather than on one of the five built above, for PICK
+	#     PRECEDENCE's own reason: _pick is screen-space with no raycast, and a
+	#     camera parked six thousand units out unprojects everything behind it
+	#     onto the same half of the screen. The probe is the same class running
+	#     the same code, and leg 9 is what proves the real ones are in the group.
+	var probe_at := Vector3(300.0, 0.0, 300.0)
+	var mark_probe := SoundingMark.new()
+	mark_probe.system_id = msid
+	mark_probe.index = 0
+	mark_probe.kind = "vein"
+	system_root.add_child(mark_probe)
+	mark_probe.global_position = probe_at
+	var pilot_m: PlayerShip = get_tree().get_first_node_in_group("player")
+	var rig_m := get_tree().get_first_node_in_group("camera_rig") as CameraRig
+	var ladder_ok := false
+	var refused := false
+	var offered := false
+	var read_ok := false
+	var stayed_shut := false
+	if pilot_m != null and rig_m != null:
+		pilot_m.teleport_to(probe_at)
+		rig_m.leash_enabled = false
+		rig_m.global_position = probe_at + Vector3(0.0, 0.0, 2.0)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var cam_m := get_viewport().get_camera_3d()
+		var at_px := cam_m.unproject_position(mark_probe.pick_anchor())
+		ladder_ok = rig_m._pick(at_px, "farmark") == mark_probe
+		# --- a pilot who has never filed ---
+		GameState.survey_coverage = {}
+		GameState.survey_filed = {}
+		GameState.marks_seen = {}
+		hud.clear_prompt()
+		var tapped_a := rig_m._select(at_px)
+		# THE PROMPT FADES IN OVER 0.2s and prompt_text() is gated on alpha, so
+		# reading it on the same frame reads an empty string -- the trap
+		# COLONYTEST documents.
+		await get_tree().create_timer(0.4).timeout
+		refused = tapped_a and hud.prompt_text() == SoundingMark.CANNOT_READ
+		# PARKED AGAIN BEFORE EACH HOLD. Four tenths of a second of physics
+		# passed while the prompt faded in, and READ_RANGE is twelve units --
+		# a hold that failed because the ship drifted would read exactly like a
+		# hold that was refused, which is the wrong thing for this leg to be
+		# measuring.
+		pilot_m.teleport_to(probe_at)
+		mark_probe.hold_begin()
+		mark_probe.hold_tick(SoundingMark.READ_TIME * 2.0)
+		stayed_shut = not mark_probe.is_read()
+		# --- and the same pilot one filing later ---
+		var held_cell := DeepSpace.cell_key(msid, 4, 0)
+		GameState.note_survey_worked(held_cell)
+		GameState.note_survey_held(held_cell)
+		hud.clear_prompt()
+		var tapped_b := rig_m._select(at_px)
+		await get_tree().create_timer(0.4).timeout
+		offered = tapped_b and hud.prompt_text().contains("HOLD TO READ")
+		pilot_m.teleport_to(probe_at)
+		mark_probe.hold_begin()
+		mark_probe.hold_tick(SoundingMark.READ_TIME + 0.1)
+		read_ok = mark_probe.is_read() \
+			and String(GameState.marks_seen.get(mark_probe.mark_key(), "")) == GameState.MARK_READ
+		rig_m.leash_enabled = true
+	mark_probe.queue_free()
+	print("[return] A MARK IS THE NETWORK'S TO READ the tap ladder reaches it=%s; unfiled: refused in its own words=%s and the hold left it unread=%s; filed: the tap offers the verb=%s and the hold resolved it=%s -> %s" % [
+		str(ladder_ok), str(refused), str(stayed_shut), str(offered), str(read_ok),
+		"PASS" if ladder_ok and refused and stayed_shut and offered and read_ok
+			else "FAIL"])
+
+	# 11. THE CHANNEL NAMES A MARK YOU HAVE NOT READ. The store's whole job at
+	#     the far end: commit 0 shipped nearest_unseen taking an empty dictionary
+	#     because nothing could be seen yet, and a wiring that passed {} forever
+	#     would keep quoting the same buoy after the pilot had stood on it.
+	GameState.marks_seen = {}
+	var from_m := Vector3.ZERO
+	var first_m := FarMarks.nearest_unseen(msid, GameState.run_seed, from_m,
+		GameState.marks_read())
+	var named_one := not first_m.is_empty()
+	GameState.note_mark_read(GameState.mark_key(msid, int(first_m.get("index", -1))))
+	var second_m := FarMarks.nearest_unseen(msid, GameState.run_seed, from_m,
+		GameState.marks_read())
+	var moved_on: bool = not second_m.is_empty() \
+		and int(second_m["index"]) != int(first_m.get("index", -1))
+	for i in range(nominal.size()):
+		GameState.note_mark_read(GameState.mark_key(msid, i))
+	var exhausted: bool = FarMarks.nearest_unseen(msid, GameState.run_seed, from_m,
+		GameState.marks_read()).is_empty()
+	# AND THE STORE SURVIVES THE FILE, with its VALUE. The rubbish pass is the
+	# half that matters: this store's value is a STATE, so a loader that coerced
+	# with bool() -- the correct line for its sibling one function up -- would
+	# write 7 and "nonsense" back as marks in a vocabulary that has one word.
+	var dirty_marks := {}
+	dirty_marks[GameState.mark_key(msid, 0)] = GameState.MARK_READ    # good
+	dirty_marks[GameState.mark_key(msid, 999)] = GameState.MARK_READ  # no such mark
+	dirty_marks["nowhere:0"] = GameState.MARK_READ                    # no such system
+	dirty_marks[GameState.mark_key(msid, 1)] = true                   # not a state
+	dirty_marks[GameState.mark_key(msid, 2)] = "nonsense"             # nor is this
+	GameState.marks_seen = dirty_marks
+	var probe_path := "user://returntest_marks.json"
+	var real_path_m := GameState.save_path
+	var fm := FileAccess.open(probe_path, FileAccess.WRITE)
+	fm.store_string(JSON.stringify(GameState.save_dict()))
+	fm.close()
+	GameState.save_path = probe_path
+	GameState.load_game()
+	GameState.save_path = real_path_m
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(probe_path))
+	var kept_m: bool = GameState.marks_seen.size() == 1 \
+		and GameState.is_mark_read(GameState.mark_key(msid, 0)) \
+		and String(GameState.marks_seen.get(GameState.mark_key(msid, 0), "")) == GameState.MARK_READ
+	print("[return] THE CHANNEL NAMES A MARK YOU HAVE NOT READ it names one=%s, reading it moves the answer on=%s, reading all %d leaves nothing to name=%s; the store reloads 1 of 5 (an index past the generator, an unknown system and two impostor values dropped, the state preserved)=%s -> %s" % [
+		str(named_one), str(moved_on), nominal.size(), str(exhausted), str(kept_m),
+		"PASS" if named_one and moved_on and exhausted and kept_m else "FAIL"])
+
 	GameState.survey_coverage = {}
 	GameState.survey_filed = {}
 	GameState.deep_logs = {}
+	GameState.marks_seen = {}
 	GameState.cargo = {}
 	get_tree().quit()
 
@@ -15871,6 +16068,10 @@ func _run_profile_test() -> void:
 	# pilot can own -- it is a fact about the world they learned -- which makes
 	# it exactly the field a reader would expect to be shared, and it is not.
 	GameState.note_deep_log("pyx01:meridian", 3)
+	# 98: and a fourth time. A sounding mark read six thousand units out is the
+	# single most expensive fact a pilot can own, so it is the one a shared
+	# store would be most obviously wrong about.
+	GameState.note_mark_read(GameState.mark_key("pyx01", 0))
 	GameState.save_game()
 	var b_id := Profiles.create("PILOT B", 3000.0)
 	GameState.switch_profile(b_id)
@@ -15896,6 +16097,8 @@ func _run_profile_test() -> void:
 		leaks.append("structures_seen")
 	if GameState.deep_log_stage("pyx01:meridian") > 0:
 		leaks.append("deep_logs")
+	if GameState.is_mark_read(GameState.mark_key("pyx01", 0)):
+		leaks.append("marks_seen")
 	var bled := ", ".join(leaks)
 	print("[profile] NO BLEED BETWEEN PILOTS B sees salvage=%d name='%s' commissioned=%s accent=%d; leaked=%s -> %s" % [
 		GameState.salvage, GameState.ship_name, str(GameState.commissioned),
@@ -17156,6 +17359,10 @@ func _run_save_test() -> void:
 			and GameState.survey_coverage.size() == 2
 		var none_held: bool = GameState.held_cells().is_empty() \
 			and not GameState.is_survey_held("pyx01:8:8")
+		# 98 rides v25 with no bump, so the same fixture answers for the marks:
+		# no key, no branch, a pilot who has read nothing -- which is every
+		# pilot who ever loaded a file written before buoys existed.
+		var no_marks24: bool = GameState.marks_seen.is_empty()
 
 		var dirty25 := {
 			"version": 25,
@@ -17187,9 +17394,10 @@ func _run_save_test() -> void:
 			and not GameState.is_survey_filed("pyx01:11:11") \
 			and not GameState.is_survey_filed("pyx01:12:12") \
 			and not GameState.is_survey_filed("pyx01:99:99")
-		print("[savetest] v24->v25 A V24 SAVE HAS FILED, NEVER HELD state kept=%s, nothing held=%s; rubbish pass kept 2 of 6 (falsey, two impostor values and a non-subset key dropped, held preserved as held)=%s -> %s" % [
-			str(kept24), str(none_held), str(cleaned25),
-			"PASS" if ok24 and kept24 and none_held and cleaned25 else "FAIL"])
+		print("[savetest] v24->v25 A V24 SAVE HAS FILED, NEVER HELD state kept=%s, nothing held=%s, no marks read=%s; rubbish pass kept 2 of 6 (falsey, two impostor values and a non-subset key dropped, held preserved as held)=%s -> %s" % [
+			str(kept24), str(none_held), str(no_marks24), str(cleaned25),
+			"PASS" if ok24 and kept24 and none_held and no_marks24 and cleaned25
+				else "FAIL"])
 	elif mode == "future":
 		# A SAVE FROM A NEWER BUILD. Refusing to load it was never the hard
 		# part — that clause has always been there. What it did NOT do was stop

@@ -202,7 +202,10 @@ carrying six) and the `migrate23` mode (one new run carrying one), at save
 format **v24**; §95 adds four legs to the existing `CONTRACTTEST`, no new run
 and no save bump. §96 then adds `RETURNTEST` (one new run carrying eight) and the `migrate24`
 mode (one new run carrying one), at save format **v25**. §97 then adds two legs to the existing `PLOTTEST`, with no new run and no
-save bump. So the next full sweep should read **752 across 77**.
+save bump. §98 then adds three legs to `RETURNTEST` and one clause each to
+`SAVETEST=migrate24` and `PROFILETEST` — no new run, no new mode and no save
+bump, since `marks_seen` rides v25. So the next full sweep should read
+**755 across 77**.
 
 (§96's adversarial pass reported after both commits shipped; its two confirmed
 findings were folded back in without changing any count — one strengthened an

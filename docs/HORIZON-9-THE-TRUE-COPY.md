@@ -1,7 +1,7 @@
 # Horizon 9 — The True Copy
 
-**Status: COMMITS 0-1 BUILT (§96 v25, §97 no bump). Commits 2-5 specced, nothing built. Prose gated on `docs/FAR-MARKS-DRAFT.md`
-(second draft; R1–R4 answered, S1–S3 open).** When any of it is adopted,
+**Status: COMMITS 0-2 BUILT (§96 v25, §97 no bump, §98 rides v25). Commits 3-5 specced, nothing built. Prose gated on `docs/FAR-MARKS-DRAFT.md`
+(second draft; R1–R4 and S1–S3 answered).** When any of it is adopted,
 record it in `docs/STRATEGY.md` §64 in the same commit, per the house rule.
 
 Settled from the ideation rounds: filing point is **foreign beacons**; the
@@ -62,7 +62,7 @@ after any commit and still be a whole thing.
 |---|---|---|---|
 | 0 | THE FILED RETURN — two-stage hold on deep foreign beacons, provenance in the store, the channel's reply | **v25** | **BUILT (§96)** |
 | 1 | THE TRUE CHART — held cells marked on the plot; the rival annotation re-read | none | **BUILT (§97)** |
-| 2 | THE FAR MARKS — the buoys, their placement, the read/unread split | rides v25 | medium |
+| 2 | THE FAR MARKS — the buoys, their placement, the read/unread split | rides v25 | **BUILT (§98)** |
 | 3 | LEGENDS I, the common three — VEIN, LAYUP (deposit + withdrawal), PROVING DRIFT | rides v25 | medium |
 | 4 | LEGENDS II, the dangerous three — STILLNESS' GROUND, STANDING ORDER, SOUNDING SERPENT | none | large |
 | 5 | LEGENDS III, the ongoing three — TALLY'S NURSERY, PATTERN FORGE, PROCESSION'S END | **v26** | largest |
@@ -159,6 +159,18 @@ arguments, which hold harder this far out.
 and past the archives; the fingerprint pair unmoved; singular kinds never twice
 in one run over a sweep of seeds; unreadable to a non-filer and resolvable by a
 filer, both through the real tap.
+
+**BUILT as §98,** with three things the spec did not anticipate. (1) A station
+keep-out is needed after all: band 6 has no outer edge and `STATION_CHANCE[6]`
+is 0.135, so about one mark a run would otherwise stand inside a deep station's
+keep-out where the tap ladder resolves to the dock ring. The builder NUDGES
+(bounded arc offsets, ≤204u ≈ 1.7° at seven thousand units) rather than
+rerolling, because the channel quotes a bearing to the generator's answer.
+(2) `marks_seen`' value is a validated STATE STRING from the first line rather
+than a boolean, so commits 3–5 add a word to a list instead of a type to a
+store — §96's loader defect paid forward. (3) Reading a mark shows its PLATE,
+written in the past tense as a record of a sounding, so the same sentence is
+true before and after the encounter it names exists.
 
 ---
 

@@ -67,6 +67,100 @@ static func _build_deep_space(def: Dictionary, container: Node3D, system_id: Str
 	# here rather than in build() because placement needs this deep instance:
 	# the reject loop below asks plan_cell where the stations are.
 	_build_unsounded(deep, container, system_id)
+	# And the network's buoys past even those, for the identical reason: a thing
+	# the channel quotes a bearing to must be standing at that bearing when the
+	# pilot arrives, whatever the cell streamer has reached.
+	_build_far_marks(deep, container, system_id)
+
+
+# HOW FAR A MARK MAY BE MOVED OFF THE GENERATOR'S ANSWER, in arc length, tried
+# in this order: the nominal point first, then alternating sides at growing
+# distance. A station's keep-out is 34u across, so the first step already clears
+# any single station by construction (68 - 34 = 34), and the rest are for the
+# rare case of a second one. THE HARNESS READS THIS LIST rather than a literal,
+# so the bound it asserts is the bound the builder actually honours.
+const MARK_ARCS := [0.0, 68.0, -68.0, 136.0, -136.0, 204.0, -204.0]
+
+
+static func _build_far_marks(deep: DeepSpace, container: Node3D, system_id: String) -> void:
+	# 98, THE FAR MARKS. Five buoys per system at 6,500-9,000u, where the
+	# FarMarks generator says they stand and carrying the kind it deals them.
+	# No draw of the shared stream moves: positions and kinds come off their own
+	# salted seeds (far_marks.gd), and the keep-out below reads plan_cell, which
+	# is pure.
+	if system_id == "":
+		return
+	var spots := FarMarks.positions(system_id, GameState.run_seed)
+	# THE PLAN ONCE, not per mark. kind_at builds the whole run's assignment on
+	# every call -- it has to, because "at most once in an entire game" cannot be
+	# decided one system at a time -- so asking it five times would rebuild the
+	# same dictionary five times and call positions() fifteen more.
+	var plan := FarMarks.run_plan(GameState.run_seed, SystemDB.ids())
+	for i in range(spots.size()):
+		var kind := String(plan.get("%s:%d" % [system_id, i], ""))
+		if kind == "":
+			# A MARK WITH NO NOTATION MUST NOT STAND. Unreachable while the
+			# generator deals every slot, which is exactly why it is checked
+			# here: a buoy whose plate is blank is a monument to nothing.
+			continue
+		var m := SoundingMark.new()
+		m.system_id = system_id
+		m.index = i
+		m.kind = kind
+		container.add_child(m)
+		m.global_position = _mark_pos(deep, spots[i] as Vector3)
+
+
+static func _mark_pos(deep: DeepSpace, nominal: Vector3) -> Vector3:
+	# THE GENERATOR SAYS WHERE; THIS SAYS HOW FAR IT MAY BE NUDGED. Band 6 runs
+	# to the end of the world and STATION_CHANCE[6] is 0.135, so a deep station
+	# can stand at eight thousand units — and a station's keep-out is 34u across
+	# a 64u cell, which makes "a buoy inside one" a routine event rather than a
+	# curiosity. Left alone, roughly one mark per run would sit inside a station
+	# it did not know about, where the tap ladder resolves to the dock ring and
+	# the mark is unreachable.
+	#
+	# WHY IT NUDGES INSTEAD OF REROLLING, which is where this parts company with
+	# _unsounded_pos above: that function IS the generator for its own positions,
+	# so it can throw an angle away and take another. A mark's position has a
+	# second consumer — the channel quotes a bearing and a range to it at filing
+	# time, off FarMarks.positions — so the built buoy has to stay where the
+	# quote said. The offsets are ARC LENGTHS at a fixed radius, capped at 204u,
+	# which at seven thousand units is 1.7 degrees and no change of range at all:
+	# the quoted bearing still flies you to the lamp.
+	#
+	# THE 3x3 NEIGHBOURHOOD, not just the containing cell. STATION_INSET is 22
+	# and STATION_SAFE_RADIUS is 34, so a station can be 22u from its own cell's
+	# edge and therefore inside the keep-out of a point in the NEXT cell. Asking
+	# only the containing cell (which is what _unsounded_pos does, at depths
+	# where a station is rarer) would miss that band entirely.
+	var radius := Vector2(nominal.x, nominal.z).length()
+	if radius <= 0.0:
+		return nominal
+	var base := atan2(nominal.z, nominal.x)
+	for arc in MARK_ARCS:
+		var ang := base + float(arc) / radius
+		var p := Vector3(cos(ang), 0.0, sin(ang)) * radius
+		if _clear_of_stations(deep, p):
+			return p
+	# BOUNDED, and it ends by standing where it was told. Seven tries spanning
+	# 408u of arc against a 68u obstacle cannot all fail unless the volume is
+	# wall to wall with stations, and an unbounded search in a builder is how a
+	# retune becomes a hang instead of a slightly awkward buoy.
+	return nominal
+
+
+static func _clear_of_stations(deep: DeepSpace, p: Vector3) -> bool:
+	var cell := DeepSpace.cell_of(p)
+	for dx in range(-1, 2):
+		for dz in range(-1, 2):
+			var station: Dictionary = deep.plan_cell(cell.x + dx, cell.y + dz)["station"]
+			if station.is_empty():
+				continue
+			if p.distance_to(station.get("pos", Vector3(1e9, 0.0, 1e9))) \
+					< DeepSpace.STATION_SAFE_RADIUS:
+				return false
+	return true
 
 
 static func _build_unsounded(deep: DeepSpace, container: Node3D, system_id: String) -> void:

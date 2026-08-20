@@ -315,6 +315,27 @@ var structures_seen := {}
 # class, deep_space.gd's rule (§39), and four strings are a cheaper price
 # than a class-list edge.
 var deep_logs := {}
+# v25 (§98). SOUNDING MARKS THIS PILOT HAS RESOLVED, keyed "system:index" --
+# structures_seen's shape one shelf further out, because it is the same kind of
+# fact: a place you found, remembered because finding it was the work.
+#
+# RIDES v25 WITH NO BUMP. Defaults-not-branches: a file from either earlier v25
+# commit has no key, gets {}, and loads as a pilot who has read no marks --
+# true of every pilot before buoys existed.
+#
+# THE VALUE IS A STATE, NOT A BOOLEAN, and it is one from the first line rather
+# than a bool that grows a vocabulary later. That growth is precisely what cost
+# a version bump and a silent loader defect in 96: survey_filed held `true` for
+# two versions, the loader wrote the literal back, and the day a second value
+# appeared every network filing quietly reverted on load. The legends (commits
+# 3-5) need per-mark state -- a layup that has been deposited into, a nursery
+# that is held -- so the store carries a validated string today and gains a
+# member of MARK_STATES then, with no shape change and nothing to migrate.
+#
+# NEEDS NO CAP, generator-bounded like structures_seen: FarMarks returns at
+# most PER_SYSTEM per system, so this is bounded at fifteen entries across the
+# whole game. Asserted against the generator rather than hoped.
+var marks_seen := {}
 
 # v16. THE INTEL DOSSIER. Keyed by system id; each value is an Array of hint
 # dictionaries the player has PAID FOR or EARNED, and together they are the only
@@ -1163,6 +1184,7 @@ func reset_to_starter() -> void:
 	survey_filed = {}
 	structures_seen = {}
 	deep_logs = {}
+	marks_seen = {}
 	apex_intel = {}
 	beacons = {}
 	colonies = {}
@@ -1766,6 +1788,55 @@ func structures_seen_in(system_id: String) -> Array:
 	return out
 
 
+# THE ONLY STATE A MARK CAN BE IN TODAY, and the list is the validator: the
+# loader accepts a value only if it is in here, so a hand-edited save cannot
+# invent a fourth kind of mark and the legends can add theirs by appending one
+# string. HELD's neighbour in every respect except that this one was written
+# knowing what it was for.
+const MARK_READ := "read"
+const MARK_STATES := ["read"]
+
+
+func mark_key(system_id: String, index: int) -> String:
+	return "%s:%d" % [system_id, index]
+
+
+func is_mark_read(key: String) -> bool:
+	# TYPE FIRST, for the reason is_survey_held carries the same guard: the store
+	# holds strings, `String(true)` is not a constructor GDScript has, and a bare
+	# String() over a rubbish value is a script error inside a call whose
+	# assertions would still print PASS. ANY recorded state means resolved --
+	# a mark that has been claimed has necessarily been read.
+	var v = marks_seen.get(key, "")
+	return typeof(v) == TYPE_STRING and MARK_STATES.has(String(v))
+
+
+func note_mark_read(key: String) -> bool:
+	# Returns whether this is the FIRST reading, so the caller can write the log
+	# line once rather than on every re-read. Queues the save immediately: a mark
+	# read six thousand units out and lost to a crash is a lost expedition.
+	if is_mark_read(key):
+		return false
+	marks_seen[key] = MARK_READ
+	_queue_save()
+	return true
+
+
+func marks_read() -> Dictionary:
+	# key -> true for every resolved mark, which is exactly the shape
+	# FarMarks.nearest_unseen reads. Built rather than handing the store over
+	# directly: the generator asks bool() of what it is given, the store holds
+	# STATE STRINGS, and the day a state is added that should not hide a mark
+	# from the channel this is the one place that decides. One reader that knows
+	# how to ask, per 97's own lesson.
+	var out := {}
+	for k_v in marks_seen:
+		var k := String(k_v)
+		if is_mark_read(k):
+			out[k] = true
+	return out
+
+
 func _load_survey_filed(saved: Dictionary) -> void:
 	# Filtered against COVERAGE rather than against a shape, which is the
 	# stronger test and the one the invariant actually needs: a filed key naming
@@ -1819,6 +1890,44 @@ func _load_structures_seen(saved: Dictionary) -> void:
 		if idx < 0 or idx >= SystemDB.hyper_positions(sid, run_seed).size():
 			continue
 		structures_seen[key] = true
+
+
+func _load_marks_seen(saved: Dictionary) -> void:
+	# _load_structures_seen's posture, against the mark generator instead of the
+	# instrument one: the index must still name a buoy FarMarks actually returns,
+	# so a retune of the depth window or the per-system count cannot leave this
+	# pointing at a reading of something that is no longer there.
+	#
+	# AND THE VALUE IS VALIDATED, NEVER COERCED. `if bool(saved[key_v])` -- the
+	# line its sibling above uses correctly, because that store's value carries
+	# no information -- would accept 7, "nonsense" and {} here and write them
+	# straight back into a store whose value is read as a state. Checked by type
+	# and by membership, then PRESERVED: writing the literal MARK_READ instead
+	# would throw away exactly what 96 learned the hard way.
+	#
+	# FarMarks IS A LEAF, so calling it from the autoload closes no class-list
+	# cycle: it is a RefCounted of static functions that references SystemDB and
+	# nothing else, which is the same edge _load_structures_seen already has one
+	# line up. 39's rule is about WORLD classes -- this file still references no
+	# node, and SoundingMark is not named anywhere in it.
+	marks_seen = {}
+	for key_v in saved:
+		var raw = saved[key_v]
+		if typeof(raw) != TYPE_STRING or not MARK_STATES.has(String(raw)):
+			continue
+		var key := String(key_v)
+		var bits := key.split(":")
+		if bits.size() != 2:
+			continue
+		var sid := String(bits[0])
+		if not SystemDB.exists(sid):
+			continue
+		if not String(bits[1]).is_valid_int():
+			continue
+		var idx := int(bits[1])
+		if idx < 0 or idx >= FarMarks.positions(sid, run_seed).size():
+			continue
+		marks_seen[key] = String(raw)
 
 
 func _load_survey(saved: Dictionary) -> void:
@@ -3372,6 +3481,7 @@ func save_dict() -> Dictionary:
 		"survey_filed": survey_filed,
 		"structures_seen": structures_seen,
 		"deep_logs": deep_logs,
+		"marks_seen": marks_seen,
 		"apex_intel": apex_intel,
 		"beacons": beacons,
 		"colonies": colonies,
@@ -3693,6 +3803,9 @@ func load_game() -> bool:
 	# loads as a pilot who has read nothing -- true of every pilot before the
 	# unsounded existed.
 	_load_deep_logs(data.get("deep_logs", {}))
+	# 98. Rides v25 with no bump: a file from either earlier v25 commit has no
+	# key, gets {}, and loads as a pilot who has read no marks.
+	_load_marks_seen(data.get("marks_seen", {}))
 	_load_apex_intel(data.get("apex_intel", {}))
 	# v20. Beacons: no migration branch, per this file's standing rule — an
 	# absent key is an empty store and a full stock, which is exactly what a
