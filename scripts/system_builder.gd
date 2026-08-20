@@ -81,6 +81,17 @@ static func _build_deep_space(def: Dictionary, container: Node3D, system_id: Str
 # so the bound it asserts is the bound the builder actually honours.
 const MARK_ARCS := [0.0, 68.0, -68.0, 136.0, -136.0, 204.0, -204.0]
 
+# THE PROVING DRIFT's numbers. Loot is sized against the band-6 deep hulk (70 x
+# 4.6 = 322) and set above it: this is a windfall found at the end of a
+# seven-thousand-unit flight, not a wreck the streamer put in your way. The
+# crack is longer than a hulk's for the same reason a workshop is not a wreck.
+const DRIFT_LOOT := 420
+const DRIFT_CRACK_TIME := 3.6
+# How far the hull stands off its buoy, so a tap near the mark can still reach
+# the mark. Comfortably past Derelict.CRACK_RANGE (6.5) in screen terms without
+# putting the hull out of sight of the lamp that names it.
+const DRIFT_STANDOFF := 26.0
+
 
 static func _build_far_marks(deep: DeepSpace, container: Node3D, system_id: String) -> void:
 	# 98, THE FAR MARKS. Five buoys per system at 6,500-9,000u, where the
@@ -109,6 +120,68 @@ static func _build_far_marks(deep: DeepSpace, container: Node3D, system_id: Stri
 		m.kind = kind
 		container.add_child(m)
 		m.global_position = _mark_pos(deep, spots[i] as Vector3)
+		# AND WHATEVER THE MARK HAS ALREADY BEEN READ INTO BEING. A legend is
+		# built on the LOAD path and on the READ path, and both go through
+		# build_legend -- the build_garrison rule one shelf down: the list that
+		# raises a thing and the list that raises it again after a warp must be
+		# the same list by construction, because being two lists is how a
+		# headline feature ships invisible for a whole session.
+		build_legend(container, system_id, i, kind, m.global_position)
+
+
+static func build_legend(container: Node3D, system_id: String, index: int,
+		kind: String, at: Vector3) -> Node3D:
+	# §99. WHAT STANDS AT A MARK THE PILOT HAS READ. One function, two callers:
+	# SystemBuilder above (every rebuild, for marks read in an earlier session)
+	# and Main.legend_arrives (once, at the moment of reading, so the legend
+	# does not wait for a warp).
+	#
+	# UNREAD MARKS BUILD NOTHING, and that is the horizon's own rule rather than
+	# an optimisation: reading a mark is what resolves it, so a pilot who has
+	# not read one has not found what stands there. SPENT marks build nothing
+	# either -- a workshop is cracked once.
+	var key := GameState.mark_key(system_id, index)
+	if not GameState.is_mark_read(key) or GameState.is_mark_spent(key):
+		return null
+	match kind:
+		"drift":
+			return _build_proving_drift(container, system_id, index, at)
+		_:
+			# THE OTHER NINE ARRIVE IN LATER COMMITS, and until they do a read
+			# mark is exactly what its plate says it is: a record of a sounding,
+			# in the past tense, which is why the plates were written that way.
+			# The absence is stated here rather than left as a silent fallthrough
+			# so the next commit has one obvious place to add a line.
+			return null
+
+
+static func _build_proving_drift(container: Node3D, system_id: String,
+		index: int, at: Vector3) -> Node3D:
+	# THE WORKSHOP HULL. A Derelict with two fields set, not a new class: §17's
+	# rule, and this class is already a gradient of hull kinds -- the authored
+	# survey hull, the tutorial's hull, the deep hulks and the grave-field pairs
+	# are all the same node carrying different flags.
+	#
+	# counts_as_survey is FALSE for the deep hulk's exact reason, harder out
+	# here: charting the next system by cracking something seven thousand units
+	# past the chart edge would let the far deep skip the game's spine
+	# altogether. counts_for_contract stays TRUE, also the deep hulk's rule --
+	# you did breach a hull, and a contract that says so should say so.
+	var d := Derelict.new()
+	d.loot_total = DRIFT_LOOT
+	d.crack_time = DRIFT_CRACK_TIME
+	d.counts_as_survey = false
+	# Set BEFORE add_child: _ready is what applies these, the ordering every
+	# spawner in this file keeps.
+	d.owns_mark = GameState.mark_key(system_id, index)
+	d.prototype = FarMarks.drift_prototype(system_id, index, GameState.run_seed,
+		ModuleDB.prototype_ids())
+	container.add_child(d)
+	# Offset off the buoy so the mark stays tappable beside it. The hull is the
+	# thing you fly to; the mark is the thing that told you to.
+	d.global_position = at + Vector3(DRIFT_STANDOFF, 0.0, 0.0)
+	d.rotation_degrees.y = 34.0
+	return d
 
 
 static func _mark_pos(deep: DeepSpace, nominal: Vector3) -> Vector3:

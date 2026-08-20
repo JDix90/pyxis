@@ -266,3 +266,16 @@ func _read() -> void:
 		# characters is the whole line (note_log truncates silently), and the
 		# longest name in the table leaves this at 38.
 		GameState.note_log("READ A MARK — %s" % mark_name())
+		# §99. AND THE LEGEND ARRIVES. Asked of MAIN through a duck-typed call
+		# rather than of SystemBuilder directly, and that is a class-edge
+		# decision rather than a style one: SystemBuilder already references
+		# this class to build the buoys, so calling it back by name would close
+		# a mutual class reference -- the shape main.gd records as forty parse
+		# errors and a hanging boot. Derelict asks main for arm_apex_wake the
+		# same way and for the same reason.
+		#
+		# ON THE TRANSITION, like the log line above it: build_legend refuses a
+		# mark it has already built for, but a re-read should not even ask.
+		var main := get_tree().get_first_node_in_group("main")
+		if main != null and main.has_method("legend_arrives"):
+			main.legend_arrives(system_id, index, kind, global_position)

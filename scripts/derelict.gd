@@ -65,6 +65,18 @@ var counts_for_contract := true
 # DeepSpace.TRAP_* for what is in it and why it is seeded rather than rolled.
 var trap := {}
 
+# v25 (§99). THE PROVING DRIFT, as two fields rather than a subclass. This class
+# is already a gradient of hull kinds -- the authored survey hull, the tutorial's
+# hull, the deep hulks, the grave-field pairs -- and §17's rule is that the
+# gradient is parameters. Empty on every hull that is not a workshop, which is
+# all of them but one.
+#
+# `prototype` is the module id the workshop was building; `owns_mark` is the
+# sounding mark it belongs to, so cracking it can spend the mark and the drift
+# does not come back on the next rebuild.
+var prototype := ""
+var owns_mark := ""
+
 var breach_point := Vector3.ZERO
 
 var _progress := 0.0
@@ -396,6 +408,11 @@ func _breach() -> void:
 	# Charting the next system and waking the apex are the things the expanse must
 	# not do; learning from what you just opened is not one of them.
 	GameState.note_ledger("hulks_cracked", 1)
+	# §99. AND IF IT WAS A WORKSHOP, THIS IS WHAT WAS ON THE BENCH. Placed here,
+	# with the other conditional payloads, because that is what it is: one more
+	# flag-gated block in a function that already has four.
+	if owns_mark != "":
+		_hand_over_prototype(hud)
 	# And the expanse remembers, so the cell cycling out and back does not hand
 	# the same hull over twice. Charted derelicts skip this: `deep` is false and
 	# their persistence is GameState.breached.
@@ -437,6 +454,36 @@ func _breach() -> void:
 		tw.tween_property(part, "rotation", part.rotation + dir * 0.25, 0.7)
 
 	_spill_waves(parent, pos)
+
+
+func _hand_over_prototype(hud) -> void:
+	# THE MARK IS SPENT WHATEVER HAPPENS, and that ordering is deliberate: the
+	# hull is open either way, and a mark that stayed unspent because the pilot
+	# happened to own the module already would rebuild the workshop on the next
+	# warp and hand out its salvage again, forever.
+	GameState.note_mark_spent(owns_mark)
+	var took := prototype != "" and GameState.grant_module(prototype)
+	if took:
+		if hud:
+			hud.show_broadcast("THE BENCH — %s" % String(ModuleDB.get_module(prototype)["name"]),
+				"It was still clamped down when the air went. Nobody out here is selling them anything, so they built it themselves. It is yours, and it is the only one.",
+				Palette.RIVAL)
+		# 48 characters is the whole line, so the module's name goes last and
+		# the longest one in the table leaves room.
+		GameState.note_log("TOOK A PROTOTYPE — %s" % String(
+			ModuleDB.get_module(prototype)["name"]).to_upper())
+		Sfx.play("equip", -5.0, 0.8)
+		return
+	# THE SECOND WORKSHOP SAYS SO. The proving drift is a COMMON kind and may
+	# repeat in a run, so two of them dealing the same bench is routine rather
+	# than exotic -- and a hull that quietly handed over nothing would read as a
+	# bug in the one place the fiction is most specific. §58: the refusal states
+	# its own terms, and it pays the salvage either way because the hull was
+	# still full.
+	if hud:
+		hud.show_broadcast("THE BENCH — STRIPPED",
+			"The same pattern you are already flying. They built more than one, and somebody else got here first — or you did, at another drift. The hull is still worth opening.",
+			Palette.RIVAL)
 
 
 func force_breach() -> void:

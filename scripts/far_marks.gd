@@ -154,6 +154,26 @@ static func run_plan(run_seed: int, all_systems: Array) -> Dictionary:
 	return out
 
 
+static func drift_prototype(system_id: String, index: int, run_seed: int,
+		pool: Array) -> String:
+	# WHICH PROTOTYPE THIS WORKSHOP WAS BUILDING. A pure function of the mark,
+	# like everything else in this file: the same drift hands over the same
+	# module however many times the world is torn down and rebuilt around it,
+	# and a pilot who reads a mark, warps home and comes back finds the hull
+	# they left rather than a fresh roll.
+	#
+	# THE POOL ARRIVES AS AN ARGUMENT, and that is deliberate rather than
+	# awkward. This file references SystemDB for a bounds lookup and nothing
+	# else in the project; taking ModuleDB as a second edge to answer one
+	# question would spend the leaf property for a list the caller already has
+	# in its hand.
+	if pool.is_empty():
+		return ""
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("%s|drift|%d|%d" % [system_id, index, run_seed])
+	return String(pool[rng.randi() % pool.size()])
+
+
 static func nearest_unseen(system_id: String, run_seed: int, from: Vector3,
 		seen: Dictionary) -> Dictionary:
 	# The mark the channel names in its reply: nearest to the pilot, skipping

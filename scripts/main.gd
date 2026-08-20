@@ -1530,6 +1530,22 @@ func network_reply(cells: int, at: Vector3) -> void:
 	hud.show_broadcast(sender, body, Palette.RIVAL)
 
 
+func legend_arrives(mark_system: String, index: int, kind: String, at: Vector3) -> void:
+	# §99. THE OTHER CALLER OF build_legend, and the reason there is only one
+	# function to call. SystemBuilder raises a read mark's legend on every
+	# rebuild; this raises it at the moment of the reading, so a pilot who has
+	# just held three seconds on a buoy does not have to warp out and back to
+	# see what the plate was talking about.
+	#
+	# Main is the one node that holds system_root and already references
+	# SystemBuilder, so the world class asking for this reaches it through a
+	# group lookup and a has_method -- no second class edge, and nothing in
+	# SoundingMark names a builder.
+	if system_root == null or mark_system != system_id:
+		return
+	SystemBuilder.build_legend(system_root, mark_system, index, kind, at)
+
+
 func drop_beacon_here() -> bool:
 	# The world half of the verb: gather what GameState cannot know (where the
 	# ship is, how deep that is) and hand it to the rule. §59's argument shape.
@@ -15961,10 +15977,177 @@ func _run_return_test() -> void:
 		str(named_one), str(moved_on), nominal.size(), str(exhausted), str(kept_m),
 		"PASS" if named_one and moved_on and exhausted and kept_m else "FAIL"])
 
+	# 12. A PROTOTYPE IS NOT FOR SALE. The prototype line is the crafted block's
+	#     mechanism with a different door, so it inherits the crafted block's
+	#     guarantee: absence from every stock list, asserted rather than priced.
+	#     A zero price is not the protection -- GameState.buy() would SUCCEED at
+	#     price 0 -- which is why the racks are what this walks.
+	var protos := ModuleDB.prototype_ids()
+	var top_shipped := 0
+	for id_v in ModuleDB.MODULES:
+		var mm: Dictionary = ModuleDB.MODULES[id_v]
+		if bool(mm.get("prototype", false)):
+			continue
+		top_shipped = maxi(top_shipped, int(mm.get("tier", 0)))
+	var priced := ""
+	var not_above := ""
+	var free_lunch := ""
+	for pid_v in protos:
+		var pid := String(pid_v)
+		var pm := ModuleDB.get_module(pid)
+		if int(pm.get("price", 0)) != 0:
+			priced += pid + " "
+		if int(pm.get("tier", 0)) != ModuleDB.PROTOTYPE_TIER \
+				or int(pm.get("tier", 0)) <= top_shipped:
+			not_above += pid + " "
+		# THE LAW, NOT THE NUMBERS. "Nothing in the catalogue is a straight
+		# upgrade" is a rule the horizon document says a legendary does not get
+		# an exemption from, and this is the forge's EVERY RECIPE COSTS applied
+		# one tier up. The values in the table are provisional and this clause
+		# does not care what they are -- only that each entry pays somewhere.
+		var downs := 0
+		for k_v in (pm.get("stats", {}) as Dictionary):
+			if float((pm["stats"] as Dictionary)[k_v]) < 0.0:
+				downs += 1
+		if downs == 0:
+			free_lunch += pid + " "
+	var racks := 0
+	var for_sale := ""
+	for port_v in SystemDB.port_ids():
+		racks += 1
+		for sid2_v in SystemDB.port_def_by_id(String(port_v)).get("stock", []):
+			if protos.has(String(sid2_v)):
+				for_sale += "%s@%s " % [String(sid2_v), String(port_v)]
+	for dp_v in DeepPortDB.ids():
+		racks += 1
+		for sid3_v in DeepPortDB.by_id(String(dp_v)).get("stock", []):
+			if protos.has(String(sid3_v)):
+				for_sale += "%s@%s " % [String(sid3_v), String(dp_v)]
+	# AND §94'S LAW RE-DERIVED WITH THE NEW TIER IN THE CATALOGUE, which the
+	# horizon document asks for by name: if a prototype closed the power margin,
+	# the prototype would be wrong. Greedy best-per-slot over the shipped hull's
+	# slots, measured from the live catalog exactly as FRONTIERTEST does it --
+	# that leg is the enforcement, this clause is the horizon checking its own
+	# work before handing it over.
+	var best_by_cat := {}
+	for id2_v in ModuleDB.MODULES:
+		var m2: Dictionary = ModuleDB.get_module(String(id2_v))
+		var cat := String(m2.get("category", ""))
+		best_by_cat[cat] = maxi(int(best_by_cat.get(cat, 0)), int(m2.get("power", 0)))
+	var berth_slot_ids := {}
+	for b2_v in ModuleDB.BERTHS:
+		berth_slot_ids[int((ModuleDB.BERTHS[b2_v] as Dictionary)["slot"])] = true
+	var greedy_all := 0
+	for slot2_v in ModuleDB.SLOT_CATEGORY:
+		if berth_slot_ids.has(int(slot2_v)):
+			continue
+		greedy_all += int(best_by_cat.get(String(ModuleDB.SLOT_CATEGORY[slot2_v]), 0))
+	var top_reactor := ModuleDB.reactor_power(ModuleDB.REACTOR_TIERS.size() - 1)
+	print("[return] A PROTOTYPE IS NOT FOR SALE %d prototypes at tier %d (top shipped tier %d); on a rack: %s (%d racks walked), priced: %s, only-upside: %s, wrong tier: %s; all-best with the new tier draws %d against the top reactor's %d -> %s" % [
+		protos.size(), ModuleDB.PROTOTYPE_TIER, top_shipped,
+		"none" if for_sale == "" else for_sale, racks,
+		"none" if priced == "" else priced,
+		"none" if free_lunch == "" else free_lunch,
+		"none" if not_above == "" else not_above,
+		greedy_all, top_reactor,
+		"PASS" if not protos.is_empty() and for_sale == "" and priced == ""
+			and free_lunch == "" and not_above == "" and greedy_all > top_reactor
+			else "FAIL"])
+
+	# 13. THE DRIFT STANDS WHERE THE MARK IS READ. The encounter machinery all
+	#     nine legends share, proved on the one that exists: reading resolves the
+	#     mark AND raises what the plate describes, without waiting for a warp.
+	#     Driven through the real hold on a real node, so it covers _read ->
+	#     legend_arrives -> build_legend rather than the builder alone.
+	GameState.marks_seen = {}
+	GameState.owned.clear()
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+	var cell_d := DeepSpace.cell_key(msid, 5, 0)
+	GameState.note_survey_worked(cell_d)
+	GameState.note_survey_held(cell_d)
+	var drift_key := GameState.mark_key(msid, 0)
+	var drift_at := Vector3(600.0, 0.0, 600.0)
+	var dprobe := SoundingMark.new()
+	dprobe.system_id = msid
+	dprobe.index = 0
+	dprobe.kind = "drift"
+	system_root.add_child(dprobe)
+	dprobe.global_position = drift_at
+	await get_tree().process_frame
+	# NOTHING STANDS THERE BEFORE THE READING, and this half matters as much as
+	# the other: a legend that built for every mark on load would make reading
+	# decorative.
+	var before_read := SystemBuilder.build_legend(system_root, msid, 0, "drift", drift_at)
+	if pilot_m != null:
+		pilot_m.teleport_to(drift_at)
+	dprobe.hold_begin()
+	dprobe.hold_tick(SoundingMark.READ_TIME + 0.1)
+	var workshop: Derelict = null
+	for c_v in system_root.get_children():
+		var dd := c_v as Derelict
+		if dd != null and dd.owns_mark == drift_key:
+			workshop = dd
+	var stood := workshop != null
+	var carried := false
+	var determined := false
+	if stood:
+		carried = ModuleDB.exists(workshop.prototype)
+		determined = workshop.prototype == FarMarks.drift_prototype(msid, 0,
+			GameState.run_seed, ModuleDB.prototype_ids())
+	print("[return] THE DRIFT STANDS WHERE THE MARK IS READ nothing before the reading=%s; the hold raised a workshop=%s carrying a real module=%s (%s), the same one the generator names=%s -> %s" % [
+		str(before_read == null), str(stood), str(carried),
+		workshop.prototype if stood else "-", str(determined),
+		"PASS" if before_read == null and stood and carried and determined
+			else "FAIL"])
+
+	# 14. THE WORKSHOP PAYS ONCE. What a breach hands over, and what the SECOND
+	#     drift says -- the proving drift is a COMMON kind and may repeat in a
+	#     run, so two benches dealing the same pattern is routine. A hull that
+	#     quietly handed over nothing would read as a bug in the one place the
+	#     fiction is most specific.
+	var paid := false
+	var spent := false
+	var still_read := false
+	var stayed_down := false
+	var second_refused := false
+	var second_spent := false
+	if stood:
+		var proto_id := workshop.prototype
+		workshop.force_breach()
+		paid = GameState.owns(proto_id)
+		spent = GameState.is_mark_spent(drift_key)
+		# STILL READ, and this is the clause the state design was for: a spent
+		# mark is still a mark this pilot has read, so the channel keeps skipping
+		# it and the plate keeps reading.
+		still_read = GameState.is_mark_read(drift_key)
+		stayed_down = SystemBuilder.build_legend(system_root, msid, 0, "drift",
+			drift_at) == null
+		# The second bench, forced onto the same pattern rather than waited for.
+		var key2 := GameState.mark_key(msid, 1)
+		GameState.marks_seen[key2] = GameState.MARK_READ
+		var drift2 := SystemBuilder.build_legend(system_root, msid, 1, "drift",
+			drift_at + Vector3(0.0, 0.0, 120.0)) as Derelict
+		if drift2 != null:
+			drift2.prototype = proto_id
+			drift2.force_breach()
+			second_refused = GameState.owned.count(proto_id) == 1
+			second_spent = GameState.is_mark_spent(key2)
+			drift2.queue_free()
+	dprobe.queue_free()
+	if workshop != null:
+		workshop.queue_free()
+	print("[return] THE WORKSHOP PAYS ONCE the breach handed over the prototype=%s, the mark is spent=%s and still reads as read=%s, and it does not come back on a rebuild=%s; a second bench on the same pattern grants no duplicate=%s and still spends its own mark=%s -> %s" % [
+		str(paid), str(spent), str(still_read), str(stayed_down),
+		str(second_refused), str(second_spent),
+		"PASS" if paid and spent and still_read and stayed_down
+			and second_refused and second_spent else "FAIL"])
+
 	GameState.survey_coverage = {}
 	GameState.survey_filed = {}
 	GameState.deep_logs = {}
 	GameState.marks_seen = {}
+	GameState.owned.clear()
 	GameState.cargo = {}
 	get_tree().quit()
 

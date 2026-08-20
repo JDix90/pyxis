@@ -6106,16 +6106,24 @@ option was never a discovery. It is now Horizon 9's spine — see below.
 
 **Horizon 9 — the true copy** (opened 2026-08-20; specced in
 `docs/HORIZON-9-THE-TRUE-COPY.md`, prose gated on `docs/FAR-MARKS-DRAFT.md`,
-decisions R1–R4). Six commits, **three built**:
+decisions R1–R4). Six commits, **three and a half built** (commit 3 split at build time — see the 3a/3b rows):
 
 | # | what | save | status |
 |---|---|---|---|
 | 0 | THE FILED RETURN: two-stage hold on deep foreign beacons — give the goods, no credits, no Commission; the channel answers with a bearing | **v25** | **BUILT** — §96; a research fan-out killed four parts of the design first, including a loader that would have eaten the feature whole |
 | 1 | THE TRUE CHART: held cells marked on the plot (shape, not hue); the rival annotation re-read as colleagueship | none | **BUILT** — §97 |
 | 2 | THE FAR MARKS: the network's sounding buoys at 6,500–9,000u, five per system on `hyper_positions`' pattern; visible to all, readable only by filers | rides v25 | **BUILT** — §98; `marks_seen` carries a validated STATE from its first line rather than a boolean that grows a vocabulary later |
-| 3 | LEGENDS I, the common three: THE VEIN, THE LAYUP (deposit and withdrawal), THE PROVING DRIFT | rides v25 | **SPECCED** |
+| 3a | THE PROVING DRIFT, plus the encounter machinery all nine legends share, plus the prototype tier | rides v25 | **BUILT** — §99; `MARK_STATES` gained one word and nothing else changed, which is what §98's validated-string decision was for |
+| 3b | LEGENDS I, the rest of the common three: THE VEIN, THE LAYUP (deposit and withdrawal) | rides v25 | **SPECCED** |
 | 4 | LEGENDS II, the dangerous three: THE STILLNESS' GROUND, THE STANDING ORDER (it hails first), THE SOUNDING SERPENT | none | **SPECCED** |
 | 5 | LEGENDS III, the ongoing three: THE TALLY'S NURSERY (takeable, and they come back for it), THE PATTERN FORGE (escorts), THE PROCESSION'S END | v26 | **SPECCED as a row** — the largest mechanical addition since the horizon system; wants its own research pass, as the berths did |
+
+**The prototype tier is under a research pass the player is running** (opened
+2026-08-20). §99 shipped the mechanism, the laws and three provisional entries
+in one block; what the research owes back is the line itself, and one question
+the code has already framed: a weapon prototype cannot carry a ship-stat defect
+at all, because `compute_stats` routes a weapon's `stats` into the weapon block,
+so its cost has to be a new mechanism or a pure weapon-parameter trade.
 
 The ideation decisions are settled and recorded in the spec: filing point is
 foreign beacons, all three payoffs ship, filing stays a donation, the hold is
@@ -10105,3 +10113,117 @@ serializer with its state intact and four kinds of rubbish dropped.
 `bool()` of what it is given and the store holds state strings, so the world
 hands it `marks_read()` rather than the store itself — the day a state should
 not hide a mark from the channel, there is exactly one function to edit.
+
+---
+
+## 99. The proving drift, and the tier above the catalogue (rides v25)
+
+Horizon 9 commit 3a. The first legend that actually stands at a mark, plus the
+machinery every other legend will use to stand at one.
+
+### The piece that is not about the drift at all
+
+*Reading a mark spawns the encounter* is one sentence in the spec and a design
+question none of the nine legends owns: what does it mean across a warp? A
+drift raised at the moment of reading has to still be there after a jump home,
+and a drift already cracked must not come back with its salvage refilled.
+
+`SystemBuilder.build_legend` is the answer, and it has **two callers by
+construction**: the far-marks builder (every rebuild, for marks read in an
+earlier session) and `Main.legend_arrives` (once, at the moment of the reading,
+so the legend does not wait for a warp). That is `build_garrison`'s own rule one
+shelf up — the list that raises a thing and the list that raises it again must
+be the same list, because being two lists is exactly how a headline feature
+shipped invisible for a whole session.
+
+**The state store needed nothing.** `marks_seen` gained one word:
+`MARK_STATES` goes from `["read"]` to `["read", "spent"]`. No shape change, no
+loader change, no migration, no version bump — which is the entire return on
+§98's decision to ship a validated string one commit before anything needed a
+second state. Had it shipped a boolean, this commit would have been a save bump
+and a migration leg.
+
+A spent mark is **still a read mark** — `is_mark_read` asks whether the value is
+a legal state, not whether it is the first one — so the channel keeps skipping
+it and the plate keeps reading. Only the legend stops coming back.
+
+### The prototype tier was already in the catalogue's grammar
+
+The research question was "what is the tier above Mk V". Looking before writing
+found most of the answer already shipped: the **crafted** block (`mod_baffle`
+and its three siblings) is `price: 0`, absent from every port's `stock` array,
+and every entry carries a real negative stat, with `EVERY RECIPE COSTS`
+asserting the no-free-lunch law. A prototype is that same shape with a
+different door — a drop instead of a recipe. **The catalogue needed no new
+grammar and the outfitter needed no new branch.** What is new is only the tier
+and the way in.
+
+`grant_module` is kept separate from `buy` rather than calling `buy(0)`,
+because `buy` would **succeed** at price zero for any module in the catalogue —
+the guarantee that a prototype is not for sale is its absence from every stock
+list, and a zero-price buy path is precisely how that guarantee would be
+reached around. It returns false when the pilot already owns the module, which
+is not a failure but an answer the caller has to have something to say about.
+The drift does.
+
+**The numbers are provisional and they are all in one block**, under their own
+research pass. The laws are what is asserted; the values are not pinned, so the
+research changes one table and nothing else.
+
+### The finding the research needs, which the code found for it
+
+**There can be no weapon prototype without a new mechanism.** `compute_stats`
+routes a weapon's `stats` into the *weapon* block and every other category's
+into the *ship* block, so a weapon module cannot carry a negative ship stat at
+all — it would be read as a weapon parameter and silently ignored. A weapon
+prototype's cost therefore has to be either a new mechanism (heat, a draw the
+reactor cannot hold) or a pure weapon-parameter trade. That is a design
+decision, not a table entry, and it belongs to the research rather than to this
+commit. The three that shipped are one drive and two utility, where the defect
+mechanism already works.
+
+### The drift is a Derelict with two fields set
+
+Not a subclass. This class is already a gradient of hull kinds — the authored
+survey hull, the tutorial's hull, the deep hulks, the grave-field pairs — and
+§17's rule is that the gradient is parameters. `_breach` already carries four
+flag-gated payloads; the workshop is a fifth. `counts_as_survey` is false for
+the deep hulk's exact reason, harder out here: charting the next system by
+cracking something seven thousand units past the chart edge would let the far
+deep skip the game's spine altogether.
+
+**The second workshop says so.** The proving drift is a COMMON kind and may
+repeat in a run, so two benches dealing the same pattern is routine rather than
+exotic. The mark is spent either way — a mark left unspent because the pilot
+already owned the module would rebuild the workshop on the next warp and hand
+out its salvage again, forever — and the hull states its terms (§58) instead of
+handing over nothing in silence.
+
+### What was checked before it was written
+
+**When a table grows, grep for every reader of the old one** — the rule §94's
+amendment had just cost a red leg to learn, applied the same day. Adding three
+modules to `MODULES` means every catalogue-wide assertion is a reader:
+
+- `THE YARDSTICK IS MID-TIER` filters `price > 0` — prototypes excluded, safe.
+- `_pacing_catalog_cost` sums prices — prototypes add zero, safe.
+- `THE FRONTIER'S GEAR IS NOT ON THE CHART` pins `tier == 3` exactly, and a
+  prototype is tier 4 — safe.
+- `CATALOG BUYABLE` counts priced against price-0 and passes on `priced > 0` —
+  safe.
+- `THE CONSOLE DRAWS EVERY MODULE` fits every module and demands it move a
+  visible column — all three do, and this one was the real risk.
+- `ALL-BEST IS STILL OUT OF REACH` builds its greedy maximum from the live
+  catalogue, so prototypes enter it: the bare margin widens from 8 to 12 and the
+  berthed margin from 15 to 22. **Widening is the correct direction** — the
+  horizon document's rule is that if a prototype closed the power margin, the
+  prototype would be wrong.
+
+### What is honestly missing
+
+Eight of the ten kinds still build nothing when read, and the ninth (the vein
+and the layup) is commit 3b. A read mark whose legend has not shipped is
+exactly what its plate says: a record of a sounding, in the past tense — which
+is why the plates were written that way and why none of them needs rewriting.
+But the vein's plate promises a place, and until commit 3b there is no place.
+That gap is stated here rather than left for a playtest to find.

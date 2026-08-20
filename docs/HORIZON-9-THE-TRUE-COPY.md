@@ -1,6 +1,6 @@
 # Horizon 9 — The True Copy
 
-**Status: COMMITS 0-2 BUILT (§96 v25, §97 no bump, §98 rides v25). Commits 3-5 specced, nothing built. Prose gated on `docs/FAR-MARKS-DRAFT.md`
+**Status: COMMITS 0-3a BUILT (§96 v25, §97 no bump, §98 and §99 ride v25). Commit 3 split at build time: 3a is the proving drift plus the shared encounter machinery and the prototype tier; 3b is the vein and the layup. Commits 3b-5 specced, nothing built. Prose gated on `docs/FAR-MARKS-DRAFT.md`
 (second draft; R1–R4 and S1–S3 answered).** When any of it is adopted,
 record it in `docs/STRATEGY.md` §64 in the same commit, per the house rule.
 
@@ -63,7 +63,8 @@ after any commit and still be a whole thing.
 | 0 | THE FILED RETURN — two-stage hold on deep foreign beacons, provenance in the store, the channel's reply | **v25** | **BUILT (§96)** |
 | 1 | THE TRUE CHART — held cells marked on the plot; the rival annotation re-read | none | **BUILT (§97)** |
 | 2 | THE FAR MARKS — the buoys, their placement, the read/unread split | rides v25 | **BUILT (§98)** |
-| 3 | LEGENDS I, the common three — VEIN, LAYUP (deposit + withdrawal), PROVING DRIFT | rides v25 | medium |
+| 3a | THE PROVING DRIFT + the shared encounter machinery + the prototype tier | rides v25 | **BUILT (§99)** |
+| 3b | LEGENDS I, the rest — VEIN, LAYUP (deposit + withdrawal) | rides v25 | medium |
 | 4 | LEGENDS II, the dangerous three — STILLNESS' GROUND, STANDING ORDER, SOUNDING SERPENT | none | large |
 | 5 | LEGENDS III, the ongoing three — TALLY'S NURSERY, PATTERN FORGE, PROCESSION'S END | **v26** | largest |
 

@@ -1794,7 +1794,16 @@ func structures_seen_in(system_id: String) -> Array:
 # string. HELD's neighbour in every respect except that this one was written
 # knowing what it was for.
 const MARK_READ := "read"
-const MARK_STATES := ["read"]
+# v25 (§99). AND THE STATE THE STORE WAS SHAPED FOR. A drift whose workshop has
+# been cracked is still a read mark -- is_mark_read asks whether the value is a
+# legal STATE, not whether it is the first one -- so the channel still skips it
+# and the plate still reads. What changes is that the legend does not come back.
+#
+# This is the whole argument for shipping a validated string one commit early
+# rather than a boolean: the store did not change shape, the loader did not
+# change, and nothing had to be migrated. One word was added to one list.
+const MARK_SPENT := "spent"
+const MARK_STATES := ["read", "spent"]
 
 
 func mark_key(system_id: String, index: int) -> String:
@@ -1820,6 +1829,22 @@ func note_mark_read(key: String) -> bool:
 	marks_seen[key] = MARK_READ
 	_queue_save()
 	return true
+
+
+func note_mark_spent(key: String) -> bool:
+	# The legend at this mark has been taken. Refuses a mark that was never read
+	# -- you cannot spend what you could not find -- so the two states stay
+	# ordered by construction rather than by the caller remembering.
+	if not is_mark_read(key) or is_mark_spent(key):
+		return false
+	marks_seen[key] = MARK_SPENT
+	_queue_save()
+	return true
+
+
+func is_mark_spent(key: String) -> bool:
+	var v = marks_seen.get(key, "")
+	return typeof(v) == TYPE_STRING and String(v) == MARK_SPENT
 
 
 func marks_read() -> Dictionary:
@@ -3264,6 +3289,26 @@ func craft(id: String) -> bool:
 	var rec := ModuleDB.recipe(id)
 	for good in rec:
 		unload_cargo(String(good), int(rec[good]))
+	owned.append(id)
+	_queue_save()
+	fit_changed.emit(stats)
+	return true
+
+
+func grant_module(id: String) -> bool:
+	# v25 (§99). A MODULE THAT ARRIVES WITHOUT A COUNTER. craft() is the same
+	# verb with a recipe in front of it and buy() is the same verb with a price;
+	# this is the one for a thing that was found. Kept separate rather than
+	# calling buy(0), which would SUCCEED at price zero for any module in the
+	# catalogue -- the guarantee that a prototype is not for sale is its absence
+	# from every stock list, and a zero-price buy path is exactly how that
+	# guarantee would be reached around.
+	#
+	# Returns false when the pilot already owns it, which is not a failure but
+	# an ANSWER: the caller has to have something to say about a second copy,
+	# and the drift does.
+	if not ModuleDB.exists(id) or owns(id):
+		return false
 	owned.append(id)
 	_queue_save()
 	fit_changed.emit(stats)

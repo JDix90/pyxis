@@ -204,8 +204,12 @@ and no save bump. §96 then adds `RETURNTEST` (one new run carrying eight) and t
 mode (one new run carrying one), at save format **v25**. §97 then adds two legs to the existing `PLOTTEST`, with no new run and no
 save bump. §98 then adds three legs to `RETURNTEST` and one clause each to
 `SAVETEST=migrate24` and `PROFILETEST` — no new run, no new mode and no save
-bump, since `marks_seen` rides v25. So the next full sweep should read
-**755 across 77**.
+bump, since `marks_seen` rides v25 — that sweep came back green at **755 across
+77**, after one red leg it found in §94 (`MINING COSTS A MOUNT` had been
+counting utility slots off the static table since berths grew it, and had
+therefore been checking nothing for three commits). §99 then adds three more
+legs to `RETURNTEST`, again with no new run, no new mode and no save bump. So
+the next full sweep should read **758 across 77**.
 
 (§96's adversarial pass reported after both commits shipped; its two confirmed
 findings were folded back in without changing any count — one strengthened an

@@ -659,6 +659,71 @@ const MODULES := {
 		"stats": {"turn_rate": -1.2},
 	},
 
+	# v25 (§99). THE PROTOTYPE LINE — the tier above the catalogue, and the only
+	# way to own one is to crack a PROVING DRIFT out past the archives. A
+	# refuser expedition's workshop hull: "they were building past the catalogue
+	# because nobody out here is selling them anything. Some of it works."
+	#
+	# THE MECHANISM IS THE CRAFTED BLOCK'S, ONE SHELF UP, and finding that was
+	# the point of looking before writing: `price: 0`, absent from every port's
+	# `stock` array, each carrying a real negative stat. A prototype is that
+	# same shape with a different acquisition channel — a drop instead of a
+	# recipe — so the catalogue needed no new grammar and the outfitter needed
+	# no new branch. What is new is only the tier and the door.
+	#
+	# NOTHING IN THE CATALOGUE IS A STRAIGHT UPGRADE, and a legendary is not an
+	# exemption from it (the horizon document says so by name). Every entry here
+	# sits ABOVE the tier-3 line on its headline stat and pays for it somewhere
+	# a pilot will feel, and `A PROTOTYPE IS NOT FOR SALE` asserts both halves
+	# from the live catalogue rather than from this paragraph.
+	#
+	# THE NUMBERS BELOW ARE PROVISIONAL, and they are all in one place on
+	# purpose. The tier is under its own research pass; when it lands, this
+	# block is what changes, and nothing else has to — the laws are asserted,
+	# the values are not pinned.
+	#
+	# NO WEAPON PROTOTYPE YET, and the reason is structural rather than a gap in
+	# the writing. compute_stats routes a weapon's `stats` into the WEAPON block
+	# and every other category's into the ship block, so a weapon module cannot
+	# carry a negative ship stat at all — it would be read as a weapon parameter
+	# and silently ignored. A weapon prototype therefore needs its cost to be a
+	# new mechanism (heat, a draw the reactor cannot hold) or a pure
+	# weapon-parameter trade, which is a design decision rather than a table
+	# entry. It belongs to the research pass, not to this commit.
+	"proto_coil": {
+		"name": "Overwound Coil",
+		"category": "drive",
+		"tier": 4,
+		"power": 6,
+		"price": 0,
+		"prototype": true,
+		"desc": "Faster than anything on the rack, and it takes the shield bus to do it. They knew. They flew it anyway.",
+		"stats": {"max_speed": 2.4, "accel": 21.0, "turn_rate": 9.0,
+			"shield_regen": -4.0},
+	},
+	"proto_envelope": {
+		"name": "Braced Envelope",
+		"category": "utility",
+		"tier": 4,
+		"power": 6,
+		"price": 0,
+		"prototype": true,
+		"desc": "A field that holds where the catalogue's gives. The bracing is welded through the spine and the hull flies like it.",
+		"stats": {"shield_max": 230.0, "shield_regen": 6.0,
+			"max_speed": -1.2, "turn_rate": -2.0},
+	},
+	"proto_sounder": {
+		"name": "Long Sounder",
+		"category": "utility",
+		"tier": 4,
+		"power": 6,
+		"price": 0,
+		"prototype": true,
+		"desc": "Reads further than the Authority's best and leaves the shield thin to do it. Built by people who needed to see more than they needed to survive being seen.",
+		"stats": {"weapon_range_bonus": 5.5, "crit_chance": 0.50,
+			"survey_speed": 1.15, "shield_max": -45.0},
+	},
+
 	"rig_hauler": {
 		"name": "Hauler Frame",
 		"category": "utility",
@@ -846,6 +911,25 @@ static func craftable_ids() -> Array:
 	for id in MODULES:
 		if (MODULES[id] as Dictionary).has("craft"):
 			out.append(String(id))
+	return out
+
+
+# The tier a prototype sits at, one above the catalogue's top. Named rather than
+# written as a literal in three places, because the harness asks "is every
+# prototype above every shipped module" and that question needs one number to
+# be about.
+const PROTOTYPE_TIER := 4
+
+
+static func prototype_ids() -> Array:
+	# craftable_ids' shape and craftable_ids' reason: DERIVED from the entry
+	# rather than kept as a second list that could drift from the table it
+	# describes. A prototype is a module that says it is one.
+	var out: Array = []
+	for id in MODULES:
+		if bool((MODULES[id] as Dictionary).get("prototype", false)):
+			out.append(String(id))
+	out.sort()
 	return out
 
 
