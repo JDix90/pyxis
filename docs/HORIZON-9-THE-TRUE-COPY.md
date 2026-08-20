@@ -7,8 +7,21 @@ record it in `docs/STRATEGY.md` §64 in the same commit, per the house rule.
 Settled from the ideation rounds: filing point is **foreign beacons**; the
 response is **all three payoffs**; filing **stays a donation**; the hold is
 **two-stage**; the channel has **no fixed name**; the layup takes **deposits
-and withdrawals**; the Standing Order **hails before it fires**; and the legend
-set is **ten kinds**, generous and lethal in the same table.
+and withdrawals**, and a deposit leaves one clause on the plate and no tally;
+the Standing Order **hails before it fires**; the serpent **leaves rather than
+dies**, so the mark stays live; escorts **do not survive a warp**; and the
+legend set is **ten kinds**, generous and lethal in the same table.
+
+### One sequencing decision, taken at build time
+
+Commit 0's reply names a **bearing to a far mark**, and the marks are commit 2
+— a forward dependency that would leave commit 0's best line hollow. Resolved
+the way §84 resolved the same shape: **the pure generator ships first, the
+nodes ship later.** `Rival` shipped as arithmetic that the world read before
+anything drew it, and `far_marks(system_id, run_seed)` is the same kind of
+object — pure, deterministic, world-invisible, fully testable without building
+a single node. Commit 0 carries the generator and the bearing; commit 2 builds
+buoys from it. Neither commit is left holding an unfinished half.
 
 ## What this answers
 

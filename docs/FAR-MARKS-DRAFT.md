@@ -14,6 +14,14 @@ player never learns who or what is out there listening.
 cache is a two-way place.
 **R4 — the Standing Order hails first.** Adopted as drafted.
 
+**S1 — a deposit leaves a trace.** Adopted: one clause on the layup's plate on
+a later visit, no tally.
+**S2 — the serpent leaves rather than dies.** Adopted: the mark stays live. A
+creature you exterminated is a boss; a creature that swam off is a place you
+now avoid.
+**S3 — escorts do not survive a warp.** Adopted: they hold to the system they
+were printed in, and the charted side stays exactly as hard as it is.
+
 The register rule (§92) still governs every line: understandable on first
 read, eerie by what it means, never by being hard to parse.
 
@@ -110,9 +118,14 @@ thing in it. The response is one line and no number:
 
 > IT IS IN THE CACHE. SOMEBODY WILL NEED IT. THAT IS THE WHOLE ARRANGEMENT.
 
-**S1 — does a deposit leave a trace?** My lean: the layup's plate, on a later
-visit, reads *"STORES CACHED BY CREWS WHO DID NOT ALL COME BACK FOR THEM — AND
-BY YOU"*. One clause, no tally.
+**S1 is ADOPTED.** The layup's plate, on any visit after a deposit:
+
+> MARK: LAYUP. STORES CACHED BY CREWS WHO DID NOT ALL COME BACK FOR THEM — AND
+> BY YOU. TAKE WHAT YOU NEED. LEAVE WHAT YOU CAN.
+
+One clause. No tally, no count, no record of what or how much: the arrangement
+does not keep books, which is the entire difference between the cache and the
+registry.
 
 #### 3. THE PROVING DRIFT — *generous, and the only source of what it carries*
 
@@ -178,9 +191,13 @@ salvage. What it drops is that you saw it.
 
 > IT IS GONE. NOTHING ON THE BOARD. NOTHING TO FILE. WE SAW IT.
 
-**S2 — does the serpent stay dead?** My lean: no. It leaves, and the mark
-stays live. A creature you exterminated is a boss; a creature that swam off is
-a place you now avoid, which is worth more.
+**S2 is ADOPTED: it leaves, and the mark stays live.** Driven off rather than
+killed — the segments stop answering, the body turns, and it goes back down
+where the line found no bottom. The mark keeps its warning forever, so the
+place stays dangerous instead of becoming a cleared room. Returning is a
+choice you make again every time, which is what the deep is for.
+
+> IT BROKE OFF. IT IS STILL DOWN THERE. THE MARK STANDS.
 
 #### 7. THE ORRERY STILL RUNNING — *the machines were never told, as a windfall*
 
@@ -232,9 +249,13 @@ whole contract, and the refusal is stated up front so nobody expects an RTS:
 > THEY WILL NOT TAKE ORDERS. THEY WILL NOT TAKE A BEARING. THEY FOLLOW, AND
 > WHEN SOMETHING SHOOTS AT YOU THEY ANSWER. THAT IS ALL IT PRINTS.
 
-**S3 — do escorts survive a warp?** My lean: no — they hold to the system they
-were printed in. An escort wing that follows you home makes the charted side
-easy, and the charted side must stay exactly as hard as it is.
+**S3 is ADOPTED: they hold to the system they were printed in.** An escort wing
+that followed you home would make the charted side easy, and the charted side
+must stay exactly as hard as it is. The forge says so plainly, before you feed
+it anything:
+
+> THEY ARE PRINTED FOR THIS GROUND. THEY WILL NOT FOLLOW YOU THROUGH A JUMP,
+> AND NOTHING WE HAVE TRIED HAS EVER PERSUADED ONE TO.
 
 #### 10. THE PROCESSION'S END — *no reward at all*
 
