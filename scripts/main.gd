@@ -16424,6 +16424,13 @@ func _run_return_test() -> void:
 				and JSON.stringify(GameState.faction_deltas) == deltas_before_o
 		order_gone = SystemBuilder.build_legend(system_root, msid, 0, "order",
 			Vector3(1400.0, 0.0, 1400.0)) == null
+		# THE SPILL LANDS ON A TIMER (DEATH_STAGE_3, 0.38s), so an immediate
+		# sweep here cleaned up nothing and left the asset's crates to appear
+		# inside a LATER leg's cube count. Nothing has gone red on it yet --
+		# the suite happened to be slow enough between these two legs -- which
+		# is precisely the kind of pass that stops being one on a faster
+		# machine.
+		await get_tree().create_timer(0.6).timeout
 		_clear_loot_cubes()
 		order_node.queue_free()
 	print("[return] THE ORDER HAILS BEFORE IT FIRES the station stands=%s with nothing in the hostiles group=%s; arming launches exactly one asset=%s wearing Authority teal=%s while flying feral=%s (so the kill pays: band HOSTILE=%s); silencing it spends the mark=%s, moves no GSA standing and no delta=%s, and the asset does not re-post=%s -> %s" % [
@@ -16515,14 +16522,23 @@ func _run_return_test() -> void:
 			DeepSpace.BAND_NAMES.size() - 1)
 		loops_worth = float(Orrery.COLLECT_UNITS) \
 			/ (float(SurveyMast.YIELD_UNITS) * float(PACING_LOOP["survey"]))
+		# PARKED AT THE LEGEND, NOT AT THE MARK. build_legend stands every
+		# legend LEGEND_STANDOFF off its buoy, so teleporting to `orr_at` left
+		# the ship 26u from a 14u collect range and the hold never engaged --
+		# and the deferral clause below then passed on NOTHING HAPPENING,
+		# which is the vacuous-assertion shape this file keeps catching.
 		if pilot_m != null:
-			pilot_m.teleport_to(orr_at)
+			pilot_m.teleport_to(orrery.global_position)
 		# FULL HOLD FIRST: an instrument that has waited forty years does not
 		# spill its file on the deck because the pilot arrived full.
 		GameState.load_cargo("alloys", 9999)
 		orrery.hold_begin()
+		# THE HOLD ACTUALLY ENGAGED, asserted before anything is concluded from
+		# its outcome. Without this the deferral reads the same whether the
+		# instrument refused politely or the harness never reached it.
+		var began_full: bool = orrery._holding
 		orrery.hold_tick(Orrery.COLLECT_TIME + 0.1)
-		deferred_orr = not GameState.is_mark_spent(orr_key) \
+		deferred_orr = began_full and not GameState.is_mark_spent(orr_key) \
 			and GameState.cargo_count(Orrery.COLLECT_GOOD) == 0
 		# With room, it pays exactly once.
 		GameState.cargo = {}
@@ -16602,14 +16618,19 @@ func _run_return_test() -> void:
 		var donor := Hostile.new()
 		donor.faction = FactionDB.FERAL
 		system_root.add_child(donor)
-		donor.global_position = forge_at + Vector3(10.0, 0.0, 0.0)
+		donor.global_position = forge.global_position + Vector3(10.0, 0.0, 0.0)
 		await get_tree().process_frame
+		# SEEN ALIVE, THEN KILLED. The forge copies from a snapshot it took
+		# while the hull was flying, because a dying hull is out of the
+		# `hostiles` group before any frame can see it -- so the watch has to
+		# run once with the donor alive, exactly as _process would.
+		forge._watch_the_bed()
 		donor.take_damage(9.9e9, pilot_m)
 		forge._watch_the_bed()
 		took_pattern = forge.has_pattern()
-		# PRINT.
+		# PRINT, from the legend's own position rather than the mark's.
 		if pilot_m != null:
-			pilot_m.teleport_to(forge_at)
+			pilot_m.teleport_to(forge.global_position)
 		# DUPLICATED, NOT JSON-ROUND-TRIPPED. faction_deltas holds ints, and
 		# JSON.parse_string would hand every one of them back as a float --
 		# restoring a store with the right numbers in the wrong type, which is
@@ -16658,6 +16679,12 @@ func _run_return_test() -> void:
 		for w2_v in wing:
 			(w2_v as Node).free()
 		donor.free()
+		# THE SPILL LANDS ON A TIMER, and clearing before it fires cleans up
+		# nothing. Hostile._die spawns its crates at DEATH_STAGE_3 (0.38s), so
+		# an immediate sweep left the donor's loot to materialise inside the
+		# NEXT leg -- where a cube count captured before and after moved for a
+		# reason that leg had nothing to do with.
+		await get_tree().create_timer(0.6).timeout
 		_clear_loot_cubes()
 		forge.queue_free()
 	print("[return] THE FORGE COPIES WHAT DIES THERE the bed starts empty=%s and refuses the hold=%s; a hull dying in range arms it=%s; the hold printed %d of %d; the wing is not the player's enemy=%s, costs no standing to splash=%s, is nobody's enemy unprovoked=%s, and can never land a kill=%s; the bed goes cold=%s and the forge itself stands again=%s -> %s" % [
@@ -16722,6 +16749,13 @@ func _run_return_test() -> void:
 		# is refused while it is up. That refusal IS the mark's instruction.
 		if named_n > 0:
 			hud.clear_prompt()
+			# THE PLATE OUTLIVES ITS LEG. show_broadcast holds for 6.2s and the
+			# suite runs in milliseconds, so the serpent's break-off line from
+			# leg 20 was still up when this leg tapped its first hull -- the
+			# hull then correctly took its READ THEM SLOWLY branch, and the leg
+			# read that correct behaviour as a failure. Cleared here, because a
+			# leg about what a plate says must start from an empty plate.
+			hud._broadcast_box.visible = false
 			(named[0] as Node).call("on_tapped")
 			read_one = hud.broadcast_busy() \
 				and hud.broadcast_text() == String((named[0] as Node).get("hull_line"))

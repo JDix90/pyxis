@@ -74,6 +74,11 @@ var owns_mark := ""
 # rather than a saving: the wing it prints cannot survive a warp either, so a
 # pattern that outlived the visit would be a promise the next visit breaks.
 var _pattern := {}
+# THE HULL CURRENTLY ON WATCH, and the snapshot taken of it WHILE IT WAS
+# ALIVE. Both exist because of a defect the first version of this file
+# shipped and the sweep caught -- see _watch_the_bed.
+var _watch_ref: Node3D = null
+var _pending := {}
 var _holding := false
 var _progress := 0.0
 var _t := 0.0
@@ -135,31 +140,64 @@ func _process(delta: float) -> void:
 
 func _watch_the_bed() -> void:
 	# IT DOES NOT ASK WHOSE HULL. Anything that dies in range is a pattern,
-	# including a printed hull — a wing that dies here can be reprinted from
+	# including a printed hull -- a wing that dies here can be reprinted from
 	# its own corpse, which is the machine's whole character and costs nothing
-	# to allow. Read off `is_dying` rather than a death signal so the forge
-	# needs no wiring into a class it does not own.
+	# to allow.
+	#
+	# THE SNAPSHOT IS TAKEN WHILE THE HULL IS ALIVE, and that is the shape of
+	# this whole function rather than an optimisation. The first version walked
+	# the `hostiles` group looking for `is_dying()` -- which can NEVER be true
+	# of anything in that group, because Hostile._die removes the node from
+	# `hostiles` and `combatants` on its opening two lines, before any frame
+	# can observe it. The forge could not have armed once in play, and nothing
+	# but a run would have said so: the parser, the static checker and every
+	# reading of this file took it for correct.
+	#
+	# So the forge WATCHES the nearest live hull in range, keeps a copy of what
+	# it is, and promotes that copy the moment the hull stops being valid or
+	# starts dying. Death is still the trigger; the group is simply not where
+	# the answer lives.
 	if has_pattern():
 		return
+	if _watch_ref != null:
+		var gone := not is_instance_valid(_watch_ref)
+		var dying: bool = not gone and _watch_ref.has_method("is_dying") \
+			and _watch_ref.is_dying()
+		if gone or dying:
+			_watch_ref = null
+			if not _pending.is_empty():
+				_pattern = _pending
+				_pending = {}
+				_announce_pattern()
+			return
+		if global_position.distance_to(_watch_ref.global_position) <= FEED_RANGE:
+			return
+		# It left without dying. Nothing is owed for that.
+		_watch_ref = null
+		_pending = {}
+	var best: Hostile = null
+	var best_d := FEED_RANGE
 	for h_v in get_tree().get_nodes_in_group("hostiles"):
 		var h := h_v as Hostile
 		if h == null or not is_instance_valid(h):
 			continue
-		if not (h.has_method("is_dying") and h.is_dying()):
+		if h.has_method("is_dying") and h.is_dying():
 			continue
-		if global_position.distance_to(h.global_position) > FEED_RANGE:
-			continue
-		_take_pattern(h)
-		return
+		var d := global_position.distance_to(h.global_position)
+		if d <= best_d:
+			best_d = d
+			best = h
+	if best != null:
+		_watch_ref = best
+		_pending = {
+			"difficulty": best.difficulty,
+			"hp_scale": best.hp_scale,
+			"tint": best.marker_color(),
+			"designation": String(best.designation),
+		}
 
 
-func _take_pattern(h: Hostile) -> void:
-	_pattern = {
-		"difficulty": h.difficulty,
-		"hp_scale": h.hp_scale,
-		"tint": h.marker_color(),
-		"designation": String(h.designation),
-	}
+func _announce_pattern() -> void:
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud:
 		hud.show_broadcast("THE FORGE — PATTERN TAKEN",
