@@ -16203,6 +16203,114 @@ func _run_return_test() -> void:
 		"PASS" if worn and od > 0.0 and absf(shot_cost - od) < 0.01 and floored
 			and alive_after else "FAIL"])
 
+	# 16. THE VEIN KEEPS ITS PROMISE. The plate says richer than anything on the
+	#     charted side, and the promise is arithmetic before it is fiction: the
+	#     seam must beat the deepest ROLLED seam on units, carry the RICHEST
+	#     band-6 good (deterministically -- a roll that could land on the cheap
+	#     entry makes the plate a liar one time in four), pay through the real
+	#     cut, and then be GONE forever: a windfall that rebuilds is an income.
+	var vein_key := GameState.mark_key(msid, 2)
+	GameState.marks_seen = {}
+	GameState.marks_seen[vein_key] = GameState.MARK_READ
+	GameState.cargo = {}
+	var vein_at := Vector3(700.0, 0.0, 700.0)
+	var seam := SystemBuilder.build_legend(system_root, msid, 2, "vein", vein_at) as MineableSeam
+	var vein_stood := seam != null
+	var vein_rich := false
+	var vein_good_best := false
+	var vein_paid := false
+	var vein_spent := false
+	var vein_gone := false
+	if vein_stood:
+		var richest := String(CommodityDB.seam_yields(6)[0])
+		for vg_v in CommodityDB.seam_yields(6):
+			if CommodityDB.base_price(String(vg_v)) > CommodityDB.base_price(richest):
+				richest = String(vg_v)
+		vein_rich = seam.band == 6 and seam.units > int(DeepSpace.SEAM_UNITS[6])
+		vein_good_best = seam.good == richest
+		seam._complete()
+		vein_paid = GameState.cargo_count(seam.good) == SystemBuilder.VEIN_UNITS \
+			and seam.mined
+		vein_spent = GameState.is_mark_spent(vein_key)
+		vein_gone = SystemBuilder.build_legend(system_root, msid, 2, "vein",
+			vein_at) == null
+		seam.queue_free()
+	print("[return] THE VEIN KEEPS ITS PROMISE stands when read=%s, band 6 and richer than any rolled seam=%s, carries the richest band-6 good=%s; the cut paid %d units=%s, spent the mark=%s, and the vein is GONE on rebuild=%s -> %s" % [
+		str(vein_stood), str(vein_rich), str(vein_good_best),
+		SystemBuilder.VEIN_UNITS, str(vein_paid), str(vein_spent), str(vein_gone),
+		"PASS" if vein_stood and vein_rich and vein_good_best and vein_paid
+			and vein_spent and vein_gone else "FAIL"])
+
+	# 17. THE CACHE IS TWO-WAY. The layup against the drift is the asymmetry
+	#     that proves the per-kind spent check: a spent drift is GONE, a spent
+	#     layup is an OPEN CACHE, standing on every rebuild for the only purely
+	#     expressive verb in the game. Both directions of the arrangement are
+	#     driven on the real node -- the withdrawal through force_breach, the
+	#     deposit through the real hold -- and the no-books rule is asserted as
+	#     an equality of save images, not assumed: two deposits of different
+	#     cargo must leave BYTE-IDENTICAL saves, because the only thing either
+	#     one may record is the single fact the first one already wrote.
+	var lay_key := GameState.mark_key(msid, 3)
+	GameState.marks_seen[lay_key] = GameState.MARK_READ
+	GameState.cargo = {}
+	var lay_at := Vector3(800.0, 0.0, 800.0)
+	var cache := SystemBuilder.build_legend(system_root, msid, 3, "layup", lay_at) as Derelict
+	var lay_stood: bool = cache != null and not cache.is_cracked()
+	var lay_spent := false
+	var lay_stands_open := false
+	var refused_empty := false
+	var deposit_took := false
+	var plate_clause := false
+	var no_tally := false
+	if cache != null:
+		await get_tree().process_frame
+		cache.force_breach()
+		lay_spent = GameState.is_mark_spent(lay_key) \
+			and GameState.is_mark_read(lay_key)
+		_clear_loot_cubes()
+		cache.queue_free()
+		# THE ASYMMETRY: rebuilt spent, the layup still stands -- open.
+		var cache2 := SystemBuilder.build_legend(system_root, msid, 3, "layup",
+			lay_at) as Derelict
+		if cache2 != null:
+			await get_tree().process_frame
+			lay_stands_open = cache2.is_cracked()
+			# An empty hold is refused with words, not silence.
+			cache2.hold_begin()
+			refused_empty = not cache2._holding
+			# The deposit, through the real hold.
+			GameState.load_cargo("alloys", 5)
+			if pilot_m != null:
+				pilot_m.teleport_to(cache2.breach_point)
+			cache2.hold_begin()
+			cache2.hold_tick(Derelict.DEPOSIT_TIME + 0.1)
+			deposit_took = GameState.cargo_used() == 0 \
+				and GameState.is_mark_given(lay_key) \
+				and String(GameState.marks_seen.get(lay_key, "")) == GameState.MARK_CLOSED
+			# S1: the plate carries one clause now, and only the layup's does.
+			var mark_probe2 := SoundingMark.new()
+			mark_probe2.system_id = msid
+			mark_probe2.index = 3
+			mark_probe2.kind = "layup"
+			plate_clause = mark_probe2.plate().contains("AND BY YOU")
+			mark_probe2.free()
+			# NO BOOKS. A second, different deposit must change NOTHING in the
+			# file: same state word, same everything. Byte-equality over the
+			# whole save is the strongest form of "the arrangement keeps no
+			# records" this harness can ask for.
+			var img_one := JSON.stringify(GameState.save_dict())
+			GameState.load_cargo("chart_drift", 2)
+			cache2.hold_begin()
+			cache2.hold_tick(Derelict.DEPOSIT_TIME + 0.1)
+			var img_two := JSON.stringify(GameState.save_dict())
+			no_tally = GameState.cargo_used() == 0 and img_one == img_two
+			cache2.queue_free()
+	print("[return] THE CACHE IS TWO-WAY stands unopened when read=%s; the withdrawal spends the mark (still read)=%s; rebuilt SPENT it still stands, open=%s; an empty hold is refused=%s; the deposit empties the hold and closes the mark=%s; the plate gains its clause=%s; a second deposit leaves a byte-identical save (no books)=%s -> %s" % [
+		str(lay_stood), str(lay_spent), str(lay_stands_open), str(refused_empty),
+		str(deposit_took), str(plate_clause), str(no_tally),
+		"PASS" if lay_stood and lay_spent and lay_stands_open and refused_empty
+			and deposit_took and plate_clause and no_tally else "FAIL"])
+
 	GameState.survey_coverage = {}
 	GameState.survey_filed = {}
 	GameState.deep_logs = {}

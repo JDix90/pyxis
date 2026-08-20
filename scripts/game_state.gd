@@ -1803,7 +1803,15 @@ const MARK_READ := "read"
 # rather than a boolean: the store did not change shape, the loader did not
 # change, and nothing had to be migrated. One word was added to one list.
 const MARK_SPENT := "spent"
-const MARK_STATES := ["read", "spent"]
+# v25 (§101). THE LAYUP'S TWO FACTS, and the ladder becomes a small lattice:
+# a cache can be withdrawn from (spent) and deposited into (given), and a pilot
+# can have done either, or both (closed), in either order. Four words cover
+# every reachable combination, the accessors below own the transitions, and the
+# loader still validates by membership with no other change -- the third time
+# this store has grown by a word and nothing else.
+const MARK_GIVEN := "given"
+const MARK_CLOSED := "closed"
+const MARK_STATES := ["read", "spent", "given", "closed"]
 
 
 func mark_key(system_id: String, index: int) -> String:
@@ -1834,17 +1842,38 @@ func note_mark_read(key: String) -> bool:
 func note_mark_spent(key: String) -> bool:
 	# The legend at this mark has been taken. Refuses a mark that was never read
 	# -- you cannot spend what you could not find -- so the two states stay
-	# ordered by construction rather than by the caller remembering.
+	# ordered by construction rather than by the caller remembering. A mark
+	# already GIVEN closes instead, preserving the deposit fact (§101): spending
+	# must never erase that the pilot once left something here.
 	if not is_mark_read(key) or is_mark_spent(key):
 		return false
-	marks_seen[key] = MARK_SPENT
+	marks_seen[key] = MARK_CLOSED if is_mark_given(key) else MARK_SPENT
 	_queue_save()
 	return true
 
 
 func is_mark_spent(key: String) -> bool:
 	var v = marks_seen.get(key, "")
-	return typeof(v) == TYPE_STRING and String(v) == MARK_SPENT
+	return typeof(v) == TYPE_STRING \
+		and (String(v) == MARK_SPENT or String(v) == MARK_CLOSED)
+
+
+func note_mark_given(key: String) -> bool:
+	# §101. Something was left at this mark's cache. Returns whether it is the
+	# FIRST deposit -- the plate's clause and the log line fire once -- while
+	# the act itself stays repeatable at the node: the arrangement keeps no
+	# books, so there is nothing here to count, only the one fact.
+	if not is_mark_read(key) or is_mark_given(key):
+		return false
+	marks_seen[key] = MARK_CLOSED if is_mark_spent(key) else MARK_GIVEN
+	_queue_save()
+	return true
+
+
+func is_mark_given(key: String) -> bool:
+	var v = marks_seen.get(key, "")
+	return typeof(v) == TYPE_STRING \
+		and (String(v) == MARK_GIVEN or String(v) == MARK_CLOSED)
 
 
 func marks_read() -> Dictionary:

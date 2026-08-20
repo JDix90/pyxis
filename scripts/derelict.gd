@@ -76,6 +76,15 @@ var trap := {}
 # does not come back on the next rebuild.
 var prototype := ""
 var owns_mark := ""
+# §101. THE LAYUP. A hull that takes deposits stays interactive after its
+# breach: the crack is the withdrawal, and the open cache then accepts cargo --
+# the only purely expressive verb in the game, paying nothing, counting
+# nothing. Set by the spawner with owns_mark; every other hull leaves it false.
+var takes_deposits := false
+# A donation is slower than a breach and faster than a filing: long enough to
+# be deliberate, short enough that generosity is not punished with tedium.
+const DEPOSIT_TIME := 3.5
+var _depositing := false
 
 var breach_point := Vector3.ZERO
 
@@ -118,7 +127,11 @@ func _ready() -> void:
 	# event with a vortex, a shockwave and a payout in it.
 	if cracked:
 		_cracked = true
-		remove_from_group("crackable")
+		# §101. An opened LAYUP stays in the ladder: the cache outlives its own
+		# withdrawal, and deposits reach it through the same hold every other
+		# verb uses. Every other hull leaves the group when it opens.
+		if not takes_deposits:
+			remove_from_group("crackable")
 		_beacon.visible = false
 		_ring.visible = false
 
@@ -274,6 +287,19 @@ func _player_in_range() -> bool:
 
 
 func on_tapped() -> void:
+	if _cracked and takes_deposits:
+		# §101. The open cache answers every tap with its terms (§58): what the
+		# hold gesture will do, or exactly why it will not.
+		FX.ring_pulse(get_parent(), breach_point, Palette.RIVAL, 1.4)
+		var hud_c := get_tree().get_first_node_in_group("hud")
+		if hud_c:
+			if GameState.cargo_used() <= 0:
+				hud_c.prompt("THE CACHE — YOUR HOLD IS EMPTY. THERE IS NOTHING TO LEAVE.")
+			else:
+				hud_c.prompt("THE CACHE — HOLD TO LEAVE YOUR CARGO. ALL OF IT, FOR NOTHING.")
+		if not _player_in_range():
+			_approach()
+		return
 	if _cracked:
 		return
 	FX.ring_pulse(get_parent(), breach_point, Palette.AMBER, 1.4)
@@ -309,7 +335,26 @@ func _approach() -> void:
 
 
 func hold_begin() -> void:
-	if _cracked or _holding:
+	if _holding:
+		return
+	if _cracked:
+		# §101. THE DEPOSIT, behind the same gesture as everything else. The
+		# empty-hold refusal is spoken rather than silent, because a hold that
+		# does nothing with no word is a bug report (§58).
+		if not takes_deposits:
+			return
+		if GameState.cargo_used() <= 0:
+			var hud_e := get_tree().get_first_node_in_group("hud")
+			if hud_e:
+				hud_e.prompt("THE CACHE — YOUR HOLD IS EMPTY. THERE IS NOTHING TO LEAVE.")
+			return
+		if not _player_in_range():
+			on_tapped()
+			return
+		_depositing = true
+		_holding = true
+		if _crack_player.stream:
+			_crack_player.play()
 		return
 	if not _player_in_range():
 		on_tapped()
@@ -324,13 +369,38 @@ func hold_release() -> void:
 		return
 	_holding = false
 	_crack_player.stop()
+	var was_depositing := _depositing
+	if _depositing:
+		# §101. An abandoned donation resets whole. A breach decays through
+		# _process; a deposit cannot (the cracked early-return owns that path),
+		# and a residual would let a donation be assembled in free nibbles --
+		# the act is deliberate or it is nothing.
+		_depositing = false
+		_progress = 0.0
 	var hud := get_tree().get_first_node_in_group("hud")
-	if hud and not _cracked:
+	if hud and (was_depositing or not _cracked):
 		hud.crack_progress(-1.0)
 
 
 func hold_tick(delta: float) -> void:
-	if _cracked or not _holding:
+	if not _holding:
+		return
+	if _depositing:
+		if not _player_in_range():
+			hold_release()
+			return
+		_progress += delta / DEPOSIT_TIME
+		# The gauge carries the TERMS while the bar moves (§58): this is
+		# irreversible and pays nothing, and the label says so before the last
+		# tick rather than after it.
+		var hud_d := get_tree().get_first_node_in_group("hud")
+		if hud_d:
+			hud_d.crack_progress(_progress if _progress > 0.001 else -1.0,
+				"LEAVING THE HOLD — EVERYTHING, FOR NOTHING")
+		if _progress >= 1.0:
+			_deposit()
+		return
+	if _cracked:
 		return
 	if not _player_in_range():
 		hold_release()
@@ -364,7 +434,8 @@ func _breach() -> void:
 	_cracked = true
 	_holding = false
 	_crack_player.stop()
-	remove_from_group("crackable")
+	if not takes_deposits:
+		remove_from_group("crackable")
 
 	var parent := get_parent()
 	var tree := get_tree()
@@ -412,7 +483,19 @@ func _breach() -> void:
 	# with the other conditional payloads, because that is what it is: one more
 	# flag-gated block in a function that already has four.
 	if owns_mark != "":
-		_hand_over_prototype(hud)
+		if takes_deposits:
+			# §101. THE WITHDRAWAL IS TAKEN, and the hull stands. Spending the
+			# mark is what makes the haul once-only across every rebuild; the
+			# broadcast is the deposit verb's teaching, spoken at the exact
+			# moment the cache becomes able to receive (§88's rule: the
+			# affordance is announced where it begins to exist).
+			GameState.note_mark_spent(owns_mark)
+			if hud:
+				hud.show_broadcast("THE LAYUP — OPEN",
+					"TAKE WHAT YOU NEED. LEAVE WHAT YOU CAN. IT HAS ALWAYS WORKED THAT WAY — HOLD ON THE CACHE TO LEAVE YOUR CARGO.",
+					Palette.RIVAL)
+		else:
+			_hand_over_prototype(hud)
 	# And the expanse remembers, so the cell cycling out and back does not hand
 	# the same hull over twice. Charted derelicts skip this: `deep` is false and
 	# their persistence is GameState.breached.
@@ -484,6 +567,34 @@ func _hand_over_prototype(hud) -> void:
 		hud.show_broadcast("THE BENCH — STRIPPED",
 			"The same pattern you are already flying. They built more than one, and somebody else got here first — or you did, at another drift. The hull is still worth opening.",
 			Palette.RIVAL)
+
+
+func _deposit() -> void:
+	# §101. EVERYTHING, FOR NOTHING. The whole hold in one gesture -- the mast's
+	# one-gesture generosity, never a picker -- and the response is one line
+	# with no number in it, because the arrangement does not keep books. The
+	# only record anywhere is the single fact on the mark (note_mark_given),
+	# which is what re-reads the plate; amounts, goods and counts are recorded
+	# nowhere, asserted by THE CACHE IS TWO-WAY.
+	_holding = false
+	_depositing = false
+	_progress = 0.0
+	for good_v in GameState.cargo.keys():
+		var n := int(GameState.cargo.get(good_v, 0))
+		if n > 0:
+			GameState.unload_cargo(String(good_v), n)
+	var first := GameState.note_mark_given(owns_mark)
+	var hud := get_tree().get_first_node_in_group("hud")
+	if hud:
+		hud.crack_progress(-1.0)
+		hud.refresh_cargo()
+		hud.show_broadcast("THE CACHE",
+			"IT IS IN THE CACHE. SOMEBODY WILL NEED IT. THAT IS THE WHOLE ARRANGEMENT.",
+			Palette.RIVAL)
+	if first:
+		GameState.note_log("LEFT THE HOLD AT THE LAYUP")
+	Sfx.play("equip", -8.0, 0.65)
+	FX.ring_pulse(get_parent(), breach_point, Palette.RIVAL, 3.0, 0.8)
 
 
 func force_breach() -> void:

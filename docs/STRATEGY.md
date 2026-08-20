@@ -6106,7 +6106,7 @@ option was never a discovery. It is now Horizon 9's spine — see below.
 
 **Horizon 9 — the true copy** (opened 2026-08-20; specced in
 `docs/HORIZON-9-THE-TRUE-COPY.md`, prose gated on `docs/FAR-MARKS-DRAFT.md`,
-decisions R1–R4). Six commits, **three and a half built** (commit 3 split at build time — see the 3a/3b rows):
+decisions R1–R4). Six commits, **four built** (commit 3 split at build time into 3a/3b, both now shipped; §100's overdraw mechanism rode between them):
 
 | # | what | save | status |
 |---|---|---|---|
@@ -6114,7 +6114,7 @@ decisions R1–R4). Six commits, **three and a half built** (commit 3 split at b
 | 1 | THE TRUE CHART: held cells marked on the plot (shape, not hue); the rival annotation re-read as colleagueship | none | **BUILT** — §97 |
 | 2 | THE FAR MARKS: the network's sounding buoys at 6,500–9,000u, five per system on `hyper_positions`' pattern; visible to all, readable only by filers | rides v25 | **BUILT** — §98; `marks_seen` carries a validated STATE from its first line rather than a boolean that grows a vocabulary later |
 | 3a | THE PROVING DRIFT, plus the encounter machinery all nine legends share, plus the prototype tier | rides v25 | **BUILT** — §99; `MARK_STATES` gained one word and nothing else changed, which is what §98's validated-string decision was for |
-| 3b | LEGENDS I, the rest of the common three: THE VEIN, THE LAYUP (deposit and withdrawal) | rides v25 | **SPECCED** |
+| 3b | LEGENDS I, the rest of the common three: THE VEIN, THE LAYUP (deposit and withdrawal) | rides v25 | **BUILT** — §101; the state ladder became a four-word lattice, and "no tally" is asserted as byte-equality of save images |
 | 4 | LEGENDS II, the dangerous three: THE STILLNESS' GROUND, THE STANDING ORDER (it hails first), THE SOUNDING SERPENT | none | **SPECCED** |
 | 5 | LEGENDS III, the ongoing three: THE TALLY'S NURSERY (takeable, and they come back for it), THE PATTERN FORGE (escorts), THE PROCESSION'S END | v26 | **SPECCED as a row** — the largest mechanical addition since the horizon system; wants its own research pass, as the berths did |
 
@@ -10299,3 +10299,92 @@ the equip landed rather than silently measuring the old weapon. One volley must
 cost *exactly* `overdraw` though two mounts fire (the second carries no key — a
 drain that scaled with mounts would read double), and a bus below one draw must
 floor at zero with the ship alive.
+
+---
+
+## 101. The vein and the layup (rides v25)
+
+Horizon 9 commit 3b — the rest of LEGENDS I. With these, three of the ten
+plates have something standing behind them, and the three cover the three
+shapes a legend can take: a windfall that is gone when taken (the vein, the
+drift) and a place that stays (the layup).
+
+### The state ladder became a small lattice
+
+The layup carries two independent facts — withdrawn from (**spent**) and
+deposited into (**given**) — and a pilot can have done either, or both, in
+either order. `MARK_STATES` grew from `["read", "spent"]` to
+`["read", "spent", "given", "closed"]`: four words cover every reachable
+combination, the accessors own the transitions (`note_mark_spent` on a given
+mark closes it rather than erasing the deposit; `note_mark_given` on a spent
+mark likewise), and the loader still validates by membership with **no other
+change**. Third time the store has grown by a word and nothing else — the §98
+decision paying out again.
+
+### The spent check moved into the match, because "spent" is not one thing
+
+`build_legend` used to refuse any spent mark before dispatching on kind. That
+was correct for one kind and wrong the day the second shipped: a spent drift or
+vein is **gone** — windfalls do not rebuild — while a spent layup is an **open
+cache**, built cracked on every rebuild, standing forever for deposits. The
+check is now per kind, and `THE CACHE IS TWO-WAY` asserts the asymmetry in both
+directions rather than trusting the dispatch.
+
+### The vein — the promise is arithmetic before it is fiction
+
+A `MineableSeam` at band-6 parameters, exactly the machinery the spec promised:
+three fields moved, one added (`owns_mark`). Two decisions worth recording:
+
+- **The good is picked by price, not rolled.** The plate promises *richer than
+  anything on the charted side*; a roll over the band-6 table could land on the
+  cheapest entry and make the plate a liar one time in four. The richest entry,
+  deterministically, on every rebuild the seam survives.
+- **The mark is the record.** `seams_cut` validates its keys against the
+  authored asteroid arrays, so a vein key cannot live there; the session store
+  forgets across a warp, which for a one-time windfall at seven thousand units
+  is the deep-hulk farm all over again. `_record_cut` gained a third branch —
+  one function still owns the question "where is this cut remembered", now with
+  three answers.
+
+Sixteen units of the richest band-6 ore is ~2.7× the deepest rolled seam, fits
+a starter hold (a windfall the ship cannot carry is a taunt), and takes the
+longest cut in the game. Provisional numbers, one block, same as the drift's.
+
+### The layup — the only purely expressive verb in the game
+
+A `Derelict` with `takes_deposits`. The crack is the withdrawal, once ever (the
+mark spends, and the breach broadcast teaches the deposit verb at the exact
+moment the cache becomes able to receive — §88 applied to an affordance that
+begins to exist mid-scene). The open cache then accepts the whole hold in one
+hold gesture — the mast's one-gesture generosity, never a picker — for
+nothing: no credit, no counter, no return.
+
+Three rules the node enforces:
+
+- **An opened layup stays in the ladder.** Every other hull leaves
+  `"crackable"` when it opens; the cache outlives its own withdrawal, and
+  deposits reach it through the same gesture as everything else.
+- **An abandoned donation resets whole.** A breach decays through `_process`; a
+  deposit cannot (the cracked early-return owns that path), and a residual
+  would let a donation be assembled in free nibbles. The act is deliberate or
+  it is nothing.
+- **The gauge states the terms while the bar moves** — `LEAVING THE HOLD —
+  EVERYTHING, FOR NOTHING` — and the empty-hold refusal is spoken (§58).
+
+### No books, asserted as byte-equality
+
+S1 said a deposit leaves one clause on the plate and **no tally**. The clause
+is three words (`— AND BY YOU`), fired off `is_mark_given`, once, however much
+is ever left there. The no-tally half is asserted in the strongest form the
+harness can ask: two deposits of *different* cargo must leave **byte-identical
+save images**, because the only thing either may record is the single fact the
+first already wrote. An equality over the whole file catches a tally wherever
+somebody might one day put one — a counter in the ledger, a log line per
+deposit, a goods record — without having to name the places it must not be.
+
+### Where the plates now stand
+
+Three of ten built (drift §99, vein and layup here). The seven singulars are
+commits 4–5, unchanged: STILLNESS, ORDER, SERPENT (commit 4); ORRERY, NURSERY,
+FORGE, PROCESSION (commit 5, its own research pass first). Every unbuilt plate
+remains true as written — a record of a sounding, past tense.

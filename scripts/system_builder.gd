@@ -87,10 +87,25 @@ const MARK_ARCS := [0.0, 68.0, -68.0, 136.0, -136.0, 204.0, -204.0]
 # crack is longer than a hulk's for the same reason a workshop is not a wreck.
 const DRIFT_LOOT := 420
 const DRIFT_CRACK_TIME := 3.6
-# How far the hull stands off its buoy, so a tap near the mark can still reach
+# How far a legend stands off its buoy, so a tap near the mark can still reach
 # the mark. Comfortably past Derelict.CRACK_RANGE (6.5) in screen terms without
-# putting the hull out of sight of the lamp that names it.
-const DRIFT_STANDOFF := 26.0
+# putting the legend out of sight of the lamp that names it. Shared by every
+# kind that stands a node beside the spar.
+const LEGEND_STANDOFF := 26.0
+
+# THE VEIN's numbers (§101), provisional like the drift's and gathered the same
+# way. Sixteen units of the richest band-6 ore is ~2.7x what the deepest rolled
+# seam pays -- "richer than anything on the charted side" made arithmetic --
+# and at space 1 it fits a starter hold, because a windfall the ship cannot
+# carry is a taunt. The cut is the longest in the game for the same reason the
+# archives hold longest: depth is time.
+const VEIN_UNITS := 16
+const VEIN_MINE_TIME := 9.0
+
+# THE LAYUP's numbers (§101). The withdrawal sits between the band-6 deep hulk
+# (322) and the drift (420): a cache is stores, not a workshop.
+const LAYUP_LOOT := 380
+const LAYUP_CRACK_TIME := 3.2
 
 
 static func _build_far_marks(deep: DeepSpace, container: Node3D, system_id: String) -> void:
@@ -141,13 +156,26 @@ static func build_legend(container: Node3D, system_id: String, index: int,
 	# not read one has not found what stands there. SPENT marks build nothing
 	# either -- a workshop is cracked once.
 	var key := GameState.mark_key(system_id, index)
-	if not GameState.is_mark_read(key) or GameState.is_mark_spent(key):
+	if not GameState.is_mark_read(key):
 		return null
+	# THE SPENT CHECK IS PER KIND (§101), because "spent" does not mean one
+	# thing: a spent drift or vein is GONE -- windfalls do not rebuild -- while
+	# a spent layup is an OPEN CACHE, standing forever for deposits. Hoisting
+	# the check above the match was correct for one kind and wrong the day the
+	# second one shipped.
 	match kind:
 		"drift":
+			if GameState.is_mark_spent(key):
+				return null
 			return _build_proving_drift(container, system_id, index, at)
+		"vein":
+			if GameState.is_mark_spent(key):
+				return null
+			return _build_vein(container, key, at)
+		"layup":
+			return _build_layup(container, key, at)
 		_:
-			# THE OTHER NINE ARRIVE IN LATER COMMITS, and until they do a read
+			# THE OTHER SEVEN ARRIVE IN LATER COMMITS, and until they do a read
 			# mark is exactly what its plate says it is: a record of a sounding,
 			# in the past tense, which is why the plates were written that way.
 			# The absence is stated here rather than left as a silent fallthrough
@@ -179,8 +207,53 @@ static func _build_proving_drift(container: Node3D, system_id: String,
 	container.add_child(d)
 	# Offset off the buoy so the mark stays tappable beside it. The hull is the
 	# thing you fly to; the mark is the thing that told you to.
-	d.global_position = at + Vector3(DRIFT_STANDOFF, 0.0, 0.0)
+	d.global_position = at + Vector3(LEGEND_STANDOFF, 0.0, 0.0)
 	d.rotation_degrees.y = 34.0
+	return d
+
+
+static func _build_vein(container: Node3D, key: String, at: Vector3) -> Node3D:
+	# §101. THE VEIN. A MineableSeam at band-6 parameters -- the machinery the
+	# spec promised it would ride, with three fields moved and one added. The
+	# good is the RICHEST of the band-6 table, picked by price rather than
+	# rolled: the plate promises "richer than anything on the charted side",
+	# and a roll that could land on the cheapest entry would make the plate a
+	# liar one time in four. Deterministic, so the same vein pays the same ore
+	# on every rebuild it survives.
+	var table: Array = CommodityDB.seam_yields(6)
+	if table.is_empty():
+		return null
+	var best := String(table[0])
+	for g_v in table:
+		if CommodityDB.base_price(String(g_v)) > CommodityDB.base_price(best):
+			best = String(g_v)
+	var seam := MineableSeam.new()
+	seam.good = best
+	seam.units = VEIN_UNITS
+	seam.band = 6
+	seam.mine_time = VEIN_MINE_TIME
+	seam.owns_mark = key
+	container.add_child(seam)
+	seam.global_position = at + Vector3(LEGEND_STANDOFF, 0.0, 0.0)
+	return seam
+
+
+static func _build_layup(container: Node3D, key: String, at: Vector3) -> Node3D:
+	# §101. THE LAYUP. A Derelict that takes deposits: the crack is the
+	# withdrawal, once ever (the mark spends), and the open cache then stands
+	# FOREVER -- built cracked on every rebuild after, which is the one legend
+	# whose spent state means "still here" rather than "gone". counts_as_survey
+	# false for the drift's reason; the deposit verb lives on the node.
+	var d := Derelict.new()
+	d.loot_total = LAYUP_LOOT
+	d.crack_time = LAYUP_CRACK_TIME
+	d.counts_as_survey = false
+	d.takes_deposits = true
+	d.owns_mark = key
+	d.cracked = GameState.is_mark_spent(key)
+	container.add_child(d)
+	d.global_position = at + Vector3(LEGEND_STANDOFF, 0.0, 0.0)
+	d.rotation_degrees.y = -28.0
 	return d
 
 

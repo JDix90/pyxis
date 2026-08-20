@@ -111,7 +111,16 @@ func mark_name() -> String:
 	return String(NAMES.get(kind, "A SOUNDING MARK"))
 
 
+# §101, S1 adopted: the layup's plate after a deposit, one clause and no tally.
+# The arrangement does not keep books, which is the entire difference between
+# the cache and the registry -- so the plate changes by three words, once,
+# however much has been left there.
+const PLATE_LAYUP_GIVEN := "MARK: LAYUP. STORES CACHED BY CREWS WHO DID NOT ALL COME BACK FOR THEM — AND BY YOU. TAKE WHAT YOU NEED. LEAVE WHAT YOU CAN."
+
+
 func plate() -> String:
+	if kind == "layup" and GameState.is_mark_given(mark_key()):
+		return PLATE_LAYUP_GIVEN
 	return String(PLATES.get(kind, ""))
 
 
