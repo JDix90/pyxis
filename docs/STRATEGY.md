@@ -9536,6 +9536,36 @@ written to pin — but checks it against what a fresh hull can actually fit,
 plus the berth count separately, so a fourth berth cannot quietly change what a
 new pilot begins with.
 
+### Amended after the first full sweep that ran MINETEST (2026-08-20)
+
+`MINING COSTS A MOUNT` went red, and it was this commit's regression surfacing
+three commits later: berths cut three new slots into `SLOT_CATEGORY`, and that
+leg counted **the table** rather than `open_slots()`. So it started answering
+"3 utility slots" for a hull that ships with two, and the claim it existed to
+guard — *three mining modules can never fly together* — stopped being checked
+at all.
+
+`open_slots()`' own comment says "and the assertions that count them". This
+commit moved every other one, including the harder case
+(`ALL-BEST IS STILL OUT OF REACH` learned to measure the bare hull AND the
+berthed one). It missed exactly one, and the miss was invisible until a sweep
+ran the suite that owned it.
+
+**The claim was not wrong, it had grown a second half.** A berthed pilot really
+can mount all three tools; that is what 60,000 credits and a permanent quarter
+of a unit of top speed buy, and dissolving the assertion would have been the
+wrong reading of a red leg. The amended leg keeps the shipped-hull claim,
+adds a clause that the third bay is BOUGHT (red the day it becomes free, or the
+day the berth stops costing speed), and then asks the question the leg's name
+actually promises: **even berthed, a Mk III carrying all three tools still
+cannot feed the strike frame** — 19 drawn against 21, two spare against a
+frame that wants four. The mount is bought back by the reactor (§94's own
+17b), never by the bay.
+
+Worth stating as a rule, because this is the second time a horizon has left a
+stale reader behind: **when a store or a table grows, the thing to grep for is
+not the new name but every reader of the old one.**
+
 ## 95. Commissions — what being trusted is for
 
 Horizon 8 commit 3, and no save bump: standing already persists (`faction_deltas`,

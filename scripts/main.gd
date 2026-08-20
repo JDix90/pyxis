@@ -24432,14 +24432,43 @@ func _run_mine_test() -> void:
 	# --- 17. mining costs a mount --------------------------------------------
 	# The fitting contract says there is always a call to make; mining's call is
 	# this one. Three mining modules into two utility slots, so the rig and both
-	# tools can never fly together -- and the heaviest pair that CAN, over the
-	# best drive and the best core, leaves a Mk III without room for the weapon
-	# the pacing band is denominated in. A prospector gives up the Lance to be a
-	# prospector, and that is the price of the route rather than an oversight.
-	var util_slots := 0
-	for slot_v in ModuleDB.SLOT_CATEGORY:
-		if String(ModuleDB.SLOT_CATEGORY[slot_v]) == "utility":
-			util_slots += 1
+	# tools can never fly together on the hull as shipped -- and the heaviest
+	# pair that CAN, over the best drive and the best core, leaves a Mk III
+	# without room for the weapon the pacing band is denominated in. A
+	# prospector gives up the Lance to be a prospector, and that is the price of
+	# the route rather than an oversight.
+	#
+	# COUNTED OFF open_slots(), NOT OFF THE STATIC TABLE, and that distinction
+	# is what this leg went red about. §94 cut three berth slots into
+	# SLOT_CATEGORY -- one of them a third utility bay -- so a line counting the
+	# TABLE started answering 3, and the claim it was written to guard stopped
+	# being checked at all. open_slots() is the accessor whose own comment says
+	# "and the assertions that count them"; §94 moved every other one and left
+	# this one behind. It is the sibling of ALL-BEST IS STILL OUT OF REACH,
+	# which the same commit DID teach to measure both ships.
+	#
+	# THE BERTH IS THE ESCAPE HATCH, AND IT IS ASSERTED RATHER THAN DISSOLVED.
+	# A berthed pilot can mount all three tools: that is what 60,000 credits and
+	# a permanent quarter-unit of top speed buy, and §94's whole argument is
+	# that a berth is a deliberate build rather than a strict upgrade. So the
+	# leg keeps the shipped-hull claim, adds the clause that the third bay is
+	# BOUGHT (red the day it becomes free, or the day the berth stops costing
+	# mass), and then asks the real question the name promises: even berthed, a
+	# Mk III carrying all three tools STILL cannot feed the strike frame. The
+	# mount is bought back by the reactor (17b), never by the bay.
+	var util_count := func() -> int:
+		var n := 0
+		for slot_v in GameState.open_slots():
+			if String(ModuleDB.SLOT_CATEGORY.get(int(slot_v), "")) == "utility":
+				n += 1
+		return n
+	var berths_before: Array = GameState.berths.duplicate()
+	GameState.berths = []
+	var util_slots: int = util_count.call()
+	GameState.berths = ["berth_utility"]
+	var berthed_slots: int = util_count.call()
+	GameState.berths = berths_before
+	var berth_speed := ModuleDB.berth_mass(["berth_utility"])
 	var commit := {
 		ModuleDB.Slot.UTILITY: "rig_prospector",
 		ModuleDB.Slot.UTILITY_B: "util_assay",
@@ -24461,9 +24490,18 @@ func _run_mine_test() -> void:
 	var drawn := ModuleDB.power_draw(commit)
 	var spare := mk3_power - drawn
 	var lance_power := int(ModuleDB.get_module(PACING_MIDTIER)["power"])
-	print("[mine] MINING COSTS A MOUNT 3 mining utilities into %d slots; the commit draws %d of Mk III's %d, leaving %d vs %s's %d -> %s" % [
-		util_slots, drawn, mk3_power, spare, PACING_MIDTIER, lance_power,
-		"PASS" if util_slots == 2 and spare < lance_power else "FAIL"])
+	# THE THIRD TOOL, and the whole point of naming it here: the berthed pilot
+	# fits all three, so the question stops being about slots and becomes about
+	# power -- which is where the claim was always meant to live.
+	var three_tools := drawn + int(ModuleDB.get_module("util_cutter")["power"])
+	var berthed_cap := mk3_power + ModuleDB.berth_power(["berth_utility"])
+	var berthed_spare := berthed_cap - three_tools
+	print("[mine] MINING COSTS A MOUNT 3 mining utilities into %d slots on the hull as shipped (a berth opens a %d-th, for %.2f of top speed, permanently); the commit draws %d of Mk III's %d, leaving %d vs %s's %d; berthed, all three draw %d of %d, leaving %d -> %s" % [
+		util_slots, berthed_slots, berth_speed, drawn, mk3_power, spare,
+		PACING_MIDTIER, lance_power, three_tools, berthed_cap, berthed_spare,
+		"PASS" if util_slots == 2 and berthed_slots == util_slots + 1
+			and berth_speed > 0.0 and spare < lance_power
+			and berthed_spare < lance_power else "FAIL"])
 
 	# --- 17b. and Mk IV is what buys the mount back --------------------------
 	# The other half of the same trade, and the only reason the tier exists. A
