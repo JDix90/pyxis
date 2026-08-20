@@ -16669,6 +16669,116 @@ func _run_return_test() -> void:
 			and costs_no_standing and nobody_opens and can_never_finish
 			and bed_cold and forge_stays else "FAIL"])
 
+	# 24. READ THEM SLOWLY. The formation, the attachment, and the one rule the
+	#     plate states in its own copy — enforced by the interface rather than
+	#     asked of the player. Also the fiction's own constraint: the rival
+	#     stays anonymous, which is a claim about what is NOT in the table and
+	#     therefore has to be asserted rather than assumed.
+	var proc_key := GameState.mark_key(msid, 4)
+	GameState.marks_seen = {}
+	GameState.marks_seen[proc_key] = GameState.MARK_READ
+	var proc_at := Vector3(2400.0, 0.0, 2400.0)
+	var proc := SystemBuilder.build_legend(system_root, msid, 4, "procession",
+		proc_at) as Procession
+	var proc_stood := proc != null
+	var named_n := 0
+	var lines_whole := true
+	var names_unique := true
+	var rival_unnamed := true
+	var spaced := true
+	var read_one := false
+	var refused_fast := false
+	if proc_stood:
+		await get_tree().process_frame
+		var named := proc.named_hulls()
+		named_n = named.size()
+		var seen_names := {}
+		for h_v in named:
+			var nm := String((h_v as Node).get("hull_name"))
+			var ln := String((h_v as Node).get("hull_line"))
+			if ln.strip_edges() == "":
+				lines_whole = false
+			if seen_names.has(nm):
+				names_unique = false
+			seen_names[nm] = true
+			# THE RIVAL IS NOT ON THE LIST, and this is the clause the fiction
+			# needs: two horizons kept that hull anonymous, and a caption would
+			# spend it. Checked against the archive's own name for the wreck
+			# rather than a literal, so renaming it there cannot un-assert this.
+			if nm == String(UnsoundedSite.NAMES.get("wreck", "")):
+				rival_unnamed = false
+		# NO TWO HULLS ON TOP OF EACH OTHER. CameraRig._pick is screen-space
+		# with no raycast, so hulls closer than a tap apart would make choosing
+		# which one to read a coin flip. Asserted in world units against the
+		# spacing the builder claims to use.
+		for i in range(named.size()):
+			for j in range(i + 1, named.size()):
+				var da: Node3D = named[i]
+				var db: Node3D = named[j]
+				if da.global_position.distance_to(db.global_position) \
+						< Procession.HULL_SPACING * 0.9:
+					spaced = false
+		# THROUGH THE REAL TAP, twice: the first raises the plate, the second
+		# is refused while it is up. That refusal IS the mark's instruction.
+		if named_n > 0:
+			hud.clear_prompt()
+			(named[0] as Node).call("on_tapped")
+			read_one = hud.broadcast_busy() \
+				and hud.broadcast_text() == String((named[0] as Node).get("hull_line"))
+			(named[named_n - 1] as Node).call("on_tapped")
+			await get_tree().create_timer(0.4).timeout
+			refused_fast = hud.prompt_text() == Procession.SLOWLY \
+				and hud.broadcast_text() == String((named[0] as Node).get("hull_line"))
+	print("[return] READ THEM SLOWLY the formation stands=%s with %d named hulls (attachment holds %d), every entry whole=%s, names unique=%s, the rival still unnamed=%s, no two hulls inside a tap=%s; a tap raises the entry=%s and a second tap while it is up is refused in the plate's own words=%s -> %s" % [
+		str(proc_stood), named_n, Procession.ATTACHMENT.size(), str(lines_whole),
+		str(names_unique), str(rival_unnamed), str(spaced), str(read_one),
+		str(refused_fast),
+		"PASS" if proc_stood and named_n == Procession.ATTACHMENT.size()
+			and lines_whole and names_unique and rival_unnamed and spaced
+			and read_one and refused_fast else "FAIL"])
+
+	# 25. THE PROCESSION ONLY ASKS. The legend that pays nothing, asserted as
+	#     nothing — in a set where nine of ten give, the one that only asks is
+	#     what keeps the others from reading as a loot table. And the mark is
+	#     never spent, so the formation is a place rather than a prize.
+	var salv_p := GameState.salvage
+	var ledger_p := JSON.stringify(GameState.ledger)
+	var loot_p := _count_loot_cubes()
+	var refused_empty_p := false
+	var left_it := false
+	var never_spent := false
+	var stands_again := false
+	var paid_nothing_p := false
+	if proc_stood and pilot_m != null:
+		var first_hull := proc.hulls()[0] as Node3D
+		pilot_m.teleport_to(first_hull.global_position)
+		GameState.cargo = {}
+		hud.clear_prompt()
+		first_hull.call("hold_begin")
+		await get_tree().create_timer(0.4).timeout
+		# An empty hold is told the truth about the place, not just refused.
+		refused_empty_p = hud.prompt_text() == Procession.NOT_SALVAGE
+		GameState.load_cargo("alloys", 6)
+		first_hull.call("hold_begin")
+		first_hull.call("hold_tick", Procession.DEPOSIT_TIME + 0.1)
+		left_it = GameState.cargo_used() == 0 \
+			and GameState.is_mark_given(proc_key)
+		never_spent = not GameState.is_mark_spent(proc_key)
+		paid_nothing_p = GameState.salvage == salv_p \
+			and JSON.stringify(GameState.ledger) == ledger_p \
+			and _count_loot_cubes() == loot_p
+		var proc2 := SystemBuilder.build_legend(system_root, msid, 4,
+			"procession", proc_at)
+		stands_again = proc2 != null
+		if proc2 != null:
+			proc2.queue_free()
+		proc.queue_free()
+	print("[return] THE PROCESSION ONLY ASKS an empty hold is told what the place is=%s; leaving the hold empties it and records the one fact=%s; the mark is never spent=%s so the formation stands again=%s; and nothing anywhere money is kept moved=%s -> %s" % [
+		str(refused_empty_p), str(left_it), str(never_spent), str(stands_again),
+		str(paid_nothing_p),
+		"PASS" if proc_stood and refused_empty_p and left_it and never_spent
+			and stands_again and paid_nothing_p else "FAIL"])
+
 	GameState.survey_coverage = {}
 	GameState.survey_filed = {}
 	GameState.deep_logs = {}

@@ -1,6 +1,6 @@
 # The nine names — prose draft (Horizon 9 commit 5, S8)
 
-**Status: FIRST DRAFT, awaiting approval. Nothing built.** The gate that
+**Status: APPROVED AND BUILT (§105). N1 and N2 adopted as recommended.** The gate that
 worked for the UNSOUNDED fragments, for Directive 9 and for the far marks:
 read it aloud, veto freely. Two decisions are marked **N1–N2**.
 

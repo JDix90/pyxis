@@ -193,6 +193,12 @@ static func build_legend(container: Node3D, system_id: String, index: int,
 			# cannot survive a warp, and arming it costs a kill, so rebuilding
 			# it whole on every visit is a journey rather than a farm.
 			return _build_forge(container, key, at)
+		"procession":
+			# NEVER SPENDS ITS MARK, and never could: it pays nothing at all,
+			# so there is no windfall to protect. A formation is a place, the
+			# serpent's and the forge's rule — read → given, and `closed` is
+			# unreachable because nothing here is ever spent.
+			return _build_procession(container, key, at)
 		"serpent":
 			# NEVER spent -- S2's rule enforced by never asking. The serpent
 			# leaves rather than dies, so the mark keeps its warning and the
@@ -317,6 +323,17 @@ static func _build_forge(container: Node3D, key: String, at: Vector3) -> Node3D:
 	container.add_child(f)
 	f.global_position = at + Vector3(LEGEND_STANDOFF, 0.0, 0.0)
 	return f
+
+
+static func _build_procession(container: Node3D, key: String, at: Vector3) -> Node3D:
+	# Standing further off than the other legends: the formation is a column
+	# hundreds of units long, and its head must not sit on top of the buoy that
+	# named it -- the mark has to stay tappable beside a thing this large.
+	var pr := Procession.new()
+	pr.owns_mark = key
+	container.add_child(pr)
+	pr.global_position = at + Vector3(LEGEND_STANDOFF * 2.0, 0.0, 0.0)
+	return pr
 
 
 static func _build_serpent(container: Node3D, key: String, at: Vector3) -> Node3D:

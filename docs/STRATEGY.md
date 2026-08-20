@@ -6116,7 +6116,7 @@ decisions R1–R4). Six commits, **five built** (commit 3 split at build time in
 | 3a | THE PROVING DRIFT, plus the encounter machinery all nine legends share, plus the prototype tier | rides v25 | **BUILT** — §99; `MARK_STATES` gained one word and nothing else changed, which is what §98's validated-string decision was for |
 | 3b | LEGENDS I, the rest of the common three: THE VEIN, THE LAYUP (deposit and withdrawal) | rides v25 | **BUILT** — §101; the state ladder became a four-word lattice, and "no tally" is asserted as byte-equality of save images |
 | 4 | LEGENDS II, the dangerous three: THE STILLNESS' GROUND, THE STANDING ORDER (it hails first), THE SOUNDING SERPENT | none | **BUILT** — §102; the asset flies feral and wears teal, the becalming is its own mechanism, and the serpent never spends its mark |
-| 5 | LEGENDS III, the ongoing four — **orrery BUILT (§103), forge BUILT (§104)**; procession (names approved, `docs/THE-NINE-NAMES-DRAFT.md`) and nursery (v26) remain | **v26** (nursery store only) | **RESEARCH DONE** (2026-08-20, `docs/LEGENDS-III-RESEARCH.md`) — decisions S4–S8 open; the nine names need a writing pass before the procession can build. The pass killed three naive versions: the escort wing already ships (REQUEST ESCORT — the forge needs a spawner and a lifetime, not a class), the nursery cannot ride `colonies` (byte-identical key formats collide, and a deep jump anchor breaks `A FOOTHOLD, NOT A FARM` silently), and a sold orrery windfall would clear the Grand Commission's chart pillar in one ALL press because `chart_data_sold` counts units with no cell join |
+| 5 | LEGENDS III, the ongoing four — **orrery BUILT (§103), forge BUILT (§104), procession BUILT (§105)**; only the nursery (v26, its own store) remains | **v26** (nursery store only) | **RESEARCH DONE** (2026-08-20, `docs/LEGENDS-III-RESEARCH.md`) — decisions S4–S8 open; the nine names need a writing pass before the procession can build. The pass killed three naive versions: the escort wing already ships (REQUEST ESCORT — the forge needs a spawner and a lifetime, not a class), the nursery cannot ride `colonies` (byte-identical key formats collide, and a deep jump anchor breaks `A FOOTHOLD, NOT A FARM` silently), and a sold orrery windfall would clear the Grand Commission's chart pillar in one ALL press because `chart_data_sold` counts units with no cell join |
 
 **The prototype tier is under a research pass the player is running** (opened
 2026-08-20). §99 shipped the mechanism, the laws and provisional entries in one
@@ -10644,3 +10644,91 @@ standing forge — and then **frees the wing by name**. A printed hull left in
 the `hostiles` group would be picked as `live[0]` by `_pacing_kill_yield` and
 force-attacked for 5400 frames, corrupting the `MIDTIER` bar the whole economy
 rests on. The cleanup is part of the assertion, not housekeeping after it.
+
+---
+
+## 105. The procession's end (rides v25)
+
+Horizon 9 commit 5, third of four. A formation of dead ships in perfect order,
+every one facing the charted side. Nothing to crack, nothing to mine, nothing
+to fight — **and it pays nothing at all**, which is the whole of its job: in a
+set of ten legends where nine of them give, one that only asks is what keeps
+the others from reading as a loot table.
+
+### The names existed nowhere until now
+
+Directive 9's page 6 has shipped since §93 as one clause — *"ATTACHED: vessels
+known to have filed after the effective date"* — and a margin note counting
+nine names the reader has met two of. **The research pass found that those
+nine names had never been written**, in code, in docs, or in history: the
+far-marks draft promised "here are the rest" and stopped. They were drafted
+and approved as `docs/THE-NINE-NAMES-DRAFT.md` before a line of this was
+built, the gate the fragments and Directive 9 both went through.
+
+**Seven of the nine stand here.** The eighth is THE LAST RETURN's evacuation
+tender, which the player has already read past the last band edge. The ninth
+is the rival — *"a hull in a livery nobody registered"* — whose wreck lies in
+PYX-01's band 5, not in this formation.
+
+**N1, and it is the decision that mattered:** the list names **vessels, never
+pilots**, and the rival's hull is **absent rather than named**. Two horizons
+of deliberate anonymity are not spent for a caption. A player who has read the
+wreck's log knows exactly which hull is missing from the line, and nobody
+says it. `READ THEM SLOWLY` asserts the absence against
+`UnsoundedSite.NAMES["wreck"]` rather than a literal, so renaming it there
+cannot quietly un-assert this.
+
+### The interface enforces the copy
+
+The plate has instructed since §98: *"IF YOU READ THE HULLS, READ THEM
+SLOWLY."* The research flagged the obvious hazard — `show_broadcast` holds for
+6.2 seconds and **has no queue**, so three taps in six seconds would erase
+two entries. Rather than routing around it, the hull **asks first**
+(`broadcast_busy`) and refuses with one short line while a plate is up.
+
+The mark told the player to read slowly; now the only surface that could
+enforce that does. The hazard became the mechanic.
+
+**And the prompt line is for refusals only.** It is a single un-wrapped
+`Label` at font 16 on a 720-wide design space, so anything much past eighty
+characters runs off both edges — which is why the attachment entries (up to
+122 characters) go to the plate, and only short terms go to the prompt.
+*(Worth a separate look: `SoundingMark.CANNOT_READ` is 118 characters and
+shipped in §98 through the prompt. It may already be clipping on a phone. Not
+touched here — it is approved copy, and measuring it wants a running build
+rather than a guess.)*
+
+### The hulls are nodes; the rest is scenery
+
+Only the seven readable hulls plus twelve anonymous ones join the ladder
+group, spaced well past `CameraRig.PICK_PX` so choosing which hull to read is
+a decision rather than a coin flip — asserted in world units against the
+builder's own `HULL_SPACING`. The hundreds the mark *counted and stopped
+counting* are a **MultiMesh** on `_build_starfield`'s precedent, because an
+instance that can never be tapped has no business being a node.
+
+Every hull faces the system origin — the charted side, the thing they were all
+trying to reach when they stopped. One angle for the whole formation: they are
+in perfect order, and the perfect order is the frightening part.
+
+### Not a Derelict, deliberately
+
+`Derelict._process` writes the single global prompt label on range
+transitions, and there are fifteen writers of that label already. Nineteen
+Derelict-derived hulls in formation would fight over it every frame the player
+drifts through — the name you just tapped wiped by a neighbour. The hold
+contract is duck-typed and cost about sixty lines to carry directly.
+
+### It never spends its mark
+
+A formation is a place — the serpent's and the forge's rule. `read → given`,
+and `closed` is unreachable because nothing here is ever spent. The deposit is
+the layup's verb (the whole hold, for nothing, one clause and no tally), the
+empty-hold refusal is where the place states what it is — *"NOTHING HERE IS
+SALVAGE — THE HULLS ARE FULL AND NOBODY HAS TOUCHED THEM"* — because a player
+holding on a dead ship means *take something*, and that is the sentence that
+answers it.
+
+**S7 taken, in one line and never explained:** the living nomad fleet is named
+*for* this place. It is stated exactly once, in the deposit's response, and
+nothing mechanical connects them.
