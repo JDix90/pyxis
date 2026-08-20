@@ -6116,7 +6116,7 @@ decisions R1–R4). Six commits, **five built** (commit 3 split at build time in
 | 3a | THE PROVING DRIFT, plus the encounter machinery all nine legends share, plus the prototype tier | rides v25 | **BUILT** — §99; `MARK_STATES` gained one word and nothing else changed, which is what §98's validated-string decision was for |
 | 3b | LEGENDS I, the rest of the common three: THE VEIN, THE LAYUP (deposit and withdrawal) | rides v25 | **BUILT** — §101; the state ladder became a four-word lattice, and "no tally" is asserted as byte-equality of save images |
 | 4 | LEGENDS II, the dangerous three: THE STILLNESS' GROUND, THE STANDING ORDER (it hails first), THE SOUNDING SERPENT | none | **BUILT** — §102; the asset flies feral and wears teal, the becalming is its own mechanism, and the serpent never spends its mark |
-| 5 | LEGENDS III, the ongoing four: THE ORRERY STILL RUNNING, THE TALLY'S NURSERY, THE PATTERN FORGE, THE PROCESSION'S END | **v26** (nursery store only) | **RESEARCH DONE** (2026-08-20, `docs/LEGENDS-III-RESEARCH.md`) — decisions S4–S8 open; the nine names need a writing pass before the procession can build. The pass killed three naive versions: the escort wing already ships (REQUEST ESCORT — the forge needs a spawner and a lifetime, not a class), the nursery cannot ride `colonies` (byte-identical key formats collide, and a deep jump anchor breaks `A FOOTHOLD, NOT A FARM` silently), and a sold orrery windfall would clear the Grand Commission's chart pillar in one ALL press because `chart_data_sold` counts units with no cell join |
+| 5 | LEGENDS III, the ongoing four — **orrery BUILT (§103)**; forge, procession (gated on the nine names, `docs/THE-NINE-NAMES-DRAFT.md`) and nursery remain | **v26** (nursery store only) | **RESEARCH DONE** (2026-08-20, `docs/LEGENDS-III-RESEARCH.md`) — decisions S4–S8 open; the nine names need a writing pass before the procession can build. The pass killed three naive versions: the escort wing already ships (REQUEST ESCORT — the forge needs a spawner and a lifetime, not a class), the nursery cannot ride `colonies` (byte-identical key formats collide, and a deep jump anchor breaks `A FOOTHOLD, NOT A FARM` silently), and a sold orrery windfall would clear the Grand Commission's chart pillar in one ALL press because `chart_data_sold` counts units with no cell join |
 
 **The prototype tier is under a research pass the player is running** (opened
 2026-08-20). §99 shipped the mechanism, the laws and provisional entries in one
@@ -10489,3 +10489,73 @@ asserts the pre-arm group emptiness, the paint/flag split, and that silencing
 moves no GSA standing and no delta. `THE SERPENT LEAVES AND THE MARK STANDS`
 asserts the break-off, the board emptying, the five-way pays-nothing, and the
 rebuild. No new run, no new mode, no save bump.
+
+---
+
+## 103. The orrery still running (rides v25)
+
+Horizon 9 commit 5, first of four. The research pass (§64,
+`docs/LEGENDS-III-RESEARCH.md`) recommended a distinct windfall good id
+excluded from the Commission's ledger, and that recommendation was approved —
+**then building it found four reasons the catalogue refuses one, and one
+reason the fiction wants the opposite.** The reversal is recorded here rather
+than quietly taken, because it changes what the horizon says about itself.
+
+### Why there is no `chart_orrery`
+
+1. `NOT SALVAGE` asserts `charts.size() == BAND_EDGES.size()` — exactly one
+   chart good per band edge. A seventh goes **red**, loudly.
+2. `chart_for_band` returns the **first** good matching a band, and both the
+   survey mast and the deep-station first berth mint through it. A second
+   band-6 chart would make what a mast pays depend on dictionary insertion
+   order — silent, seed-independent, and wrong in the one place the game
+   mints its own currency.
+3. `family()` reads `chart_band`. Without one, forty years of survey data
+   draws under the **BULK** glyph, and `family_color` loses the band tint —
+   breaking the one channel §30 says must carry meaning when colour cannot.
+4. Tolls exclude chart goods by `is_chart`. A distinct id would make an
+   orrery hold **the largest toll in the game**, punishing the collection
+   with a mechanic written to spare exactly this cargo.
+
+So the orrery pays in `chart_unsounded`, the real good, and every property —
+family, glyph, band tint, toll exclusion, filability, storability, weight,
+price — is correct by construction with no new key and no assertion edited.
+
+### And the Commission should hear about it
+
+The research's warning was calibrated at a 100-unit windfall, where one press
+of the ALL button clears the Grand Commission's entire chart pillar. At
+**twenty units** the arithmetic is different and so is the reading: selling
+these moves `chart_data_sold` by a fifth of the top stage, and that is **the
+arc's thesis landing rather than a leak.** The instrument logs you as the
+collecting vessel; you carry the Authority's own forty years of uncollected
+work back to an Authority counter; the Authority thanks you for your
+contribution. Every one of those sentences is true and the paperwork is in
+order. `THE ORRERY IS NOT A RAISE` asserts the interaction deliberately — the
+share of the top stage must stay a **minority**, so the legend cannot become
+the pillar, and nobody can "fix" the interaction by accident later.
+
+### The size is the assertion
+
+Twenty units is five standard loops of masting, and the leg computes that
+from `PACING_LOOP["survey"] × SurveyMast.YIELD_UNITS` rather than from a
+number in a comment — so the claim "a scale a pilot cannot earn in a session"
+is measured against the rate the pacing profile itself uses. It also fits a
+**starter** hold with four space to spare, which is the honest shape: a pilot
+who somehow got out there can carry it, but only by carrying nothing else.
+
+All-or-nothing and **deferring**, the mast's and the Stillness' posture, and
+hardest here — twenty units is most of a starter hold, so arriving full is
+the ordinary case rather than the edge one. The mark stays unspent and the
+instrument keeps filing, which is exactly what a machine that has waited
+forty years would do about it.
+
+### One ladder rung for the rest of the horizon
+
+The orrery carries a verb of its own, and so will the forge and the
+procession — three nodes sharing nothing except standing alone at a mark.
+Rather than three group additions to two ladders each, commit 5 opens **one
+shared group, `"legend"`**, added to both ladders now. Getting this rung
+wrong would leave the forge and the procession unreachable by a finger
+without either file changing again, which is §96's lesson stated forward
+instead of paid for twice.

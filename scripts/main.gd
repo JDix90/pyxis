@@ -16486,6 +16486,92 @@ func _run_return_test() -> void:
 		"PASS" if serp_stood and body_armed and broke_off and board_clear
 			and paid_nothing_s and mark_stands and comes_back else "FAIL"])
 
+	# 21. THE ORRERY IS A WINDFALL. The one-time payout, its SIZE pinned where a
+	#     retune has to argue with it, and the two properties that keep a
+	#     windfall from becoming an income: it defers rather than spilling when
+	#     the hold is full, and it never comes back.
+	#
+	#     THE SIZE IS THE ASSERTION. Twenty units of band-6 chart data is five
+	#     standard loops of masting (PACING_LOOP takes two readings a loop at
+	#     SurveyMast.YIELD_UNITS each), which is the whole claim -- "a scale a
+	#     pilot cannot earn in a session" -- expressed against the rate the
+	#     pacing profile itself uses rather than against a number in a comment.
+	var orr_key := GameState.mark_key(msid, 2)
+	GameState.marks_seen = {}
+	GameState.marks_seen[orr_key] = GameState.MARK_READ
+	GameState.cargo = {}
+	var orr_at := Vector3(1800.0, 0.0, 1800.0)
+	var orrery := SystemBuilder.build_legend(system_root, msid, 2, "orrery",
+		orr_at) as Orrery
+	var orr_stood := orrery != null
+	var loops_worth := 0.0
+	var deferred_orr := false
+	var collected := false
+	var orr_spent := false
+	var orr_gone := false
+	var band6_good := false
+	if orr_stood:
+		band6_good = Orrery.COLLECT_GOOD == CommodityDB.chart_for_band(
+			DeepSpace.BAND_NAMES.size() - 1)
+		loops_worth = float(Orrery.COLLECT_UNITS) \
+			/ (float(SurveyMast.YIELD_UNITS) * float(PACING_LOOP["survey"]))
+		if pilot_m != null:
+			pilot_m.teleport_to(orr_at)
+		# FULL HOLD FIRST: an instrument that has waited forty years does not
+		# spill its file on the deck because the pilot arrived full.
+		GameState.load_cargo("alloys", 9999)
+		orrery.hold_begin()
+		orrery.hold_tick(Orrery.COLLECT_TIME + 0.1)
+		deferred_orr = not GameState.is_mark_spent(orr_key) \
+			and GameState.cargo_count(Orrery.COLLECT_GOOD) == 0
+		# With room, it pays exactly once.
+		GameState.cargo = {}
+		orrery.hold_begin()
+		orrery.hold_tick(Orrery.COLLECT_TIME + 0.1)
+		collected = GameState.cargo_count(Orrery.COLLECT_GOOD) == Orrery.COLLECT_UNITS
+		orr_spent = GameState.is_mark_spent(orr_key)
+		orr_gone = SystemBuilder.build_legend(system_root, msid, 2, "orrery",
+			orr_at) == null
+		orrery.queue_free()
+	print("[return] THE ORRERY IS A WINDFALL stands when read=%s paying the band-6 chart good=%s; %d units is %.1f standard loops of masting; a full hold DEFERS it=%s; with room it pays once=%s, spends the mark=%s and never comes back=%s -> %s" % [
+		str(orr_stood), str(band6_good), Orrery.COLLECT_UNITS, loops_worth,
+		str(deferred_orr), str(collected), str(orr_spent), str(orr_gone),
+		"PASS" if orr_stood and band6_good and loops_worth >= 4.0
+			and loops_worth <= 8.0 and deferred_orr and collected and orr_spent
+			and orr_gone else "FAIL"])
+
+	# 22. THE ORRERY IS NOT A RAISE. The fourth sibling of FILING / MINING /
+	#     JUMP IS NOT A RAISE: no pacing profile may ever name a legend, so a
+	#     windfall cannot be smuggled into the recurring term where it would
+	#     re-tune the whole economy while every leg stayed green.
+	#
+	#     AND THE COMMISSION HEARS ABOUT IT, DELIBERATELY. Selling these moves
+	#     chart_data_sold, which is what the Grand Commission counts -- that is
+	#     the arc's thesis landing, not a leak, and it is asserted so it cannot
+	#     be "fixed" by accident later. What the leg polices is the RATIO: the
+	#     windfall must stay a minority of the Commission's top stage, or the
+	#     legend stops being a legend and becomes the pillar.
+	var raise_named := ""
+	for prof_v in [PACING_LOOP, PACING_PROSPECT]:
+		for k6_v in (prof_v as Dictionary):
+			var kk := String(k6_v)
+			if kk == "orrery" or kk == "legend" or kk == "nursery" or kk == "forge":
+				raise_named += kk + " "
+	# READ OFF THE FLAT KEY, which is the schema STAGES actually uses -- the
+	# requirement sits directly on the stage dict, not under a "requires"
+	# sub-dictionary. Written the other way first, this leg read 0 from every
+	# stage and would have measured a share of nothing.
+	var top_stage := 0
+	for st_v in CommissionDB.STAGES:
+		top_stage = maxi(top_stage,
+			int((st_v as Dictionary).get("chart_data_sold", 0)))
+	var stage_share := float(Orrery.COLLECT_UNITS) / maxf(float(top_stage), 1.0)
+	print("[return] THE ORRERY IS NOT A RAISE pacing profiles name no legend (%s); the windfall moves the Commission by %d of %d units on file (%.0f%% of the top stage, must stay a minority) -> %s" % [
+		"clean" if raise_named == "" else raise_named, Orrery.COLLECT_UNITS,
+		top_stage, stage_share * 100.0,
+		"PASS" if raise_named == "" and top_stage > 0 and stage_share < 0.5
+			else "FAIL"])
+
 	GameState.survey_coverage = {}
 	GameState.survey_filed = {}
 	GameState.deep_logs = {}

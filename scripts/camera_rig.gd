@@ -504,6 +504,14 @@ func _try_begin_hold(screen_pos: Vector2) -> void:
 		# be on screen at all. There is no contest to resolve, so the cheapest
 		# correct thing is to leave every earlier rung untouched.
 		target = _pick(screen_pos, "farmark")
+	if target == null:
+		# §103. THE LEGENDS' OWN GROUP, and it is one rung for all of them
+		# rather than one each. The orrery carries a verb of its own, and so
+		# will the forge and the procession -- three nodes that share nothing
+		# except standing alone at a mark, which is exactly the case a shared
+		# ladder group is for. Dead last, the far-marks argument: at 6,500u
+		# nothing else in this ladder can be on screen to contest a tap.
+		target = _pick(screen_pos, "legend")
 	if target and target.has_method("hold_begin"):
 		_hold_target = target
 		target.hold_begin()
@@ -638,6 +646,14 @@ func _select(screen_pos: Vector2) -> bool:
 	var mark := _pick(screen_pos, "farmark")
 	if mark and mark.has_method("on_tapped"):
 		mark.on_tapped()
+		return true
+	# §103. And the legends themselves, last. BOTH LADDERS IN THE SAME COMMIT,
+	# the rule §96 paid two horizons for -- and this is the rung the rest of
+	# commit 5 hangs on, so getting it wrong would leave the forge and the
+	# procession unreachable by a finger without either file changing again.
+	var legend := _pick(screen_pos, "legend")
+	if legend and legend.has_method("on_tapped"):
+		legend.on_tapped()
 		return true
 	return false
 

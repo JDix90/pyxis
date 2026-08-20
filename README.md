@@ -215,7 +215,10 @@ the layup), likewise; §102 adds three more (the dangerous three legends), also
 with no new run, mode or bump — but it introduces three new `class_name`s
 (`StillnessGround`, `StandingOrder`, `SoundingSerpent`), so run
 `"$GODOT" --headless --path . --import` before the next sweep. That sweep
-should read **764 across 77**.
+should read **764 across 77**. §103 (the orrery) then adds two more
+`RETURNTEST` legs and one more `class_name` (`Orrery`) — still no new run, no
+new mode and no save bump — so the sweep after that should read **766 across
+77**.
 
 (§96's adversarial pass reported after both commits shipped; its two confirmed
 findings were folded back in without changing any count — one strengthened an

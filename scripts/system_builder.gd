@@ -183,6 +183,10 @@ static func build_legend(container: Node3D, system_id: String, index: int,
 			if GameState.is_mark_spent(key):
 				return null
 			return _build_standing_order(container, key, at)
+		"orrery":
+			if GameState.is_mark_spent(key):
+				return null
+			return _build_orrery(container, key, at)
 		"serpent":
 			# NEVER spent -- S2's rule enforced by never asking. The serpent
 			# leaves rather than dies, so the mark keeps its warning and the
@@ -287,6 +291,14 @@ static func _build_stillness(container: Node3D, key: String, at: Vector3) -> Nod
 
 static func _build_standing_order(container: Node3D, key: String, at: Vector3) -> Node3D:
 	var o := StandingOrder.new()
+	o.owns_mark = key
+	container.add_child(o)
+	o.global_position = at + Vector3(LEGEND_STANDOFF, 0.0, 0.0)
+	return o
+
+
+static func _build_orrery(container: Node3D, key: String, at: Vector3) -> Node3D:
+	var o := Orrery.new()
 	o.owns_mark = key
 	container.add_child(o)
 	o.global_position = at + Vector3(LEGEND_STANDOFF, 0.0, 0.0)
