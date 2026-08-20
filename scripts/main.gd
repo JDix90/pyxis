@@ -1345,15 +1345,23 @@ func file_charts_on_sale(good: String, units: int) -> int:
 	if hud:
 		# One toast, not two: a second show_toast in the same frame overwrites
 		# the first, and the money is the headline.
+		# v25 (§97). The counter's verdict re-reads too, and only the words move:
+		# the cell is swept and the bonus withheld exactly as before. "Another
+		# hand" is what a stranger's mark is; "a colleague" is what the same mark
+		# is to somebody who has clipped their own returns to the same masts.
+		var colleague := GameState.files_with_the_network()
 		if filed > 0 and lost > 0:
-			hud.show_toast("FILED FIRST — %d CELL%s · +%d (%d ALREADY FILED BY ANOTHER HAND)" % [
-				filed, "" if filed == 1 else "S", bonus, lost], Palette.GOLD)
+			hud.show_toast("FILED FIRST — %d CELL%s · +%d (%d %s)" % [
+				filed, "" if filed == 1 else "S", bonus, lost,
+				"ALREADY HELD BY A COLLEAGUE" if colleague
+				else "ALREADY FILED BY ANOTHER HAND"], Palette.GOLD)
 		elif filed > 0:
 			hud.show_toast("FILED FIRST — %d CELL%s ON THE RECORD · +%d" % [
 				filed, "" if filed == 1 else "S", bonus], Palette.GOLD)
 		else:
-			hud.show_toast("%d CELL%s ALREADY FILED — SOMEBODY IS OUT HERE" % [
-				lost, "" if lost == 1 else "S"], Palette.RIVAL)
+			hud.show_toast("%d CELL%s %s" % [lost, "" if lost == 1 else "S",
+				"ALREADY HELD — A COLLEAGUE WAS HERE" if colleague
+				else "ALREADY FILED — SOMEBODY IS OUT HERE"], Palette.RIVAL)
 	return bonus
 
 
@@ -14633,6 +14641,56 @@ func _run_plot_test() -> void:
 	print("[plot] AND ONLY FOR LAYERS THAT ARE DRAWN nothing drawn -> %s; all drawn -> %s -> %s" % [
 		str(dead_words), str(live_words), "PASS" if moved else "FAIL"])
 	GameState.beacons[sid] = []
+
+	# 9b. THE CHART IS TWO DOCUMENTS (v25, §97). A surveyed cell and a held cell
+	#     must be distinguishable ON THE PICTURE, and the legend must follow the
+	#     layer rather than the store: HELD is a subset of SURVEYED, so it may
+	#     never appear without it and must appear with it exactly when this
+	#     system holds one.
+	#
+	#     BOTH DIRECTIONS, THE CHART REMEMBERS' own discipline -- a legend that
+	#     always said HELD would satisfy a one-sided check, and so would a chart
+	#     that marked every surveyed cell as held.
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+	var plain_cell := DeepSpace.cell_key(sid, 5, 0)
+	var held_cell := DeepSpace.cell_key(sid, 6, 0)
+	GameState.note_survey_worked(plain_cell)
+	GameState.note_survey_worked(held_cell)
+	GameState.note_survey_filed(plain_cell)
+	var words_before := cp.legend_words(false, false)
+	GameState.note_survey_held(held_cell)
+	var words_after := cp.legend_words(false, false)
+	var marks_ok: bool = GameState.is_survey_held(held_cell) \
+		and not GameState.is_survey_held(plain_cell) \
+		and GameState.is_survey_filed(plain_cell)
+	var legend_ok: bool = not words_before.has("HELD") \
+		and words_after.has("HELD") and words_after.has("SURVEYED")
+	print("[plot] THE CHART IS TWO DOCUMENTS a counter-filed cell is not held=%s, a network cell is=%s; legend before %s, after %s -> %s" % [
+		str(not GameState.is_survey_held(plain_cell)),
+		str(GameState.is_survey_held(held_cell)),
+		str(words_before), str(words_after),
+		"PASS" if marks_ok and legend_ok else "FAIL"])
+
+	# 9c. AND THE RIVAL READS DIFFERENTLY TO SOMEBODY WHO FILES. Copy, not
+	#     mechanics: nothing about when the rival arrives moves. Driven on the
+	#     derived flag, which is the only thing the two surfaces read.
+	# Cleared to nothing-held first, so the OFF state is measured rather than
+	# inherited from whatever the leg above left behind.
+	GameState.survey_filed = {}
+	var off_when_none := not GameState.files_with_the_network()
+	# A COUNTER filing must not turn it on: the register is about where returns
+	# went, and a cell sold at a port went to the Authority.
+	GameState.note_survey_filed(plain_cell)
+	var off_when_only_counter := not GameState.files_with_the_network()
+	GameState.note_survey_held(held_cell)
+	var on_when_held := GameState.files_with_the_network()
+	print("[plot] A COLLEAGUE, NOT A STRANGER register off with nothing held=%s, still off with a counter filing=%s, on with one held cell=%s -> %s" % [
+		str(off_when_none), str(off_when_only_counter), str(on_when_held),
+		"PASS" if off_when_none and off_when_only_counter and on_when_held
+			else "FAIL"])
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
 
 	# 10. THE PLOT IS CONTAINED. Godot does not scissor a CanvasItem's own draw
 	#     calls to its rect; clip_contents defaults to false, and nothing else in

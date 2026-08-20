@@ -1,6 +1,6 @@
 # Horizon 9 — The True Copy
 
-**Status: COMMIT 0 BUILT (§96, v25). Commits 1-5 specced, nothing built. Prose gated on `docs/FAR-MARKS-DRAFT.md`
+**Status: COMMITS 0-1 BUILT (§96 v25, §97 no bump). Commits 2-5 specced, nothing built. Prose gated on `docs/FAR-MARKS-DRAFT.md`
 (second draft; R1–R4 answered, S1–S3 open).** When any of it is adopted,
 record it in `docs/STRATEGY.md` §64 in the same commit, per the house rule.
 
@@ -61,7 +61,7 @@ after any commit and still be a whole thing.
 | # | Commit | Save | Weight |
 |---|---|---|---|
 | 0 | THE FILED RETURN — two-stage hold on deep foreign beacons, provenance in the store, the channel's reply | **v25** | **BUILT (§96)** |
-| 1 | THE TRUE CHART — held cells marked on the plot; the rival annotation re-read | none | small |
+| 1 | THE TRUE CHART — held cells marked on the plot; the rival annotation re-read | none | **BUILT (§97)** |
 | 2 | THE FAR MARKS — the buoys, their placement, the read/unread split | rides v25 | medium |
 | 3 | LEGENDS I, the common three — VEIN, LAYUP (deposit + withdrawal), PROVING DRIFT | rides v25 | medium |
 | 4 | LEGENDS II, the dangerous three — STILLNESS' GROUND, STANDING ORDER, SOUNDING SERPENT | none | large |

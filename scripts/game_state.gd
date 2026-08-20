@@ -1678,6 +1678,28 @@ func note_survey_held(key: String) -> bool:
 	return true
 
 
+func files_with_the_network() -> bool:
+	# v25 (§97). Whether this pilot has ever clipped a return to somebody else's
+	# mast. DERIVED from the store rather than flagged, the horizon's own rule:
+	# a held cell IS the evidence, so there is nothing to keep in step and
+	# nothing that can disagree with the chart the player is looking at.
+	#
+	# What it gates is a REGISTER, never a mechanic: the rival's annotations stop
+	# reading as a loss and start reading as a colleague's mark. Nothing about
+	# the rival changes -- they still get there first exactly as often, and they
+	# still take nothing the player had.
+	# THROUGH is_survey_held, NOT by re-reading the value. The first draft of
+	# this function was `String(survey_filed[k_v]) == HELD` -- the identical
+	# invalid-constructor defect fixed two commits ago, written again in the same
+	# file minutes after the rule was recorded. The store holds two types and
+	# there is exactly ONE function that knows how to ask; every other reader
+	# calls it. That is the durable fix, where "remember to use typeof" is not.
+	for k_v in survey_filed:
+		if is_survey_held(String(k_v)):
+			return true
+	return false
+
+
 func held_cells(system_id := "") -> Array:
 	# Coverage that went to the network, optionally for one system. unfiled_cells'
 	# shape and unfiled_cells' reason: a UI that wants to say "eleven held"

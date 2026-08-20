@@ -255,8 +255,19 @@ func _complete() -> void:
 	if hud:
 		hud.crack_progress(-1.0)
 		if rival_here:
-			hud.show_toast("SURVEY LOGGED — %s x%d · FILED ALREADY, SOMEBODY WAS FIRST" % [
-				CommodityDB.short_name(good), taken], CommodityDB.color_of(good))
+			# v25 (§97). THE SAME FACT, IN TWO REGISTERS. Nothing about the rival
+			# changes here -- they reach the same cells at the same times and
+			# still take nothing the player had. What changes is who the player
+			# is: a pilot who has filed with the network knows the other
+			# cartographer was one of them, and knows the mark went where their
+			# own marks go. The sting was never in the event, it was in reading
+			# it as a loss.
+			if GameState.files_with_the_network():
+				hud.show_toast("SURVEY LOGGED — %s x%d · A COLLEAGUE WAS FIRST" % [
+					CommodityDB.short_name(good), taken], CommodityDB.color_of(good))
+			else:
+				hud.show_toast("SURVEY LOGGED — %s x%d · FILED ALREADY, SOMEBODY WAS FIRST" % [
+					CommodityDB.short_name(good), taken], CommodityDB.color_of(good))
 		else:
 			hud.show_toast("SURVEY LOGGED — %s x%d" % [
 				CommodityDB.short_name(good), taken], CommodityDB.color_of(good))

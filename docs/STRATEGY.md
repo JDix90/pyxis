@@ -6111,7 +6111,7 @@ decisions R1–R4). Four commits, **none built**:
 | # | what | save | status |
 |---|---|---|---|
 | 0 | THE FILED RETURN: two-stage hold on deep foreign beacons — give the goods, no credits, no Commission; the channel answers with a bearing | **v25** | **BUILT** — §96; a research fan-out killed four parts of the design first, including a loader that would have eaten the feature whole |
-| 1 | THE TRUE CHART: held cells marked on the plot (shape, not hue); the rival annotation re-read as colleagueship | none | **SPECCED** |
+| 1 | THE TRUE CHART: held cells marked on the plot (shape, not hue); the rival annotation re-read as colleagueship | none | **BUILT** — §97 |
 | 2 | THE FAR MARKS: the network's sounding buoys at 6,500–9,000u, five per system on `hyper_positions`' pattern; visible to all, readable only by filers | rides v25 | **SPECCED** |
 | 3 | LEGENDS I, the common three: THE VEIN, THE LAYUP (deposit and withdrawal), THE PROVING DRIFT | rides v25 | **SPECCED** |
 | 4 | LEGENDS II, the dangerous three: THE STILLNESS' GROUND, THE STANDING ORDER (it hails first), THE SOUNDING SERPENT | none | **SPECCED** |
@@ -9847,3 +9847,64 @@ which is the only way to prove a placement rule at nine thousand units without
 flying there. The singular rule is enforced **by construction** — kinds are
 dealt off a shrinking list — rather than by a rejection test that could fail
 open and place a second serpent.
+
+## 97. The chart is two documents
+
+Horizon 9 commit 1, and no save bump: everything here reads v25's store and
+draws or re-words what it finds.
+
+### The mark
+
+A held cell keeps the faint filled square coverage has always drawn and gains a
+small **open ring** on top of it. Three things separate the two layers, and §30
+asks for exactly this when a colour is shared:
+
+- **Shape.** A ring is not a square.
+- **Behaviour.** The square is world-sized and scales with zoom; the ring is
+  fixed in screen pixels. They separate further the closer you look, instead of
+  merging.
+- **Meaning.** The ring is drawn in the cell's own band colour, so it reads as a
+  property OF that cell rather than a second thing standing in it.
+
+An open ring specifically, because what it means is *a copy of this exists
+somewhere else*. The mark is not fuller than an unheld cell — it is duplicated.
+The chart becomes two documents read at once: what the Authority counted, and
+what the network holds.
+
+`THE CHART IS TWO DOCUMENTS` asserts both directions, `THE CHART REMEMBERS`'
+discipline: a legend that always said HELD would satisfy a one-sided check, and
+so would a chart that marked every surveyed cell.
+
+### The rival, re-read
+
+Two surfaces carry the annotation — the mast's heads-up and the counter's
+verdict — and both now have two registers, switched by
+`GameState.files_with_the_network()`. *"SOMEBODY WAS FIRST"* becomes *"A
+COLLEAGUE WAS FIRST"*; *"ALREADY FILED BY ANOTHER HAND"* becomes *"ALREADY HELD
+BY A COLLEAGUE"*.
+
+**Nothing about the rival changes.** They reach the same cells at the same
+times, they still take nothing the player had, and no number moves. What changes
+is who the reader is: a pilot who has clipped their own returns to these masts
+knows the other cartographer was one of them, and knows that mark went where
+their marks go. **The sting was never in the event — it was in reading it as a
+loss.**
+
+The flag is DERIVED from the store, never stored: a held cell IS the evidence,
+so there is nothing to keep in step and nothing that can disagree with the chart
+the player is looking at. And it is off for a counter filing, which the
+assertion checks — the register is about where returns went, and a cell sold at
+a port went to the Authority.
+
+### The same defect, written again, eight minutes later
+
+`files_with_the_network` was first written as
+`String(survey_filed[k_v]) == HELD` — the identical invalid-constructor defect
+§96 had just recorded a rule about, in the same file, minutes after writing the
+rule down. The rule was remembered and the code was not.
+
+The durable fix is not discipline. **The store holds two types and there is
+exactly ONE function that knows how to ask** — `is_survey_held` — and every
+other reader calls it. A rule that says "remember to check typeof at the JSON
+boundary" survives exactly as long as the person remembering; a single guarded
+accessor survives the person.
