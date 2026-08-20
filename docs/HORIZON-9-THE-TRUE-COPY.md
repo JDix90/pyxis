@@ -1,44 +1,40 @@
 # Horizon 9 — The True Copy
 
-**Status: SPECCED, nothing built. Commits 0–1's prose is gated on the
-read-aloud (`docs/FAR-MARKS-DRAFT.md`, decisions R1–R4).** When any of it is
-adopted, record it in `docs/STRATEGY.md` §64 in the same commit, per the house
-rule.
+**Status: SPECCED, nothing built. Prose gated on `docs/FAR-MARKS-DRAFT.md`
+(second draft; R1–R4 answered, S1–S3 open).** When any of it is adopted,
+record it in `docs/STRATEGY.md` §64 in the same commit, per the house rule.
 
-Three decisions arrived answered from the ideation round and are settled here:
-the filing point is **foreign beacons** (the write-mirror of the page read);
-the response is **all three payoffs** (the plate answers, provenance on the
-chart, the rival re-read); and filing **stays a donation** — the goods are the
-price and the response is the pay.
+Settled from the ideation rounds: filing point is **foreign beacons**; the
+response is **all three payoffs**; filing **stays a donation**; the hold is
+**two-stage**; the channel has **no fixed name**; the layup takes **deposits
+and withdrawals**; the Standing Order **hails before it fires**; and the legend
+set is **ten kinds**, generous and lethal in the same table.
 
 ## What this answers
 
-The game's founding sentence is *selling charts of places nobody has filed a
-return from*. Horizon 7 made that sentence literal — the returns were refused,
-not lost — and Horizon 8 let the player read the order that did it. The last
-fragment of THE LAST RETURN asks for one thing: *"file a return for us."*
+The founding sentence is *selling charts of places nobody has filed a return
+from*. Horizon 7 made it literal, Horizon 8 let the player read the order, and
+the last fragment asks for one thing: *file a return for us.* This horizon is
+the player answering — and the answer is what makes the space past the archives
+worth surveying.
 
-This horizon is the player answering. And it answers the standing playtest
-demand with the same stroke: **what makes the space past the archives worth
-surveying**, especially for a pilot giving up counter money to do it.
-
-The two halves are one design. Filing with the network is what buys the
-ability to *read the deep's own markings* — and the far deep is marked. The
-reward for refusing the Authority's ledger is literacy in the only chart out
-there that is true.
+**The two halves are one loop.** Filing with the network pays in *bearings* —
+the only currency it has — and the bearings point at the network's sounding
+marks. The far deep is marked; filing is what buys the literacy to read the
+markings; the markings are where the legends stand. A pilot who never files
+never learns to read a mark, and the far deep stays what it is today: empty.
 
 ## The two ledgers
 
-What filing means today: sell charts at a counter → credits + first-filing
-bonus + Commission progress → counted, never read. What filing with the
-refusers means: give the chart goods away at a deep foreign beacon → no
-credits, no bonus, no Commission movement → **read, and held**. The Authority
-counts; the network remembers. The player chooses per batch of cells — this is
-a verb, not an allegiance, and nothing anywhere tracks a "loyalty".
+Filing with the GSA: credits, first-filing bonus, Commission progress —
+*counted, never read.* Filing with the network: give the goods, no credits, no
+bonus, no registry — *read, and held.* Per batch of cells, chosen at the mast.
+This is a verb, never an allegiance: no refusers faction row, no loyalty
+counter, nothing tracked but the cells themselves.
 
-**The Authority never notices, ever.** No GSA standing shift, no Cordon
-reaction, no interdiction, and the Commission's retired field never moves.
-`THE MACHINES DO NOT KNOW` already polices the principle; betraying the
+**The Authority never notices, ever.** No standing shift, no Cordon reaction,
+no interdiction, and the Commission's retired field never moves.
+`THE MACHINES DO NOT KNOW` (§92) already polices the principle: betraying the
 Authority is administratively invisible, which is the horror register keeping
 its own rule.
 
@@ -46,152 +42,156 @@ its own rule.
 
 ## Commit order
 
-| # | Commit | Save | What it is |
-|---|---|---|---|
-| 0 | THE FILED RETURN — the write verb on deep foreign beacons, provenance in the store, the plate's answer | **v25** | The verb the last fragment asks for |
-| 1 | THE TRUE CHART — held cells marked on the chart plot; the rival annotation re-read | none | The two remaining payoffs, both copy and drawing |
-| 2 | THE FAR MARKS — the network's sounding marks past the archives, visible to everyone, readable only by filers | **v25 rides commit 0's bump** (`marks_seen`, generator-bounded) | The discovery layer |
-| 3 | THE LEGENDS — what stands at a mark: four authored encounter kinds, two generous, one dread, one fight | none beyond commit 2's store | The payoff layer |
+Cheap and certain first; the expensive systems last, so the horizon can stop
+after any commit and still be a whole thing.
 
-Commits 0–1 are small. Commits 2–3 are the horizon's weight and want their own
-adversarial pass before the user sweeps — they touch generation, and
-generation is where this project's worst bugs have lived.
+| # | Commit | Save | Weight |
+|---|---|---|---|
+| 0 | THE FILED RETURN — two-stage hold on deep foreign beacons, provenance in the store, the channel's reply | **v25** | small |
+| 1 | THE TRUE CHART — held cells marked on the plot; the rival annotation re-read | none | small |
+| 2 | THE FAR MARKS — the buoys, their placement, the read/unread split | rides v25 | medium |
+| 3 | LEGENDS I, the common three — VEIN, LAYUP (deposit + withdrawal), PROVING DRIFT | rides v25 | medium |
+| 4 | LEGENDS II, the dangerous three — STILLNESS' GROUND, STANDING ORDER, SOUNDING SERPENT | none | large |
+| 5 | LEGENDS III, the ongoing three — TALLY'S NURSERY, PATTERN FORGE, PROCESSION'S END | **v26** | largest |
+
+**Commit 5 is the largest single mechanical addition since the horizon system**
+— a capturable colony with a recapture clock, and an escort wing. It wants its
+own research pass before it is specced in detail, exactly as the berths did,
+and this document does not pretend to have done that yet.
 
 ---
 
 ## Commit 0 — THE FILED RETURN
 
-**The verb.** A deep foreign beacon (band 3+, the ones that carry pages) gains
-a third answer: with unfiled surveyed cells in the log AND the request heard,
-the hold offers to file. The read verb and the recovery refusal are untouched;
-`reading()`'s one-question pattern grows one sibling.
+**The gate** is hearing the ask, not knowing the order: `heard_the_request()`,
+fragment 3 of the bearing-terminus record, one step past `knows_directive_9()`,
+derived from `deep_logs` like both siblings. Zero new save for the gate.
 
-**The gate is hearing the ask**, not knowing the order:
-
-```gdscript
-func heard_the_request() -> bool:
-    # Fragment 3 of the bearing-terminus record -- "file a return for us."
-    # One step past knows_directive_9 (stage 2). Derived from deep_logs like
-    # its two siblings; zero new save for the gate itself.
-```
+**The verb** is R1's two-stage hold on a band-3+ foreign beacon: first
+completion reads the page (`READ_TIME`, shipped), continuing past it files
+(a second `FILE_TIME`, gauge relabelled to the terms). `reading()`'s
+one-question pattern gains one sibling; the recovery refusal is untouched.
 
 **What it does.** Every unfiled surveyed cell files at once — the mast's
-one-gesture generosity, not a cell picker — and the chart goods equal to the
-filing leave the hold. No credits, no bonus, no `chart_data_sold`. The cells
-mark as **held** rather than merely filed: `survey_filed`'s value goes from
-`true` to `true | "held"` — a value, not a new set, so the subset invariant
-and the cap eviction are untouched and the loader change is one line
-preserving the value. That is the save bump (v25).
+one-gesture generosity, never a cell picker — and the chart goods equal to the
+filing leave the hold. No credits, no bonus, no `chart_data_sold`. Filed cells
+mark as **held**: `survey_filed`'s value goes `true` → `true | "held"`, a value
+rather than a new set, so the subset invariant and the cap eviction are
+untouched and the loader change is one line that preserves a value. That is the
+v25 bump.
 
-**The plate answers** on the next outward band crossing — the same
-read-at-fire-time slot the after-register uses, one broadcast, once per filing
-batch. And the answer carries **a bearing** (through `compass_deg`, §60's
-rule) to the nearest unseen far mark in the system, written into the captain's
-log so it survives the session. That is the discovery loop: file a return, and
-the network tells you where it has sounded. The network pays in bearings — the
-only currency it has.
+**The reply** rides the after-register's slot (read at fire time, next outward
+crossing, once per batch), carries a sender picked by hash from R2's table, and
+names a **bearing** (through `compass_deg`, §60) to the nearest unseen far mark
+in the system — written to the captain's log so it survives the session.
 
 **Harness (`PYXIS_RETURNTEST`):** the gate flips on fragment 3 exactly; filing
-consumes goods and pays zero credits and moves no ledger term; held is a
-subset of filed is a subset of coverage (three stores, one chain); the cap
-evicts held cells like any others (no exemption — §17's bound stands); the
-Commission page and GSA standing are byte-identical across a filing;
-`migrate24` proves a v24 file loads with every filed cell un-held and nothing
-else disturbed.
+consumes goods, pays zero credits, moves no ledger term and no GSA standing;
+held ⊂ filed ⊂ coverage as one chain; the cap evicts held cells like any other
+(no exemption — §17's bound stands, and the wreck's log stays true); the
+Commission page is byte-identical across a filing; the reply's bearing resolves
+to a real mark; `migrate24` proves a v24 file loads with every filed cell
+un-held and nothing else disturbed.
 
 ---
 
 ## Commit 1 — THE TRUE CHART
 
-**Provenance on the plot.** Held cells draw with their own mark — shape, not
-hue (§30): filed cells today are one glyph, held cells gain a second, a small
-open ring ("a copy exists"). The chart legend gains one row. The player's
-chart visibly becomes two documents: what the Authority counted, and what the
-network holds.
+Held cells draw a second glyph on the plot — **shape, not hue** (§30) — a small
+open ring meaning *a copy exists*, plus one legend row. The player's chart
+becomes two documents: what the Authority counted, and what the network holds.
+The rival's *somebody was first* annotation re-reads as colleagueship once any
+cell is held (derived, no flag).
 
-**The rival re-read.** Once the pilot has ever filed with the network (any
-held cell — derived, no flag), the "somebody was first" annotations change
-register: from sting to colleagueship. The wreck's log already told them the
-truth of it; this is the surfaces catching up. Copy only, in the places that
-already render the annotation.
-
-**Harness:** legend row present; ring drawn for held and not for merely-filed
-(both directions, the CHART REMEMBERS discipline); annotation text flips on
-the derived flag and only on it.
+**Harness:** legend row present; ring on held and absent on merely-filed (both
+directions, `THE CHART REMEMBERS`' discipline); annotation flips on the derived
+flag and only on it.
 
 ---
 
 ## Commit 2 — THE FAR MARKS
 
-**What they are.** The network's sounding marks: buoys standing past the
-archives, **6,500u–9,000u**, further than anything the game has ever placed.
-Bounded by construction on `hyper_positions`' exact pattern:
-`far_marks(system_id, run_seed) -> [{pos, kind}]`, at most **FAR_MARKS_MAX
-(4)** per system, deterministic, independent depths, zero draws from any
-shared stream. Twelve marks in the whole game, findable only by flying
-further out than the archives — which answers "what makes it worth going
-beyond there" with geography, the way this game answers everything.
+**What they are.** Sounding buoys standing **6,500u–9,000u** out, past
+everything the game has ever placed. `far_marks(system_id, run_seed)` on
+`hyper_positions`' exact pattern: deterministic, independent depths, a fixed
+oversample so the draw count does not depend on what it rolled, and zero draws
+from any shared stream. **Five per system, fifteen in a run.**
 
-**Everyone sees them; only filers can read them.** A mark builds for every
-pilot (a thing you can see but never touch is the monument problem, §88 —
-so the unqualified tap gets a real answer: *the notation is not the
-Authority's, and you cannot read it*). For a pilot who has filed with the
-network, the same tap resolves the mark: names it, says what the network
-sounded here, and states the terms — because the network's marks are honest
-with their own people. Reading a mark is what spawns its encounter.
+**Kind assignment is the new part.** Ten kinds, two classes:
+
+- **COMMON** (VEIN, LAYUP, PROVING DRIFT) may repeat.
+- **SINGULAR** (the other seven) appear **at most once in an entire game**, and
+  a given run does not carry all of them. Placement draws singulars first from
+  a seeded shuffle across the whole run's mark set, then fills the remainder
+  with commons — so meeting a serpent is an event, and a run that has no
+  serpent in it is a normal run.
+
+That "not every run has everything" is the design, not a shortfall: it is what
+makes a legend something a player describes to somebody else rather than a
+checklist row.
+
+**Everyone sees a mark; only filers can read one.** An unread mark answers the
+tap honestly (*the notation is not the Authority's*) — a thing you can see and
+never touch is §88's monument problem, and the answer is also the teaching.
+Reading a mark resolves it and is what spawns the encounter.
 
 **Persistence: `marks_seen`,** keyed `"system:index"`, `structures_seen`'s
-exact posture — generator-bounded at 12 entries, validated against
-`far_marks` on load, riding commit 0's v25 bump. Claimed/resolved state per
-mark lives in the same store as a value.
+posture — generator-bounded at fifteen entries, validated against `far_marks`
+on load, riding v25. Per-mark resolved/claimed state lives in the value.
 
 **Own group (`"farmark"`), no scanned group, no radar tier** — the archives'
-own arguments, all of which hold harder out here.
+arguments, which hold harder this far out.
 
-**Harness:** bounded and deterministic (same seed twice, identical); every
-mark past the archives' depth and inside the authored window; no draw moved
-(the fingerprint pair, run against a probe at these depths); unreadable to a
-non-filer and resolvable by a filer, both through the real tap.
+**Harness:** bounded and deterministic; every mark inside the authored window
+and past the archives; the fingerprint pair unmoved; singular kinds never twice
+in one run over a sweep of seeds; unreadable to a non-filer and resolvable by a
+filer, both through the real tap.
 
 ---
 
-## Commit 3 — THE LEGENDS
+## Commits 3–5 — the legends
 
-Four kinds at launch, authored in the mark table, seeded per mark — a given
-mark is always the same legend, §17's determinism. Two generous, one dread,
-one fight, per the ideation decision: *good and bad, rewarding or dangerous —
-the great unknown.* Full prose in the draft doc; mechanics here.
+Full prose in the draft. Mechanically, the set is chosen so that **nine of the
+ten ride machinery that already exists** — seams, hulls, hostiles, colonies,
+broadcasts, the hold gesture — and only the escort wing is genuinely new.
 
-| kind | what stands there | the shape of it |
-|---|---|---|
-| **THE VEIN** | a seam field richer than anything charted — band-6 ore at multiples of the best charted yield | pure windfall, in weather. Mining machinery exists (`MineableSeam`); this is parameters, not a class |
-| **THE LAYUP** | a refusers' cache: a hulk-shaped store of goods and salvage, unrigged, enormous | the crack machinery exists (`Derelict`); one-time, `marks_seen` remembers |
-| **THE STILLNESS' GROUND** | the mark warns: *it passes here*. Enter and the drives go quiet — a becalming, not damage — and something crosses the field while you drift. Survive the stillness (it ends), and the mark's far side holds the reading | the dread one. Names one of the three unknowns the survey register only ever described. No new combat: the encounter is waiting, which is this game's oldest verb |
-| **THE STANDING ORDER** | a GSA heavy asset, still in service, past the terminus where no order ever reached it. It does not know the survey ended. It will not be told | the fight. The most dangerous thing in the great unknown is the Authority's own machinery — Directive 9 page 4, met in person. First-kill bonus at apex scale |
+| kind | class | verb | rides |
+|---|---|---|---|
+| THE VEIN | common | mine | `MineableSeam`, band-6 parameters |
+| THE LAYUP | common | crack, **and deposit** | `Derelict` + one new expressive verb |
+| THE PROVING DRIFT | common | crack | `Derelict` + prototype module tier |
+| THE STILLNESS' GROUND | singular | **wait** | a field effect; no combat at all |
+| THE STANDING ORDER | singular | fight (hails first) | `ApexBoss`, GSA paint |
+| THE SOUNDING SERPENT | singular | fight (segmented, alive) | new movement, no new AI framework |
+| THE ORRERY STILL RUNNING | singular | hold | the chart-good economy, one windfall |
+| THE TALLY'S NURSERY | singular | **take, then keep** | colony machinery + a recapture clock |
+| THE PATTERN FORGE | singular | print escorts | **genuinely new** |
+| THE PROCESSION'S END | singular | read, deposit | copy and one verb; pays nothing |
 
-**Economy note, stated for PACINGTEST before it is asked:** legends are
-windfalls, not income — the charted seams' own posture ("a windfall rather
-than an income"). No pacing term. A network filer trades steady counter
-income for access to the deep's windfalls; that asymmetry is the answer to
-"worth it despite the donation", and it must never be flattened into a second
-salary.
+**The economy rule, stated before PACINGTEST asks:** legends are **windfalls,
+never income** — the charted seams' own posture. No pacing term, no profile
+entry. A network filer trades steady counter money for access to the deep's
+windfalls, and that asymmetry is the answer to "worth it despite the
+donation". It must never be flattened into a second salary.
 
-**The unknowns stay unexplained.** THE STILLNESS' GROUND shows an effect and
-a crossing shadow, never an anatomy. The rule that the deep's nature is never
-mechanized survives contact with an encounter named after it — the mark warns
-*that* it passes, and nothing anywhere says what it is.
+**The prototype rule:** the PROVING DRIFT's modules sit above the Mk V line and
+each carries a real defect. *"Nothing in the catalogue is a straight upgrade"*
+is a law here, and a legendary is not an exemption from it. `ALL-BEST IS STILL
+OUT OF REACH` (§94) is re-derived against the prototype tier and must still
+hold — if a prototype closes the power margin, the prototype is wrong.
 
 ---
 
 ## What this horizon must not become
 
-- **A loyalty system.** Filing is a verb per batch, not an allegiance. No
-  refusers faction row, no counter, no "network standing".
-- **A punishment for filing with the GSA.** The counter stays exactly as good
-  as it is. The network route is additive: different pay, different places.
-- **An eviction exemption.** Held cells age out of the 400-cell cap like
-  everything else. The wreck's log stays true.
-- **An explanation.** Neither the Stillness nor the deep gets an anatomy. The
-  marks say *that*, never *why*.
-- **A quest log.** No mark counter, no legend checklist. Twelve marks exist;
-  the game never says so.
+- **A loyalty system.** Filing is a verb per batch. No faction row, no counter.
+- **A punishment for filing with the GSA.** The counter stays exactly as good.
+  The network route is additive: different pay, different places.
+- **An eviction exemption.** Held cells age out of the 400-cell cap like every
+  other cell. The wreck's log stays true.
+- **A fleet game.** The escorts take no orders and no bearings, and per S3 they
+  do not survive a warp. The charted side stays exactly as hard as it is.
+- **An explanation.** Not the Stillness, not the serpent, not the Tally, not
+  whoever built the forge. Marks say *that*, never *why*.
+- **A checklist.** Fifteen marks and ten kinds exist; the game never says so,
+  and nothing anywhere counts them.

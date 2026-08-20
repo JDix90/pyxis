@@ -6110,15 +6110,27 @@ decisions R1–R4). Four commits, **none built**:
 
 | # | what | save | status |
 |---|---|---|---|
-| 0 | THE FILED RETURN: the write verb on deep foreign beacons — give the goods, no credits, no Commission; the plate answers with a bearing | v25 | **SPECCED**, gated on the read-aloud |
+| 0 | THE FILED RETURN: two-stage hold on deep foreign beacons — give the goods, no credits, no Commission; the channel answers with a bearing | v25 | **SPECCED**, prose gated on the read-aloud |
 | 1 | THE TRUE CHART: held cells marked on the plot (shape, not hue); the rival annotation re-read as colleagueship | none | **SPECCED** |
-| 2 | THE FAR MARKS: the network's sounding buoys at 6,500–9,000u, bounded at four per system on `hyper_positions`' pattern; visible to all, readable only by filers | rides v25 | **SPECCED** |
-| 3 | THE LEGENDS: four authored encounter kinds at the marks — THE VEIN and THE LAYUP (generous), THE STILLNESS' GROUND (dread), THE STANDING ORDER (the fight) | none | **SPECCED** |
+| 2 | THE FAR MARKS: the network's sounding buoys at 6,500–9,000u, five per system on `hyper_positions`' pattern; visible to all, readable only by filers | rides v25 | **SPECCED** |
+| 3 | LEGENDS I, the common three: THE VEIN, THE LAYUP (deposit and withdrawal), THE PROVING DRIFT | rides v25 | **SPECCED** |
+| 4 | LEGENDS II, the dangerous three: THE STILLNESS' GROUND, THE STANDING ORDER (it hails first), THE SOUNDING SERPENT | none | **SPECCED** |
+| 5 | LEGENDS III, the ongoing three: THE TALLY'S NURSERY (takeable, and they come back for it), THE PATTERN FORGE (escorts), THE PROCESSION'S END | v26 | **SPECCED as a row** — the largest mechanical addition since the horizon system; wants its own research pass, as the berths did |
 
 The ideation decisions are settled and recorded in the spec: filing point is
-foreign beacons, all three payoffs ship, and filing stays a donation — the
+foreign beacons, all three payoffs ship, filing stays a donation, the hold is
+two-stage, the channel answers under no fixed name, the layup takes deposits
+as well as withdrawals, and the Standing Order hails before it fires — the
 goods are the price, the response is the pay, and the network pays in
-bearings, the only currency it has. The far marks are the answer to "what
+bearings, the only currency it has.
+
+**TEN legend kinds, in two classes, and the classes are the pacing.** COMMON
+(vein, layup, proving drift) may repeat; SINGULAR (the other seven) appear at
+most ONCE in an entire game and a given run does not carry all of them.
+A run with no serpent in it is a normal run — that is what makes a legend
+something a player describes to somebody rather than a checklist row. Nine of
+the ten ride machinery that already exists; only the escort wing is genuinely
+new. The far marks are the answer to "what
 makes it worth surveying past the archives": legends are WINDFALLS, never
 income (the charted seams' own posture, no pacing term), so a network filer
 trades steady counter money for access to the deep's windfalls. The Authority
