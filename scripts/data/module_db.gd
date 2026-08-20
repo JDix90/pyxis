@@ -682,14 +682,34 @@ const MODULES := {
 	# block is what changes, and nothing else has to — the laws are asserted,
 	# the values are not pinned.
 	#
-	# NO WEAPON PROTOTYPE YET, and the reason is structural rather than a gap in
-	# the writing. compute_stats routes a weapon's `stats` into the WEAPON block
-	# and every other category's into the ship block, so a weapon module cannot
-	# carry a negative ship stat at all — it would be read as a weapon parameter
-	# and silently ignored. A weapon prototype therefore needs its cost to be a
-	# new mechanism (heat, a draw the reactor cannot hold) or a pure
-	# weapon-parameter trade, which is a design decision rather than a table
-	# entry. It belongs to the research pass, not to this commit.
+	# THE WEAPON PROTOTYPE'S COST IS OVERDRAW (§100), and the mechanism is new
+	# because it had to be. compute_stats routes a weapon's `stats` into the
+	# WEAPON block and every other category's into the ship block, so a weapon
+	# module cannot carry a negative ship stat at all — it would be read as a
+	# weapon parameter and silently ignored. The decision (taken 2026-08-20, in
+	# the player's words: a draw the reactor cannot hold) is that the mount
+	# draws through the SHIELD BUS: every shot it fires costs `overdraw` points
+	# of shield, paid by the ship that fired it. The key rides inside the weapon
+	# stats — the one block that reaches _fire — and PlayerShip pays it at the
+	# moment the shot is committed, every family alike.
+	#
+	# Shield, never hull: the coil browns the bus, it does not breach the deck.
+	# The cost therefore scales with how hard a fight already is — firing from
+	# behind a full shield is nearly free, firing while something is shooting
+	# back is spending the only thing keeping you alive — which is the correct
+	# shape for a weapon whose whole pitch is that somebody desperate built it.
+	"proto_lance": {
+		"name": "Overdrawn Lance",
+		"category": "weapon",
+		"family": "lance",
+		"tier": 4,
+		"power": 7,
+		"price": 0,
+		"prototype": true,
+		"desc": "Hits harder than anything the Authority ratified, and pulls the difference straight off the shield bus. Every shot is a withdrawal.",
+		"stats": {"damage": 205.0, "interval": 0.92, "range": 13.5, "chain": 0,
+			"overdraw": 6.0},
+	},
 	"proto_coil": {
 		"name": "Overwound Coil",
 		"category": "drive",
@@ -1104,14 +1124,23 @@ static func summary_lines(stats: Dictionary) -> Array:
 	# how the Arc and Torpedo families shipped with their defining trait unsaid.
 	var chain := 0
 	var splash := 0.0
+	var overdraw := 0.0
 	for w_v in stats.get("weapons", []):
 		var w: Dictionary = w_v
 		chain = maxi(chain, int(w.get("chain", 0)))
 		splash = maxf(splash, float(w.get("splash", 0.0)))
+		overdraw = maxf(overdraw, float(w.get("overdraw", 0.0)))
 	if chain > 0:
 		out.append(["CHAIN", "+%d" % chain])
 	if splash > 0.0:
 		out.append(["SPLASH", "%.1f" % splash])
+	# §100. The Overdrawn Lance's price, and the column IS the contract: a cost
+	# the console cannot draw is the Cutting Head defect this function's header
+	# records — a module read as pure upside because its downside lived in an
+	# undrawn key. Negative-signed, because it is the one column here that is a
+	# price rather than a property.
+	if overdraw > 0.0:
+		out.append(["DRAW", "-%.0f/SHOT" % overdraw])
 
 	# Cores carry an empty `stats` and all three therefore moved nothing at all.
 	# The description says what the ability feels like; these are the two numbers

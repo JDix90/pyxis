@@ -208,8 +208,10 @@ bump, since `marks_seen` rides v25 — that sweep came back green at **755 acros
 77**, after one red leg it found in §94 (`MINING COSTS A MOUNT` had been
 counting utility slots off the static table since berths grew it, and had
 therefore been checking nothing for three commits). §99 then adds three more
-legs to `RETURNTEST`, again with no new run, no new mode and no save bump. So
-the next full sweep should read **758 across 77**.
+legs to `RETURNTEST`, again with no new run, no new mode and no save bump —
+green at **758 across 77**. §100 then adds one more `RETURNTEST` leg (the
+overdraw mechanism), no new run and no bump: the next full sweep should read
+**759 across 77**.
 
 (§96's adversarial pass reported after both commits shipped; its two confirmed
 findings were folded back in without changing any count — one strengthened an

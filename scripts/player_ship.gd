@@ -1167,6 +1167,20 @@ func _fire(delta: float) -> void:
 		if float(w["cooldown"]) > 0.0:
 			continue
 		w["cooldown"] = float(w["interval"]) * rate_mult
+		# §100. THE OVERDRAWN MOUNT PAYS AT THE TRIGGER, in _fire rather than in
+		# _shoot, so every family pays alike -- _shoot hands torpedoes off to
+		# their own path before its own body runs, and a cost applied there
+		# would have made the torpedo variant free the day somebody authors one.
+		# Shield only, floored at zero: the coil browns the bus, it does not
+		# breach the deck, and a mount that could kill its own ship by being
+		# fired would be a trap rather than a trade.
+		var overdraw := float(w.get("overdraw", 0.0))
+		if overdraw > 0.0:
+			shield = maxf(shield - overdraw, 0.0)
+			# The cost is LEGIBLE at the moment it is paid -- a teal flicker on
+			# the hull, the shield's own colour, so the drain reads as coming
+			# from the shield rather than as enemy fire landing.
+			FX.flash(get_parent(), global_position, Palette.TEAL, 0.5, 0.08)
 		_shoot(w, tgt)
 
 

@@ -8322,7 +8322,7 @@ func _run_ship_test() -> void:
 		var probe: Dictionary = base_stats.duplicate(true)
 		if key == "ability":
 			probe["ability"] = {"name": "PROBE", "duration": 9.0, "cooldown": 99.0}
-		elif key == "chain" or key == "splash":
+		elif key == "chain" or key == "splash" or key == "overdraw":
 			# Weapon keys live per-weapon; the starter flies two pulses.
 			for w in probe["weapons"]:
 				(w as Dictionary)[key] = 7.0
@@ -16009,6 +16009,12 @@ func _run_return_test() -> void:
 		for k_v in (pm.get("stats", {}) as Dictionary):
 			if float((pm["stats"] as Dictionary)[k_v]) < 0.0:
 				downs += 1
+		# §100. OVERDRAW IS A COST, spelled as a positive number because it is a
+		# price paid per shot rather than a stat made worse -- the weapon
+		# prototype's whole mechanism. Without this clause the Overdrawn Lance
+		# reads as only-upside to a loop that can only see minus signs.
+		if float((pm.get("stats", {}) as Dictionary).get("overdraw", 0.0)) > 0.0:
+			downs += 1
 		if downs == 0:
 			free_lunch += pid + " "
 	var racks := 0
@@ -16142,6 +16148,60 @@ func _run_return_test() -> void:
 		str(second_refused), str(second_spent),
 		"PASS" if paid and spent and still_read and stayed_down
 			and second_refused and second_spent else "FAIL"])
+
+	# 15. THE MOUNT DRAWS THROUGH THE BUS. §100's mechanism, driven through the
+	#     REAL fire loop rather than by calling a cost function -- the cost is
+	#     paid in _fire at the moment the shot is committed, and a leg that
+	#     invoked it directly would stay green with the payment unwired. Both
+	#     halves: the shot costs exactly `overdraw`, and the floor holds -- the
+	#     coil can strip the bus to zero and never past it.
+	var od_stats: Dictionary = ModuleDB.get_module("proto_lance").get("stats", {})
+	var od := float(od_stats.get("overdraw", 0.0))
+	GameState.owned.append("proto_lance")
+	var fit_was := GameState.fit.duplicate()
+	# THROUGH THE REAL EQUIP, which enforces the power budget -- and the budget
+	# would refuse this on the starter reactor (8 - 2 + 7 = 13 against Mk I's
+	# 12), leaving the old weapon firing and the drain reading zero. The tier is
+	# raised for the leg and restored after; `worn` is asserted so a future
+	# budget change reads as a named failure here rather than as a zero.
+	var tier_was := GameState.reactor_tier
+	GameState.reactor_tier = ModuleDB.REACTOR_TIERS.size() - 1
+	var worn := GameState.equip(ModuleDB.Slot.WEAPON_A, "proto_lance")
+	var od_target := Hostile.new()
+	od_target.difficulty = 0.5
+	system_root.add_child(od_target)
+	var shot_cost := 0.0
+	var floored := false
+	var alive_after := false
+	if pilot_m != null:
+		od_target.global_position = pilot_m.global_position + Vector3(6.0, 0.0, 0.0)
+		pilot_m.attack_target = od_target
+		for w_v in pilot_m._weapons:
+			(w_v as Dictionary)["cooldown"] = 0.0
+		pilot_m.shield = pilot_m.shield_max
+		var shield_before: float = pilot_m.shield
+		pilot_m._fire(0.016)
+		# EXACTLY the overdraw, though two mounts fired: WEAPON_B carries no
+		# overdraw key, so a drain that scaled with mounts rather than with the
+		# key would come out double and go red here.
+		shot_cost = shield_before - pilot_m.shield
+		# The floor. A bus already below one shot's draw empties and stops:
+		# maxf, not a subtraction the next regen tick has to rescue.
+		pilot_m.shield = od * 0.4
+		for w2_v in pilot_m._weapons:
+			(w2_v as Dictionary)["cooldown"] = 0.0
+		pilot_m._fire(0.016)
+		floored = pilot_m.shield == 0.0
+		alive_after = not pilot_m.is_dying() if pilot_m.has_method("is_dying") else true
+		pilot_m.attack_target = null
+	od_target.queue_free()
+	GameState.fit = fit_was
+	GameState.reactor_tier = tier_was
+	GameState._recompute()
+	print("[return] THE MOUNT DRAWS THROUGH THE BUS equipped through the real budget=%s; one volley through the real fire loop cost %.1f shield (want exactly %.1f, though two mounts fired); a bus below one draw floors at 0.0=%s with the ship alive=%s -> %s" % [
+		str(worn), shot_cost, od, str(floored), str(alive_after),
+		"PASS" if worn and od > 0.0 and absf(shot_cost - od) < 0.01 and floored
+			and alive_after else "FAIL"])
 
 	GameState.survey_coverage = {}
 	GameState.survey_filed = {}

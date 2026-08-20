@@ -6119,11 +6119,12 @@ decisions R1–R4). Six commits, **three and a half built** (commit 3 split at b
 | 5 | LEGENDS III, the ongoing three: THE TALLY'S NURSERY (takeable, and they come back for it), THE PATTERN FORGE (escorts), THE PROCESSION'S END | v26 | **SPECCED as a row** — the largest mechanical addition since the horizon system; wants its own research pass, as the berths did |
 
 **The prototype tier is under a research pass the player is running** (opened
-2026-08-20). §99 shipped the mechanism, the laws and three provisional entries
-in one block; what the research owes back is the line itself, and one question
-the code has already framed: a weapon prototype cannot carry a ship-stat defect
-at all, because `compute_stats` routes a weapon's `stats` into the weapon block,
-so its cost has to be a new mechanism or a pure weapon-parameter trade.
+2026-08-20). §99 shipped the mechanism, the laws and provisional entries in one
+block; what the research owes back is the final numbers. The one open design
+question §99 framed — a weapon prototype cannot carry a ship-stat defect, so
+its cost had to be a new mechanism or a pure parameter trade — was answered the
+same day: **overdraw** (§100), a per-shot draw off the firing ship's own shield
+bus. The tier now covers all four categories.
 
 The ideation decisions are settled and recorded in the spec: filing point is
 foreign beacons, all three payoffs ship, filing stays a donation, the hold is
@@ -10227,3 +10228,74 @@ exactly what its plate says: a record of a sounding, in the past tense — which
 is why the plates were written that way and why none of them needs rewriting.
 But the vein's plate promises a place, and until commit 3b there is no place.
 That gap is stated here rather than left for a playtest to find.
+
+---
+
+## 100. Overdraw — the weapon prototype's cost (rides v25)
+
+The decision §99 deferred to the research pass, taken by the player the same
+day: the weapon prototype's cost is a **new mechanism** — a draw the reactor
+cannot hold. Shipped as **overdraw**: the Overdrawn Lance pulls its difference
+straight off the shield bus, and every shot it fires costs `overdraw` points of
+the firing ship's own shield.
+
+### Why the cost had to be a mechanism
+
+§99 already recorded the structural half: `compute_stats` routes a weapon's
+`stats` into the weapon block, so a weapon module cannot carry a negative ship
+stat — it would be read as a weapon parameter and silently ignored. The choice
+was between a pure weapon-parameter trade (a worse interval for better damage —
+which is just a tier, not a prototype) and a genuinely new cost. The new cost
+won, and it is the right shape for the fiction: somebody desperate built this,
+and what it spends is the one thing keeping its pilot alive.
+
+**Shield, never hull.** The coil browns the bus; it does not breach the deck.
+`maxf(shield - overdraw, 0.0)` — floored, because a mount that could kill its
+own ship by being fired is a trap rather than a trade. The cost self-scales
+with how hard the fight already is: firing from behind a full shield is nearly
+free; firing while something is shooting back is spending armour you needed.
+
+### Where the payment lives, and why exactly there
+
+In `_fire`, at the moment the cooldown is committed — **not** in `_shoot`.
+`_shoot` hands torpedoes off to `_launch_torpedo` before its own body runs, so
+a cost applied in `_shoot` would make a torpedo prototype free the day somebody
+authors one. Paying at the trigger covers every family alike, once per shot,
+with a teal flash on the hull (the shield's own colour) so the drain reads as
+coming from the bus rather than as enemy fire landing.
+
+### The column is the contract
+
+`summary_lines` scans the weapons array for chain and splash and draws
+conditional columns; overdraw joins that scan as **DRAW −N/SHOT**. This is not
+polish: a cost the console cannot draw is the Cutting Head defect the
+function's own header records — a module read as pure upside because its
+downside lived in an undrawn key. `EVERY STAT REACHES A COLUMN` collects every
+stat key in the catalogue, so the new key entered that audit the moment the
+module existed, and the leg's per-weapon branch (chain/splash) gained the third
+member. Without both halves the sweep goes red — which is the audit working.
+
+### What else the new module touched, checked before it shipped
+
+- `MINING COSTS A MOUNT`'s rule again: every catalogue-wide reader re-checked.
+  The Mk II / Mk III `STRICTLY BETTER` sweeps use explicit id lists — a
+  prototype is in none of them, correctly: a prototype is not a tier above
+  `lance_3`, it is off the ladder entirely, defective by design.
+- `ALL-BEST IS STILL OUT OF REACH`: weapon-category max power was already 7
+  (`torp_3`); the lance is also 7, so the greedy maximum and both margins are
+  unmoved.
+- Leg 12 (`A PROTOTYPE IS NOT FOR SALE`) counted minus signs to prove every
+  prototype pays; overdraw is a price spelled as a positive number, so the leg
+  learned that `overdraw > 0` is a cost. Without the amendment the lance reads
+  as only-upside to a loop that can only see minus signs — a red leg on ship
+  day, which is how it was found.
+
+### The harness leg drives the real fire loop
+
+`THE MOUNT DRAWS THROUGH THE BUS` equips the lance **through the real
+`equip`** — which enforces the power budget, and the budget refuses this on the
+starter reactor (13 against Mk I's 12), so the leg raises the tier and asserts
+the equip landed rather than silently measuring the old weapon. One volley must
+cost *exactly* `overdraw` though two mounts fire (the second carries no key — a
+drain that scaled with mounts would read double), and a bus below one draw must
+floor at zero with the ship alive.
