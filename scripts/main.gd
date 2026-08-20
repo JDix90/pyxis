@@ -16775,14 +16775,12 @@ func _run_return_test() -> void:
 	#     nothing — in a set where nine of ten give, the one that only asks is
 	#     what keeps the others from reading as a loot table. And the mark is
 	#     never spent, so the formation is a place rather than a prize.
-	var salv_p := GameState.salvage
-	var ledger_p := JSON.stringify(GameState.ledger)
-	var loot_p := _count_loot_cubes()
 	var refused_empty_p := false
 	var left_it := false
 	var never_spent := false
 	var stands_again := false
 	var paid_nothing_p := false
+	var moved_what := ""
 	if proc_stood and pilot_m != null:
 		var first_hull := proc.hulls()[0] as Node3D
 		pilot_m.teleport_to(first_hull.global_position)
@@ -16793,23 +16791,41 @@ func _run_return_test() -> void:
 		# An empty hold is told the truth about the place, not just refused.
 		refused_empty_p = hud.prompt_text() == Procession.NOT_SALVAGE
 		GameState.load_cargo("alloys", 6)
+		# BRACKET THE ACT, NOT THE LEG -- §96's DIRECTIVETEST lesson, and the
+		# second time this file has paid for it. The capture used to sit at the
+		# top of the leg, which put the 0.4s await above INSIDE the window this
+		# clause calls "the deposit": four tenths of a second of the whole world
+		# ticking, with loot still arriving in waves from breaches two legs back
+		# (Derelict._spill_waves runs for VORTEX_TIME, 2.6s) and anything in
+		# magnet range being collected. A pays-nothing claim measures the ACT or
+		# it measures the weather.
+		var salv_p := GameState.salvage
+		var ledger_p := JSON.stringify(GameState.ledger)
+		var loot_p := _count_loot_cubes()
 		first_hull.call("hold_begin")
 		first_hull.call("hold_tick", Procession.DEPOSIT_TIME + 0.1)
 		left_it = GameState.cargo_used() == 0 \
 			and GameState.is_mark_given(proc_key)
 		never_spent = not GameState.is_mark_spent(proc_key)
-		paid_nothing_p = GameState.salvage == salv_p \
-			and JSON.stringify(GameState.ledger) == ledger_p \
-			and _count_loot_cubes() == loot_p
+		# AND IT NAMES WHAT MOVED. Three claims collapsed into one boolean
+		# cannot say which of them broke, which is a round trip of the sweep
+		# spent on a question the print could have answered the first time.
+		if GameState.salvage != salv_p:
+			moved_what += "salvage "
+		if JSON.stringify(GameState.ledger) != ledger_p:
+			moved_what += "ledger "
+		if _count_loot_cubes() != loot_p:
+			moved_what += "loot "
+		paid_nothing_p = moved_what == ""
 		var proc2 := SystemBuilder.build_legend(system_root, msid, 4,
 			"procession", proc_at)
 		stands_again = proc2 != null
 		if proc2 != null:
 			proc2.queue_free()
 		proc.queue_free()
-	print("[return] THE PROCESSION ONLY ASKS an empty hold is told what the place is=%s; leaving the hold empties it and records the one fact=%s; the mark is never spent=%s so the formation stands again=%s; and nothing anywhere money is kept moved=%s -> %s" % [
+	print("[return] THE PROCESSION ONLY ASKS an empty hold is told what the place is=%s; leaving the hold empties it and records the one fact=%s; the mark is never spent=%s so the formation stands again=%s; and across the act itself nothing moved (%s) -> %s" % [
 		str(refused_empty_p), str(left_it), str(never_spent), str(stands_again),
-		str(paid_nothing_p),
+		"nothing" if moved_what == "" else moved_what,
 		"PASS" if proc_stood and refused_empty_p and left_it and never_spent
 			and stands_again and paid_nothing_p else "FAIL"])
 
