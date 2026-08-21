@@ -39,7 +39,7 @@ Taken by the author on 2026-08-21, before any code:
 | # | commit | save | state |
 |---|---|---|---|
 | 1 | **The shelf is finite** — per-counter stock derived from the bias tables; events as masks; MARKETTEST given assertions | **v27** | **BUILT** — §107 |
-| 2 | **The word on the shelf** — stock at the rumour desk, a FRIENDLY+ reserve as a gate, deep-station events | none | not built |
+| 2 | **The word on the shelf** — stock at the rumour desk, a FRIENDLY+ reserve as a gate, deep-station events | rides v27 | **BUILT** — §108 |
 | 3 | **The tug and the claim** — depth-scaled rescue fee, claim clock on deep spills | none | not built |
 | 4 | **The order book** — the hint that lied, three widened read windows, requisitions | rides v27 | not built |
 | 5 | **The ladder** — seven new skills, four deepened, one ledger page | rides v27 | not built |

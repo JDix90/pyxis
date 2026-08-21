@@ -6277,7 +6277,7 @@ corrections are what set the commit order:
 | # | what | save | status |
 |---|---|---|---|
 | 1 | THE SHELF: a finite, replenishing, per-counter stock derived from the port's own bias table; events as masks; MARKETTEST given assertions | **v27** | **BUILT** — §107 |
-| 2 | the word on the shelf: stock outranks arbitrage at the rumour desk, a FRIENDLY+ reserve as a GATE, and the deep-station events §107 deferred | none | not built |
+| 2 | the word on the shelf: stock outranks arbitrage at the rumour desk, a FRIENDLY+ reserve as a GATE, and the deep-station events §107 deferred | rides v27 | **BUILT** — §108; the deferred debt is discharged, and two live defects at the rumour desk fell out of reading it |
 | 3 | the tug and the claim: a depth-scaled rescue fee, and a claim clock on deep spills | none | not built |
 | 4 | the order book: the forge hint that lied, three widened read windows, and requisitions as the first real credit sink | rides v27 | not built |
 | 5 | the ladder: seven new skills, four deepened, one shared ledger page | rides v27 | not built |
@@ -6297,9 +6297,13 @@ following the game's own printed instruction can read the Quiet forever and
 never see four of the eight inputs. Commit 4 owes that fix first, before any
 new supply.
 
-**Deferred out of §107 explicitly:** deep-station market events. They need the
-counter identity that §108 opens anyway, and a deep shortage that bares a shelf
-without moving a price is one fact said two contradictory ways.
+**The §107 deferral is discharged.** Deep-station market events shipped in
+§108, which is also where the counter identity finally reached the price engine:
+`pressure` moved to the counter alongside events (it had the identical wormhole
+and nothing in the repo acknowledged it), while `drift` deliberately stayed on
+the archetype. Two rumour-desk defects were found and fixed in passing — a desk
+that charged before it knew what it would say, and an undeduplicated last rung
+that would sell the same sentence twice.
 
 **The user's four scope decisions are settled** (2026-08-21): 10–12 skills with
 one shared ledger page rather than twenty with a screen each; death prices the
@@ -11037,3 +11041,153 @@ that. But the reasoning is not trusted. `THE SHELF SERVES THE STANDARD LOOP`
 re-derives the best legal route the harness just measured, asks the counter it
 actually buys from, and names the pair if it comes up short. A red there means
 the caps are wrong — not that the band is.
+
+## 108. The word on the shelf (rides v27)
+
+Horizon 10, commit 2. §107 built a counter and left three things owed: the deep
+had no weather, the desk that sells news could not see the shelf, and standing
+had never once mattered at a market. All three are the same commit because all
+three turn on one question — **which key is a price a fact about?**
+
+### `port_id` fed three terms, and only one of them wanted it
+
+`unit_price` multiplies bias × drift × pressure × event, and three of those are
+keyed on `port_id`. Out past the chart `port_id` is the **archetype**, shared by
+every station of that kind in every system, which meant:
+
+- **drift** — a slow oscillation whose seed *and period* are hashed from the id.
+- **pressure** — dumping forty units at one Shoal Relay depressed the price at
+  **every** Relay in the game. Nobody had noticed, and nothing in the repo said
+  so; `market_pressure`'s comment reads `"port|good"` and stops there.
+- **events** — the reason §107 deferred deep weather in the first place.
+
+The split now written down: **drift stays on the archetype, pressure and events
+move to the counter.** Drift is the one term where archetype-wide is the *right*
+fiction — the Relays all run on the same rhythm — and it is also the one term
+where re-keying would move every deep price in the game and drag PACINGTEST's
+band along with it, for no design gain. Pressure and events are facts about a
+place, and a place out there is a cell.
+
+### The argument is appended and optional, and that is a claim about this repo
+
+`unit_price`, `buy_price`, `sell_price` and `trend` gained `port_key := ""`,
+appended, rather than a fourth positional argument.
+
+That is not style. **There is no Godot binary in the authoring environment**, a
+wrong arity is a parse error `check_scripts.py` cannot see, and the alternative
+required touching ~21 harness call sites that sweep ids derived from `SystemDB`
+and `DeepPortDB` with no node in scope to read a cell from. With a default,
+every one of those sweeps stays byte-identical and untouched, and only the nine
+PortPanel sites — each of which already has `_bay_key()` one line away — change.
+Empty means *the counter IS the id*, which is exactly true of every charted
+port. `stock_left` shed its `port_id` argument in the same move: it existed only
+for the event mask, which now reads the counter.
+
+The save needs no migration. Old archetype-keyed deep pressure entries simply
+stop matching and decay out, which is what a pressure entry does anyway.
+
+### Weather past the chart, and where its goods come from
+
+`try_spawn_deep_event` rolls on the same 90-second clock with its own budget of
+**one**, so the deep can never crowd the two events the chart is allowed. Its
+good is drawn from **the archetype's own `bias` table** — three or four authored
+entries, not all thirty-four. That is what keeps a 2.2× shortage off a component
+at a 1.45× deep fence **by construction** rather than by arguing the product
+stays bounded. Both directions stay meaningful even where the shelf is zero: a
+shortage on a good a station *consumes* is that desk paying well over the odds,
+which is the best intel in the game.
+
+**The counters are filtered on `bay_key`, never on `def` non-empty.** The latter
+is `find_port`'s tell for "not the charted port" and it has a live false
+positive: THE PROCESSION carries a duplicated def of its own, and `main.gd`'s
+own note says the event roll must never learn it exists — THE CONVOY KEEPS ITS
+SCHEDULE asserts its absence from `SystemDB` for exactly this reason. A convoy
+that vanishes every twenty minutes would have left weather behind it over a cell
+with no counter in it. Only `DeepSpace` ever sets `bay_key`.
+
+### The name travels on the event
+
+Every reader of an event resolved its place through `SystemDB.port_def_by_id`,
+which returns `{}` for anything off-chart — so the rumour line and the HUD toast
+would both have printed the literal string **`Shortage at ? — ISOTOPES, 4:12
+left`** the first time a cell got weather. The name is now captured at spawn and
+carried on the event, because a deep station **streams out while its weather is
+still running**: the cell persists, the node does not. `event_place` falls back
+to the chart for a v27 save written before this section, and to a phrase rather
+than a `?` for an orphaned cell. Both new fields are additive with defaults —
+defaults-not-branches, no migration leg.
+
+### The desk learned to read the shelf, and stopped selling the same sentence twice
+
+The ladder is now rift → events → **a bare counter** → **a route somebody can
+actually fill**.
+
+The new rung outranks the standing spread because **it expires**: the spread
+will still be there tomorrow and a shelf that is filling will not. And the only
+deficits that exist are ones the player made, so it is always news about
+somewhere they have actually been — which is what makes a restock clock worth
+four hundred credits rather than a fact about strangers.
+
+The last rung was also quietly wrong. It checked `trades_at` on both legs and
+nothing else, so it would cheerfully sell you the word that alloys move out of
+Bastion Yards — bias 1.30, a yard that has never retailed an alloy in its life.
+That was wrong before §107 and is *checkable* now.
+
+**Two live defects fell out while reading it.** `_buy_rumor` charged before it
+generated the line — the exact inverse of the hunt desk's own documented posture
+two screens down (*"FILED FIRST, CHARGED SECOND … a desk that took the money
+anyway would be selling the same sentence twice"*) — and the arbitrage rung was
+returned unconditionally and undeduplicated, so a second purchase with nothing
+running took the money and printed the identical sentence again. That was
+survivable only while the last rung could never come up empty. Giving the ladder
+a rung that *can* run out turns a latent hole into a certainty, so it is closed
+rather than worked around: the word is generated first, and a ladder that has
+nothing new renders **`NOTHING NEW TONIGHT`, disabled** — the hunt desk's own
+rule that a dead control is its own kind of lie.
+
+Both new rungs are **pure functions on Market** (`bare_shelf_report`,
+`best_stocked_route`), so the assertions test the rule and not the rendering,
+and the O(goods × ports²) scan moved out of a panel and into the engine. It is
+also now *cheaper* than the one it replaces: a good with no shelf at the buy leg
+short-circuits before the inner loop, which skips all twenty-one `no_retail`
+goods immediately.
+
+### The second standing gate, and the direction that makes it legal
+
+At **FRIENDLY or better** with a port's owner, `stock_cap` returns ×1.5.
+
+**It is ×1.5 at FRIENDLY, never ×0.67 unless FRIENDLY.** Those are the same
+arithmetic and opposite designs. `fence_open` has said since stage 5 that
+market, outfitter and repair stay open at every standing, because a port that
+turned a damaged pilot away is a death trap nobody designed — and a reserve
+implemented as a penalty lands on the wrong side of that. At NEUTRAL and below
+the shelf reads **exactly** the number it read before this feature existed. An
+unowned desk gives no reserve at all: `fence_open` fails *open* for `""` so a
+missing owner cannot lock a counter by accident, but a bonus everybody receives
+is not a gate.
+
+GATES, NEVER PRICES survives intact and is still asserted to the credit. What a
+band buys is **how many**, never what they cost.
+
+### The prose that had no assertion behind it, for five stages
+
+`market.gd`'s comment read *"THE ONE STANDING GATE IN STAGE 5, and deliberately
+the only one"*, and this commit makes that false. Two things follow, both in
+this commit: the comment is amended to name the second gate, and the missing
+sweep is written. `NO COUNTER CLOSES AT HOSTILE` drives **every** counter in the
+game, charted and deep, to HOSTILE and asserts no shelf shrank, every reserve
+shut, and at least one fence closed — the last clause so the leg cannot pass by
+never having reached HOSTILE at all.
+
+It allows exactly one kind of fall, and names it: a counter whose faction
+started FRIENDLY may lose its reserve on the way down. That is the gate working,
+not a counter closing, and stating the exception is what stops the assertion
+from being either a tautology or a trap.
+
+`ONLY THE SHELF MOVES WITH STANDING` rides the existing price sweep's own loops
+and asserts **both halves** — nothing fell, *and* something rose. Without the
+second clause a reserve that silently did nothing would pass, which is the
+posture `A CONSUMER SELLS NOTHING` uses and `A COMMISSION IS NOT A WAY IN`
+states outright. The sweep already probes `deep_haven`, whose owner is one of
+the two factions it shifts, so the deep third of it is a live test rather than a
+control — worth checking before trusting, and it held.

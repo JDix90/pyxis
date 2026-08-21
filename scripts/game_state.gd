@@ -4176,6 +4176,12 @@ func load_game() -> bool:
 				"kind": str(ev.get("kind", "shortage")),
 				"port": str(ev.get("port", "")),
 				"good": str(ev.get("good", "")),
+				# v27/§108. Two additive fields, defaults-not-branches: a save
+				# written before deep weather existed has neither, arrives with
+				# an empty name and deep=false, and Market.event_place falls back
+				# to the chart for it -- which is exactly what it was.
+				"name": str(ev.get("name", "")),
+				"deep": bool(ev.get("deep", false)),
 				"mult": float(ev.get("mult", 1.0)),
 				"remaining": float(ev.get("remaining", 0.0)),
 			})

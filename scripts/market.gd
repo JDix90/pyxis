@@ -18,6 +18,10 @@ const PRESSURE_PER_UNIT := 0.012
 const PRESSURE_RECOVERY := 0.10   # fraction of the way back to neutral, per minute
 
 const EVENT_MAX_ACTIVE := 2
+# §108. The deep gets its own small budget rather than sharing the chart's, so a
+# station out past the edge can never crowd the two events the charted map is
+# allowed to run. One at a time: the expanse is weather, not a second market.
+const EVENT_MAX_DEEP := 1
 const EVENT_ROLL_INTERVAL := 90.0
 const EVENT_CHANCE := 0.25
 
@@ -66,6 +70,7 @@ const STOCK_NONE_BIAS := 1.25     # at or over: a consumer BUYS and does not sel
 const STOCK_DEEP_MULT := 2.0
 const STOCK_THIN_MULT := 0.5
 const STOCK_GLUT_MULT := 2        # a glut IS the goods arriving
+const STOCK_RESERVE_MULT := 1.5   # §108: what a desk keeps back for a friend
 
 
 static func stock_cap(port_def: Dictionary, good: String) -> int:
@@ -90,7 +95,34 @@ static func stock_cap(port_def: Dictionary, good: String) -> int:
 		mult = STOCK_DEEP_MULT
 	elif bias >= STOCK_THIN_BIAS:
 		mult = STOCK_THIN_MULT
-	return int(round(float(base) * mult))
+	var cap := int(round(float(base) * mult))
+	if reserve_open(port_def):
+		cap = int(round(float(cap) * STOCK_RESERVE_MULT))
+	return cap
+
+
+static func reserve_open(port_def: Dictionary) -> bool:
+	# §108. THE SECOND STANDING GATE, and the direction is the entire argument.
+	#
+	# This is x1.5 AT FRIENDLY, never x0.67 UNLESS friendly. The two are the same
+	# arithmetic and opposite designs: the first is a reserve a desk keeps back
+	# for somebody it likes, the second is a counter refusing to serve you, and
+	# fence_open's rule below says market, outfitter and repair stay open at
+	# every standing because a port that turned a damaged pilot away is a death
+	# trap nobody designed. At NEUTRAL and below the shelf here is EXACTLY the
+	# number it was before this feature existed, which is what makes that true.
+	#
+	# GATES, NEVER PRICES still holds and is still asserted: this returns a bool,
+	# it changes how MANY, and no price function anywhere consults standing.
+	# ONLY THE SHELF MOVES WITH STANDING sweeps both halves.
+	#
+	# An unowned desk gives no reserve. fence_open fails OPEN for "" because a
+	# missing owner must not lock a counter by accident; a reserve is the other
+	# shape -- a bonus everybody receives is not a gate at all.
+	var owner := owner_of(port_def)
+	if owner == "" or not FactionDB.is_faction(owner):
+		return false
+	return GameState.faction_band(FactionDB.SURVEYOR, owner) <= FactionDB.Band.FRIENDLY
 
 
 static func _replenished(rec: Dictionary) -> int:
@@ -107,8 +139,7 @@ static func _replenished(rec: Dictionary) -> int:
 	return maxi(int(rec.get("d", 0)) - back, 0)
 
 
-static func stock_left(port_def: Dictionary, port_key: String, port_id: String,
-		good: String) -> int:
+static func stock_left(port_def: Dictionary, port_key: String, good: String) -> int:
 	# What is actually on the shelf. Events are a MASK over the derived number
 	# rather than a write into the store: a shortage bares the counter for its
 	# duration and a glut floods it, and when the event lapses the shelf's own
@@ -120,7 +151,9 @@ static func stock_left(port_def: Dictionary, port_key: String, port_id: String,
 	var cap := stock_cap(port_def, good)
 	if cap <= 0:
 		return 0
-	var kind := String(event_for(port_id, good).get("kind", ""))
+	# THE COUNTER, not the archetype -- §108. A shortage at one Shoal Relay is a
+	# fact about that station, and it bares that station's shelf alone.
+	var kind := String(event_for(port_key, good).get("kind", ""))
 	if kind == "shortage":
 		return 0
 	if kind == "glut":
@@ -164,6 +197,87 @@ static func recover_stock() -> void:
 		GameState.market_stock.erase(k)
 
 
+static func bare_shelf_report() -> Dictionary:
+	# §108. THE DESK'S NEWEST RUNG, as a rule rather than as a sentence -- the
+	# panel formats what this returns, and the assertion tests this instead of a
+	# string (§19: test the rule, not the rendering).
+	#
+	# CHARTED COUNTERS ONLY, and that is the desk's own fiction rather than a
+	# limitation: it sells news about the chart. A cell out past the edge has no
+	# name to give unless its station happens to be streamed in right now, and a
+	# rumour that could evaporate between two docks is not a rumour.
+	#
+	# The only deficits that exist are ones the player made, so this is always
+	# news about somewhere they have actually been -- which is what makes the
+	# restock clock worth paying for rather than a fact about strangers.
+	var worst := {}
+	var worst_frac := 1.0
+	for k in GameState.market_stock:
+		var key := String(k)
+		var join := key.rfind("|")
+		if join <= 0:
+			continue
+		var pid := key.substr(0, join)
+		var good := key.substr(join + 1)
+		var pdef := SystemDB.port_def_by_id(pid)
+		if pdef.is_empty():
+			continue
+		var cap := stock_cap(pdef, good)
+		if cap <= 0:
+			continue
+		var left := stock_left(pdef, pid, good)
+		var frac := float(left) / float(cap)
+		# Half a shelf is not news. Bare, or nearly, is.
+		if frac >= 0.5 or frac >= worst_frac:
+			continue
+		worst_frac = frac
+		worst = {
+			"port": pid,
+			"name": String(pdef.get("name", "?")),
+			"good": good,
+			"left": left,
+			"cap": cap,
+			"seconds": float(cap - left) * STOCK_REPLENISH_SECONDS,
+		}
+	return worst
+
+
+static func best_stocked_route() -> Dictionary:
+	# The arbitrage scan, moved out of the panel and TAUGHT ABOUT THE SHELF.
+	#
+	# The old one checked `trades_at` on both legs and nothing else, so it would
+	# cheerfully sell you the word that alloys move Bastion -> somewhere, at a
+	# yard whose bias is 1.30 and which has never retailed an alloy in its life.
+	# That was wrong before §107 and is checkable now: stock_left is zero unless
+	# the good is retailed there, carried there, and actually on the shelf.
+	var best := {}
+	var best_margin := 0
+	for good_v in CommodityDB.ids():
+		var good := String(good_v)
+		for a_v in SystemDB.port_ids():
+			var a := String(a_v)
+			var adef := SystemDB.port_def_by_id(a)
+			var units := stock_left(adef, a, good)
+			if units <= 0:
+				continue
+			for b_v in SystemDB.port_ids():
+				var b := String(b_v)
+				if a == b or not CommodityDB.trades_at(good, b):
+					continue
+				var bdef := SystemDB.port_def_by_id(b)
+				var margin := sell_price(bdef, b, good, 1, b) \
+					- buy_price(adef, a, good, 1, a)
+				if margin <= best_margin:
+					continue
+				best_margin = margin
+				best = {
+					"a": a, "b": b, "good": good, "margin": margin, "units": units,
+					"from": String(adef.get("name", "?")),
+					"to": String(bdef.get("name", "?")),
+				}
+	return best
+
+
 static func note_bought(port_key: String, good: String, units: int) -> void:
 	if units > 0:
 		_settle_stock(port_key, good, units)
@@ -188,12 +302,19 @@ static func owner_of(port_def: Dictionary) -> String:
 
 
 static func fence_open(port_def: Dictionary) -> bool:
-	# THE ONE STANDING GATE IN STAGE 5, and deliberately the only one. The
-	# fence is the faction-flavoured service — the Cantina's back room, the
-	# Void, the Long Haven — so it is the counter that plausibly knows your
-	# name. Market, outfitter and repair stay open at every standing: a hostile
-	# port that refused repairs would be a death trap, and that is a design
-	# decision nobody has made.
+	# THE FIRST OF TWO STANDING GATES. It was the only one for five stages and
+	# the comment said so; §108 added `reserve_open` above, and this is the
+	# amendment rather than a quiet drift. The fence is the faction-flavoured
+	# service — the Cantina's back room, the Void, the Long Haven — so it is the
+	# counter that plausibly knows your name.
+	#
+	# THE INVARIANT BOTH GATES KEEP: market, outfitter and repair stay open at
+	# every standing. A hostile port that refused repairs would be a death trap,
+	# and that is a design decision nobody has made. This gate CLOSES a back
+	# room; the reserve OPENS extra stock above a baseline that never moves. No
+	# standing anywhere may take a counter away, and NO COUNTER CLOSES AT
+	# HOSTILE is the sweep that finally holds this prose to it — it was an
+	# unasserted claim for five stages.
 	#
 	# GATES, NEVER PRICES (HORIZON-4 §9). This function returns a bool and no
 	# price function anywhere consults standing — which is what keeps the
@@ -250,30 +371,52 @@ static func event_for(port_id: String, good: String) -> Dictionary:
 
 # --- prices -----------------------------------------------------------------
 
-static func unit_price(port_def: Dictionary, port_id: String, good: String) -> float:
+static func unit_price(port_def: Dictionary, port_id: String, good: String,
+		port_key := "") -> float:
+	# `port_id` is the ARCHETYPE out past the chart -- shared by every station of
+	# that kind in every system -- and `port_key` is THE COUNTER (a charted
+	# port's own id, a deep station's cell). The three terms below do not want
+	# the same one, and saying which is which is the whole of §108:
+	#
+	#   drift     -> port_id. Its seed AND its period are hashed from the id, so
+	#                re-keying it would move every deep price in the game and
+	#                drag PACINGTEST's band with it, for no design reason. A slow
+	#                trade cycle belonging to a KIND of station is the right
+	#                fiction anyway: the Relays all run on the same rhythm.
+	#   pressure  -> the counter. What one player did to ONE shopfront.
+	#   events    -> the counter. A shortage is a fact about a place.
+	#
+	# Appended and optional rather than a fourth positional, deliberately: every
+	# harness sweep in main.gd passes ids it derived from SystemDB/DeepPortDB and
+	# has no node to read a cell from, and a wrong arity is a parse error the
+	# static checker cannot see. Empty means "the counter IS the id", which is
+	# exactly true of every charted port.
+	var ek := port_key if port_key != "" else port_id
 	return float(CommodityDB.base_price(good)) \
 		* port_bias(port_def, good) \
 		* drift(good, port_id) \
-		* pressure(port_id, good) \
-		* event_multiplier(port_id, good)
+		* pressure(ek, good) \
+		* event_multiplier(ek, good)
 
 
 static func _spread_for(port_def: Dictionary) -> float:
 	return FREEPORT_SPREAD if bool(port_def.get("freeport", false)) else SPREAD
 
 
-static func buy_price(port_def: Dictionary, port_id: String, good: String, units := 1) -> int:
+static func buy_price(port_def: Dictionary, port_id: String, good: String,
+		units := 1, port_key := "") -> int:
 	# What the player pays the station. `units` matters only at a port with a
 	# bulk break — an industrial depot would rather move ten of something than
 	# one, and says so in the price.
-	var p := unit_price(port_def, port_id, good) * (1.0 + _spread_for(port_def))
+	var p := unit_price(port_def, port_id, good, port_key) * (1.0 + _spread_for(port_def))
 	p *= 1.0 - _bulk_bonus(port_def, units)
 	return maxi(1, int(round(p)))
 
 
-static func sell_price(port_def: Dictionary, port_id: String, good: String, units := 1) -> int:
+static func sell_price(port_def: Dictionary, port_id: String, good: String,
+		units := 1, port_key := "") -> int:
 	# What the station pays the player.
-	var p := unit_price(port_def, port_id, good) * (1.0 - _spread_for(port_def))
+	var p := unit_price(port_def, port_id, good, port_key) * (1.0 - _spread_for(port_def))
 	p *= 1.0 + _bulk_bonus(port_def, units)
 	p *= fence_bonus(port_def, good)
 	return maxi(1, int(round(p)))
@@ -327,10 +470,12 @@ static func can_buy(port_def: Dictionary, good: String) -> bool:
 	return not fences(port_def, good)
 
 
-static func trend(port_def: Dictionary, port_id: String, good: String) -> int:
+static func trend(port_def: Dictionary, port_id: String, good: String,
+		port_key := "") -> int:
 	# -1 / 0 / +1 versus the good's baseline, for the arrow on the row. This is
 	# how a deal stays legible without the player doing arithmetic.
-	var ratio := unit_price(port_def, port_id, good) / maxf(float(CommodityDB.base_price(good)), 1.0)
+	var ratio := unit_price(port_def, port_id, good, port_key) \
+		/ maxf(float(CommodityDB.base_price(good)), 1.0)
 	if ratio >= 1.12:
 		return 1
 	if ratio <= 0.9:
@@ -404,11 +549,90 @@ static func try_spawn_event(port_ids: Array) -> Dictionary:
 		"kind": kind,
 		"port": port,
 		"good": good,
+		# THE NAME TRAVELS ON THE EVENT. Every reader of this dict used to do
+		# SystemDB.port_def_by_id(ev["port"]) and print `?` for anything the
+		# chart does not carry -- harmless while only charted ports could have
+		# events, and a visible defect the moment §108 gave one to a cell. It is
+		# stored rather than resolved because a deep station streams out while
+		# its weather is still running: the cell persists, the node does not.
+		"name": String(SystemDB.port_def_by_id(port).get("name", "?")),
+		"deep": false,
 		"mult": randf_range(float(spec["min_mult"]), float(spec["max_mult"])),
 		"remaining": randf_range(float(spec["min_dur"]), float(spec["max_dur"])),
 	}
 	GameState.market_events.append(ev)
 	return ev
+
+
+static func deep_event_count() -> int:
+	var n := 0
+	for e in GameState.market_events:
+		if bool((e as Dictionary).get("deep", false)):
+			n += 1
+	return n
+
+
+static func try_spawn_deep_event(counters: Array) -> Dictionary:
+	# §108. Weather for a counter past the chart. `counters` is
+	# [{key, id, name, def}] for the deep stations currently streamed in --
+	# built by Main, which is the only thing that can see them.
+	#
+	# THE GOOD COMES FROM THE ARCHETYPE'S OWN BIAS TABLE, which is three or four
+	# authored entries rather than all thirty-four. That is not a shortcut: it is
+	# what keeps a 2.2x shortage off a component at a 1.45x deep fence, by
+	# construction rather than by arguing the product is bounded. It also reads
+	# right -- a station's weather is about the things it actually deals in.
+	#
+	# Both directions stay meaningful even where the shelf is zero. A shortage on
+	# a good a station CONSUMES (bias >= 1.25, no shelf at all) is that desk
+	# paying well over the odds for it, which is the best intel in the game.
+	if counters.is_empty() or deep_event_count() >= EVENT_MAX_DEEP:
+		return {}
+	if randf() > EVENT_CHANCE:
+		return {}
+	var c: Dictionary = counters[randi() % counters.size()]
+	var key := String(c.get("key", ""))
+	var cdef: Dictionary = c.get("def", {})
+	var biased: Array = (cdef.get("bias", {}) as Dictionary).keys()
+	if key == "" or biased.is_empty():
+		return {}
+	var good := String(biased[randi() % biased.size()])
+	for e in GameState.market_events:
+		var ev0: Dictionary = e
+		if String(ev0.get("port", "")) == key and String(ev0.get("good", "")) == good:
+			return {}
+
+	var kind := "shortage" if randf() < 0.55 else "glut"
+	var spec: Dictionary = EVENT_KINDS[kind]
+	var ev := {
+		"kind": kind,
+		# THE COUNTER, never the archetype: a shortage at one Shoal Relay says
+		# nothing about the Relay three systems over. NO WORMHOLE FOR EVENTS.
+		"port": key,
+		"good": good,
+		"name": String(c.get("name", "A DEEP STATION")),
+		"deep": true,
+		"mult": randf_range(float(spec["min_mult"]), float(spec["max_mult"])),
+		"remaining": randf_range(float(spec["min_dur"]), float(spec["max_dur"])),
+	}
+	GameState.market_events.append(ev)
+	return ev
+
+
+static func event_place(ev: Dictionary) -> String:
+	# What to call where an event is happening. Prefers the name the event was
+	# born with; falls back to the chart for a v27 save written before §108, and
+	# to a phrase rather than a `?` for a cell whose station is not loaded.
+	if ev.is_empty():
+		return ""
+	var named := String(ev.get("name", ""))
+	if named != "" and named != "?":
+		return named
+	var pid := String(ev.get("port", ""))
+	var pdef := SystemDB.port_def_by_id(pid)
+	if not pdef.is_empty():
+		return String(pdef.get("name", "?"))
+	return "A STATION PAST THE CHART"
 
 
 static func event_label(ev: Dictionary) -> String:
