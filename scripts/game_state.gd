@@ -33,7 +33,7 @@ signal lane_opened(id: String)
 signal standing_shifted(other: String, delta: int, band: int)
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 26
+const SAVE_VERSION := 27
 const SAVE_DEBOUNCE := 1.0
 
 # v6 defaults. Kept as one dictionary each so a migration only has to merge
@@ -201,6 +201,17 @@ var cargo := {}                # good id -> units held
 var played_seconds := 0.0      # drives market drift; never wall-clock
 var docked_at := ""            # port id, so a reload resumes docked
 var market_pressure := {}      # "port|good" -> -0.25..0.25
+# v27. THE SHELF. "<counter>|good" -> {d: units the player has taken, t: the
+# played-clock stamp it was taken at}. Only the hole is stored; the full shelf is
+# derived from the port's bias table by Market.stock_cap, and an entry is ERASED
+# the moment it replenishes, so a counter at rest costs the save nothing.
+#
+# The counter, NOT the port id: a charted port keys on its own id, a deep station
+# on its CELL, because port_id out past the chart is the archetype and buying out
+# one Shoal Relay must say nothing about the Relay three systems over. The bonded
+# bay learned this first -- NO WORMHOLE -- and the shelf keys the same way,
+# through the same PortPanel._bay_key().
+var market_stock := {}
 # v8. How much salvage this pilot can read. Not a power stat and deliberately not
 # spendable: it is a record of what you have actually done that opens doors, the
 # same shape as `breached`. See identify() for the one rule it drives.
@@ -1197,6 +1208,7 @@ func reset_to_starter() -> void:
 	played_seconds = 0.0
 	docked_at = ""
 	market_pressure = {}
+	market_stock = {}
 	market_events = []
 	archeology = 0
 	archeology_xp = 0
@@ -3679,6 +3691,7 @@ func save_dict() -> Dictionary:
 		"played_seconds": played_seconds,
 		"docked_at": docked_at,
 		"market_pressure": market_pressure,
+		"market_stock": market_stock,
 		"market_events": market_events,
 		# NO `settings` AND NO `audio_muted`. Both moved to prefs.json when the
 		# save became per-pilot: they belong to the device, and leaving them here
@@ -3987,6 +4000,31 @@ func load_game() -> bool:
 	for k in data.get("market_pressure", {}):
 		market_pressure[str(k)] = clampf(float(data["market_pressure"][k]),
 			-Market.PRESSURE_CAP, Market.PRESSURE_CAP)
+	# v27. Entry by entry, dropping rather than crashing -- _load_seams_cut's
+	# posture. Four ways a hand-edited file is refused: a value that is not a
+	# dictionary, a key with no counter/good join in it, a good this build has
+	# never heard of, and a deficit at or below zero (which is not a hole, it is
+	# the default, and the default is never written down).
+	#
+	# A stamp is CLAMPED rather than dropped. A clock from the future is corrupt
+	# bookkeeping about a shelf that really is empty, and clamping it to now
+	# replenishes from this instant -- the safe direction, and the nursery's rule
+	# for the same shape of rubbish. It must run after played_seconds is read.
+	market_stock = {}
+	for k in data.get("market_stock", {}):
+		var sk := str(k)
+		var srec = data["market_stock"][k]
+		if typeof(srec) != TYPE_DICTIONARY or not sk.contains("|"):
+			continue
+		if not CommodityDB.exists(sk.substr(sk.rfind("|") + 1)):
+			continue
+		var sd := int((srec as Dictionary).get("d", 0))
+		if sd <= 0:
+			continue
+		var st := float((srec as Dictionary).get("t", 0.0))
+		if st < 0.0 or st > played_seconds:
+			st = played_seconds
+		market_stock[sk] = {"d": sd, "t": st}
 	# v5 fields. Anyone loading a v1-v4 save has been playing already, so the
 	# tutorial is treated as finished rather than replayed at them.
 	#

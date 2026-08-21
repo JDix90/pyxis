@@ -47,10 +47,11 @@ behind a `PYXIS_*` environment variable and run headless:
 PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 ```
 
-Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 54 of them —
-the 54 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
-`TAGS` at all: it is one harness with 23 stateful modes, run as its own
-sequence. So a full sweep is 54 + 24 = **78 runs** (23 modes through v25; `migrate25` arrives with §106).
+Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 55 of them —
+the 55 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
+`TAGS` at all: it is one harness with 25 stateful modes, run as its own
+sequence. So a full sweep is 55 + 25 = **80 runs** (`STOCKTEST` and `migrate26`
+arrive together with §107).
 
 Those three numbers are derivable from `run_harness.sh` and nothing else, so
 check them there rather than trusting this paragraph — it has been wrong before,
@@ -235,11 +236,17 @@ of a passing remark rather than a count. That was a prediction typed as a
 measurement, which is the one thing this paragraph exists to refuse; it is
 recorded here rather than quietly deleted.
 
-**§106 (the nursery) is the next figure and it is a prediction, not a
-measurement.** It bumps the save to **v26**, adds the `migrate25` mode (one
-new run carrying one) and two `RETURNTEST` legs, and introduces one new
-`class_name` (`TallyNursery`) — so run `"$GODOT" --headless --path . --import`
-first. A full sweep should be **54 + 24 = 78 runs** reading **772 across 78**.
+**772 across 78 (through §106) is the last hard number in this repo.** It was
+measured on a full sweep after the nursery shipped: 78 runs, 772 PASS, 0 FAIL,
+0 script errors, save format v26.
+
+**§107 (the counted shelf) has not been swept.** It bumps the save to **v27**,
+adds the `STOCKTEST` tag (7 legs) and the `migrate26` mode — two new runs — and
+gives `MARKETTEST` its first five assertions and `PACINGTEST` one more, none of
+which existed to pass or fail before. It introduces no new `class_name`, so the
+import pass is not required for this one. The run count above is arithmetic off
+`run_harness.sh`; **the PASS total is not, and no figure for it is recorded here
+until a sweep reports one.**
 
 (§96's adversarial pass reported after both commits shipped; its two confirmed
 findings were folded back in without changing any count — one strengthened an

@@ -346,7 +346,11 @@ func _buy(good: String, units: int) -> void:
 	var price := Market.buy_price(_port_def, _port.port_id, good, units)
 	var affordable := int(GameState.salvage / maxi(price, 1))
 	var fits := GameState.cargo_free() / maxi(CommodityDB.space_of(good), 1)
-	var n := mini(units, mini(affordable, fits))
+	# v27. The shelf is the third clamp, beside the wallet and the hold, and it
+	# reads exactly like them: you get what was there. REFUSAL IS FREE -- nothing
+	# is charged or loaded above, so a bare counter costs the player nothing.
+	var on_shelf := Market.stock_left(_port_def, _bay_key(), _port.port_id, good)
+	var n := mini(units, mini(mini(affordable, fits), on_shelf))
 	if n <= 0:
 		_reject()
 		return
@@ -358,6 +362,7 @@ func _buy(good: String, units: int) -> void:
 		return
 	GameState.load_cargo(good, n)
 	Market.apply_trade_pressure(_port.port_id, good, n, false)
+	Market.note_bought(_bay_key(), good, n)
 	Sfx.play("equip", -7.0, 1.1)
 	Barks.fire("first_trade")
 	_refresh()
@@ -405,6 +410,7 @@ func _sell(good: String, units: int) -> void:
 					"THE LANES KNOW YOU" if GameState.smuggling < 3
 					else "EVERY DEEP FENCE DEALS WITH YOU"], Palette.GOLD)
 	Market.apply_trade_pressure(_port.port_id, good, n, true)
+	Market.note_sold(_bay_key(), good, n)
 	Sfx.play_streak("pickup", -8.0)
 	var main := get_tree().get_first_node_in_group("main")
 	if main and main.hud:
@@ -1809,8 +1815,16 @@ func _market_row(good: String) -> Control:
 
 	var buys := VBoxContainer.new()
 	buys.add_theme_constant_override("separation", 2)
-	if Market.can_buy(_port_def, good):
+	# v27. WHAT IS ON THE SHELF, on the row, because a buy button that silently
+	# hands you three of the five you asked for is a bug the player has no way to
+	# read as a rule. Three states, and each says which it is in words: a number,
+	# OUT, or a counter that never stocked this at all.
+	var on_shelf := Market.stock_left(_port_def, _bay_key(), _port.port_id, good)
+	var shelf_cap := Market.stock_cap(_port_def, good)
+	if Market.can_buy(_port_def, good) and on_shelf > 0:
 		buys.add_child(_price_label("BUY %d" % buy_price, Palette.AMBER_DIM))
+		buys.add_child(_price_label("IN STOCK %d" % on_shelf,
+			Palette.GOLD if on_shelf >= shelf_cap else Palette.AMBER_DIM))
 		var buy_row := HBoxContainer.new()
 		buy_row.add_theme_constant_override("separation", 3)
 		buy_row.add_child(_mini_button("+1", func() -> void: _buy(good, 1)))
@@ -1819,6 +1833,16 @@ func _market_row(good: String) -> Control:
 		var step := maxi(5, int(_port_def.get("bulk_units", 0)))
 		buy_row.add_child(_mini_button("+%d" % step, func() -> void: _buy(good, step)))
 		buys.add_child(buy_row)
+	elif Market.can_buy(_port_def, good) and shelf_cap > 0:
+		# Emptied, or under a shortage. Either way it comes back, and saying so is
+		# the difference between a counter that is out and a counter that is dead.
+		buys.add_child(_price_label("OUT", Palette.THREAT))
+		buys.add_child(_price_label("RESTOCKING", Palette.AMBER_DIM))
+	elif Market.can_buy(_port_def, good):
+		# bias >= 1.25. This desk is a BUYER of the thing -- it is why the sell
+		# price here is the best on the chart -- and it has never had a shelf.
+		buys.add_child(_price_label("BUYS ONLY", Palette.TEAL))
+		buys.add_child(_price_label("NOT STOCKED HERE", Palette.AMBER_DIM))
 	else:
 		# A fence takes these off your hands and does not sell them back.
 		buys.add_child(_price_label("FENCED", Palette.THREAT))

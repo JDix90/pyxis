@@ -28,6 +28,156 @@ const EVENT_KINDS := {
 		"min_dur": 240.0, "max_dur": 360.0, "color": Palette.TEAL},
 }
 
+# --- the shelf --------------------------------------------------------------
+#
+# A counter holds a FINITE number of each thing it sells, and the number is
+# DERIVED rather than simulated. The cap is a pure function of data already
+# authored -- the port's own bias table -- and the only thing the save records
+# is the hole the player put in the shelf. Nothing else in the world moves it.
+#
+# That is what keeps §51 (ONLY THE PLAYER DEPLETES THE WORLD) literally true
+# here rather than argued: a shopfront is the world's COUNTERPARTY, not its
+# loot table. No sentry, no seam and no hulk is created or destroyed by a
+# shelf, the deficit moves on a player buy and on nothing else, and
+# ONLY THE PLAYER EMPTIES A SHELF asserts exactly that by ticking half an hour
+# of played time with no purchase and reading the store back unchanged.
+#
+# The assortment is not authored twice. A port that produces a thing is already
+# the port that prices it cheaply, so the bias table the routes were built from
+# IS the stock table: Cinderworks smelts alloys at 0.68 and stands them deep,
+# Bastion consumes them at 1.30 and does not retail them at all. Every "some
+# goods are simply unavailable here" in the game falls out of numbers that were
+# written years before this feature.
+#
+# THE NUMBERS ARE SIZED AGAINST THE HOLD, not against a feeling. A starter hold
+# is 24 space, so the largest full-hold trade the pacing harness can price is 24
+# units of a space-1 good -- and the standard loop must never be the thing a
+# shelf throttles. STOCK_BASE is therefore exactly one full hold at a neutral
+# counter, doubled where the port produces the thing. What IS throttled is the
+# second and third run of the same route inside one loop, which is the farm.
+# THE SHELF SERVES THE STANDARD LOOP re-derives the best legal route and asserts
+# its buy leg fits, so this reasoning is measured rather than trusted.
+const STOCK_BASE := 24            # units on a full shelf, bulk and restricted
+const STOCK_BASE_ORE := 32        # ore moves in bigger lots, and reads as it
+const STOCK_REPLENISH_SECONDS := 30.0   # one unit back per this much played time
+const STOCK_DEEP_BIAS := 0.95     # at or under: a producer, stands it deep
+const STOCK_THIN_BIAS := 1.15     # at or over: an importer, thin shelf
+const STOCK_NONE_BIAS := 1.25     # at or over: a consumer BUYS and does not sell
+const STOCK_DEEP_MULT := 2.0
+const STOCK_THIN_MULT := 0.5
+const STOCK_GLUT_MULT := 2        # a glut IS the goods arriving
+
+
+static func stock_cap(port_def: Dictionary, good: String) -> int:
+	# The full shelf, from authored data alone. No store is read, so this is the
+	# same number on a fresh pilot and on a save with four hundred hours on it.
+	if not can_buy(port_def, good):
+		return 0
+	# AND IT HAS TO BE ON THIS COUNTER AT ALL. can_buy answers "is this good
+	# retailed anywhere", trades_at answers "does this desk carry it" -- and the
+	# restriction list is the second question. Without this a shelf would be
+	# derived for contraband at Cinderworks, which never appears on that market
+	# tab: invisible today, and the kind of quietly-wrong number a later
+	# assertion would sweep up and believe.
+	if not CommodityDB.trades_at(good, String(port_def.get("id", ""))):
+		return 0
+	var bias := port_bias(port_def, good)
+	if bias >= STOCK_NONE_BIAS:
+		return 0
+	var base := STOCK_BASE_ORE if CommodityDB.is_ore(good) else STOCK_BASE
+	var mult := 1.0
+	if bias <= STOCK_DEEP_BIAS:
+		mult = STOCK_DEEP_MULT
+	elif bias >= STOCK_THIN_BIAS:
+		mult = STOCK_THIN_MULT
+	return int(round(float(base) * mult))
+
+
+static func _replenished(rec: Dictionary) -> int:
+	# The deficit as of NOW. Lazy: nothing ticks a shelf, the clock is read when
+	# somebody looks. `played_seconds` and never wall-clock, drift's own rule, so
+	# a save reloads onto the same shelf it was left on.
+	if rec.is_empty():
+		return 0
+	var since := GameState.played_seconds - float(rec.get("t", 0.0))
+	# floorf rather than floor: the typed float form. (Inside int() the bare
+	# global would parse too -- the conversion supplies the type -- but the
+	# typed form is what the rest of the file uses.)
+	var back := int(floorf(maxf(since, 0.0) / STOCK_REPLENISH_SECONDS))
+	return maxi(int(rec.get("d", 0)) - back, 0)
+
+
+static func stock_left(port_def: Dictionary, port_key: String, port_id: String,
+		good: String) -> int:
+	# What is actually on the shelf. Events are a MASK over the derived number
+	# rather than a write into the store: a shortage bares the counter for its
+	# duration and a glut floods it, and when the event lapses the shelf's own
+	# state re-emerges underneath having lost nothing.
+	#
+	# The 2.2x price and the empty shelf are the same fact said twice, which is
+	# §30's redundancy rule applied to an economy: the player who does not read
+	# the arrow reads the word OUT.
+	var cap := stock_cap(port_def, good)
+	if cap <= 0:
+		return 0
+	var kind := String(event_for(port_id, good).get("kind", ""))
+	if kind == "shortage":
+		return 0
+	if kind == "glut":
+		cap *= STOCK_GLUT_MULT
+	var rec: Dictionary = GameState.market_stock.get(_key(port_key, good), {})
+	return clampi(cap - _replenished(rec), 0, cap)
+
+
+static func _settle_stock(port_key: String, good: String, delta_units: int) -> void:
+	# The one writer. Re-bases the deficit against the clock BEFORE applying the
+	# change, because replenishment is lazy -- without this, buying one unit an
+	# hour after emptying a shelf would resurrect the old hole.
+	#
+	# ERASED AT ZERO, the market_pressure posture. A shelf at rest is the default
+	# and the default is not written down, so the save is bounded by construction
+	# rather than by a cap: only counters the player has recently emptied cost a
+	# single byte. AT REST THE LEDGER IS EMPTY asserts it.
+	var k := _key(port_key, good)
+	var rec: Dictionary = GameState.market_stock.get(k, {})
+	var deficit := _replenished(rec) + delta_units
+	if deficit <= 0:
+		GameState.market_stock.erase(k)
+		return
+	GameState.market_stock[k] = {"d": deficit, "t": GameState.played_seconds}
+
+
+static func recover_stock() -> void:
+	# The other half of ERASED AT ZERO. _settle_stock erases on the next trade,
+	# but a player who empties a counter and never returns would leave the entry
+	# in the save forever -- reading correct (the shelf derives full) and costing
+	# a byte for nothing. Swept beside recover_pressure, on the same tick, for the
+	# same reason and with the same posture.
+	if GameState.market_stock.is_empty():
+		return
+	var done := []
+	for k in GameState.market_stock:
+		var rec: Dictionary = GameState.market_stock[k]
+		if _replenished(rec) <= 0:
+			done.append(k)
+	for k in done:
+		GameState.market_stock.erase(k)
+
+
+static func note_bought(port_key: String, good: String, units: int) -> void:
+	if units > 0:
+		_settle_stock(port_key, good, units)
+
+
+static func note_sold(port_key: String, good: String, units: int) -> void:
+	# Selling into a counter fills the hole you made in it, and stops there --
+	# never past the cap. A shelf that could be stacked above full would be a
+	# second warehouse with a price attached, and the round trip is already
+	# lossy by §11; this keeps it lossy in units as well as in credits.
+	if units > 0:
+		_settle_stock(port_key, good, -units)
+
+
 
 static func owner_of(port_def: Dictionary) -> String:
 	# v18 stage 5. Which faction runs this desk. "" is legitimate — the Last

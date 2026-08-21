@@ -4508,6 +4508,30 @@ in-sweep and passed 4 of 4 alone. That is a third flaky assertion, and the fix
 is the one §41 already describes: re-derive the bar from the distribution
 rather than nudge it until the sweep goes quiet. Recorded, not done.
 
+### Amended v27: a shopfront is not the world
+
+§107 gives every counter a finite shelf that refills over played time, and the
+first question anyone should ask of it is whether that breaks the property
+above. It does not, and the distinction is worth writing down because it will
+come up again the next time something in the world is allowed to change on its
+own.
+
+**What this rule protects is the world's EARNABLE CONTENT** — sentries, seams,
+hulks, posts, marks. Those are things the player can take, and a world that
+refilled them unwatched would be a world where clearing a post meant nothing.
+A shopfront is not that. It is the world's **counterparty**: nothing a player
+could earn is created or destroyed when a shelf comes back, no encounter is
+respawned, and the credits still have to come from somewhere else entirely.
+
+**And the store proves it rather than the prose.** `market_stock` records only
+the *deficit* — the hole the player put in the counter — and the one function
+that writes it is called from exactly two places, both of them a trade the
+player performed. `ONLY THE PLAYER EMPTIES A SHELF` ticks thirty played minutes
+with nobody trading and reads every shelf back full and the store back empty,
+which is the same shape of assertion `SKIRMISH_HP_FLOOR` uses to keep this rule
+true with three friendly guns in the sky: the property is measured, not
+promised.
+
 ## 52. Factions — stage 4, THE MUSTER
 
 A massed column gathers 75u outside the charted volume and marches in. The
@@ -6243,6 +6267,53 @@ of which shipped. The sentence that stood here — *"beacons and per-PYX identit
 can stay unbuilt indefinitely"* — was true when it was written and stale the day
 §65 and §66 shipped, which is the whole failure mode this section exists to
 prevent. Both are built, and Horizon 6 extends both.
+
+**Horizon 10 — the counted shelf** (opened 2026-08-21 after a second week of
+playtesting; specced in `docs/HORIZON-10-THE-COUNTED-SHELF.md`). Seven commits,
+**one built**. The playtest produced five complaints and the research pass
+corrected the premise of three of them, which is recorded here because the
+corrections are what set the commit order:
+
+| # | what | save | status |
+|---|---|---|---|
+| 1 | THE SHELF: a finite, replenishing, per-counter stock derived from the port's own bias table; events as masks; MARKETTEST given assertions | **v27** | **BUILT** — §107 |
+| 2 | the word on the shelf: stock outranks arbitrage at the rumour desk, a FRIENDLY+ reserve as a GATE, and the deep-station events §107 deferred | none | not built |
+| 3 | the tug and the claim: a depth-scaled rescue fee, and a claim clock on deep spills | none | not built |
+| 4 | the order book: the forge hint that lied, three widened read windows, and requisitions as the first real credit sink | rides v27 | not built |
+| 5 | the ladder: seven new skills, four deepened, one shared ledger page | rides v27 | not built |
+| 6 | the sounded ground: teach the filing chain, held cells as jump anchors, colony works | rides v27 | not built |
+| 7 | the measure: re-derive the pacing band from the sweep, derive the README's counts | none | not built |
+
+**Three premises the playtest got wrong, and the research pass caught.** The
+buy verb was never missing — it has worked since phase 1, and what was missing
+was a *counter* (§107). "Losing unread charts on death" describes something
+that cannot happen: charts carry `chart_band` and never `band`, so `spill_unread`
+has never touched one, and the player was describing unread **salvage**. And
+"the forge materials never drop" is substantially a **copy defect**: the hint
+line prints `FALLS FROM READING BAND n+ SALVAGE`, but `READS_AS` is not monotone
+— `sink_thermal` falls from band 2 ONLY, `manifest_forged` from band 3 ONLY,
+`plate_ablative` and `cell_fuel` from bands 0–1 ONLY — so a late-game pilot
+following the game's own printed instruction can read the Quiet forever and
+never see four of the eight inputs. Commit 4 owes that fix first, before any
+new supply.
+
+**Deferred out of §107 explicitly:** deep-station market events. They need the
+counter identity that §108 opens anyway, and a deep shortage that bares a shelf
+without moving a price is one fact said two contradictory ways.
+
+**The user's four scope decisions are settled** (2026-08-21): 10–12 skills with
+one shared ledger page rather than twenty with a screen each; death prices the
+*rescue* rather than breaking the tutorial's promise; the sinks are
+requisitions, colony/station investment and operating costs, and NOT prestige
+purchases; and a filed cell becomes a paid jump anchor, §87's fast-travel
+objection answered by the fee, the depth cap and the length of the chain that
+earns it.
+
+**§41's `MIDTIER` re-derivation is owed by this horizon and commit 7 is where
+it lands.** Every commit here moves income zero or negative — a shelf throttles
+repeat farming, and fees, orders and works are sinks — so the band will be
+measured against an honestly poorer loop, which is the sharpened version of the
+debt §80 left standing rather than a new one.
 
 ### Built, despite what the docs said
 
@@ -10838,3 +10909,131 @@ the tree, one when the defect is put back.
 Ten legends, ten plates, all standing. The far deep now answers a pilot who
 files with the network: bearings to marks, marks to legends, and one piece of
 ground that answers back.
+
+## 107. The counted shelf (v27)
+
+Horizon 10, commit 1. A second week of playtesting produced five complaints,
+and the first of them was *"you can only sell — there are long lists of things
+and no way to buy any of it."* That report is worth recording carefully,
+because the literal claim was **false and the feeling behind it was correct**.
+
+`Market.buy_price` has existed since phase 1, `PortPanel._market_row` has drawn
+a symmetric BUY/SELL row for just as long, and `_buy` works. What the player
+was reading was the *shape of the list*: **21 of 34 goods carry `no_retail`**
+— every salvage grade, every chart survey, every component — so two thirds of
+the rows a pilot scrolls past say FENCED or NOT SOLD HERE, and the thirteen
+that do sell look identical at every counter in the game. There was no reason
+to visit one market over another, and nothing anywhere was ever *out*.
+
+So this commit does not add the buy verb. It gives the buy verb a **counter**.
+
+### The cap is derived from data that was already there
+
+A shelf is a pure function of the port's own `bias` table:
+
+| bias | what it means | shelf |
+|---|---|---|
+| ≤ 0.95 | this port PRODUCES the thing | `STOCK_BASE × 2` |
+| 0.95 – 1.15 | neutral | `STOCK_BASE` |
+| 1.15 – 1.25 | an importer | `STOCK_BASE ÷ 2` |
+| ≥ 1.25 | this port CONSUMES the thing | **0 — it buys and does not sell** |
+
+Not one new table was authored. The bias numbers were written when the trade
+routes were designed, and they already encode exactly the fact a stock table
+would have to state twice: Cinderworks smelts alloys at 0.68 and stands
+forty-eight of them; Bastion Yards consumes them at 1.30 and its market tab now
+says `BUYS ONLY / NOT STOCKED HERE`. **The assortment inconsistency the
+playtest asked for was latent in the game's own data for two years.** Authoring
+a second table would also have meant two sources of truth for one fact, which
+is §9 rule 1 again in a different costume.
+
+### The store is a deficit, not an inventory
+
+`market_stock` holds `"<counter>|good" -> {d, t}` and nothing else: how many
+units the player has taken and when. The full shelf is never written down,
+because it is derivable; the entry is **erased the moment it replenishes**, so
+a counter at rest costs the save zero bytes. That is `market_pressure`'s
+posture, chosen again for the same reason.
+
+Replenishment is **lazy and read off `played_seconds`** — one unit per
+`STOCK_REPLENISH_SECONDS`, computed when somebody looks. Nothing ticks a shelf.
+A save therefore reloads onto exactly the counter it was left on, which is
+drift's own rule and the reason drift has never needed a migration.
+
+`recover_stock()` sweeps beside `recover_pressure()` for the case the writer
+cannot reach: a pilot who empties a counter and never returns would otherwise
+leave the entry in the save forever, reading correct and costing a byte for
+nothing. `AT REST THE LEDGER IS EMPTY` asserts **both** halves — that the entry
+really does linger until swept, so the sweep is not asserting nothing, and that
+the sweep clears it.
+
+### The counter, never the port id
+
+The shelf keys on `PortPanel._bay_key()`: a charted port's own id, and a deep
+station's **cell**. Out past the chart `port_id` is the *archetype*, shared by
+every station of that kind in every system, so keying on it would mean buying
+out one Shoal Relay emptied the Relay three systems over. The bonded bay
+learned this first and `NO WORMHOLE` is its assertion; `NO WORMHOLE FOR
+SHELVES` is the same test on the same key shape, and it deliberately uses two
+cells with **identical coordinates in different systems**, which is the precise
+collision that caught the warehouse.
+
+### An event is a mask, not a write
+
+A SHORTAGE bares the counter for its duration; a GLUT doubles it and fills it.
+Neither touches the store, so when the event lapses the shelf's own state
+re-emerges underneath having lost nothing — and a hole the player took *before*
+a shortage is still exactly that deep afterwards. An event that could launder a
+shelf you emptied would be a way to farm one.
+
+This is also §30's redundancy rule applied to an economy. A shortage was
+already a 2.2× price and a coloured tag; it is now a 2.2× price, a coloured
+tag, **and the word OUT**. The player who does not read the arrow reads the
+word.
+
+### What was deliberately NOT built here
+
+**Deep-station events.** The plan had them in this commit. They came out
+because a deep event has to key on the same counter identity the shelf does, and
+`unit_price` still takes `port_id` — so a deep shortage would bare the shelf
+without moving the price, which is one fact said two contradictory ways. It
+belongs with §108, which opens the event surface for the rumour desk anyway.
+Recorded in §64 as deferred, not dropped.
+
+**A price that knows about scarcity.** A shelf running low does not raise its
+own price. `pressure` already does that, on the player's own trades, and a
+second scarcity term would double-count the same act — the buy that empties the
+counter is the buy that already moved the price.
+
+### The harness got teeth it never had
+
+`MARKETTEST` printed five true things and asserted **none** of them, for
+twenty-two versions. Every economic guarantee in the game lived in STATIONTEST's
+guard rails and PACINGTEST's band, and both of those check that the economy is
+not *broken* — neither checked that it still *works*. If the authored routes had
+silently stopped paying, all five of those lines would have gone on looking
+perfectly reasonable. It now asserts that both routes pay, that pressure both
+dents and heals (both halves — a dent that never healed and a dent that never
+happened each satisfy one of them), that an event applies and lapses to the
+credit, that the hold is a wall, and that drift moves on the played clock.
+
+`PRESSURE MOVES AND HEALS` is worth one more line. Recovery is geometric at 10%
+of the remaining gap per minute, so twelve minutes closes ~72% of a dent and
+**not** all of it. The obvious assertion — `recovered == before` — would have
+been asserting a bug. What is true is that it moved back most of the way and
+never overshot its own baseline, and that is what it says.
+
+### And the pacing band is guarded by measurement, not by argument
+
+A finite counter is *allowed* to throttle the second and third run of a route
+inside one loop — that is the farm, and throttling it is the entire point. It
+must never shorten the **one full hold** the pacing contract is derived from,
+or every number in §10 moves for a reason that has nothing to do with yields.
+
+`STOCK_BASE` is therefore sized against the hold rather than against a feeling:
+a starter hold is 24 space, so the largest full-hold trade `_pacing_trade_yield`
+can price is 24 units of a space-1 good, and a neutral shelf stands exactly
+that. But the reasoning is not trusted. `THE SHELF SERVES THE STANDARD LOOP`
+re-derives the best legal route the harness just measured, asks the counter it
+actually buys from, and names the pair if it comes up short. A red there means
+the caps are wrong — not that the band is.

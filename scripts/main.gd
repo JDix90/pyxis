@@ -107,6 +107,7 @@ const HARNESS_VARS := [
 	"PYXIS_SMUGTEST",
 	"PYXIS_SPILLTEST",
 	"PYXIS_STATIONTEST",
+	"PYXIS_STOCKTEST",
 	"PYXIS_STORETEST",
 	"PYXIS_STORMTEST",
 	"PYXIS_STREAMTEST",
@@ -465,6 +466,11 @@ var _event_roll_timer := Market.EVENT_ROLL_INTERVAL
 # the player cannot fly. Asserted to be non-zero: a sweep that skips nothing is a
 # sweep whose filter has stopped running.
 var _pacing_trade_skipped := 0
+# The best LEGAL route's buy leg, recorded by _pacing_trade_yield so the v27
+# shelf guard can ask whether the counter it buys from actually stands that many.
+var _pacing_trade_port := ""
+var _pacing_trade_good := ""
+var _pacing_trade_units := 0
 var _pending_dock: Port = null
 
 var _hitstop := false
@@ -1190,6 +1196,9 @@ func _ready() -> void:
 	elif OS.get_environment("PYXIS_MARKETTEST") != "":
 		GameState.lock_saving()
 		_run_market_test()
+	elif OS.get_environment("PYXIS_STOCKTEST") != "":
+		GameState.lock_saving()
+		_run_stock_test()
 	elif OS.get_environment("PYXIS_BALANCE") != "":
 		GameState.lock_saving()
 		_run_balance_test()
@@ -4278,6 +4287,7 @@ func _comma_int(n: int) -> String:
 func _tick_market(delta: float) -> void:
 	GameState.advance_clock(delta)
 	Market.recover_pressure(delta)
+	Market.recover_stock()
 
 	for ev in Market.tick_events(delta):
 		if hud:
@@ -12474,6 +12484,22 @@ func _run_pacing_test() -> void:
 	print("[pacing] TRADE SWEEP %d goods x %d port pairs, %d illegal skipped -> %s" % [
 		CommodityDB.ids().size(), SystemDB.port_ids().size() * (SystemDB.port_ids().size() - 1),
 		_pacing_trade_skipped, "PASS" if _pacing_trade_skipped > 0 else "FAIL"])
+
+	# v27. THE SHELF SERVES THE STANDARD LOOP. A finite counter is allowed to
+	# throttle the second and third run of a route inside one loop -- that is the
+	# farm, and throttling it is the feature -- but it must NEVER shorten the one
+	# full hold the pacing contract is derived from, or every number below moves
+	# for a reason that has nothing to do with yields.
+	#
+	# Measured, not reasoned: the best legal route was just re-derived above, so
+	# this asks the shelf it actually buys from. A red here names the exact pair
+	# and means the caps are wrong, not that the band is.
+	var shelf_cap := Market.stock_cap(
+		SystemDB.port_def_by_id(_pacing_trade_port), _pacing_trade_good)
+	print("[pacing] THE SHELF SERVES THE STANDARD LOOP best route buys %d %s at %s, the shelf stands %d -> %s" % [
+		_pacing_trade_units, CommodityDB.short_name(_pacing_trade_good),
+		_pacing_trade_port, shelf_cap,
+		"PASS" if shelf_cap >= _pacing_trade_units else "FAIL"])
 	# The catalog is what a run can BUY. A craftable has no price, so it cannot be
 	# in it — and cannot silently grow the denominator the ceiling is measured
 	# against, which is the failure mode 10 warns about after the Mk II tiers.
@@ -12785,6 +12811,9 @@ func _pacing_trade_yield() -> float:
 					continue
 				if profit > best:
 					best = profit
+					_pacing_trade_port = a
+					_pacing_trade_good = good
+					_pacing_trade_units = units
 					label = "%s %s->%s  %d units  buy %d sell %d" % [
 						CommodityDB.short_name(good), a, b, units, buy, sell]
 	print("[pacing]   best route: %s -> %.0f profit on a %d-space hold" % [label, best, hold])
@@ -13726,6 +13755,17 @@ func _run_market_test() -> void:
 		buy_iso, sell_iso, sell_iso - buy_iso,
 		100.0 * float(sell_iso - buy_iso) / maxf(float(buy_iso), 1.0)])
 
+	# This harness printed five true things and asserted none of them for
+	# twenty-two versions, which meant the whole price engine was policed only
+	# indirectly, by STATIONTEST's guard rails and PACINGTEST's band. Both of
+	# those check that the economy is not BROKEN; none of them checked that it
+	# still WORKS. The two authored routes are the thing the bias tables exist
+	# to create -- if either stops paying, the trade verb is dead and every
+	# printed line above would have gone on looking perfectly reasonable.
+	print("[market] THE AUTHORED ROUTES PAY alloys %+d/unit, isotopes %+d/unit -> %s" % [
+		margin, sell_iso - buy_iso,
+		"PASS" if margin > 0 and sell_iso - buy_iso > 0 else "FAIL"])
+
 	# 2. Player pressure: dumping into a market must visibly move it and then
 	#    recover, rather than being either ignored or permanent.
 	var before := Market.sell_price(bastion, "bastion", "alloys")
@@ -13737,6 +13777,19 @@ func _run_market_test() -> void:
 		Market.recover_pressure(60.0)
 	var recovered := Market.sell_price(bastion, "bastion", "alloys")
 	print("[market] PRESSURE after 12 min recovery: %d (expect ~%d)" % [recovered, before])
+	# BOTH HALVES, because either alone passes on broken code: a dent that never
+	# healed and a dent that never happened both satisfy one of them. Recovery is
+	# geometric (10% of the remaining gap per minute), so twelve minutes closes
+	# ~72% of it and NOT all of it -- asserting "recovered == before" would be
+	# asserting a bug. What must be true is that it moved back most of the way
+	# and never overshot its own baseline.
+	var dent := float(before - after)
+	var healed := float(recovered - after)
+	print("[market] PRESSURE MOVES AND HEALS dent %.0f (%.0f%% of price, need >=15%%), healed %.0f of it (%.0f%%, need >=50%%), never past baseline=%s -> %s" % [
+		dent, 100.0 * dent / maxf(float(before), 1.0), healed,
+		100.0 * healed / maxf(dent, 1.0), str(recovered <= before),
+		"PASS" if dent >= 0.15 * float(before) and healed >= 0.5 * dent
+			and recovered <= before else "FAIL"])
 
 	# 3. Events apply and expire.
 	GameState.market_events.append({
@@ -13744,9 +13797,19 @@ func _run_market_test() -> void:
 		"mult": 2.0, "remaining": 5.0})
 	print("[market] EVENT shortage active: isotopes sell at cinder = %d (was %d)" % [
 		Market.sell_price(cinder, "cinderworks", "isotopes"), sell_iso])
+	var iso_under := Market.sell_price(cinder, "cinderworks", "isotopes")
 	Market.tick_events(6.0)
+	var iso_after := Market.sell_price(cinder, "cinderworks", "isotopes")
 	print("[market] EVENT after expiry: %d, active_events=%d" % [
-		Market.sell_price(cinder, "cinderworks", "isotopes"), GameState.market_events.size()])
+		iso_after, GameState.market_events.size()])
+	# An event that never lapsed would be a permanent re-pricing of the world,
+	# and an event that never applied would be a toast about nothing. The clock
+	# has not moved between the two readings, so the price must return EXACTLY.
+	print("[market] AN EVENT APPLIES AND LAPSES %d -> %d under a 2.0x shortage -> %d on expiry (was %d), none left=%s -> %s" % [
+		sell_iso, iso_under, iso_after, sell_iso,
+		str(GameState.market_events.is_empty()),
+		"PASS" if iso_under > sell_iso and iso_after == sell_iso
+			and GameState.market_events.is_empty() else "FAIL"])
 
 	# 4. Cargo capacity and the hold-full path.
 	GameState.cargo = {}
@@ -13756,12 +13819,175 @@ func _run_market_test() -> void:
 		cap, took, GameState.cargo_used(), GameState.cargo_free()])
 	var overflow := GameState.load_cargo("relics", 1)
 	print("[market] CARGO overflow load returned %d (expect 0 -> crate would scrap)" % overflow)
+	print("[market] THE HOLD IS A WALL capacity %d, used %d, overflow load took %d -> %s" % [
+		cap, GameState.cargo_used(), overflow,
+		"PASS" if overflow == 0 and GameState.cargo_used() <= cap else "FAIL"])
 
 	# 5. Drift moves prices over played time without touching wall clock.
 	var t0 := Market.unit_price(cinder, "cinderworks", "volatiles")
 	GameState.played_seconds += 240.0
 	var t1 := Market.unit_price(cinder, "cinderworks", "volatiles")
 	print("[market] DRIFT volatiles at cinder: %.1f -> %.1f after 4 played minutes" % [t0, t1])
+	# The clock is PLAYED time, never wall clock, so a save reloads onto the same
+	# curve -- and drift that did not move would make every price in the game a
+	# constant with extra steps.
+	print("[market] DRIFT IS A CLOCK 4 played minutes moved volatiles %.1f -> %.1f -> %s" % [
+		t0, t1, "PASS" if not is_equal_approx(t0, t1) else "FAIL"])
+	get_tree().quit()
+
+
+# --- stock harness ----------------------------------------------------------
+
+func _run_stock_test() -> void:
+	# v27. THE SHELF. Everything here is pure state work on Market + GameState --
+	# no world, no ports built, no frames -- so it needs no PLAYING boot.
+	#
+	# smuggling is pinned to 0 first: SMUGGLING_ACCESS_TIER makes every deep fence
+	# take everything, which sends can_buy false and every deep cap to 0. That is
+	# correct behaviour and NOT what these legs are measuring, so the confound is
+	# removed rather than worked around.
+	GameState.market_stock = {}
+	GameState.market_events = []
+	GameState.smuggling = 0
+	GameState.played_seconds = 1000.0
+
+	var cinder := SystemDB.port_def_by_id("cinderworks")
+	var cap := Market.stock_cap(cinder, "alloys")
+
+	# 1. A SHELF IS FINITE. Cinderworks smelts alloys (bias 0.68), so it stands
+	#    them deep -- and taking them off it moves the number, one for one.
+	var left0 := Market.stock_left(cinder, "cinderworks", "cinderworks", "alloys")
+	Market.note_bought("cinderworks", "alloys", 10)
+	var left1 := Market.stock_left(cinder, "cinderworks", "cinderworks", "alloys")
+	Market.note_bought("cinderworks", "alloys", 1000)
+	var left2 := Market.stock_left(cinder, "cinderworks", "cinderworks", "alloys")
+	print("[stock] A SHELF IS FINITE cinderworks stands %d alloys, %d before, %d after taking 10, %d after taking it out -> %s" % [
+		cap, left0, left1, left2,
+		"PASS" if cap > 0 and left0 == cap and left1 == cap - 10 and left2 == 0
+			else "FAIL"])
+
+	# 2. ONLY THE PLAYER EMPTIES A SHELF (§51, and the whole reason this store is
+	#    a deficit rather than an inventory). Half an hour of played time passes
+	#    with nobody trading: no counter anywhere may lose a unit, and the store
+	#    must not gain a single entry. A simulation would fail this line, which is
+	#    exactly what makes it worth having.
+	GameState.market_stock = {}
+	var rest_before := Market.stock_left(cinder, "cinderworks", "cinderworks", "alloys")
+	GameState.played_seconds += 1800.0
+	var rest_after := Market.stock_left(cinder, "cinderworks", "cinderworks", "alloys")
+	print("[stock] ONLY THE PLAYER EMPTIES A SHELF 30 played minutes with no trade: %d -> %d, store holds %d entries -> %s" % [
+		rest_before, rest_after, GameState.market_stock.size(),
+		"PASS" if rest_before == cap and rest_after == cap
+			and GameState.market_stock.is_empty() else "FAIL"])
+
+	# 3. THE SHELF REFILLS AND STOPS. One unit per STOCK_REPLENISH_SECONDS, and
+	#    it stops dead at the cap -- a counter that kept counting upward would be
+	#    a warehouse with a price on it.
+	GameState.market_stock = {}
+	Market.note_bought("cinderworks", "alloys", cap)
+	var empty := Market.stock_left(cinder, "cinderworks", "cinderworks", "alloys")
+	GameState.played_seconds += 5.0 * Market.STOCK_REPLENISH_SECONDS
+	var part := Market.stock_left(cinder, "cinderworks", "cinderworks", "alloys")
+	GameState.played_seconds += 100000.0
+	var full := Market.stock_left(cinder, "cinderworks", "cinderworks", "alloys")
+	print("[stock] THE SHELF REFILLS AND STOPS emptied %d, five periods later %d, a long time later %d (cap %d) -> %s" % [
+		empty, part, full, cap,
+		"PASS" if empty == 0 and part == 5 and full == cap else "FAIL"])
+
+	# 4. AT REST THE LEDGER IS EMPTY. Both halves: the entry really is still
+	#    sitting there after it replenished (so the sweep is not asserting
+	#    nothing), and the sweep really does clear it.
+	var lingered := GameState.market_stock.size()
+	Market.recover_stock()
+	print("[stock] AT REST THE LEDGER IS EMPTY %d replenished entr(y/ies) lingered, %d after the sweep -> %s" % [
+		lingered, GameState.market_stock.size(),
+		"PASS" if lingered == 1 and GameState.market_stock.is_empty() else "FAIL"])
+
+	# 5. A SHORTAGE BARES THE SHELF, A GLUT FLOODS IT -- as a MASK. The last two
+	#    readings are the ones that matter: a deficit taken before an event must
+	#    still be there when the event lapses, or an event would be a way to
+	#    launder a shelf you emptied.
+	GameState.market_stock = {}
+	GameState.market_events = [{"kind": "shortage", "port": "cinderworks",
+		"good": "alloys", "mult": 2.0, "remaining": 100.0}]
+	var bare := Market.stock_left(cinder, "cinderworks", "cinderworks", "alloys")
+	GameState.market_events = [{"kind": "glut", "port": "cinderworks",
+		"good": "alloys", "mult": 0.55, "remaining": 100.0}]
+	var flooded := Market.stock_left(cinder, "cinderworks", "cinderworks", "alloys")
+	GameState.market_events = []
+	Market.note_bought("cinderworks", "alloys", 10)
+	GameState.market_events = [{"kind": "shortage", "port": "cinderworks",
+		"good": "alloys", "mult": 2.0, "remaining": 100.0}]
+	var bare2 := Market.stock_left(cinder, "cinderworks", "cinderworks", "alloys")
+	GameState.market_events = []
+	var re_emerged := Market.stock_left(cinder, "cinderworks", "cinderworks", "alloys")
+	print("[stock] A SHORTAGE BARES THE SHELF, A GLUT FLOODS IT shortage %d, glut %d (cap %d), and a 10-unit hole taken first survives the event: %d during, %d after -> %s" % [
+		bare, flooded, cap, bare2, re_emerged,
+		"PASS" if bare == 0 and flooded == cap * Market.STOCK_GLUT_MULT
+			and bare2 == 0 and re_emerged == cap - 10 else "FAIL"])
+
+	# 6. NO WORMHOLE FOR SHELVES. The bonded bay's rule, re-asserted for stock:
+	#    port_id out past the chart is the ARCHETYPE, shared by every station of
+	#    that kind everywhere, so the shelf keys on the cell. Two cells with the
+	#    same coordinates in different systems is the exact collision that caught
+	#    the warehouse.
+	GameState.market_stock = {}
+	var relay := DeepPortDB.by_id("deep_relay")
+	var k1 := DeepSpace.cell_key("pyx01", 7, -3)
+	var k2 := DeepSpace.cell_key("pyx02", 7, -3)
+	var cap_r := Market.stock_cap(relay, "isotopes")
+	Market.note_bought(k1, "isotopes", cap_r)
+	var here := Market.stock_left(relay, k1, "deep_relay", "isotopes")
+	var there := Market.stock_left(relay, k2, "deep_relay", "isotopes")
+	print("[stock] NO WORMHOLE FOR SHELVES bought out %s (%d left); %s still stands %d of %d -> %s" % [
+		k1, here, k2, there, cap_r,
+		"PASS" if cap_r > 0 and here == 0 and there == cap_r else "FAIL"])
+
+	# 7. A CONSUMER SELLS NOTHING, and A PRODUCER STANDS IT DEEP -- swept over the
+	#    REAL defs, charted and deep, so this measures the shipped bias tables
+	#    rather than a fixture. Both directions are counted and both must be
+	#    non-zero: a sweep that found no consumers would be asserting nothing, and
+	#    it is the pair that proves the assortment varies at all.
+	GameState.market_stock = {}
+	var defs := []
+	for pid_v in SystemDB.port_ids():
+		defs.append(SystemDB.port_def_by_id(String(pid_v)))
+	for aid_v in DeepPortDB.ids():
+		defs.append(DeepPortDB.by_id(String(aid_v)))
+	var consumers := 0
+	var producers := 0
+	var wrong := ""
+	for d_v in defs:
+		var d: Dictionary = d_v
+		for g_v in CommodityDB.ids():
+			var g := String(g_v)
+			if not Market.can_buy(d, g):
+				continue
+			# Mirror stock_cap's own second gate: a good this desk does not carry
+			# has no shelf, and counting it here would report every restricted
+			# good as a broken producer row.
+			if not CommodityDB.trades_at(g, String(d.get("id", ""))):
+				continue
+			var bias := Market.port_bias(d, g)
+			var c := Market.stock_cap(d, g)
+			if bias >= Market.STOCK_NONE_BIAS:
+				consumers += 1
+				if c != 0:
+					wrong = "%s stands %d %s at bias %.2f" % [
+						String(d.get("id", "?")), c, g, bias]
+			elif bias <= Market.STOCK_DEEP_BIAS:
+				producers += 1
+				var want := int(round(float(Market.STOCK_BASE_ORE if CommodityDB.is_ore(g)
+					else Market.STOCK_BASE) * Market.STOCK_DEEP_MULT))
+				if c != want:
+					wrong = "%s stands %d %s at bias %.2f, wanted %d" % [
+						String(d.get("id", "?")), c, g, bias, want]
+	print("[stock] A CONSUMER SELLS NOTHING %d consumer rows stand nothing, %d producer rows stand double, offender=%s -> %s" % [
+		consumers, producers, wrong if wrong != "" else "none",
+		"PASS" if consumers > 0 and producers > 0 and wrong == "" else "FAIL"])
+
+	GameState.market_stock = {}
+	GameState.market_events = []
 	get_tree().quit()
 
 
@@ -18521,6 +18747,84 @@ func _run_save_test() -> void:
 			str(dropped_idx), str(clamped),
 			"PASS" if ok25 and kept25 and held26 and derived26 and dropped_idx
 				and clamped else "FAIL"])
+	elif mode == "migrate26":
+		# v27 adds THE SHELF, its own store. No migration branch, the standing
+		# rule: a v26 file has no key, gets {}, and loads as a pilot who has
+		# never taken a unit off a counter -- which is every shelf full, and true
+		# of every pilot before the feature existed.
+		#
+		# THE RUBBISH PASS IS THE POINT, and this store has more ways to be wrong
+		# than most: the key is a JOIN of a counter and a good, so a hand-edited
+		# file can name a good that does not exist, forget the join entirely, put
+		# a deficit at or below zero (which is not a hole -- it is the default,
+		# and the default is never written down), or hand out a clock that runs
+		# ahead of the player's own.
+		var v26 := {
+			"version": 26,
+			"salvage": 9400,
+			"current_system": "pyx01",
+			"run_seed": 262626,
+			"tutorial_step": -1,
+			"played_seconds": 6000.0,
+		}
+		var f26 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f26.store_string(JSON.stringify(v26))
+		f26.close()
+		var ok26 := GameState.load_game()
+		var cinder26 := SystemDB.port_def_by_id("cinderworks")
+		var cap26 := Market.stock_cap(cinder26, "alloys")
+		var kept26: bool = GameState.salvage == 9400 \
+			and GameState.market_stock.is_empty() \
+			and Market.stock_left(cinder26, "cinderworks", "cinderworks", "alloys") == cap26
+
+		# A GOOD ONE SURVIVES, deficit and clock intact, and the shelf derives
+		# from it rather than from anything stored.
+		var good27 := {
+			"version": 27,
+			"salvage": 9400,
+			"current_system": "pyx01",
+			"run_seed": 262626,
+			"tutorial_step": -1,
+			"played_seconds": 6000.0,
+			"market_stock": {
+				"cinderworks|alloys": {"d": 12, "t": 6000.0},
+				"pyx01:7:-3|isotopes": {"d": 4, "t": 5940.0},
+				"nowhere|not_a_good": {"d": 5, "t": 100.0},
+				"missingjoin": {"d": 5, "t": 100.0},
+				"cinderworks|volatiles": {"d": 0, "t": 100.0},
+				"cinderworks|cores": {"d": 3, "t": 9.9e9},
+			},
+		}
+		var fg27 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fg27.store_string(JSON.stringify(good27))
+		fg27.close()
+		GameState.load_game()
+		# Three of the six survive: the two good rows, and the future-stamped one
+		# CLAMPED rather than dropped -- corrupt bookkeeping about a hole that is
+		# really there, so it replenishes from now, which is the safe direction.
+		var cleaned27: bool = GameState.market_stock.size() == 3 \
+			and GameState.market_stock.has("cinderworks|alloys") \
+			and GameState.market_stock.has("pyx01:7:-3|isotopes") \
+			and GameState.market_stock.has("cinderworks|cores") \
+			and not GameState.market_stock.has("nowhere|not_a_good") \
+			and not GameState.market_stock.has("missingjoin") \
+			and not GameState.market_stock.has("cinderworks|volatiles")
+		var shelf27: bool = Market.stock_left(cinder26, "cinderworks",
+			"cinderworks", "alloys") == cap26 - 12
+		var clamped27: bool = is_equal_approx(
+			float((GameState.market_stock["cinderworks|cores"] as Dictionary).get("t", 0.0)),
+			GameState.played_seconds)
+		# AND THE CELL KEY SURVIVES THE ROUND TRIP. A deep row keys on its cell,
+		# and JSON is where a key shape gets quietly mangled.
+		var deep27: bool = Market.stock_left(DeepPortDB.by_id("deep_relay"),
+			"pyx01:7:-3", "deep_relay", "isotopes") \
+			== Market.stock_cap(DeepPortDB.by_id("deep_relay"), "isotopes") - 2
+		GameState.market_stock = {}
+		print("[savetest] v26->v27 A V26 SAVE HAS EVERY SHELF FULL kept=%s; rubbish pass kept 3 of 6 (unknown good, missing join and a zero deficit dropped)=%s with a 12-unit hole reloading as %d of %d=%s, a future stamp clamped to now=%s, and a deep row keyed on its CELL surviving JSON=%s -> %s" % [
+			str(kept26), str(cleaned27), cap26 - 12, cap26, str(shelf27),
+			str(clamped27), str(deep27),
+			"PASS" if ok26 and kept26 and cleaned27 and shelf27 and clamped27
+				and deep27 else "FAIL"])
 	elif mode == "future":
 		# A SAVE FROM A NEWER BUILD. Refusing to load it was never the hard
 		# part — that clause has always been there. What it did NOT do was stop
