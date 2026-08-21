@@ -407,8 +407,19 @@ func legend_words(live: bool, has_ship: bool) -> PackedStringArray:
 	# v25 (§97). Conditioned on the layer being drawn, like every entry above
 	# it: held cells are a subset of coverage, so HELD can only follow SURVEYED
 	# and only when this system actually holds one.
-	if not GameState.held_cells(_selected).is_empty():
+	var held: Array = GameState.held_cells(_selected)
+	if not held.is_empty():
 		out.append("HELD")
+	# v28 (§115). Conditioned on ITS OWN layer rather than on HELD's, the same
+	# rule one line up: a colleague's cell is a subset of the held set, so this
+	# can only follow HELD and only when this system actually carries one.
+	# Walked here rather than given its own GameState accessor -- held_cells
+	# already did the expensive half, and a near-duplicate walker in the store
+	# is a second thing to keep in step for one boolean.
+	for h_v in held:
+		if GameState.is_survey_held_by_another(String(h_v)):
+			out.append("COLLEAGUE")
+			break
 	return out
 
 
@@ -629,7 +640,20 @@ func _draw_plot() -> void:
 		#     unheld cell, it is duplicated. The chart becomes two documents
 		#     read at once: what the Authority counted, and what the network
 		#     holds.
-		if GameState.is_survey_held(cov):
+		#     v28 (§115). AND WHOSE COPY IT IS. A cell the network holds because
+		#     a COLLEAGUE filed it first draws HALF the ring, and the choice of
+		#     half rather than a gap or a second colour is about size: this ring
+		#     is three pixels of radius on a phone, where a notch is noise and a
+		#     hue is §30's redundancy spent on a distinction that is not worth
+		#     an alarm. Half a ring reads at any scale.
+		#
+		#     It is also the exact fiction. The ring means "a copy of this
+		#     exists somewhere else"; on a cell your own return never paid for,
+		#     the half that would have been yours is not there.
+		if GameState.is_survey_held_by_another(cov):
+			_plot.draw_arc(centre, HELD_RING_PX, -PI * 0.5, PI * 0.5, 8,
+				Color(cc.r, cc.g, cc.b, 0.85), 1.0, true)
+		elif GameState.is_survey_held(cov):
 			_plot.draw_arc(centre, HELD_RING_PX, 0.0, TAU, 14,
 				Color(cc.r, cc.g, cc.b, 0.85), 1.0, true)
 
@@ -850,6 +874,11 @@ func _draw_plot() -> void:
 				c = Palette.band_color(2)
 				_plot.draw_arc(Vector2(lx + 3.5, ly), HELD_RING_PX, 0.0, TAU, 14,
 					Color(c.r, c.g, c.b, 0.85), 1.0, true)
+			elif word == "COLLEAGUE":
+				# Half a ring here too, for the same reason and to the pixel.
+				c = Palette.band_color(2)
+				_plot.draw_arc(Vector2(lx + 3.5, ly), HELD_RING_PX,
+					-PI * 0.5, PI * 0.5, 8, Color(c.r, c.g, c.b, 0.85), 1.0, true)
 			else:
 				c = Palette.TEAL
 				_plot.draw_arc(Vector2(lx + 3.5, ly), 3.5, 0.0, TAU, 12, c, 1.0, true)

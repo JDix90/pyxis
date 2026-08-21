@@ -47,17 +47,27 @@ behind a `PYXIS_*` environment variable and run headless:
 PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 ```
 
-Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 56 of them —
-the 56 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
-`TAGS` at all: it is one harness with 25 stateful modes, run as its own
-sequence. So a full sweep is 56 + 25 = **81 runs** (`STOCKTEST` and `migrate26`
-arrived with §107; `SKILLTEST` with §111).
+Each prints `[tag] NAME <measurements> -> PASS|FAIL`. The tags live in
+`run_harness.sh`'s `TAGS`, plus `SAVETEST`, which is **not** in `TAGS` at all:
+it is one harness with a stateful mode per save version, run as its own
+sequence. A full sweep is every tag plus every mode.
 
-Those three numbers are derivable from `run_harness.sh` and nothing else — and
-now derived FOR you: `tools/run_harness.sh --counts` prints the arithmetic
-without touching the Godot binary. Check that rather than trusting this
-paragraph — it has been wrong before,
-in two places that disagreed with each other (STRATEGY §73).
+**The counts are not written here on purpose.** They were, and they went stale
+three times — twice in two places that disagreed with each other (STRATEGY
+§73, §77), and again the moment `migrate27` arrived with §115. They are
+derivable from `run_harness.sh` and nothing else, so they are derived FOR you
+and neither touches the Godot binary:
+
+```bash
+tools/run_harness.sh --counts   # how many runs a full sweep is
+tools/run_harness.sh --legs     # how many assertions those runs should carry
+```
+
+`--legs` is a lower bound with its one exception named out loud (`SAVETEST` is
+one harness dispatched once per mode, so its static count means nothing), and
+the sweep reddens if a tag prints fewer verdicts than its unconditional legs —
+the failure mode where a harness returns early and quits cleanly, printing less
+with no FAIL and no error.
 
 **`tools/run_harness.sh` now runs this check for you** and refuses to start the
 sweep if it fails, so the version below is only for checking a change by hand
@@ -252,7 +262,8 @@ from.
 
 **The fix was then verified by re-running RETURNTEST alone: 27 pass, 0 fail.**
 So the horizon's standing figure is **813 PASS across 81 runs, 0 FAIL, 0 script
-errors, save format v27** — and that 813 is ARITHMETIC ACROSS TWO RUNS (a full
+errors, save format v27 AS OF THAT SWEEP** — and that 813 is ARITHMETIC ACROSS
+TWO RUNS (a full
 sweep of 812/1, plus a one-tag re-run turning the 1 into a pass), not a single
 measured sweep. Written out because this repo has twice been wrong in exactly
 the direction of rounding that distinction away. The next full sweep is what

@@ -1507,10 +1507,17 @@ func file_charts_with_network() -> int:
 	var lost: Array = plan["lost"]
 	if cells.is_empty() and lost.is_empty():
 		return 0
+	# v28 (§115). THE ONE PLACE THAT KNOWS WHOSE RETURN PAID, and therefore the
+	# only place the distinction can be recorded. `cells` are the ones this
+	# hold's goods bought; `lost` are the ones a colleague had already clipped
+	# to a mast, which network_filing_plan sorted a few lines up by asking
+	# Rival.filed AT THIS INSTANT. That instant is the whole fact: the
+	# predicate is monotone, so asking it again tomorrow says "a colleague was
+	# here" about both piles. Written down now or not at all.
 	for key_v in cells:
 		GameState.note_survey_held(String(key_v))
 	for key_v in lost:
-		GameState.note_survey_held(String(key_v))
+		GameState.note_survey_held(String(key_v), true)
 	# §111. FILING'S FEED, and the ONE thing this verb has ever paid in besides
 	# a bearing. Counted on `cells` and deliberately NOT on `lost`: those came
 	# home free because a colleague had already reached them, and a ladder that
@@ -15988,6 +15995,51 @@ func _run_plot_test() -> void:
 		str(words_before), str(words_after),
 		"PASS" if marks_ok and legend_ok else "FAIL"])
 
+	# 9b2. AND ONE OF THEM IS NOT YOURS (v28, §115). BOTH HALVES, the posture
+	#      ONLY THE SHELF MOVES WITH STANDING uses: a colleague's cell must read
+	#      as held (or it silently loses its anchor and its ring) AND must read
+	#      as a colleague's (or the third word bought nothing). The pilot's own
+	#      cell is driven in the same breath as the control, because a store
+	#      that answered "another hand" for everything would satisfy either
+	#      clause alone.
+	var other_cell := DeepSpace.cell_key(sid, 7, 0)
+	GameState.note_survey_worked(other_cell)
+	GameState.note_survey_held(other_cell, true)
+	var words_other := cp.legend_words(false, false)
+	var other_ok: bool = GameState.is_survey_held(other_cell) \
+		and GameState.is_survey_held_by_another(other_cell) \
+		and GameState.is_survey_held(held_cell) \
+		and not GameState.is_survey_held_by_another(held_cell) \
+		and not GameState.is_survey_held_by_another(plain_cell)
+	# The legend answers to its own layer, never to HELD's: COLLEAGUE was absent
+	# while only a self-filed cell stood, and both words stand together now.
+	var other_legend: bool = not words_after.has("COLLEAGUE") \
+		and words_other.has("COLLEAGUE") and words_other.has("HELD")
+	print("[plot] A COLLEAGUE'S CELL IS HELD AND SAYS SO held=%s, by another=%s; your own cell is held and NOT another's=%s; legend %s -> %s" % [
+		str(GameState.is_survey_held(other_cell)),
+		str(GameState.is_survey_held_by_another(other_cell)),
+		str(GameState.is_survey_held(held_cell)
+			and not GameState.is_survey_held_by_another(held_cell)),
+		str(words_other),
+		"PASS" if other_ok and other_legend else "FAIL"])
+
+	# 9b3. AND THE ANCHOR DOES NOT CARE WHOSE IT IS. §112 made a held cell a
+	#      jump anchor and this commit must not quietly take that away from the
+	#      cells that come home free -- anchor_rows reads is_survey_held, which
+	#      is true for both words BY DESIGN, and this is the leg that says so
+	#      rather than leaving it to be rediscovered.
+	var tier_was := int(GameState.skills.get("filing", 0))
+	GameState.skills["filing"] = GameState.SKILL_TIERS["filing"][
+		GameState.FILING_ANCHOR_TIER]
+	var anchor_keys := PackedStringArray()
+	for r_v in anchor_rows(sid):
+		anchor_keys.append(String((r_v as Dictionary)["label"]))
+	GameState.skills["filing"] = tier_was
+	var both_anchored: bool = anchor_keys.size() >= 2
+	print("[plot] A COLLEAGUE'S CELL IS STILL AN ANCHOR at FILING t%d the rows are %s (both held cells, whoever filed them) -> %s" % [
+		GameState.FILING_ANCHOR_TIER, str(anchor_keys),
+		"PASS" if both_anchored else "FAIL"])
+
 	# 9c. AND THE RIVAL READS DIFFERENTLY TO SOMEBODY WHO FILES. Copy, not
 	#     mechanics: nothing about when the rival arrives moves. Driven on the
 	#     derived flag, which is the only thing the two surfaces read.
@@ -19887,6 +19939,65 @@ func _run_save_test() -> void:
 			"PASS" if ok26 and kept26 and cleaned27 and shelf27 and clamped27
 				and deep27 and orders27 and waiting27 and reads27 and skills27
 				and works27 else "FAIL"])
+	elif mode == "migrate27":
+		# v28 adds a THIRD WORD to survey_filed, and the bump is spent on
+		# exactly that -- which is worth stating, because the store's SHAPE did
+		# not change and the instinct is that a new legal value rides for free.
+		#
+		# It does not, and the direction that matters is DOWNGRADE. The loader
+		# validates by type and drops what it does not recognise, so a v28 file
+		# opened by a v27 build would find "held_other", fail both branches,
+		# and drop the cell out of survey_filed entirely -- silently un-holding
+		# it, taking its ring off the chart and its jump anchor with it. With
+		# the bump, that build hits the `version > SAVE_VERSION` gate instead,
+		# refuses to load and LOCKS SAVING, so the file survives the session.
+		# §73 already paid once for a save-destroying downgrade path; v28 is
+		# cheaper than paying twice.
+		#
+		# UPWARD there is nothing to migrate, the standing rule: a v27 file has
+		# only `true` and "held" in the store, both still legal, and loads as a
+		# pilot every one of whose held cells is their own -- which is exactly
+		# what every pilot before this section was.
+		var sys27 := SystemDB.START_SYSTEM
+		var mine27 := DeepSpace.cell_key(sys27, 3, 0)
+		var theirs27 := DeepSpace.cell_key(sys27, 4, 0)
+		var counter27 := DeepSpace.cell_key(sys27, 5, 0)
+		var junk27 := DeepSpace.cell_key(sys27, 6, 0)
+		var uncovered27 := DeepSpace.cell_key(sys27, 7, 0)
+		var v27 := {
+			"version": 27,
+			"salvage": 4000,
+			"survey_coverage": {mine27: true, theirs27: true, counter27: true,
+				junk27: true},
+			# THE RUBBISH PASS. A hand-edited file is input, not truth: a word
+			# nobody declared, and a key naming a cell this pilot never worked.
+			# The second is the subset invariant, which is the one _load_survey
+			# _filed enforces rather than a shape.
+			"survey_filed": {mine27: "held", theirs27: "held_other",
+				counter27: true, junk27: "nonsense", uncovered27: "held"},
+		}
+		var f27 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f27.store_string(JSON.stringify(v27))
+		f27.close()
+		var ok27 := GameState.load_game()
+		var mine_ok: bool = GameState.is_survey_held(mine27) \
+			and not GameState.is_survey_held_by_another(mine27)
+		# A v27 FILE CANNOT CARRY THE THIRD WORD -- but a hand-edited one can,
+		# and if it does it is legal, because the word is legal. What is being
+		# checked here is that the loader reads the VALUE rather than flattening
+		# it, which is the defect §96 records this exact function carrying for
+		# two versions.
+		var theirs_ok: bool = GameState.is_survey_held(theirs27) \
+			and GameState.is_survey_held_by_another(theirs27)
+		var counter_ok: bool = GameState.is_survey_filed(counter27) \
+			and not GameState.is_survey_held(counter27)
+		var junk_ok: bool = not GameState.is_survey_filed(junk27)
+		var uncovered_ok: bool = not GameState.is_survey_filed(uncovered27)
+		print("[savetest] v27->v28 THE THIRD WORD SURVIVES A RELOAD loaded=%s; your own held cell reads held and not another's=%s, a colleague's reads both=%s, a counter filing is still not held=%s; rubbish dropped (unknown word=%s, uncovered cell=%s) -> %s" % [
+			str(ok27), str(mine_ok), str(theirs_ok), str(counter_ok),
+			str(junk_ok), str(uncovered_ok),
+			"PASS" if ok27 and mine_ok and theirs_ok and counter_ok and junk_ok
+				and uncovered_ok else "FAIL"])
 	elif mode == "future":
 		# A SAVE FROM A NEWER BUILD. Refusing to load it was never the hard
 		# part — that clause has always been there. What it did NOT do was stop

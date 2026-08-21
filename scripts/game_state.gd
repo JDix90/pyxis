@@ -33,7 +33,7 @@ signal lane_opened(id: String)
 signal standing_shifted(other: String, delta: int, band: int)
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 27
+const SAVE_VERSION := 28
 const SAVE_DEBOUNCE := 1.0
 
 # v6 defaults. Kept as one dictionary each so a migration only has to merge
@@ -1879,6 +1879,27 @@ func is_survey_filed(key: String) -> bool:
 # cap for free -- a held cell is evicted with its coverage key like any other,
 # and the wreck's four-hundred-cell log stays true.
 const HELD := "held"
+# v28 (§115). A THIRD WORD, and it is recorded rather than derived because it
+# CANNOT be derived. `Rival.filed` is
+# `floor(seconds / STRIDE) * STRIDE >= arrival_seconds(key, depth, seed)`:
+# arrival_seconds is fixed per (key, seed) and played_seconds only rises, so
+# the predicate is MONOTONE -- once true, true forever. A chart that asked it
+# at draw time would answer "a colleague reached this first" about every cell
+# the pilot filed FIRST, as soon as the rival's own clock caught up. The fact
+# is about WHEN, and only the act knows that.
+#
+# That is the exact inverse of files_with_the_network() twenty lines down,
+# which IS derivable because it is an existential over a store that only
+# grows. Worth keeping as a rule: A FACT ABOUT WHEN CANNOT BE DERIVED FROM A
+# MONOTONE PREDICATE ABOUT WHETHER.
+#
+# §98's MARK_STATES precedent, verbatim in shape: a validated string, so the
+# store gained one word and nothing else changed.
+const HELD_BY_ANOTHER := "held_other"
+# Both words mean the network holds the cell. Only the second says whose
+# return bought it, so every rule that asks "is this held" reads the pair and
+# only the CHART tells them apart.
+const HELD_WORDS := [HELD, HELD_BY_ANOTHER]
 
 
 func is_survey_held(key: String) -> bool:
@@ -1886,16 +1907,32 @@ func is_survey_held(key: String) -> bool:
 	# store asked `.has()` and nothing anywhere looked at a value.
 	#
 	# TYPE FIRST, and this is not defensive style -- it is required. The store
-	# now holds TWO types: `true` for a counter filing and HELD for a network
-	# one, and `String(true)` is not a constructor GDScript has. Written as a
-	# bare String() this errored on every counter-filed cell it was asked about
-	# and then returned false anyway, so the assertions around it PASSED while
-	# the run logged a script error: a green leg standing on a broken call.
+	# holds `true` for a counter filing and a WORD for a network one, and
+	# `String(true)` is not a constructor GDScript has. Written as a bare
+	# String() this errored on every counter-filed cell it was asked about and
+	# then returned false anyway, so the assertions around it PASSED while the
+	# run logged a script error: a green leg standing on a broken call.
+	#
+	# v28: TRUE FOR BOTH WORDS, deliberately. Anchors, the chart legend and
+	# files_with_the_network all ask "does the network hold this", and the
+	# answer does not depend on whose goods paid for it -- a colleague's cell
+	# has been an anchor since §112 and stays one. The distinction is drawn in
+	# exactly one place, and it is a glyph.
 	var v = survey_filed.get(key, false)
-	return typeof(v) == TYPE_STRING and String(v) == HELD
+	return typeof(v) == TYPE_STRING and HELD_WORDS.has(String(v))
 
 
-func note_survey_held(key: String) -> bool:
+func is_survey_held_by_another(key: String) -> bool:
+	# The narrow question, for the chart alone. Through the same typed read for
+	# is_survey_held's own stated reason: the store holds two types and there
+	# is ONE place that knows how to ask it, so a second reader re-deriving the
+	# comparison is how the invalid-constructor defect got written twice in one
+	# file inside one hour.
+	var v = survey_filed.get(key, false)
+	return typeof(v) == TYPE_STRING and String(v) == HELD_BY_ANOTHER
+
+
+func note_survey_held(key: String, by_another := false) -> bool:
 	# THE SIBLING MUTATOR, and it exists because note_survey_filed CANNOT do
 	# this. That function's first line refuses a key already in the store --
 	# correctly, for its own job, since filing twice at a counter must not pay
@@ -1908,7 +1945,12 @@ func note_survey_held(key: String) -> bool:
 	# in exactly the session the player flew six thousand units for it.
 	if not survey_coverage.has(key) or is_survey_held(key):
 		return false
-	survey_filed[key] = HELD
+	# v28. APPENDED AND OPTIONAL, §108's call for this environment: there is no
+	# Godot binary here, a wrong arity is a parse error check_scripts.py cannot
+	# see, and every existing caller stays byte-identical with a default. False
+	# means "my own goods paid for this", which is what every previous filing
+	# was.
+	survey_filed[key] = HELD_BY_ANOTHER if by_another else HELD
 	_queue_save()
 	return true
 
@@ -2132,9 +2174,16 @@ func _load_survey_filed(saved: Dictionary) -> void:
 		# legal; anything else -- a number, a dictionary, "nonsense" -- is not a
 		# third state to be tolerated, it is a corrupt entry to drop. `false`
 		# drops here as it always did, which keeps migrate21's rubbish pass true.
+		# v28. THROUGH HELD_WORDS rather than a second literal comparison, so
+		# a fourth word would be one array entry and not a fourth branch here
+		# that somebody has to remember. Still validated by TYPE rather than by
+		# bool() coercion: exactly three values are legal and anything else --
+		# a number, a dictionary, "nonsense" -- is a corrupt entry to drop, not
+		# a state to tolerate. `false` drops here as it always did, which keeps
+		# migrate21's rubbish pass true.
 		var raw = saved[key_v]
-		if typeof(raw) == TYPE_STRING and String(raw) == HELD:
-			survey_filed[key] = HELD
+		if typeof(raw) == TYPE_STRING and HELD_WORDS.has(String(raw)):
+			survey_filed[key] = String(raw)
 		elif typeof(raw) == TYPE_BOOL and bool(raw):
 			survey_filed[key] = true
 

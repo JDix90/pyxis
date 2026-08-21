@@ -6383,7 +6383,7 @@ below:
 | 0 | the ledger of prices: a SINKS block deriving every sink as loop-minutes off PACINGTEST's own `earned`; the §-rule; §5's refusal of operating costs recorded at the site | none | **BUILT** — §114 |
 | 1 | the runner's teeth: kill on the first SCRIPT ERROR, `--parse`, `--legs`, the checker's stale docstring | none | **BUILT** — and `--legs` found TITLETEST on its first run |
 | 2 | `docs/DEFECTS.md` — ten recurring defect classes, each with the rule or leg that covers it | none | **BUILT** — five of the ten are covered only by a habit, and that is the column that matters |
-| 3 | the colleague's cell: a third validated word in `survey_filed`, captured at the act because it CANNOT be derived | **v28** | **PLANNED** |
+| 3 | the colleague's cell: a third validated word in `survey_filed`, captured at the act because it CANNOT be derived | **v28** | **BUILT** — §115; the bump is spent on the DOWNGRADE path, and the README had gone stale a third time |
 | 4 | the trip is the cost: a fourth colony work taking a DELIVERED good, raised at the structure | rides v28 | **PLANNED** |
 | 5 | a kept light: the procession and a player colony, one broadcast, once per run | rides v28 | **PLANNED** |
 | 6 | what the claimant left: a claimed spill enters the captain's log and the ledger | rides v28 | **PLANNED** |
@@ -11998,3 +11998,107 @@ against a comment sitting exactly where the bad idea would have been typed,
 while the one refusal that lived only in STRATEGY is the one that got
 forgotten. **The rule is not "write the refusal down." It is "write it where
 somebody would type the mistake."**
+
+## 115. The colleague's cell (Horizon 11, commit 3 — v28)
+
+Idea 1 of the research pass asked for the rival to file with the network too,
+so some held cells on the chart would not be the player's. **It already does**,
+and had since §98: `network_filing_plan` sorts unfiled cells into `cells` (this
+hold's goods pay for them) and `lost` (a colleague clipped that mark first), and
+`file_charts_with_network` calls `note_survey_held` on **both**, with the reason
+written at the site — *"the somebody IS the network … so it is held without
+costing a reading."* The counter's copy has said so out loud since §97:
+`ALREADY HELD BY A COLLEAGUE` against `ALREADY FILED BY ANOTHER HAND`.
+
+What was missing is that the **chart could not tell them apart**: one open ring
+for every `is_survey_held(cov)`, drawn on the pilot's own cells and a
+colleague's alike.
+
+### The obvious version is wrong, and the reason is a rule
+
+The instinct is a derived read — ask `Rival.filed` at draw time, the way §97's
+`files_with_the_network()` derives its answer from the store rather than
+flagging it. That is a zero-byte fix and it does not work.
+
+`Rival.filed` is `floor(seconds / STRIDE) * STRIDE >= arrival_seconds(key,
+depth, seed)`. `arrival_seconds` is fixed per (key, seed); `played_seconds`
+only ever rises. **The predicate is monotone: once true, true forever.** So a
+cell the pilot filed *first* at hour one starts reading "a colleague reached
+this" the moment the rival's own clock catches up — and by hour twenty the
+chart would claim the whole map was somebody else's work.
+
+`files_with_the_network()` is derivable because it is an **existential over a
+store that only grows**: "has this ever happened" cannot become false. This is
+the opposite shape.
+
+> **A fact about WHEN cannot be derived from a monotone predicate about
+> WHETHER.**
+
+So it is recorded, at the one instant that knows it: `file_charts_with_network`
+already holds the two piles apart, because `network_filing_plan` asked
+`Rival.filed` *at that instant* to build them.
+
+### One word, on §98's precedent
+
+`survey_filed` gained `HELD_BY_ANOTHER`, beside `HELD` and `true`. `MARK_STATES`
+is the pattern verbatim: a validated string, so the store gained a word and
+nothing else changed. `HELD_WORDS` holds the pair and both the accessor and the
+loader read it, so a fourth word would be one array entry rather than a fourth
+branch somebody has to remember.
+
+**`is_survey_held` is true for BOTH words, deliberately.** Anchors, the chart
+legend and `files_with_the_network` all ask *does the network hold this*, and
+the answer does not turn on whose goods paid. A colleague's cell has been a
+jump anchor since §112 and stays one — `A COLLEAGUE'S CELL IS STILL AN ANCHOR`
+is the leg that says so, rather than leaving it to be rediscovered by whoever
+notices the ring changed. The distinction is drawn in exactly one place and it
+is a glyph.
+
+`note_survey_held` gained `by_another := false`, **appended and optional** —
+§108's call for this environment, and it earns itself again: six of the seven
+call sites are harness sites and all six stayed byte-identical.
+
+### Half a ring, and why not a colour
+
+§97 chose an open ring because *"a copy of this exists somewhere else — the
+mark is not fuller than an unheld cell, it is duplicated."* A colleague's cell
+draws **half** that ring.
+
+Half rather than a gap, because the ring is three pixels of radius on a phone
+and a notch at that size is noise. Half rather than a hue, because §30's
+redundancy is for things worth an alarm and this is not one. And half is the
+exact fiction: the copy exists, and the half that would have been the pilot's
+own return is not in it.
+
+The legend gains `COLLEAGUE`, conditioned on **its own** layer rather than on
+HELD's — §97's stated rule, that a legend entry for a layer the picture is not
+drawing is a promise it does not keep.
+
+### The bump, and the direction that needs it
+
+**v28, and it is spent on a store whose SHAPE did not change** — which is worth
+stating, because the instinct is that a new legal value rides for free.
+
+Upward there is indeed nothing to migrate: a v27 file holds only `true` and
+`held`, both still legal, and loads as a pilot every one of whose held cells is
+their own — which every pilot before this section was.
+
+**Downward is the reason.** `_load_survey_filed` validates by type and drops
+what it does not recognise, so a v28 file opened by a v27 build would find
+`held_other`, fail both branches, and **drop the cell out of `survey_filed`
+entirely** — silently un-holding it, taking its ring off the chart and its jump
+anchor with it. With the bump that build hits the `version > SAVE_VERSION` gate
+instead: it refuses to load and **locks saving**, so the file survives the
+session. §73 already paid once for a save-destroying downgrade path.
+
+`migrate27` drives it both ways and carries the rubbish pass the store's shape
+invites: an undeclared word, and a filed key naming a cell the pilot never
+worked (the subset invariant, which is what that loader actually enforces).
+
+### And the README stopped counting again
+
+`migrate27` moved the sweep's run count, and the README was still carrying
+`56 + 25 = 81 runs` in prose — the third time that figure has gone stale (§73,
+§77, and now). §113 built `--counts` precisely so it would not have to be
+retyped, and the paragraph retyped it anyway. **The numbers are gone from the
+README**, replaced by the two commands that derive them.

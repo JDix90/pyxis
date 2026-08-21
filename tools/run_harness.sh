@@ -117,7 +117,7 @@ TIMEOUT_S="${PYXIS_HARNESS_TIMEOUT:-1500}"
 # SAVETEST is stateful: =write lays down a fixture the bare read consumes, so
 # the pair must stay adjacent and in this order. The migrate modes are
 # self-contained and each builds its own old-version fixture.
-SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 migrate14 migrate15 migrate16 migrate17 migrate18 migrate19 migrate20 migrate21 migrate22 migrate23 migrate24 migrate25 migrate26 future partial6)
+SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 migrate14 migrate15 migrate16 migrate17 migrate18 migrate19 migrate20 migrate21 migrate22 migrate23 migrate24 migrate25 migrate26 migrate27 future partial6)
 
 # §113. THE COUNTS, DERIVED. `tools/run_harness.sh --counts` prints the run
 # arithmetic and exits -- no Godot binary touched, so it works on any machine
@@ -188,7 +188,7 @@ if [ $# -gt 0 ]; then
 	SAVE_MODES=()
 	for t in "$@"; do
 		if [ "$t" = "SAVETEST" ]; then
-			SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 migrate14 migrate15 migrate16 migrate17 migrate18 migrate19 migrate20 migrate21 migrate22 migrate23 migrate24 migrate25 migrate26 future partial6)
+			SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 migrate14 migrate15 migrate16 migrate17 migrate18 migrate19 migrate20 migrate21 migrate22 migrate23 migrate24 migrate25 migrate26 migrate27 future partial6)
 		else
 			TAGS+=("$t")
 		fi
