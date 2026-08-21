@@ -11506,6 +11506,45 @@ cells the player's own goods paid for and **not** the rival-reached cells that
 come home free — a ladder that rose for work somebody else did would be the
 "pays for running" shape the skill law refuses by name.
 
+### The run this cost, and the gate that did not catch it
+
+The first sweep of this commit **hung**, and the way it hung is worth writing
+down because the mechanism will recur.
+
+`_prompt_line` opened with `var band_name := DeepSpace.BAND_NAMES[i]`.
+`BAND_NAMES` is an untyped `const` Array, so indexing it yields a Variant and
+`:=` has nothing to infer from — the identical parse error the fifth checker
+rule was written for, in its **third** form (bare math globals, then untyped
+containers).
+
+Three things compounded it:
+
+- **A parse error in a leaf class takes the chain down behind it.**
+  `survey_mast.gd` failed to compile, and `deep_space`, `system_db`,
+  `game_state` and the audio autoload all failed behind it. The §106 case was
+  loud because it was in an autoload; this one was quiet because it was in a
+  leaf.
+- **The pre-flight could not see it.** `run_harness.sh` parse-checks
+  `main.gd`, which parses perfectly well on its own, so the gate passed and the
+  sweep started. The harness printed three cheerful PASS lines and then died on
+  `SurveyMast.new()` with "Nonexistent function 'new' in base 'GDScript'",
+  which is what a class that failed to compile looks like from the outside.
+- **A Godot runtime error aborts the FUNCTION, not the process**, so
+  `get_tree().quit()` was never reached and the run sat silent against a
+  1,500-second backstop — exactly the failure `run_harness.sh`'s own comment
+  warns about for a tag whose harness does not dispatch.
+
+The fix is one `String()`. The lesson is the sixth checker rule: it collects
+every `const NAME := [` or `{` this project declares and flags `:=` off a
+lookup into one, so it is exact rather than heuristic — a typed `Array[String]`
+or a local dictionary is never reported. Both forms are covered, indexing and
+`.get()`, and both were red-verified.
+
+**The pre-flight's blind spot is now covered by the static pass rather than by
+Godot**, which is the cheaper place for it: `check_scripts.py` reads all seventy
+files in well under a second, and no amount of `--check-only` on `main.gd` will
+ever see a leaf class fail.
+
 `NO LADDER PAYS IN CREDITS` climbs every ladder from zero to cap, tier landings
 included, watching the wallet — a tier that paid on arrival would slip past a
 single-call check. That is what keeps all of this clear of PACINGTEST's band,
