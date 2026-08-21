@@ -214,7 +214,7 @@ const SYSTEMS := {
 				# sell-only by construction (Market.can_buy refuses fenced
 				# goods), which is exactly right — you unload contraband over
 				# the bar here, you do not restock from it.
-				"services": ["rumors", "games", "fence", "contracts", "paint"],
+				"services": ["rumors", "games", "fence", "contracts", "paint", "requisitions"],
 				# v16. THE CHEAP RUNG OF THE HUNT. `hunt_error` 0 means the ring
 				# tier -- a band and a quadrant, no bearing -- which is the same
 				# shape the free lane-obstructed broadcast gives. What 500
@@ -636,7 +636,7 @@ const SYSTEMS := {
 				# The supply end: the Void is where contraband comes from, so it
 				# is cheap here and dear at the Cantina, two systems away.
 				"bias": {"relics": 1.15, "cores": 1.10, "contraband": 0.72, "stolen": 1.0},
-				"services": ["market", "fence", "outfitter", "contracts"],
+				"services": ["market", "fence", "outfitter", "contracts", "requisitions"],
 				"fence_goods": ["relics", "cores", "stolen",
 					"plate_ablative", "cell_fuel", "rod_decay", "sink_thermal", "lattice_data", "index_cartographic", "servo_prewar", "heart_reliquary", "lens_unsounded", "manifest_forged", "charge_unstable"],
 				"fence_mult": 1.25,      # what the fence pays over the local price

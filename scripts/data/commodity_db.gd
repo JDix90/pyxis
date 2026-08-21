@@ -483,9 +483,27 @@ const SEAM_YIELDS := {
 # legibility rule applied to loot instead of to fitting.
 const READS_AS := {
 	"salvage_charted": ["plate_ablative", "cell_fuel"],
-	"salvage_shoal": ["plate_ablative", "cell_fuel", "rod_decay"],
+	# v27 (§110). manifest ADDED here, and it is the whole fix for a recipe that
+	# could not be planned. mod_baffle wants MANIFEST x1 + PLATE x2; manifest fell
+	# from the Reaches ONLY and plate from the Charted and the Shoals ONLY, so no
+	# single band in the game yielded both and nothing anywhere said so. The
+	# Shoals now do. Every other recipe already had exactly one such band -- sink
+	# at 2, survey at 3, resonance at 4 -- so this makes the set a ladder rather
+	# than a set with one hole in it.
+	#
+	# Checked against both laws before it shipped, and neither number moved:
+	# READING PAYS' worst margin is still SHOAL at +55 (manifest at 320 is not
+	# the cheapest read of a Shoal crate, plate at 150 is), and the ceiling stays
+	# monotone outward -- band 1's best read goes 300 -> 320 against band 2's 480.
+	"salvage_shoal": ["plate_ablative", "cell_fuel", "rod_decay", "manifest_forged"],
 	"salvage_drift": ["rod_decay", "sink_thermal", "lattice_data", "servo_prewar"],
-	"salvage_reaches": ["lattice_data", "servo_prewar", "index_cartographic", "manifest_forged"],
+	# v27 (§110). sink ADDED. It fell from the Drift ONLY -- the single narrowest
+	# window in the table, and the one a playtest reported as "never drops". This
+	# does not fix a recipe (band 2 already yields sink AND rod together); it
+	# widens a supply that was one grade wide, OUTWARD, which is the safe
+	# direction. Cheapest read of a Reaches crate is still manifest at 320.
+	"salvage_reaches": ["lattice_data", "servo_prewar", "index_cartographic",
+		"manifest_forged", "sink_thermal"],
 	"salvage_quiet": ["index_cartographic", "heart_reliquary", "charge_unstable", "servo_prewar"],
 	# THE FRONTIER'S LISTS ARE SHORT ON PURPOSE, and the first draft of them was
 	# wrong in a way worth recording. It read

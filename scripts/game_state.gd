@@ -212,6 +212,25 @@ var market_pressure := {}      # "port|good" -> -0.25..0.25
 # bay learned this first -- NO WORMHOLE -- and the shelf keys the same way,
 # through the same PortPanel._bay_key().
 var market_stock := {}
+# v27 (§110). THE ORDER BOOK. [{good, port, at}] -- what was ordered, from which
+# counter, on which tick of the played clock. Paid in full when placed, so an
+# order is a receipt rather than a debt and abandoning one costs the player
+# exactly what they already spent.
+#
+# Bounded by REQ_MAX_OPEN on the way in, and re-bounded in the loader, because a
+# hand-edited file is input and not truth.
+var requisition_orders: Array = []
+# Which components this pilot has ever read out of a crate. The order desk will
+# only source something you have SEEN -- "bring me one you have held" -- which is
+# what stops requisitions being a way to skip ARCHEOLOGY rather than a way to
+# stop hunting for the eighth unit of something you already understand.
+var reads_done := {}
+
+const REQ_MAX_OPEN := 3
+# Five played minutes. Long enough that ordering is a decision made on the way
+# out rather than a vending machine at the counter you are standing at, short
+# enough that it lands inside the same session it was placed in.
+const REQ_DELAY := 300.0
 # v8. How much salvage this pilot can read. Not a power stat and deliberately not
 # spendable: it is a record of what you have actually done that opens doors, the
 # same shape as `breached`. See identify() for the one rule it drives.
@@ -1209,6 +1228,8 @@ func reset_to_starter() -> void:
 	docked_at = ""
 	market_pressure = {}
 	market_stock = {}
+	requisition_orders = []
+	reads_done = {}
 	market_events = []
 	archeology = 0
 	archeology_xp = 0
@@ -3272,6 +3293,72 @@ func can_read(salvage_id: String, at_lab: bool) -> bool:
 	return band <= archeology + (1 if at_lab else 0)
 
 
+func note_read(component: String) -> void:
+	# The order desk's gate, written by the one thing that produces a component.
+	if CommodityDB.is_component(component):
+		reads_done[component] = int(reads_done.get(component, 0)) + 1
+
+
+func has_read(component: String) -> bool:
+	return int(reads_done.get(component, 0)) > 0
+
+
+func orders_at(port_key: String) -> Array:
+	var out: Array = []
+	for o in requisition_orders:
+		if String((o as Dictionary).get("port", "")) == port_key:
+			out.append(o)
+	return out
+
+
+func order_ready(order: Dictionary) -> bool:
+	return played_seconds - float(order.get("at", 0.0)) >= REQ_DELAY
+
+
+func order_seconds_left(order: Dictionary) -> float:
+	return maxf(REQ_DELAY - (played_seconds - float(order.get("at", 0.0))), 0.0)
+
+
+func can_order(good: String) -> bool:
+	# THREE REFUSALS, and each states its own terms at the desk. Not a component,
+	# never read one, or the book is full.
+	if not CommodityDB.is_component(good):
+		return false
+	if not has_read(good):
+		return false
+	return requisition_orders.size() < REQ_MAX_OPEN
+
+
+func place_order(good: String, port_key: String) -> bool:
+	# The CALLER pays -- port_panel._order does, the way _buy does -- so this
+	# stays a store and the counter stays the place money changes hands.
+	if not can_order(good):
+		return false
+	requisition_orders.append({"good": good, "port": port_key, "at": played_seconds})
+	_queue_save()
+	return true
+
+
+func collect_order(index: int) -> bool:
+	if index < 0 or index >= requisition_orders.size():
+		return false
+	var o: Dictionary = requisition_orders[index]
+	if not order_ready(o):
+		return false
+	var good := String(o.get("good", ""))
+	# ALL OR NOTHING, and the order SURVIVES a full hold. A requisition that
+	# evaporated because the player arrived with two spare units of space would
+	# be paid-for cargo deleted by a rounding error -- mineable_seam's own rule,
+	# and the reason it asks before it spends.
+	if cargo_free() < CommodityDB.space_of(good):
+		return false
+	if load_cargo(good, 1) < 1:
+		return false
+	requisition_orders.remove_at(index)
+	_queue_save()
+	return true
+
+
 func identify(salvage_id: String, output_id: String, at_lab: bool) -> bool:
 	# Consumes one unit of salvage and produces one of the chosen output. The
 	# player picks the output from CommodityDB.reads_as() — there is no roll here
@@ -3296,6 +3383,10 @@ func identify(salvage_id: String, output_id: String, at_lab: bool) -> bool:
 	# player anything, and "did 0->1 arrive fast enough" is the whole question the
 	# first play-test has to answer.
 	last_read_tiered = mark_archeology(ARCHEOLOGY_PER_READ)
+	# §110. The order desk sources what you have held. Recorded HERE, in the one
+	# function that has ever produced a component, so the gate cannot drift from
+	# the thing it gates on.
+	note_read(output_id)
 
 	# SOMEBODY ELSE'S CHART, read properly. `index_cartographic` is the one
 	# salvage in the catalog that literally IS a survey somebody else made, so it
@@ -3692,6 +3783,8 @@ func save_dict() -> Dictionary:
 		"docked_at": docked_at,
 		"market_pressure": market_pressure,
 		"market_stock": market_stock,
+		"requisition_orders": requisition_orders,
+		"reads_done": reads_done,
 		"market_events": market_events,
 		# NO `settings` AND NO `audio_muted`. Both moved to prefs.json when the
 		# save became per-pilot: they belong to the device, and leaving them here
@@ -4025,6 +4118,35 @@ func load_game() -> bool:
 		if st < 0.0 or st > played_seconds:
 			st = played_seconds
 		market_stock[sk] = {"d": sd, "t": st}
+	# v27 (§110). Same posture, one row at a time. An order must name a component
+	# this build still has, sit on a real point of the player's own clock, and
+	# survive the open cap -- which is enforced here as well as at the desk,
+	# because the desk is a button and this is the rule.
+	requisition_orders = []
+	for o in data.get("requisition_orders", []):
+		if typeof(o) != TYPE_DICTIONARY:
+			continue
+		var og := str((o as Dictionary).get("good", ""))
+		if not CommodityDB.is_component(og):
+			continue
+		var oat := float((o as Dictionary).get("at", 0.0))
+		if oat < 0.0 or oat > played_seconds:
+			oat = played_seconds
+		requisition_orders.append({
+			"good": og,
+			"port": str((o as Dictionary).get("port", "")),
+			"at": oat,
+		})
+		if requisition_orders.size() >= REQ_MAX_OPEN:
+			break
+	reads_done = {}
+	for rk in data.get("reads_done", {}):
+		var rid := str(rk)
+		if not CommodityDB.is_component(rid):
+			continue
+		var rn := int(data["reads_done"][rk])
+		if rn > 0:
+			reads_done[rid] = rn
 	# v5 fields. Anyone loading a v1-v4 save has been playing already, so the
 	# tutorial is treated as finished rather than replayed at them.
 	#

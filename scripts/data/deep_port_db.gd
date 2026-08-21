@@ -87,7 +87,7 @@ const ARCHETYPES := [
 		# rather than back to a chart port. 1.45 against the Void's and the
 		# Cantina's 1.25 — a fatter margin than the marquee smuggling route, paid
 		# for by flying it through the Drift with a hold that draws raiders.
-		"services": ["market", "fence", "repair"],
+		"services": ["market", "fence", "repair", "requisitions"],
 		"bias": {"contraband": 1.20, "stolen": 1.15, "relics": 1.10},
 		"fence_goods": ["contraband", "stolen", "relics",
 			"plate_ablative", "cell_fuel", "rod_decay", "sink_thermal", "lattice_data", "index_cartographic", "servo_prewar", "heart_reliquary", "lens_unsounded", "manifest_forged", "charge_unstable"],
@@ -174,7 +174,7 @@ const ARCHETYPES := [
 		# deliberately buys no rumours and asks after nothing. Further out is not
 		# the same as better informed, and out here it stops being the same at
 		# all.
-		"services": ["market", "fence", "repair", "rumors"],
+		"services": ["market", "fence", "repair", "rumors", "requisitions"],
 		"rumor_price": 700,
 		"hunt_price": 900,
 		"hunt_error": 5.0,
@@ -230,7 +230,7 @@ const ARCHETYPES := [
 		#
 		# What depth buys here instead is the RACK: the defensive Mk III line and
 		# the only Reactor Mk V in the game.
-		"services": ["market", "outfitter", "fence", "repair"],
+		"services": ["market", "outfitter", "fence", "repair", "requisitions"],
 		# Better than the Watch on the two things only the frontier drops, which
 		# is what stops the deepest counter being worse than a band-2 one at
 		# everything. Deliberately small: this is 5,200u of income at the far end

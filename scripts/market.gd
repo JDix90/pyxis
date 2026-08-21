@@ -72,6 +72,31 @@ const STOCK_THIN_MULT := 0.5
 const STOCK_GLUT_MULT := 2        # a glut IS the goods arriving
 const STOCK_RESERVE_MULT := 1.5   # §108: what a desk keeps back for a friend
 
+# §110. THE ORDER BOOK. What a back room charges to SOURCE a part rather than
+# sell you one off a shelf it does not keep.
+#
+# 5.0x base, and the number is a BOUND rather than a feeling. The worst legal
+# price any counter in the game will ever PAY for a component is
+#
+#   base x drift(1.12) x pressure(1.25) x event(2.2) x spread(0.94) x bulk(1.06)
+#        x fence(1.45)  =  4.45x base
+#
+# so at 5.0 an order costs more than the best sale anywhere, under a shortage,
+# at a deep fence, in bulk, at a freeport, at peak drift and peak pressure --
+# simultaneously. That closes §11's printer at the source rather than by capping
+# a premium, which is the fix that section says to reach for. It also closes it
+# through the BONDED BAY, which NO ROUND-TRIP PROFIT cannot see: components are
+# storable (can_store == no_retail), so an order cheaper than a future sale
+# would be a printer with a warehouse in the middle of it.
+#
+# THE ORDER DESK IS NOT A PRINTER re-derives that product from the live
+# constants rather than trusting this comment.
+const REQ_MULT := 5.0
+
+
+static func requisition_price(good: String) -> int:
+	return maxi(1, int(round(float(CommodityDB.base_price(good)) * REQ_MULT)))
+
 
 static func stock_cap(port_def: Dictionary, good: String) -> int:
 	# The full shelf, from authored data alone. No store is read, so this is the

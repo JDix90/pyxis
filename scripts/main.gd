@@ -6612,6 +6612,89 @@ func _run_forge_test() -> void:
 	print("[forge] FITTED EFFECT LIVE equipped=%s, signature %.2f -> %.2f, hold %d -> %d (hold must not move) -> %s" % [
 		str(equipped), sig_bare, sig_fitted, cap_bare, cap_fitted,
 		"PASS" if equipped and sig_fitted < sig_bare and cap_bare == cap_fitted else "FAIL"])
+	# §110. THE HINT WOULD HAVE LIED, and this leg proves both halves: that the
+	#     old form was false, and that the new one cannot be.
+	#
+	# The forge printed "X FALLS FROM READING BAND n+ SALVAGE", derived by taking
+	# the SHALLOWEST grade whose read table yields X. That is only true if
+	# READS_AS is monotone in band, and it is not: sink falls from the Drift and
+	# the Reaches and nowhere else, manifest from the Shoals and the Reaches,
+	# plate and cell from the Charted and the Shoals. A pilot standing in the
+	# Quiet following the game's own instruction reads crate after crate and
+	# never sees four of the eight inputs -- which is the playtest report that
+	# opened this horizon, filed against a hint added to fix the previous one.
+	#
+	# Clause one counts components the "+" claim is FALSE for. It must be
+	# non-zero, or this leg is asserting nothing and the copy change was
+	# unnecessary. Clause two is the new rule: the grades named are exactly the
+	# grades that yield it.
+	var gap_count := 0
+	var gaps := ""
+	var exact := true
+	for cid_v in CommodityDB.ids():
+		var cid := String(cid_v)
+		if not CommodityDB.is_component(cid):
+			continue
+		var from_bands := []
+		var named := []
+		for sal_v in CommodityDB.READS_AS:
+			if (CommodityDB.READS_AS[sal_v] as Array).has(cid):
+				from_bands.append(CommodityDB.band_of(String(sal_v)))
+				named.append(String(sal_v))
+		if from_bands.is_empty():
+			continue
+		# Would "BAND lo+" have been true? Only if every band from lo to the
+		# deepest yielding one also produces it.
+		var lo: int = from_bands.min()
+		var hi: int = from_bands.max()
+		for b in range(lo, hi + 1):
+			if not from_bands.has(b):
+				gap_count += 1
+				gaps += "%s(no b%d) " % [CommodityDB.short_name(cid), b]
+				break
+		# And the derived list must be exactly the yielding grades -- the same
+		# table read the same way, so the copy cannot drift from the mechanic.
+		for sal2_v in CommodityDB.READS_AS:
+			var has_it: bool = (CommodityDB.READS_AS[sal2_v] as Array).has(cid)
+			if has_it != named.has(String(sal2_v)):
+				exact = false
+	print("[forge] THE HINT WOULD HAVE LIED %d component(s) break a BAND-n+ claim (%s), and the grade list is exact for every one=%s -> %s" % [
+		gap_count, gaps.strip_edges() if gaps != "" else "none", str(exact),
+		"PASS" if gap_count > 0 and exact else "FAIL"])
+
+	# §110. NO RECIPE IS UNSHOPPABLE. Stronger than "every input exists": there
+	#     must be ONE band that yields every input of a recipe, or filling it
+	#     means two separate expeditions and nothing in the game says so.
+	#     mod_baffle failed this from the day it shipped -- manifest from the
+	#     Reaches, plate from the Charted and Shoals, no overlap anywhere.
+	var unshoppable := ""
+	var recipe_bands := ""
+	for cid2_v in craftables:
+		var rec2 := ModuleDB.recipe(String(cid2_v))
+		var common := []
+		var first := true
+		for good_v in rec2:
+			var bset := []
+			for sal3_v in CommodityDB.READS_AS:
+				if (CommodityDB.READS_AS[sal3_v] as Array).has(String(good_v)):
+					bset.append(CommodityDB.band_of(String(sal3_v)))
+			if first:
+				common = bset
+				first = false
+			else:
+				var keep := []
+				for b2 in common:
+					if bset.has(b2):
+						keep.append(b2)
+				common = keep
+		if common.is_empty():
+			unshoppable += String(cid2_v) + " "
+		else:
+			recipe_bands += "%s@b%d " % [String(cid2_v).replace("mod_", ""),
+				(common as Array).min()]
+	print("[forge] NO RECIPE IS UNSHOPPABLE every recipe fillable from a single band (%s), unreachable: %s -> %s" % [
+		recipe_bands.strip_edges(), unshoppable if unshoppable != "" else "none",
+		"PASS" if unshoppable == "" else "FAIL"])
 	get_tree().quit()
 
 
@@ -8083,6 +8166,123 @@ func _run_store_test() -> void:
 	print("[store] NO PASSIVE GROWTH flew 40 cells past live stations: %d keys -> %d -> %s" % [
 		keys_before, GameState.warehouse.size(),
 		"PASS" if GameState.warehouse.size() == keys_before else "FAIL"])
+	# --- §110. THE ORDER BOOK -------------------------------------------------
+
+	# THE ORDER DESK IS NOT A PRINTER. §11's law, applied to a verb that did not
+	# exist when it was written. An order that cost less than a sale anywhere
+	# would be a money loop -- and worse, one NO ROUND-TRIP PROFIT cannot see,
+	# because components are storable (can_store == no_retail) so the loop can be
+	# run through a bonded bay across two different market states.
+	#
+	# The bound is RE-DERIVED from the live constants rather than trusted from a
+	# comment: peak drift, peak pressure, a shortage, a freeport's thinner
+	# spread, a bulk break and the deepest fence multiplier in the game, all at
+	# once, on top of any authored bias. If any of those constants moves, this
+	# recomputes and stays honest.
+	var fence_best := 1.0
+	for pid_fv in SystemDB.port_ids():
+		fence_best = maxf(fence_best,
+			float(SystemDB.port_def_by_id(String(pid_fv)).get("fence_mult", 1.0)))
+	for aid_fv in DeepPortDB.ids():
+		fence_best = maxf(fence_best,
+			float(DeepPortDB.by_id(String(aid_fv)).get("fence_mult", 1.0)))
+	var bulk_best := 1.0
+	for pid_bv in SystemDB.port_ids():
+		bulk_best = maxf(bulk_best,
+			1.0 + float(SystemDB.port_def_by_id(String(pid_bv)).get("bulk_bonus", 0.0)))
+	var worst_event := 1.0
+	for k_v in Market.EVENT_KINDS:
+		worst_event = maxf(worst_event,
+			float((Market.EVENT_KINDS[k_v] as Dictionary).get("max_mult", 1.0)))
+	var ceiling_mult := (1.0 + Market.DRIFT_AMPLITUDE) * (1.0 + Market.PRESSURE_CAP) \
+		* worst_event * (1.0 - Market.FREEPORT_SPREAD) * bulk_best * fence_best
+	var printer := ""
+	var comps := 0
+	for gid_pv in CommodityDB.ids():
+		var gid_p := String(gid_pv)
+		if not CommodityDB.is_component(gid_p):
+			continue
+		comps += 1
+		var base_p := float(CommodityDB.base_price(gid_p))
+		var bias_best := 1.0
+		for d_pv in SystemDB.port_ids():
+			bias_best = maxf(bias_best,
+				Market.port_bias(SystemDB.port_def_by_id(String(d_pv)), gid_p))
+		for a_pv in DeepPortDB.ids():
+			bias_best = maxf(bias_best,
+				Market.port_bias(DeepPortDB.by_id(String(a_pv)), gid_p))
+		var best_sale := base_p * bias_best * ceiling_mult
+		if float(Market.requisition_price(gid_p)) <= best_sale and printer == "":
+			printer = "%s orders at %d, best legal sale %.0f" % [
+				CommodityDB.short_name(gid_p), Market.requisition_price(gid_p), best_sale]
+	print("[store] THE ORDER DESK IS NOT A PRINTER %d components, order at %.1fx base against a worst-case sale of %.2fx, first loop: %s -> %s" % [
+		comps, Market.REQ_MULT, ceiling_mult,
+		printer if printer != "" else "none",
+		"PASS" if printer == "" and comps > 0 else "FAIL"])
+
+	# NO ORDER WITHOUT THE READ. The desk sources what you have handled, so
+	# requisitions relieve late-game scarcity without becoming a way around
+	# ARCHEOLOGY. Both directions, or a gate that always refused would pass.
+	GameState.requisition_orders = []
+	GameState.reads_done = {}
+	var before_read := GameState.can_order("sink_thermal")
+	GameState.note_read("sink_thermal")
+	var after_read := GameState.can_order("sink_thermal")
+	var never_a_good := GameState.can_order("alloys")
+	print("[store] NO ORDER WITHOUT THE READ unread=%s, after one read=%s, and a bulk good is never orderable=%s -> %s" % [
+		str(before_read), str(after_read), str(never_a_good),
+		"PASS" if not before_read and after_read and not never_a_good else "FAIL"])
+
+	# AN ORDER WAITS, and the book has a bottom. Delivery is a played-clock wait
+	# rather than a vending machine, and three open orders is the cap -- enforced
+	# at the store and not only in the UI.
+	GameState.requisition_orders = []
+	GameState.cargo = {}
+	GameState.played_seconds += 10.0
+	var placed := GameState.place_order("sink_thermal", "void")
+	var early := GameState.collect_order(0)
+	GameState.played_seconds += GameState.REQ_DELAY
+	var late := GameState.collect_order(0)
+	var landed := GameState.cargo_count("sink_thermal")
+	GameState.note_read("rod_decay")
+	GameState.note_read("plate_ablative")
+	GameState.note_read("lattice_data")
+	GameState.requisition_orders = []
+	for oi in range(5):
+		GameState.place_order("sink_thermal", "void")
+	var capped := GameState.requisition_orders.size()
+	GameState.requisition_orders = []
+	GameState.cargo = {}
+	print("[store] AN ORDER WAITS placed=%s, collecting early=%s, after %ds=%s (%d aboard), and five attempts leave %d of %d open -> %s" % [
+		str(placed), str(early), int(GameState.REQ_DELAY), str(late), landed,
+		capped, GameState.REQ_MAX_OPEN,
+		"PASS" if placed and not early and late and landed == 1
+			and capped == GameState.REQ_MAX_OPEN else "FAIL"])
+
+	# THE DESK IS A GATE, NOT A COUNTER. Ordering is a distinct verb from
+	# retailing: Market.can_buy is untouched by the whole feature, so SELL ONLY
+	# keeps passing and a fence still buys without selling. If this ever goes
+	# red, the back room has become a shopfront and §11's loop is open again.
+	var retailed_comp := ""
+	for pid_gv in SystemDB.port_ids():
+		var gdef := SystemDB.port_def_by_id(String(pid_gv))
+		for gid_gv in CommodityDB.ids():
+			if CommodityDB.is_component(String(gid_gv)) \
+					and Market.can_buy(gdef, String(gid_gv)) and retailed_comp == "":
+				retailed_comp = "%s at %s" % [String(gid_gv), String(pid_gv)]
+	var desk_ports := 0
+	for pid_sv in SystemDB.port_ids():
+		if (SystemDB.port_def_by_id(String(pid_sv)).get("services", []) as Array).has("requisitions"):
+			desk_ports += 1
+	for aid_sv in DeepPortDB.ids():
+		if (DeepPortDB.by_id(String(aid_sv)).get("services", []) as Array).has("requisitions"):
+			desk_ports += 1
+	print("[store] THE DESK IS A GATE, NOT A COUNTER %d order desks in the game, and no component is retailed anywhere (%s) -> %s" % [
+		desk_ports, retailed_comp if retailed_comp != "" else "none",
+		"PASS" if retailed_comp == "" and desk_ports >= 2 else "FAIL"])
+
+	GameState.requisition_orders = []
+	GameState.reads_done = {}
 	get_tree().quit()
 
 
@@ -19172,6 +19372,16 @@ func _run_save_test() -> void:
 				"cinderworks|volatiles": {"d": 0, "t": 100.0},
 				"cinderworks|cores": {"d": 3, "t": 9.9e9},
 			},
+			# §110's two stores, on the same version. A v27 file written before
+			# the order book simply has neither key and arrives with an empty
+			# book and nothing read -- which is every pilot before it existed.
+			"requisition_orders": [
+				{"good": "sink_thermal", "port": "void", "at": 5600.0},
+				{"good": "alloys", "port": "void", "at": 5800.0},
+				{"good": "not_a_part", "port": "void", "at": 5800.0},
+				{"good": "rod_decay", "port": "void", "at": 9.9e9},
+			],
+			"reads_done": {"sink_thermal": 3, "alloys": 9, "rod_decay": 0},
 		}
 		var fg27 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
 		fg27.store_string(JSON.stringify(good27))
@@ -19197,12 +19407,30 @@ func _run_save_test() -> void:
 		var deep27: bool = Market.stock_left(DeepPortDB.by_id("deep_relay"),
 			"pyx01:7:-3", "isotopes") \
 			== Market.stock_cap(DeepPortDB.by_id("deep_relay"), "isotopes") - 2
+		# §110. AN ORDER SURVIVES A RELOAD, and rubbish does not. Two of the four
+		# orders are junk (a bulk good and a component this build never had) and
+		# must drop; the future-stamped one is CLAMPED rather than dropped, the
+		# nursery's rule -- corrupt bookkeeping about a part that really was
+		# paid for. reads_done keeps only components, and only positive counts.
+		var orders27: bool = GameState.requisition_orders.size() == 2 \
+			and String((GameState.requisition_orders[0] as Dictionary).get("good", "")) == "sink_thermal" \
+			and String((GameState.requisition_orders[1] as Dictionary).get("good", "")) == "rod_decay" \
+			and is_equal_approx(float((GameState.requisition_orders[1] as Dictionary).get("at", 0.0)),
+				GameState.played_seconds)
+		var waiting27: bool = not GameState.order_ready(GameState.requisition_orders[1]) \
+			and GameState.order_ready(GameState.requisition_orders[0])
+		var reads27: bool = GameState.has_read("sink_thermal") \
+			and not GameState.has_read("alloys") and not GameState.has_read("rod_decay")
+		GameState.requisition_orders = []
+		GameState.reads_done = {}
 		GameState.market_stock = {}
+		print("[savetest] v26->v27 ORDERS 2 of 4 survived (a bulk good and an unknown part dropped, a future stamp clamped)=%s, the clamped one is still in transit while the old one is ready=%s, reads_done kept only real components=%s" % [
+			str(orders27), str(waiting27), str(reads27)])
 		print("[savetest] v26->v27 A V26 SAVE HAS EVERY SHELF FULL kept=%s; rubbish pass kept 3 of 6 (unknown good, missing join and a zero deficit dropped)=%s with a 12-unit hole reloading as %d of %d=%s, a future stamp clamped to now=%s, and a deep row keyed on its CELL surviving JSON=%s -> %s" % [
 			str(kept26), str(cleaned27), cap26 - 12, cap26, str(shelf27),
 			str(clamped27), str(deep27),
 			"PASS" if ok26 and kept26 and cleaned27 and shelf27 and clamped27
-				and deep27 else "FAIL"])
+				and deep27 and orders27 and waiting27 and reads27 else "FAIL"])
 	elif mode == "future":
 		# A SAVE FROM A NEWER BUILD. Refusing to load it was never the hard
 		# part — that clause has always been there. What it did NOT do was stop

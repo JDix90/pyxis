@@ -6289,7 +6289,7 @@ corrections are what set the commit order:
 | 1 | THE SHELF: a finite, replenishing, per-counter stock derived from the port's own bias table; events as masks; MARKETTEST given assertions | **v27** | **BUILT** — §107 |
 | 2 | the word on the shelf: stock outranks arbitrage at the rumour desk, a FRIENDLY+ reserve as a GATE, and the deep-station events §107 deferred | rides v27 | **BUILT** — §108; the deferred debt is discharged, and two live defects at the rumour desk fell out of reading it |
 | 3 | the tug and the claim: a depth-scaled rescue fee, and a claim clock on deep spills | rides v27 | **BUILT** — §109; dying was cheaper than a beacon jump, and the code's own comment claiming otherwise was aspirational |
-| 4 | the order book: the forge hint that lied, three widened read windows, and requisitions as the first real credit sink | rides v27 | not built |
+| 4 | the order book: the forge hint that lied, TWO widened read windows (the third was cut by its own arithmetic), and requisitions as the first real credit sink | rides v27 | **BUILT** — §110; the hint was a v22 fix restating the bug it fixed |
 | 5 | the ladder: seven new skills, four deepened, one shared ledger page | rides v27 | not built |
 | 6 | the sounded ground: teach the filing chain, held cells as jump anchors, colony works | rides v27 | not built |
 | 7 | the measure: re-derive the pacing band from the sweep, derive the README's counts | none | not built |
@@ -11289,3 +11289,123 @@ whole hold never — §22's scope survives intact, and the contraband trade the
 expanse rests on is as safe as it was. What changed is that the deep now costs
 something on the way out and counts down on what you left behind, while the
 charted system remains exactly what the tutorial taught it was.
+
+## 110. The order book, and the hint that lied (rides v27)
+
+Horizon 10, commit 4. The playtest said forge materials never drop and the
+player had never found some of them. That is the *second* time that report has
+arrived, and the first fix is why the second one happened.
+
+### READS_AS is not monotone, and the hint assumed it was
+
+v22 added a source line to the forge — *"a component names the read that
+produces it"* had been written at the top of the file and never wired, and a
+playtest had concluded the forge's inputs did not exist. The fix derived the
+line from `READS_AS` itself, took the **shallowest** grade that yields the part,
+and printed:
+
+> `SINK FALLS FROM READING BAND 2+ SALVAGE`
+
+That sentence is only true if the read table is monotone in band. **It is not,
+and never was.** `sink_thermal` fell from the Drift and nowhere deeper.
+`manifest_forged` from the Reaches and nowhere deeper. `plate_ablative` and
+`cell_fuel` from the Charted and the Shoals and nowhere deeper. So a pilot
+standing in the Quiet with a hold of Quiet salvage, following the game's own
+printed instruction, could read crate after crate and **never once** see four of
+the eight forge inputs.
+
+The `+` was doing the damage, and it was a fix restating the bug it fixed. The
+line now names the grades themselves — *"SINK READS OUT OF DRIFT SALV, REACHES
+SALV"* — derived from the same table, so it is exact by construction rather than
+by inference. `THE HINT WOULD HAVE LIED` asserts **both halves**: that at least
+one component breaks a `BAND n+` claim (or the copy change was unnecessary and
+this leg measures nothing), and that the derived list is exactly the yielding
+set for every part.
+
+### One recipe could not be planned at all
+
+`mod_baffle` wants MANIFEST ×1 + PLATE ×2. Manifest fell from band 3 only; plate
+from bands 0–1 only. **No single band in the game yielded both**, so filling it
+meant two separate expeditions with a held hold in between, and nothing anywhere
+said so. Every other recipe already had exactly one such band.
+
+`salvage_shoal` now also reads into manifest. That makes the set a ladder —
+baffle at band 1, sink-lattice at 2, survey-array at 3, resonance at 4 — instead
+of a set with one hole in it, and `NO RECIPE IS UNSHOPPABLE` pins it as a
+property rather than an accident.
+
+`salvage_reaches` also gained sink, which fixes no recipe: it widens the
+narrowest supply window in the table, **outward**, which is the safe direction.
+
+**Both laws were checked before the change shipped and neither number moved.**
+`READING PAYS`' worst margin is still SHOAL at +55 (manifest at 320 is not the
+cheapest read of a Shoal crate — plate at 150 is), `READ COMPRESSION`'s worst is
+still UNSOUNDED at 2.18×, and the best-read ceiling stays monotone outward: band
+1 goes 300 → 320 against band 2's 480.
+
+**A third change was planned and cut.** `cell_fuel` into `salvage_drift` was on
+the list until the arithmetic ran: cell at 190 against Drift's raw 150 would
+have become the *cheapest* read of that grade and dropped its floor from +150 to
++40 — the worst margin in the game, in a table whose whole design is that grades
+are told apart by their floor. And cell is not an input to any recipe, so it
+bought nothing. Widening a window is not free just because the assertion still
+passes.
+
+### The order book — the demand side, and the first real credit sink
+
+The read-table fix makes every recipe **plannable**. It does not make the eighth
+unit of a part you already understand any less of a grind. So the five fencing
+desks gain a `requisitions` service: one dictionary entry and one
+`_build_requisitions` method, which is §12's rule rather than an exception to it.
+
+**It orders; it still does not retail.** `Market.can_buy` is untouched by the
+entire feature and `SELL ONLY` keeps passing — a fence that sold components off
+a shelf would reopen the exact loop §11 closed. You pay up front, at a counter
+that keeps nothing, and somebody brings one back in five played minutes.
+
+**The price is a bound, not a feeling.** The worst legal price any counter will
+ever *pay* for a component is
+
+    base × drift(1.12) × pressure(1.25) × event(2.2) × spread(0.94)
+         × bulk(1.06) × fence(1.45)  =  4.45× base
+
+so at **5.0×** an order costs more than the best sale in the game — under a
+shortage, at the deepest fence, in bulk, at a freeport, at peak drift and peak
+pressure, *simultaneously*. `THE ORDER DESK IS NOT A PRINTER` re-derives that
+product from the live constants rather than trusting the paragraph above, so a
+later change to any of them recomputes the bar instead of silently clearing it.
+
+That bound has to hold against the **bonded bay**, not just against a same-tick
+round trip. Components are storable (`can_store == no_retail`), and
+`NO ROUND-TRIP PROFIT` prices both legs in one instant under one `market_events`
+array — it explicitly cannot see a loop run across two different market states
+with a warehouse in the middle. An order cheaper than a future sale would be
+exactly that loop.
+
+**Two gates, and both state their own terms.** The desk is behind `fence_open`,
+enforced at the build *and* at the action (survey_mast's lesson, and the fence's
+own posture). And it sources only a component this pilot has **read at least
+once** — *bring me one you have held* — recorded in `identify`, the single
+function that has ever produced a component, so the gate cannot drift from the
+thing it gates on. That is what keeps requisitions a relief for late-game
+scarcity rather than a way around ARCHEOLOGY: you cannot order a part you have
+never learned to recognise.
+
+**An order is a receipt, never a debt.** Paid in full when placed, so abandoning
+one costs exactly what was already spent. It survives a full hold — a
+requisition that evaporated because the player arrived with two spare units of
+space would be paid-for cargo deleted by a rounding error, which is
+`mineable_seam`'s all-or-nothing rule applied to a purchase. And if the store
+refuses the order after the wallet was charged, the money goes back:
+`identify`'s *nothing may vanish* rule, applied to credits.
+
+### The save
+
+Two stores on v27, both additive: `requisition_orders` and `reads_done`. A v27
+file written before this section has neither key, arrives with an empty book and
+nothing read, and is a pilot who never used the desk — which is every pilot
+before it existed. Both are re-bounded in the loader, `REQ_MAX_OPEN` included,
+because a hand-edited file is input and not truth. The `migrate26` leg grew the
+clauses: four orders in, two out (a bulk good and a component this build never
+had), a future stamp clamped rather than dropped, and `reads_done` keeping only
+real components with positive counts.

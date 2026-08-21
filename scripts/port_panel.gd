@@ -26,6 +26,7 @@ const TAB_LABELS := {
 	"storage": "STORAGE",
 	"forge": "FORGE",
 	"commission": "COMMISSION",
+	"requisitions": "ORDERS",
 }
 const DEFAULT_SERVICES := ["market", "outfitter", "contracts"]
 
@@ -546,6 +547,8 @@ func _refresh() -> void:
 			_build_forge()
 		"commission":
 			_build_commission()
+		"requisitions":
+			_build_requisitions()
 		_:
 			_body.add_child(_reactor_row())
 			# v24 (§94). THE BERTHS SIT WITH THE REACTOR, not in the module
@@ -761,14 +764,26 @@ func _forge_row(id: String) -> Control:
 		# Derived from READS_AS, the same table the reads use, so it cannot
 		# drift: the shallowest salvage grade whose read table yields this
 		# component names the band to go crack.
-		var src_band := -1
+		# v27 (§110). THE "+" WAS A LIE, and it was the lie that produced the
+		# second playtest report of the same complaint the first one fixed.
+		# READS_AS IS NOT MONOTONE: sink fell from the Drift and nowhere deeper,
+		# manifest from the Reaches and nowhere deeper, plate and cell from the
+		# Charted and Shoals and nowhere deeper. This line took the SHALLOWEST
+		# yielding grade and printed "BAND n+", so a pilot standing in the Quiet
+		# with a hold of Quiet salvage, following the game's own instruction,
+		# could read crate after crate and never once see four of the eight
+		# inputs.
+		#
+		# It now names the grades themselves, from the same table, so it cannot
+		# be wrong in that direction again: a grade is listed if and only if
+		# reading it can produce this part.
+		var from_grades := []
 		for sal_v in CommodityDB.READS_AS:
 			if (CommodityDB.READS_AS[sal_v] as Array).has(good):
-				var b := CommodityDB.band_of(String(sal_v))
-				src_band = b if src_band < 0 else mini(src_band, b)
-		if src_band >= 0 and have < need:
-			sources += "%s FALLS FROM READING BAND %d+ SALVAGE\n" % [
-				CommodityDB.short_name(good), src_band]
+				from_grades.append(CommodityDB.short_name(String(sal_v)))
+		if not from_grades.is_empty() and have < need:
+			sources += "%s READS OUT OF %s\n" % [
+				CommodityDB.short_name(good), ", ".join(from_grades)]
 	var bill := Label.new()
 	bill.text = parts
 	bill.add_theme_font_size_override("font_size", 10)
@@ -1562,6 +1577,204 @@ func _rumor_text() -> String:
 	# Everything this desk knows, it has already told you. It says so rather
 	# than selling the same sentence twice.
 	return ""
+
+
+# --- requisitions (§110) -----------------------------------------------------
+
+func _build_requisitions() -> void:
+	# THE BACK ROOM ORDERS; IT STILL DOES NOT RETAIL. Market.can_buy is untouched
+	# by this whole section and SELL ONLY keeps passing -- a fence that sold
+	# components off a shelf would reopen the loop §11 closed. This is a distinct
+	# verb: you pay now, at a price above every sale in the game, and somebody
+	# brings one back later.
+	#
+	# It answers the second playtest complaint from the demand side. The read
+	# table fix (§110, commodity_db) makes every recipe plannable from one band;
+	# this makes the EIGHTH unit of something you already understand a purchase
+	# rather than another four hours of hoping.
+	var key := _bay_key()
+	var head := Label.new()
+	head.text = "THE BACK ROOM SOURCES PARTS. PAID UP FRONT, DELIVERED HERE."
+	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	head.add_theme_font_size_override("font_size", 10)
+	head.add_theme_color_override("font_color", Palette.AMBER_DIM)
+	_body.add_child(head)
+
+	# THE STANDING GATE, at the build AND at the action -- survey_mast's lesson,
+	# and the same double enforcement the fence itself uses. REFUSAL IS FREE and
+	# it states its own terms (§58).
+	if not Market.fence_open(_port_def):
+		var shut := Label.new()
+		shut.text = "THEY WILL SELL YOU NOTHING AND SOURCE YOU NOTHING. MEND IT WITH %s FIRST." % \
+			FactionDB.display_name(Market.owner_of(_port_def)).to_upper()
+		shut.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		shut.add_theme_font_size_override("font_size", 12)
+		shut.add_theme_color_override("font_color", Palette.THREAT)
+		_body.add_child(shut)
+		return
+
+	var waiting := GameState.orders_at(key)
+	if not waiting.is_empty():
+		var wh := Label.new()
+		wh.text = "ON ORDER HERE"
+		wh.add_theme_font_size_override("font_size", 12)
+		wh.add_theme_color_override("font_color", Palette.GOLD)
+		_body.add_child(wh)
+	for o_v in waiting:
+		var o: Dictionary = o_v
+		_body.add_child(_order_waiting_row(o))
+
+	var offered := 0
+	for gid_v in CommodityDB.ids():
+		var gid := String(gid_v)
+		if not CommodityDB.is_component(gid) or not GameState.has_read(gid):
+			continue
+		offered += 1
+		_body.add_child(_order_row(gid))
+
+	var note := Label.new()
+	if offered == 0:
+		# A DESK WITH NOTHING ON IT SAYS WHY. The gate is "bring me one you have
+		# held", so an empty book is a sentence about reading, not a broken tab.
+		note.text = "THEY SOURCE WHAT YOU HAVE HANDLED. READ A CRATE AT A LAB OR IN THE FIELD AND THEY WILL FIND YOU ANOTHER."
+	else:
+		note.text = "%d OF %d ORDERS OPEN. DELIVERY TAKES %d MINUTES OF FLYING, AND THEY CHARGE FOR THE TROUBLE." % [
+			GameState.requisition_orders.size(), GameState.REQ_MAX_OPEN,
+			int(round(GameState.REQ_DELAY / 60.0))]
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.add_theme_font_size_override("font_size", 10)
+	note.add_theme_color_override("font_color", Color(0.6, 0.6, 0.66))
+	_body.add_child(note)
+
+
+func _order_waiting_row(o: Dictionary) -> Control:
+	var row := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(Palette.GOLD.r, Palette.GOLD.g, Palette.GOLD.b, 0.06)
+	style.set_corner_radius_all(6)
+	style.content_margin_left = 10
+	style.content_margin_right = 10
+	style.content_margin_top = 7
+	style.content_margin_bottom = 7
+	row.add_theme_stylebox_override("panel", style)
+	var box := HBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	row.add_child(box)
+
+	var left := VBoxContainer.new()
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left.add_theme_constant_override("separation", -1)
+	box.add_child(left)
+	var name_line := Label.new()
+	name_line.text = CommodityDB.display(String(o.get("good", "")))
+	name_line.add_theme_font_size_override("font_size", 13)
+	name_line.add_theme_color_override("font_color", Palette.GOLD)
+	left.add_child(name_line)
+
+	var ready := GameState.order_ready(o)
+	var sub := Label.new()
+	sub.text = "READY" if ready else "IN TRANSIT — %s" % _mmss(GameState.order_seconds_left(o))
+	sub.add_theme_font_size_override("font_size", 10)
+	sub.add_theme_color_override("font_color",
+		Palette.GOLD if ready else Palette.AMBER_DIM)
+	left.add_child(sub)
+
+	var idx := GameState.requisition_orders.find(o)
+	var b := Button.new()
+	b.text = "COLLECT" if ready else "WAITING"
+	b.disabled = not ready
+	b.custom_minimum_size = Vector2(96, 34)
+	b.add_theme_font_size_override("font_size", 11)
+	b.pressed.connect(func() -> void: _collect_order(idx))
+	box.add_child(b)
+	return row
+
+
+func _order_row(good: String) -> Control:
+	var row := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(Palette.AMBER.r, Palette.AMBER.g, Palette.AMBER.b, 0.04)
+	style.set_corner_radius_all(6)
+	style.content_margin_left = 10
+	style.content_margin_right = 10
+	style.content_margin_top = 7
+	style.content_margin_bottom = 7
+	row.add_theme_stylebox_override("panel", style)
+	var box := HBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	row.add_child(box)
+
+	var left := VBoxContainer.new()
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left.add_theme_constant_override("separation", -1)
+	box.add_child(left)
+	var name_line := Label.new()
+	name_line.text = "%s   ×%d" % [CommodityDB.display(good), GameState.cargo_count(good)]
+	name_line.add_theme_font_size_override("font_size", 13)
+	name_line.add_theme_color_override("font_color", CommodityDB.color_of(good))
+	left.add_child(name_line)
+
+	var price := Market.requisition_price(good)
+	var sub := Label.new()
+	# WHY IT COSTS WHAT IT COSTS, on the row. A part sourced for you is dearer
+	# than one you found -- that is the entire deal, and hiding the comparison
+	# would make the price look arbitrary instead of like a premium.
+	sub.text = "SOURCED %s   ·   THEY BUY AT ABOUT %d" % [_comma(price),
+		Market.sell_price(_port_def, _port.port_id, good, 1, _bay_key())]
+	sub.add_theme_font_size_override("font_size", 10)
+	sub.add_theme_color_override("font_color", Palette.AMBER_DIM)
+	left.add_child(sub)
+
+	var full := GameState.requisition_orders.size() >= GameState.REQ_MAX_OPEN
+	var b := Button.new()
+	b.text = "BOOK FULL" if full else "ORDER"
+	b.disabled = full or GameState.salvage < price
+	b.custom_minimum_size = Vector2(96, 34)
+	b.add_theme_font_size_override("font_size", 11)
+	b.pressed.connect(func() -> void: _order(good))
+	box.add_child(b)
+	return row
+
+
+func _order(good: String) -> void:
+	# PAID IN FULL AT THE DESK, so an order is a receipt and never a debt --
+	# abandoning one costs exactly what was already spent and nothing more.
+	# Gated here as well as in the UI: the button is the affordance, this is the
+	# rule (_buy's own line).
+	if not Market.fence_open(_port_def) or not GameState.can_order(good):
+		_reject()
+		return
+	var price := Market.requisition_price(good)
+	if GameState.salvage < price or not GameState.spend_salvage(price):
+		_reject()
+		return
+	if not GameState.place_order(good, _bay_key()):
+		# Could not be recorded after all: hand the money back rather than eat
+		# it. Nothing may vanish -- identify()'s rule, applied to a wallet.
+		GameState.add_salvage(price)
+		_reject()
+		return
+	Sfx.play("equip", -7.0, 0.9)
+	var main_o := get_tree().get_first_node_in_group("main")
+	if main_o and main_o.hud:
+		main_o.hud.set_value(GameState.salvage)
+		main_o.hud.show_toast("ORDERED — %s, %d MIN" % [
+			CommodityDB.short_name(good),
+			int(round(GameState.REQ_DELAY / 60.0))], Palette.GOLD)
+	_refresh()
+
+
+func _collect_order(index: int) -> void:
+	if not GameState.collect_order(index):
+		# The one refusal worth naming: a full hold. The order KEEPS -- paid-for
+		# cargo is never deleted by arriving with two units of space.
+		var main_f := get_tree().get_first_node_in_group("main")
+		if main_f and main_f.hud:
+			main_f.hud.show_toast("NO ROOM FOR IT — THEY WILL HOLD IT", Palette.THREAT)
+		_reject()
+		return
+	Sfx.play("equip", -6.0, 1.15)
+	_refresh()
 
 
 # --- games (cantina) ---------------------------------------------------------
