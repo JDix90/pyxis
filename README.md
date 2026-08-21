@@ -242,8 +242,16 @@ recorded here rather than quietly deleted.
 measured on a full sweep after the nursery shipped: 78 runs, 772 PASS, 0 FAIL,
 0 script errors, save format v26.
 
-**§107–§110 swept green on the author's machine; §111–§113 (commits 5a through
-7) have not been swept.** Together they add `SKILLTEST` (one new run — 81 by
+**The Horizon 10 sweep read 81 runs | 812 PASS | 1 FAIL | 0 script errors**
+(measured 2026-08-21, all seven commits in). The one red was `A MARK IS THE
+NETWORK'S TO READ`: §112's new bark fired inline after the CANNOT_READ prompt
+and replaced it -- the exact v18 defect Barks.fire's own comment records, a
+bark stomping the sentence the player needed. The bark now arms on the refusal
+and fires at range-exit, where the refusal is a stale line being flown away
+from; the fix commit is the one carrying this paragraph, and the re-run of
+RETURNTEST is the number that supersedes the 1 FAIL above.
+
+**Before that sweep: §107–§110 swept green; §111–§113 were staged as follows.** Together they add `SKILLTEST` (one new run — 81 by
 `--counts`), grow `migrate26` with the ladder's and the works' clauses, and
 introduce no new `class_name`, so no import pass is needed. The morning sweep
 is, in order:

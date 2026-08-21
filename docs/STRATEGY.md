@@ -11722,6 +11722,28 @@ stood open since §77.
   that into a fast failure with the error in the log. Touches all 56 tags, so
   it wants its own small commit and a full sweep of its own.
 
+### The sweep, measured (2026-08-21)
+
+**81 runs | 812 PASS | 1 FAIL | 0 script errors.** PACINGTEST held — eleven
+green, `STEADY MIDTIER` included, so the band stands and §41's re-derivation
+is again a debt rather than a crisis. The save was untouched, and every
+migrate mode including the twice-grown `migrate26` passed.
+
+**The one red was §112's bark, and it was a recurrence with a paper trail.**
+`A MARK IS THE NETWORK'S TO READ` asserts the unfiled refusal appears in its
+own words; the new `far_mark_locked` bark fired inline, one line after
+`hud.prompt(CANNOT_READ)`, and `Barks.fire`'s own v18 comment says exactly what
+happened next: *a bark writes straight to the same prompt label*. The refusal
+was replaced by the nudge on the first-ever tap — the pilot least able to
+guess, which is word for word the case the v18 comment was written about.
+
+The fix is a posture, not a patch: the bark **arms** on the refusal and
+**fires at range-exit**, where the refusal is a stale line the player is
+already flying away from — replacing it there is a handoff, not a stomp. If
+anything else writes the prompt first, the moment has passed and the bark
+stands down *unspent*, which is fire()'s own rule ("a bark that fires once
+ever must not be consumed by being suppressed") honoured from the other side.
+
 ### The horizon, remembered
 
 Ten sections, §107–§113 built across seven commits and two sub-splits, one

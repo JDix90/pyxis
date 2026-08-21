@@ -110,6 +110,14 @@ var index := -1
 var kind := ""
 
 var _holding := false
+# §112/§113. The far-mark bark is ARMED by a refusal and FIRED at range-exit.
+# Fired inline it stomped the refusal itself -- Barks.fire's own v18 comment
+# says a bark writes straight to the same prompt label, and A MARK IS THE
+# NETWORK'S TO READ went red on exactly that. At range-exit the refusal is a
+# STALE line the player is flying away from, so replacing it is a handoff,
+# not a stomp -- and if anything else has written the prompt first, the
+# moment has passed and the bark stands down unspent.
+var _refused := false
 var _progress := 0.0
 var _lamp_mat: StandardMaterial3D
 var _t := 0.0
@@ -194,6 +202,20 @@ func _process(delta: float) -> void:
 	if not _holding and _progress > 0.0:
 		_progress = maxf(_progress - DECAY_RATE * delta, 0.0)
 		_sync_gauge()
+	if _refused:
+		var hud := get_tree().get_first_node_in_group("hud")
+		if hud == null or not hud.has_method("prompt_text"):
+			_refused = false
+		elif String(hud.prompt_text()) != CANNOT_READ:
+			# Something else owns the prompt now; the moment has passed, and a
+			# bark must not be spent where it cannot be seen.
+			_refused = false
+		else:
+			var p := get_tree().get_first_node_in_group("player")
+			if p == null or global_position.distance_to(
+					(p as Node3D).global_position) > read_range() * 1.5:
+				_refused = false
+				Barks.fire("far_mark_locked")
 
 
 func pick_anchor() -> Vector3:
@@ -222,7 +244,7 @@ func on_tapped() -> void:
 		# the ship for nothing, which is the affordance problem inverted.
 		if hud:
 			hud.prompt(CANNOT_READ)
-			Barks.fire("far_mark_locked")
+			_refused = true
 		return
 	if hud:
 		if is_read():
@@ -240,7 +262,7 @@ func hold_begin() -> void:
 		var hud := get_tree().get_first_node_in_group("hud")
 		if hud:
 			hud.prompt(CANNOT_READ)
-			Barks.fire("far_mark_locked")
+			_refused = true
 		return
 	if not _player_in_range():
 		_approach()
