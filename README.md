@@ -47,11 +47,11 @@ behind a `PYXIS_*` environment variable and run headless:
 PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 ```
 
-Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 55 of them —
-the 55 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
+Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 56 of them —
+the 56 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
 `TAGS` at all: it is one harness with 25 stateful modes, run as its own
-sequence. So a full sweep is 55 + 25 = **80 runs** (`STOCKTEST` and `migrate26`
-arrive together with §107).
+sequence. So a full sweep is 56 + 25 = **81 runs** (`STOCKTEST` and `migrate26`
+arrived with §107; `SKILLTEST` with §111).
 
 Those three numbers are derivable from `run_harness.sh` and nothing else, so
 check them there rather than trusting this paragraph — it has been wrong before,
@@ -240,7 +240,13 @@ recorded here rather than quietly deleted.
 measured on a full sweep after the nursery shipped: 78 runs, 772 PASS, 0 FAIL,
 0 script errors, save format v26.
 
-**§107 (the counted shelf) has not been swept.** It bumps the save to **v27**,
+**§107–§110 swept green on the author's machine; §111 has not been swept.**
+§111 adds the `SKILLTEST` tag (5 legs) — one new run, so 81 by arithmetic — and
+grows `migrate26` with the ladder's clauses. It introduces no new `class_name`.
+The run count above is arithmetic off `run_harness.sh`; the PASS total is not,
+and none is recorded here until a sweep reports one.
+
+**§107 (the counted shelf), for the record.** It bumps the save to **v27**,
 adds the `STOCKTEST` tag (7 legs) and the `migrate26` mode — two new runs — and
 gives `MARKETTEST` its first five assertions and `PACINGTEST` one more, none of
 which existed to pass or fail before. It introduces no new `class_name`, so the

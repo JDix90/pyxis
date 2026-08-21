@@ -1536,6 +1536,17 @@ cheapest-first for free — it makes an existing one honest.
 
 ### The pilot line
 
+> **Amended v27 (§111): the refusal stands per-SKILL; eleven ladders earn one
+> shared record.** The sentence below is about a skill getting *its own*
+> console, and that is still refused — not one ladder in the game has a screen,
+> a tree, a point to allocate or a button to press. What changed is arithmetic:
+> four one-line summaries fit on the pause root and eleven do not, and the two
+> comments in `pause_menu.gd` that each argued "one more `_sub` is affordable,
+> the page already scrolls" were correct three times and would not have been
+> correct a seventh. So the lines moved to a PILOT'S LEDGER page and **the root
+> page got shorter, not longer**. The test of whether this broke the rule is
+> the one the rule implies: there is nothing on that page to press.
+
 There is deliberately no skill screen ("a skill with its own screen is a skill
 that has become bookkeeping"). What was missing was never a tree, it was
 **visibility**: ARCHEOLOGY could only be read inside a lab tab, i.e. only after
@@ -6290,7 +6301,8 @@ corrections are what set the commit order:
 | 2 | the word on the shelf: stock outranks arbitrage at the rumour desk, a FRIENDLY+ reserve as a GATE, and the deep-station events §107 deferred | rides v27 | **BUILT** — §108; the deferred debt is discharged, and two live defects at the rumour desk fell out of reading it |
 | 3 | the tug and the claim: a depth-scaled rescue fee, and a claim clock on deep spills | rides v27 | **BUILT** — §109; dying was cheaper than a beacon jump, and the code's own comment claiming otherwise was aspirational |
 | 4 | the order book: the forge hint that lied, TWO widened read windows (the third was cut by its own arithmetic), and requisitions as the first real credit sink | rides v27 | **BUILT** — §110; the hint was a v22 fix restating the bug it fixed |
-| 5 | the ladder: seven new skills, four deepened, one shared ledger page | rides v27 | not built |
+| 5a | the ladder: the machinery, the shared ledger page, and the first two (SURVEYING, FILING) | rides v27 | **BUILT** — §111; HUNTING moved to 5b rather than ship tiers that grant nothing (§88) |
+| 5b | the rest of the roster (HUNTING, RIFT-WORK, BROKERAGE, COLONIAL, WARDENRY) and the four deepenings | rides v27 | not built |
 | 6 | the sounded ground: teach the filing chain, held cells as jump anchors, colony works | rides v27 | not built |
 | 7 | the measure: re-derive the pacing band from the sweep, derive the README's counts | none | not built |
 
@@ -11409,3 +11421,93 @@ because a hand-edited file is input and not truth. The `migrate26` leg grew the
 clauses: four orders in, two out (a bulk good and a component this build never
 had), a future stamp clamped rather than dropped, and `reads_done` keeping only
 real components with positive counts.
+
+## 111. The ladder (rides v27)
+
+Horizon 10, commit 5a. The playtest asked for twenty RuneScape-style skills
+trained by doing. The game already had four, governed by law that twenty cannot
+fit inside, so the scope settled at **ten to twelve with one shared record** —
+and this is the machinery, the record, and the first two.
+
+### One table, and a tier that cannot disagree with itself
+
+The legacy four shipped one at a time over twenty versions, each with its own
+`var`, its own `_xp` var, its own tier constants and its own line function. That
+is fine at four and unmanageable at eleven. The new ones are **a dict and a
+table**: `SKILL_TIERS`, `SKILL_LABELS`, `SKILL_VERBS`, `SKILL_PERKS`, and a
+`skills` store holding xp alone.
+
+**The tier is derived, never stored.** The legacy four keep a tier beside an xp
+and a loader that clamps one against the other; there is only one number here,
+so there is nothing to drift. `THE TIER IS DERIVED, NEVER STORED` writes every
+rung of every ladder straight into the xp and reads the tier back, then pushes
+past the last rung to confirm it pins at the cap rather than running off the end.
+
+A new ladder is a row in a table. It is never a line of the ledger page, never a
+line function, and never a save migration.
+
+### The two that shipped, and why only two
+
+**SURVEYING** — fed by masts worked, which is *the one verb in the game that fed
+nothing at all*. Survey coverage has counted it persistently and boundedly since
+v21 and no ladder ever read the count. Four tiers: the reading is named before
+you spend the hold; a quarter off the hold; the rival heads-up moves from after
+the hold to before it (so a filed cell becomes a choice rather than a surprise);
+and THE LONG ARM, half again the reach — which §22 makes meaningful, because the
+mast rides the stern precisely so the stand-off sits outside a guarded hull's
+ring. A longer arm makes the sneak play **safer**, not richer.
+
+**FILING** — fed by returns filed with the network and by far marks read for the
+first time, deliberately the two halves of one act (§98: filing is what buys the
+literacy, and a mark is what the literacy is for). Two tiers, both time and
+reach at a plate.
+
+**Two, not five, and that is §88 rather than a shortfall.** The plan had
+SURVEYING, FILING and HUNTING in this commit. HUNTING's tiers want HUD work —
+naming an apex's phase timing, narrowing an intel cone's rendering — and a tier
+that is reachable but grants nothing a player can see is "a wired verb without
+an affordance", which is an unbuilt feature wearing a table row. It moves to 5b
+with the other four, where the HUD work happens in one pass instead of four.
+`EVERY RUNG SAYS WHAT IT BOUGHT` is the leg that keeps that honest: a rung with
+no perk string fails.
+
+### The tier the design refused
+
+FILING t1 was written as **THE MARKS NAME THEMSELVES** — an unread far mark
+showing its kind at range. `sounding_mark.gd` refuses that in writing:
+
+> *an unread mark is "A SOUNDING MARK" to everybody, because the kind is
+> precisely what the notation tells you*
+
+and a harness pins `NAMES` to `FarMarks.kinds()` rather than trusting the
+comment. A tier that revealed the kind at range would delete the one thing
+reading a mark is *for*. Both FILING tiers now buy the same reading **sooner and
+from further out**, which is time and access — currencies §26 permits — and
+leaves the reveal exactly where it was.
+
+### The feeds, and what the assertion actually covers
+
+Seven acts feed six ladders and no act feeds two: breach and read
+(ARCHEOLOGY), a fence sale (SMUGGLING), a seam cut (MINING), a parley talked
+down (PERSUASION), a mast worked (SURVEYING), a return filed and a mark first
+read (FILING).
+
+`FEEDS COMPETE, SIX WAYS` snapshots every ladder, fires one feed, and asserts
+exactly one moved. **It is honest about its reach in its own comment**: that
+catches a mutator paying two ladders or a shared helper fanning out, and it does
+*not* prove the verbs are disjoint — that is a fact about where the calls live,
+established by reading them, not by running them.
+
+Two feeds were shaped specifically to refuse a farm. A mast counts **once per
+mast**, and a worked cell cannot be re-worked (the spawn checks `is_surveyed`),
+so re-holding a dish pays nothing. A mark counts **first reads only**, using the
+`first` flag already computed there for the legend spawn. And filing counts the
+cells the player's own goods paid for and **not** the rival-reached cells that
+come home free — a ladder that rose for work somebody else did would be the
+"pays for running" shape the skill law refuses by name.
+
+`NO LADDER PAYS IN CREDITS` climbs every ladder from zero to cap, tier landings
+included, watching the wallet — a tier that paid on arrival would slip past a
+single-call check. That is what keeps all of this clear of PACINGTEST's band,
+which matters more this horizon than most: `MIDTIER` has under a tenth of a
+mid-tier module of headroom.

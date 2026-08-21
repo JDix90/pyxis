@@ -225,6 +225,64 @@ var requisition_orders: Array = []
 # what stops requisitions being a way to skip ARCHEOLOGY rather than a way to
 # stop hunting for the eighth unit of something you already understand.
 var reads_done := {}
+# v27 (§111). skill id -> xp. The TIER is never stored; skill_tier derives it.
+var skills := {}
+
+# v27 (§111). THE LADDER. Four skills shipped one at a time over twenty
+# versions, each with its own var, its own xp var, its own tier constant and its
+# own line function -- which was fine at four and is not fine at eleven. These
+# are a DICT and a table, and the tier is DERIVED from the xp rather than stored
+# beside it, so unlike the legacy four there is no second number that can
+# disagree with the first.
+#
+# THE LAW THEY ALL KEEP (§19, §26, §36): a tier buys TIME, a CHOICE, ACCESS or
+# INFORMATION. Never credits, never a stat, never a price. And every feed is a
+# DIFFERENT VERB -- an hour surveying is an hour not cracking hulks -- because
+# skills all fed by "playing the game" rise together and become a clock rather
+# than a decision. FEEDS COMPETE asserts that as data.
+const SKILL_TIERS := {
+	# Masts worked. The one verb in the game that fed nothing at all: survey
+	# coverage has counted it persistently and bounded since v21, and no ladder
+	# has ever read the count.
+	"surveying": [0, 6, 16, 34, 60],
+	# Returns filed with the refusers' network, and far marks read for the first
+	# time. Deliberately the two halves of one act -- filing is what buys the
+	# literacy, and a mark is what the literacy is FOR (§98).
+	"filing": [0, 3, 8],
+}
+const SKILL_LABELS := {
+	"surveying": "SURVEYING",
+	"filing": "FILING",
+}
+# What to do if you want the first tier. §58's rule: a refusal names the act.
+const SKILL_VERBS := {
+	"surveying": "WORK A SURVEY MAST OUT PAST THE CHART",
+	"filing": "FILE A RETURN AT A FOREIGN MAST",
+}
+# Index by tier, so index 0 is the unearned rung and reads as "".
+const SKILL_PERKS := {
+	"surveying": ["", "THE READING IS NAMED", "MAST TEMPO",
+		"THE RIVAL SHOWS EARLY", "THE LONG ARM"],
+	# NOT "the marks name themselves". That was the plan and sounding_mark.gd
+	# refuses it in writing: "an unread mark is A SOUNDING MARK to everybody,
+	# because the kind is precisely what the notation tells you", and a harness
+	# pins NAMES to FarMarks.kinds() rather than trusting the comment. A tier
+	# that revealed the kind at range would delete the one thing reading a mark
+	# is FOR. Both of these buy the same reading, sooner and from further out.
+	"filing": ["", "A QUICKER HAND", "ALONGSIDE FROM FURTHER"],
+}
+
+# The tiers, named where the world reads them so a call site says what it means.
+const SURVEY_NAMED_TIER := 1
+const SURVEY_TEMPO_TIER := 2
+const SURVEY_TEMPO_BONUS := 0.25    # a quarter off the hold
+const SURVEY_RIVAL_TIER := 3
+const SURVEY_REACH_TIER := 4
+const SURVEY_REACH_MULT := 1.5      # far enough to work a guarded hull's mast
+const FILING_QUICK_TIER := 1
+const FILING_QUICK_BONUS := 0.25    # a quarter off the hold
+const FILING_REACH_TIER := 2
+const FILING_REACH_MULT := 1.5      # come alongside from further out
 
 const REQ_MAX_OPEN := 3
 # Five played minutes. Long enough that ordering is a decision made on the way
@@ -1230,6 +1288,7 @@ func reset_to_starter() -> void:
 	market_stock = {}
 	requisition_orders = []
 	reads_done = {}
+	skills = {}
 	market_events = []
 	archeology = 0
 	archeology_xp = 0
@@ -3293,6 +3352,74 @@ func can_read(salvage_id: String, at_lab: bool) -> bool:
 	return band <= archeology + (1 if at_lab else 0)
 
 
+func skill_ids() -> Array:
+	return SKILL_TIERS.keys()
+
+
+func skill_xp(id: String) -> int:
+	return int(skills.get(id, 0))
+
+
+func skill_tier(id: String) -> int:
+	# DERIVED, NEVER STORED. The legacy four keep a tier var beside an xp var and
+	# a loader that clamps one against the other; this cannot drift because there
+	# is only one number.
+	var tiers: Array = SKILL_TIERS.get(id, [])
+	var xp := skill_xp(id)
+	var t := 0
+	for i in range(tiers.size()):
+		if xp >= int(tiers[i]):
+			t = i
+	return t
+
+
+func skill_cap(id: String) -> int:
+	return maxi((SKILL_TIERS.get(id, [0]) as Array).size() - 1, 0)
+
+
+func skill_to_next(id: String) -> int:
+	# -1 at the cap, which is what the line renders as NOTHING LEFT TO LEARN.
+	var tiers: Array = SKILL_TIERS.get(id, [])
+	var t := skill_tier(id)
+	if t >= tiers.size() - 1:
+		return -1
+	return maxi(int(tiers[t + 1]) - skill_xp(id), 0)
+
+
+func mark_skill(id: String, n := 1) -> bool:
+	# THE ONE MUTATOR, and it returns whether a TIER landed rather than whether
+	# xp moved -- mark_mining's signature, and for its reason: the caller wants
+	# to know whether to say something, and xp moves constantly.
+	if not SKILL_TIERS.has(id) or n <= 0:
+		return false
+	var before := skill_tier(id)
+	skills[id] = skill_xp(id) + n
+	var after := skill_tier(id)
+	_queue_save()
+	if after <= before:
+		return false
+	# The FINAL tier only. A jump of two rungs is one line in the log, not two --
+	# mark_smuggling's rule.
+	note_log("%s %d — %s" % [String(SKILL_LABELS.get(id, id.to_upper())), after,
+		String((SKILL_PERKS.get(id, []) as Array)[after])])
+	return true
+
+
+func skill_line(id: String) -> String:
+	# ONE RULE, rendered everywhere. The legacy four each wrote their own; these
+	# share this, so a new ladder is a table row and never a line function.
+	var label := String(SKILL_LABELS.get(id, id.to_upper()))
+	var t := skill_tier(id)
+	if t <= 0:
+		# §58: the unearned rung names the ACT, not the gate.
+		return "%s 0 — %s" % [label, String(SKILL_VERBS.get(id, ""))]
+	var perk := String((SKILL_PERKS.get(id, []) as Array)[t])
+	var left := skill_to_next(id)
+	if left < 0:
+		return "%s %d — %s · NOTHING LEFT TO LEARN" % [label, t, perk]
+	return "%s %d — %s · %d TO NEXT" % [label, t, perk, left]
+
+
 func note_read(component: String) -> void:
 	# The order desk's gate, written by the one thing that produces a component.
 	if CommodityDB.is_component(component):
@@ -3785,6 +3912,7 @@ func save_dict() -> Dictionary:
 		"market_stock": market_stock,
 		"requisition_orders": requisition_orders,
 		"reads_done": reads_done,
+		"skills": skills,
 		"market_events": market_events,
 		# NO `settings` AND NO `audio_muted`. Both moved to prefs.json when the
 		# save became per-pilot: they belong to the device, and leaving them here
@@ -4147,6 +4275,17 @@ func load_game() -> bool:
 		var rn := int(data["reads_done"][rk])
 		if rn > 0:
 			reads_done[rid] = rn
+	# v27 (§111). Only ids this build still has, only positive xp. No clamp on
+	# the value: xp past the last rung is harmless (the tier derives to the cap)
+	# and clamping it would silently rewrite a save every time a tier is added.
+	skills = {}
+	for kk in data.get("skills", {}):
+		var kid := str(kk)
+		if not SKILL_TIERS.has(kid):
+			continue
+		var kx := int(data["skills"][kk])
+		if kx > 0:
+			skills[kid] = kx
 	# v5 fields. Anyone loading a v1-v4 save has been playing already, so the
 	# tutorial is treated as finished rather than replayed at them.
 	#

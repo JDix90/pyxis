@@ -107,6 +107,7 @@ const HARNESS_VARS := [
 	"PYXIS_SMUGTEST",
 	"PYXIS_SPILLTEST",
 	"PYXIS_STATIONTEST",
+	"PYXIS_SKILLTEST",
 	"PYXIS_STOCKTEST",
 	"PYXIS_STORETEST",
 	"PYXIS_STORMTEST",
@@ -1199,6 +1200,9 @@ func _ready() -> void:
 	elif OS.get_environment("PYXIS_STOCKTEST") != "":
 		GameState.lock_saving()
 		_run_stock_test()
+	elif OS.get_environment("PYXIS_SKILLTEST") != "":
+		GameState.lock_saving()
+		_run_skill_test()
 	elif OS.get_environment("PYXIS_BALANCE") != "":
 		GameState.lock_saving()
 		_run_balance_test()
@@ -1448,9 +1452,21 @@ func file_charts_with_network() -> int:
 		GameState.note_survey_held(String(key_v))
 	for key_v in lost:
 		GameState.note_survey_held(String(key_v))
+	# §111. FILING'S FEED, and the ONE thing this verb has ever paid in besides
+	# a bearing. Counted on `cells` and deliberately NOT on `lost`: those came
+	# home free because a colleague had already reached them, and a ladder that
+	# rose for work somebody else did would be the "pays for running" shape the
+	# skill law refuses by name. Still no credits, still no Commission -- a tier
+	# buys time and reach at a plate, which is what filing is for.
+	if not cells.is_empty() and GameState.mark_skill("filing", cells.size()) and hud:
+		hud.show_toast("FILING %d — %s" % [GameState.skill_tier("filing"),
+			String((GameState.SKILL_PERKS["filing"] as Array)[
+				GameState.skill_tier("filing")])], Palette.GOLD)
+
 	# THE GOODS LEAVE LAST, after the marks are safe. No credits, no bonus, no
 	# cells_filed, no chart_data_sold: the Commission cannot hear about this and
-	# the wallet does not move. The whole payment is that somebody reads it.
+	# the wallet does not move. The whole payment is that somebody reads it --
+	# and, since §111, that the hand doing it gets quicker.
 	for good_v in (plan["goods"] as Dictionary):
 		GameState.unload_cargo(String(good_v), int(plan["goods"][good_v]))
 	if hud:
@@ -14569,6 +14585,154 @@ func _run_stock_test() -> void:
 	get_tree().quit()
 
 
+# --- skill harness ----------------------------------------------------------
+
+func _skill_snapshot() -> Dictionary:
+	var out := {"archeology": GameState.archeology_xp,
+		"smuggling": GameState.smuggling_xp, "mining": GameState.mining_xp,
+		"persuasion": GameState.persuasion_xp}
+	for id_v in GameState.skill_ids():
+		out[String(id_v)] = GameState.skill_xp(String(id_v))
+	return out
+
+
+func _skill_moved(before: Dictionary) -> Array:
+	var moved := []
+	var now := _skill_snapshot()
+	for k in now:
+		if int(now[k]) != int(before.get(k, 0)):
+			moved.append(String(k))
+	return moved
+
+
+func _run_skill_test() -> void:
+	# §111. Pure state work on GameState plus two nodes built off-tree, so this
+	# needs no PLAYING boot and no world.
+	GameState.skills = {}
+	GameState.archeology_xp = 0
+	GameState.smuggling_xp = 0
+	GameState.mining_xp = 0
+	GameState.persuasion_xp = 0
+	GameState.archeology = 0
+	GameState.smuggling = 0
+	GameState.mining = 0
+	GameState.persuasion = 0
+	GameState.salvage = 10000
+
+	# 1. FEEDS COMPETE, SIX WAYS. Every ladder in the game, snapshotted; one feed
+	#    fired; exactly one may have moved. This is the runtime half of §19's
+	#    rule -- it catches a mutator that pays two ladders, or a shared helper
+	#    that fans out. It does NOT prove the VERBS are disjoint (that is a fact
+	#    about where the calls live, checked by reading them: breach, read,
+	#    fence-sale, seam-cut, parley, mast, filing -- seven acts, no overlap).
+	var feeds := ["archeology", "smuggling", "mining", "persuasion",
+		"surveying", "filing"]
+	var crossed := ""
+	for f in feeds:
+		var before := _skill_snapshot()
+		match f:
+			"archeology": GameState.mark_archeology(1)
+			"smuggling": GameState.mark_smuggling(1)
+			"mining": GameState.mark_mining(1)
+			"persuasion": GameState.mark_persuasion(1)
+			_: GameState.mark_skill(f, 1)
+		var moved := _skill_moved(before)
+		if moved.size() != 1 or String(moved[0]) != f:
+			crossed = "%s moved %s" % [f, str(moved)]
+	print("[skill] FEEDS COMPETE, SIX WAYS one feed fired at a time across %d ladders, first crossover: %s -> %s" % [
+		feeds.size(), crossed if crossed != "" else "none",
+		"PASS" if crossed == "" else "FAIL"])
+
+	# 2. NO LADDER PAYS IN CREDITS. §19/§26's first law, and the one that keeps
+	#    every ladder clear of PACINGTEST's band. Swept across a full climb of
+	#    each new skill from zero to cap, tier landings included -- a tier that
+	#    paid on arrival would slip past a single-call check.
+	GameState.skills = {}
+	var purse := GameState.salvage
+	var paid := ""
+	for id_pv in GameState.skill_ids():
+		var sid_p := String(id_pv)
+		for i in range(80):
+			GameState.mark_skill(sid_p, 1)
+			if GameState.salvage != purse and paid == "":
+				paid = "%s at xp %d" % [sid_p, GameState.skill_xp(sid_p)]
+	print("[skill] NO LADDER PAYS IN CREDITS %d salvage before a full climb of every ladder, %d after, first payer: %s -> %s" % [
+		purse, GameState.salvage, paid if paid != "" else "none",
+		"PASS" if paid == "" and GameState.salvage == purse else "FAIL"])
+
+	# 3. THE TIER IS DERIVED, NEVER STORED. The legacy four keep a tier var
+	#    beside an xp var and a loader that clamps one against the other; these
+	#    keep one number. Written straight into the xp, read back as a tier.
+	GameState.skills = {}
+	var derive_bad := ""
+	for id_dv in GameState.skill_ids():
+		var sid_d := String(id_dv)
+		var rungs: Array = GameState.SKILL_TIERS[sid_d]
+		for want in range(rungs.size()):
+			GameState.skills[sid_d] = int(rungs[want])
+			if GameState.skill_tier(sid_d) != want and derive_bad == "":
+				derive_bad = "%s at %d xp read tier %d, wanted %d" % [
+					sid_d, int(rungs[want]), GameState.skill_tier(sid_d), want]
+		# And past the last rung it pins at the cap rather than running off.
+		GameState.skills[sid_d] = 999999
+		if GameState.skill_tier(sid_d) != GameState.skill_cap(sid_d) and derive_bad == "":
+			derive_bad = "%s ran past its cap" % sid_d
+	print("[skill] THE TIER IS DERIVED, NEVER STORED every rung of every ladder written as xp and read back, first mismatch: %s -> %s" % [
+		derive_bad if derive_bad != "" else "none",
+		"PASS" if derive_bad == "" else "FAIL"])
+
+	# 4. A TIER IS A GATE. The rule functions, not the rendering (§19): each
+	#    grant is measured at tier 0 and at cap, off-tree so no world is needed.
+	var mast := SurveyMast.new()
+	var mark := SoundingMark.new()
+	GameState.skills = {}
+	var hold0 := mast.survey_seconds()
+	var reach0 := mast.reach()
+	var read0 := mark.read_seconds()
+	var near0 := mark.read_range()
+	GameState.skills = {"surveying": 999, "filing": 999}
+	var hold1 := mast.survey_seconds()
+	var reach1 := mast.reach()
+	var read1 := mark.read_seconds()
+	var near1 := mark.read_range()
+	mast.free()
+	mark.free()
+	var gates_ok: bool = hold1 < hold0 and reach1 > reach0 \
+		and read1 < read0 and near1 > near0
+	print("[skill] A TIER IS A GATE mast hold %.2fs->%.2fs, reach %.1f->%.1f; plate read %.2fs->%.2fs, alongside %.1f->%.1f -> %s" % [
+		hold0, hold1, reach0, reach1, read0, read1, near0, near1,
+		"PASS" if gates_ok else "FAIL"])
+
+	# 5. EVERY RUNG SAYS WHAT IT BOUGHT. A tier with no perk string is a tier
+	#    that grants nothing the player can read -- §88's "a wired verb without
+	#    an affordance" wearing a table. Also pins the tier-0 line to the VERB
+	#    rather than to a gate, which is §58.
+	var voiceless := ""
+	for id_lv in GameState.skill_ids():
+		var sid_l := String(id_lv)
+		var perks: Array = GameState.SKILL_PERKS.get(sid_l, [])
+		var rungs2: Array = GameState.SKILL_TIERS[sid_l]
+		if perks.size() != rungs2.size() and voiceless == "":
+			voiceless = "%s has %d rungs and %d perks" % [
+				sid_l, rungs2.size(), perks.size()]
+		for t in range(1, perks.size()):
+			if String(perks[t]).strip_edges() == "" and voiceless == "":
+				voiceless = "%s tier %d is unnamed" % [sid_l, t]
+	GameState.skills = {}
+	var zero_names_verb := true
+	for id_zv in GameState.skill_ids():
+		var line0 := GameState.skill_line(String(id_zv))
+		if not line0.contains(String(GameState.SKILL_VERBS[id_zv])):
+			zero_names_verb = false
+	print("[skill] EVERY RUNG SAYS WHAT IT BOUGHT %d ladders, first silent rung: %s; and tier 0 names the act rather than the gate=%s -> %s" % [
+		GameState.skill_ids().size(), voiceless if voiceless != "" else "none",
+		str(zero_names_verb),
+		"PASS" if voiceless == "" and zero_names_verb else "FAIL"])
+
+	GameState.skills = {}
+	get_tree().quit()
+
+
 # --- balance harness --------------------------------------------------------
 
 # Sampled by the balance harness: how often the ship was shooting on its own.
@@ -19382,6 +19546,10 @@ func _run_save_test() -> void:
 				{"good": "rod_decay", "port": "void", "at": 9.9e9},
 			],
 			"reads_done": {"sink_thermal": 3, "alloys": 9, "rod_decay": 0},
+			# §111's ladder, on the same version. xp only -- the tier is derived,
+			# so there is no second number here to disagree with the first.
+			"skills": {"surveying": 20, "filing": 4, "basket_weaving": 9,
+				"surveying_typo": 0},
 		}
 		var fg27 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
 		fg27.store_string(JSON.stringify(good27))
@@ -19421,16 +19589,30 @@ func _run_save_test() -> void:
 			and GameState.order_ready(GameState.requisition_orders[0])
 		var reads27: bool = GameState.has_read("sink_thermal") \
 			and not GameState.has_read("alloys") and not GameState.has_read("rod_decay")
+		# §111. Two real ladders survive with their xp, and the TIER each reads
+		# back is computed from that xp rather than restored beside it: 20 xp
+		# clears surveying's third rung (16) and not its fourth (34), so it reads
+		# tier 2, and 4 clears filing's second (3) so it reads tier 1. An unknown
+		# id and a zero drop, the same way an unknown good does two blocks up.
+		var skills27: bool = GameState.skills.size() == 2 \
+			and GameState.skill_xp("surveying") == 20 \
+			and GameState.skill_tier("surveying") == 2 \
+			and GameState.skill_xp("filing") == 4 \
+			and GameState.skill_tier("filing") == 1 \
+			and not GameState.skills.has("basket_weaving") \
+			and not GameState.skills.has("surveying_typo")
 		GameState.requisition_orders = []
 		GameState.reads_done = {}
+		GameState.skills = {}
 		GameState.market_stock = {}
-		print("[savetest] v26->v27 ORDERS 2 of 4 survived (a bulk good and an unknown part dropped, a future stamp clamped)=%s, the clamped one is still in transit while the old one is ready=%s, reads_done kept only real components=%s" % [
-			str(orders27), str(waiting27), str(reads27)])
+		print("[savetest] v26->v27 ORDERS 2 of 4 survived (a bulk good and an unknown part dropped, a future stamp clamped)=%s, the clamped one is still in transit while the old one is ready=%s, reads_done kept only real components=%s, and two ladders reload with their tiers DERIVED from xp=%s" % [
+			str(orders27), str(waiting27), str(reads27), str(skills27)])
 		print("[savetest] v26->v27 A V26 SAVE HAS EVERY SHELF FULL kept=%s; rubbish pass kept 3 of 6 (unknown good, missing join and a zero deficit dropped)=%s with a 12-unit hole reloading as %d of %d=%s, a future stamp clamped to now=%s, and a deep row keyed on its CELL surviving JSON=%s -> %s" % [
 			str(kept26), str(cleaned27), cap26 - 12, cap26, str(shelf27),
 			str(clamped27), str(deep27),
 			"PASS" if ok26 and kept26 and cleaned27 and shelf27 and clamped27
-				and deep27 and orders27 and waiting27 and reads27 else "FAIL"])
+				and deep27 and orders27 and waiting27 and reads27 and skills27
+				else "FAIL"])
 	elif mode == "future":
 		# A SAVE FROM A NEWER BUILD. Refusing to load it was never the hard
 		# part — that clause has always been there. What it did NOT do was stop

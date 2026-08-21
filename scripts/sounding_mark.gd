@@ -46,6 +46,22 @@ const READ_RANGE := 12.0
 const READ_TIME := 3.0
 const DECAY_RATE := 0.5
 
+
+# §111. FILING's two tiers, and neither of them touches what a plate SAYS. The
+# kind is revealed by the reading and never before it -- that is the rule this
+# file states about itself, and the whole reason reading a mark is worth doing.
+# What a filer's hand earns is the same reading, sooner and from further out.
+func read_seconds() -> float:
+	if GameState.skill_tier("filing") >= GameState.FILING_QUICK_TIER:
+		return READ_TIME * (1.0 - GameState.FILING_QUICK_BONUS)
+	return READ_TIME
+
+
+func read_range() -> float:
+	if GameState.skill_tier("filing") >= GameState.FILING_REACH_TIER:
+		return READ_RANGE * GameState.FILING_REACH_MULT
+	return READ_RANGE
+
 # WHAT THE NETWORK CALLS EACH OF THEM, revealed by the reading and never
 # before it: an unread mark is "A SOUNDING MARK" to everybody, because the kind
 # is precisely what the notation tells you. Keys are FarMarks.kinds() and the
@@ -186,13 +202,13 @@ func pick_anchor() -> Vector3:
 
 func _player_in_range() -> bool:
 	var p := get_tree().get_first_node_in_group("player")
-	return p != null and global_position.distance_to(p.global_position) <= READ_RANGE
+	return p != null and global_position.distance_to(p.global_position) <= read_range()
 
 
 func _approach() -> void:
 	var p := get_tree().get_first_node_in_group("player")
 	if p and p.has_method("command_move"):
-		p.command_move(global_position + Vector3(READ_RANGE * 0.6, 0.0, 0.0))
+		p.command_move(global_position + Vector3(read_range() * 0.6, 0.0, 0.0))
 
 
 func on_tapped() -> void:
@@ -243,7 +259,7 @@ func hold_tick(delta: float) -> void:
 	if not _player_in_range():
 		hold_release()
 		return
-	_progress += delta / READ_TIME
+	_progress += delta / read_seconds()
 	_sync_gauge()
 	if _progress >= 1.0:
 		_read()
@@ -263,6 +279,13 @@ func _read() -> void:
 	_holding = false
 	_progress = 0.0
 	var first := GameState.note_mark_read(mark_key())
+	# §111. FILING's second feed. FIRST READS ONLY -- `first` is exactly that
+	# question, already asked here for the legend spawn -- so re-reading a plate
+	# you have already read pays nothing and the ladder cannot be farmed off one
+	# buoy. Filing a return is the other half; the two are one act (§98) and
+	# feed one ladder.
+	if first:
+		GameState.mark_skill("filing")
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud:
 		hud.crack_progress(-1.0)
