@@ -248,8 +248,15 @@ NETWORK'S TO READ`: §112's new bark fired inline after the CANNOT_READ prompt
 and replaced it -- the exact v18 defect Barks.fire's own comment records, a
 bark stomping the sentence the player needed. The bark now arms on the refusal
 and fires at range-exit, where the refusal is a stale line being flown away
-from; the fix commit is the one carrying this paragraph, and the re-run of
-RETURNTEST is the number that supersedes the 1 FAIL above.
+from.
+
+**The fix was then verified by re-running RETURNTEST alone: 27 pass, 0 fail.**
+So the horizon's standing figure is **813 PASS across 81 runs, 0 FAIL, 0 script
+errors, save format v27** — and that 813 is ARITHMETIC ACROSS TWO RUNS (a full
+sweep of 812/1, plus a one-tag re-run turning the 1 into a pass), not a single
+measured sweep. Written out because this repo has twice been wrong in exactly
+the direction of rounding that distinction away. The next full sweep is what
+turns 813 into a measured number.
 
 **Before that sweep: §107–§110 swept green; §111–§113 were staged as follows.** Together they add `SKILLTEST` (one new run — 81 by
 `--counts`), grow `migrate26` with the ladder's and the works' clauses, and

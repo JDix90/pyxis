@@ -11724,7 +11724,10 @@ stood open since §77.
 
 ### The sweep, measured (2026-08-21)
 
-**81 runs | 812 PASS | 1 FAIL | 0 script errors.** PACINGTEST held — eleven
+**81 runs | 812 PASS | 1 FAIL | 0 script errors**, and after the fix below, a
+RETURNTEST re-run at 27 pass / 0 fail — so the horizon stands at **813 across
+81**, a figure that is arithmetic across two runs rather than one measured
+sweep, and is written that way on purpose. PACINGTEST held — eleven
 green, `STEADY MIDTIER` included, so the band stands and §41's re-derivation
 is again a debt rather than a crisis. The save was untouched, and every
 migrate mode including the twice-grown `migrate26` passed.
