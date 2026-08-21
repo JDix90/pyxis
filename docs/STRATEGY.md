@@ -6373,10 +6373,10 @@ since a refusal living only in STRATEGY is exactly the one that got forgotten.
 
 **Horizon 11 — the reckoning** (opened 2026-08-21, the evening Horizon 10
 closed; researched in `docs/HORIZON-11-RESEARCH.md`, specced in
-`docs/HORIZON-11-THE-RECKONING.md`). Ten commits, **none built.** Fifteen ideas
-went into the research pass and **ten died or were reshaped on contact with the
-code** — the deaths are listed in the research doc's §5 and the survivors are
-below:
+`docs/HORIZON-11-THE-RECKONING.md`). Ten commits, **all built**, plus §120 which
+the tooling in commit 1 went and found. Closed in §122. Fifteen ideas went into
+the research pass and **ten died or were reshaped on contact with the code** —
+the deaths are listed in the research doc's §5 and the survivors are below:
 
 | # | what | save | status |
 |---|---|---|---|
@@ -6389,7 +6389,8 @@ below:
 | 6 | what the claimant left: a claimed spill enters the captain's log and the ledger | rides v28 | **BUILT** — §118; three louder versions died first, including the research pass's own recommendation |
 | 7 | the prompt holds its refusals: `prompt(text, hold_s := 0.0)` appended-optional, and the label wraps | rides v28 | **BUILT** — §121; adding the lock nearly converted a once-ever bark from deferred to spent |
 | 8 | the eleventh: an all-ladders capstone derived from both table families, one broadcast, a visible count | rides v28 | **BUILT** — §119; derived from the tables so 5c can land on either side of it |
-| 9 | the measure: the horizon closed and the sweep read | none | **PLANNED** |
+| — | the one that could not fail: TITLETEST gets the four assertions it was printing in prose | none | **BUILT** — §120; found by commit 1's own `--legs` on its first execution |
+| 9 | the measure: the horizon closed and the sweep read | none | **BUILT** — §122; the figure is 824 across 82 MEASURED, and 831 is arithmetic until a full sweep prints it |
 
 **The finding that set the order, and it is a measurement rather than a
 feeling.** This project has an income instrument and has never had a wealth
@@ -12580,3 +12581,128 @@ than the 720 design space so a width that silently grew past it could not stop
 wrapping while still looking configured — and *reports* the longest prompt's
 measured width without asserting it. A copy edit must not redden this; turning
 the wrap off must.
+
+## 122. The measure (the horizon closes)
+
+Horizon 11, commit 9 — the closing commit, written the way §113 was: **before
+the sweep that judges it**, because its job is to say what that sweep means
+rather than to report it.
+
+### What this horizon did to the economy, in one paragraph
+
+Nothing. Deliberately. Not one commit moved a yield, and the one that changed a
+credit total moved it **outward** — §116's fourth colony work is 10,000 more of
+voluntary sink, priced to its siblings rather than to §114's new rule, because
+pricing one row to a rule the horizon deferred would be making that decision
+invisibly. `STEADY MIDTIER` should therefore read exactly what it read, and a
+red there is a regression rather than §41's re-derivation arriving. It read
+what it read.
+
+### The horizon's own finding, and why it is the whole of it
+
+This project has measured **earning rate** since §41 and has never measured a
+**sink**. Converted against the loop `PACINGTEST` already computes, the deepest
+possible rescue in the game is twenty-six seconds of standard-loop income and a
+full repair is twenty; every voluntary sink together is under an hour against a
+catalogue that takes four. §109's tug is priced at exactly twice the beacon
+jump, which is right, and anchored to a number that was itself never anchored to
+anything.
+
+> **A sink's price is stated in loop-minutes** — §11's missing half.
+
+§114 builds the instrument and asserts three **laws** and no targets, because
+the re-pricing is next horizon's decision taken with the table in hand. The one
+promise it pins now is the one that survives a re-pricing in either direction:
+`NOTHING INVOLUNTARY EXCEEDS A LOOP`. A charge a pilot cannot decline that costs
+more than a measured loop does not price a mistake; it deletes the session
+before it.
+
+### What the tooling found the moment it existed
+
+`--legs` was built to make the PASS total checkable. On its **first execution**
+it reported a tag with a GATE of zero: `TITLETEST` was in `TAGS`, burned a run
+in every sweep since it shipped, and could not fail — four print lines carrying
+their expectations in prose where nothing could read them. §107's MARKETTEST
+defect, still live in a second tag two horizons after it was named and written
+down. Paid in §120.
+
+That is the argument for instruments stated better than any paragraph could:
+**the check found a four-year-old hole in the first second it ran.**
+
+### Three reds, all of them ours, and what each one cost
+
+The sweep is the record, so the reds are recorded rather than smoothed over.
+
+1. **`THE DOCK IS TIME, NOT POWER`** — §116's delivery leg cleared
+   `colony_works`, and the aura leg measures that store eighty lines below.
+   DEFECTS.md class 2 from the opposite direction to §112's loader, so the class
+   was generalised rather than split: *state the dependency at the site, or
+   remove it.*
+2. **`THE MONUMENT ANSWERS A TAP`** — and this one was **not** a fixture
+   problem. §121's first draft read the prompt deadline as a lock and blocked
+   writes as well as clears, so a refusal swallowed the player's next tap. It
+   took four seconds of runtime to expose what reading it could not: the
+   blocking version bought one thing and cost an act its answer.
+3. **A stale checkout, twice** — `--legs` run against a tree from before it
+   existed became a *tag*, and the game booted normally and ran forever. The
+   runner's own comment predicted it forty lines above the bug; the fix refuses
+   unknown arguments with exit 2.
+
+**Two of the three were caught by the sweep and not by reading**, and both were
+in game code written without a Godot binary. That is the honest cost of this
+authoring environment, and it is worth carrying into the next horizon's scoping
+rather than being surprised by again: `--parse` catches what will not compile;
+nothing catches what compiles and means the wrong thing.
+
+### The figure, and what it is not
+
+**Measured, at `2f309ed`, nine of ten commits in: 82 runs | 824 PASS | 1 FAIL |
+0 script errors | 0 short**, save intact, at save format v28. `PACINGTEST` held
+at fourteen. `SAVETEST=migrate27` passed. `--legs`' short-count gate was silent.
+
+Then: COLONYTEST **18/0**, RAIDTEST **33/0**, TITLETEST **4/0** on targeted
+re-runs at `dce38fc`.
+
+**The arithmetic says 831. It is arithmetic.** No full sweep has been taken on
+the current head, and this repo has been wrong twice in exactly the direction of
+rounding that distinction away — §113 spent a paragraph on it and §77 and §73
+are the two instances. `--legs` reports a **GATE of 770**, which is the floor a
+full sweep must clear; the hard number is whatever the next one prints.
+
+### What this horizon leaves open, stated rather than implied
+
+- **The re-pricing.** §114 hands it a table. The decision — raise the sinks,
+  accept post-scarcity and pay in the other currencies, or set a measured band
+  the way `PACINGTEST` sets one for income — is the first thing on the next
+  horizon and is explicitly not taken here.
+- **The four legacy deepenings (5c)**, unchanged from §111's deferral. §119's
+  capstone is derived from the tables precisely so 5c can land on either side of
+  it without moving the bar.
+- **§64's ALLIED-splash question**, open since 2026-08-06 and now with a
+  dependent: the next non-combatant in the world will ask it again. §118 was
+  shaped so it did not have to.
+- **The quadrant front** — idea 4 survived research only as a reshape
+  (`quadrant_of`, moving `DEEP_RAID_TAPER` and nothing else) and wants its own
+  pacing argument against `_pacing_earned`, which §114 now makes possible.
+- **`--legs`' gate is new and has been silent once.** If it ever fires on
+  something legitimate, demote it to a report rather than teaching anybody to
+  ignore a red.
+
+### The horizon, remembered
+
+Nine sections across ten commits and one save bump, opened by a research pass
+that killed or reshaped **ten of fifteen ideas** before any code was written.
+The deaths are the output: a chart read that could not be derived because the
+predicate is monotone, a colony work whose "delivered" was a word with nothing
+under it, a claimant whose three louder versions each hit a written refusal, a
+prompt queue refused twice in the files it would have lived in, and a
+refactor aimed at the wrong eighteen per cent of a file.
+
+Four defects were found **by** the work rather than by a sweep — a relay
+reporting deep weather under a charted heading since §112, a scope decision that
+evaporated between two documents, a fail-open digest guard, and a lock that
+would have spent the barks it suppressed. Two more were found by the sweep, and
+one by the instrument built to look for exactly it.
+
+The checker ended the horizon with six rules, as it began. The harness ended it
+with three commands that need no binary and one gate that did not exist.

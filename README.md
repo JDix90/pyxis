@@ -269,6 +269,28 @@ measured sweep. Written out because this repo has twice been wrong in exactly
 the direction of rounding that distinction away. The next full sweep is what
 turns 813 into a measured number.
 
+**That sweep happened, and it is Horizon 11's.** At `2f309ed`, with nine of the
+horizon's ten commits in: **82 runs | 824 PASS | 1 FAIL | 0 script errors | 0
+short**, save intact, at save format **v28**. `PACINGTEST` held at fourteen
+including `STEADY MIDTIER`, so §41's re-derivation stays a debt rather than a
+crisis; `SAVETEST=migrate27` passed, so the v28 bump is clean; and `--legs`'
+new short-count gate was silent on its first real outing.
+
+**The one red was `THE DOCK IS TIME, NOT POWER`, and it was the horizon's own
+leg** — §116's delivery block cleared `colony_works` for a clean slate and the
+aura leg measures that store eighty lines below. A second red, `THE MONUMENT
+ANSWERS A TAP`, surfaced on the targeted re-run that followed and was a real
+design flaw in §121 rather than a fixture problem (see STRATEGY §121). Both are
+fixed; both were re-run green — COLONYTEST 18/0, RAIDTEST 33/0, TITLETEST 4/0.
+
+**So the standing figure is 824 across 82 at `2f309ed`, and the current head has
+no full sweep on it.** The arithmetic says 831 — 824, plus the one red
+recovered, plus TITLETEST's four new legs and RAIDTEST's two — and **that is
+arithmetic, not a measurement.** It is written that way for the reason the
+paragraph above gives: this repo has been wrong twice in exactly the direction
+of rounding that distinction away. `tools/run_harness.sh --legs` reports a GATE
+of 770, which is the floor a full sweep must clear.
+
 **Before that sweep: §107–§110 swept green; §111–§113 were staged as follows.** Together they add `SKILLTEST` (one new run — 81 by
 `--counts`), grow `migrate26` with the ladder's and the works' clauses, and
 introduce no new `class_name`, so no import pass is needed. The morning sweep

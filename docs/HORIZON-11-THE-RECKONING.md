@@ -79,18 +79,18 @@ Settled by the author on 2026-08-21, from the research pass's forks:
 
 ## The commits
 
-| # | commit | save | size | risk |
-|---|---|---|---|---|
-| 0 | **The ledger of prices** — a SINKS block in PACINGTEST; the §-rule; §5's refusal of operating costs recorded and the §64 item closed | none | ~150 harness lines, 1 §, 1 §64 edit | low |
-| 1 | **The runner's teeth** — kill on the first SCRIPT ERROR; `--parse`; `--legs`; the checker's stale docstring | none | ~120 shell + ~60 python | low |
-| 2 | **`docs/DEFECTS.md`** — ten recurring classes, each with the rule or leg that covers it, and blanks where nothing does | none | docs only | none |
-| 3 | **The colleague's cell** — `survey_filed` gains a third validated word, captured at the act; the chart draws two documents | **v28** | ~80 lines, 2 legs, migrate clauses | medium |
-| 4 | **The trip is the cost** — a fourth colony work that takes a DELIVERED good, raised at the structure | rides v28 | ~120 lines, 2 legs | low |
-| 5 | **A kept light** — the procession and a player colony, one broadcast, once per run | rides v28 | ~50 lines, 1 leg | very low |
-| 6 | **What the claimant left** — a claimed spill enters the log and the ledger | rides v28 | ~40 lines, 1 leg | low |
-| 7 | **The prompt holds its refusals** — `prompt(text, hold_s := 0.0)`, appended and optional; the label wraps | rides v28 | ~80 lines, 2 legs, a 63-site triage | medium |
-| 8 | **The eleventh** — the capstone, derived from both table families; one broadcast; the ledger header's count | rides v28 | ~60 lines, 2 legs | low |
-| 9 | **The measure** — the horizon closed, the sweep read, what it leaves open stated | none | docs | low |
+| # | commit | save | size | risk | state |
+|---|---|---|---|---|---|
+| 0 | **The ledger of prices** — a SINKS block in PACINGTEST; the §-rule; §5's refusal of operating costs recorded and the §64 item closed | none | ~150 harness lines, 1 §, 1 §64 edit | low | **BUILT** — §114 |
+| 1 | **The runner's teeth** — kill on the first SCRIPT ERROR; `--parse`; `--legs`; the checker's stale docstring | none | ~120 shell + ~60 python | low | **BUILT** |
+| 2 | **`docs/DEFECTS.md`** — ten recurring classes, each with the rule or leg that covers it, and blanks where nothing does | none | docs only | none | **BUILT** |
+| 3 | **The colleague's cell** — `survey_filed` gains a third validated word, captured at the act; the chart draws two documents | **v28** | ~80 lines, 2 legs, migrate clauses | medium | **BUILT** — §115 |
+| 4 | **The trip is the cost** — a fourth colony work that takes a DELIVERED good, raised at the structure | rides v28 | ~120 lines, 2 legs | low | **BUILT** — §116 |
+| 5 | **A kept light** — the procession and a player colony, one broadcast, once per run | rides v28 | ~50 lines, 1 leg | very low | **BUILT** — §117 |
+| 6 | **What the claimant left** — a claimed spill enters the log and the ledger | rides v28 | ~40 lines, 1 leg | low | **BUILT** — §118 |
+| 7 | **The prompt holds its refusals** — `prompt(text, hold_s := 0.0)`, appended and optional; the label wraps | rides v28 | ~80 lines, 2 legs, a 63-site triage | medium | **BUILT** — §121 |
+| 8 | **The eleventh** — the capstone, derived from both table families; one broadcast; the ledger header's count | rides v28 | ~60 lines, 2 legs | low | **BUILT** — §119 |
+| 9 | **The measure** — the horizon closed, the sweep read, what it leaves open stated | none | docs | low | **BUILT** — §122 |
 
 **5c (the four legacy deepenings) is NOT in this horizon** and stays deferred
 in §64 with its reason unchanged. Commit 8 must therefore derive the capstone
