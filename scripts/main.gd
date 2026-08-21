@@ -1716,6 +1716,12 @@ func legend_arrives(mark_system: String, index: int, kind: String, at: Vector3) 
 var _kept_light_spoken := false
 
 
+# §119. Held rather than dropped when the plate is busy -- the signal fires once
+# ever and GameState's flag is already set, so refusing here would lose the line
+# for the whole run. _network_reply_pending's shape and its argument.
+var _eleventh_pending := false
+
+
 func _the_eleventh() -> void:
 	# §119. NO PAYOUT. Not a credit, not a stat, not a tier, not a store, and
 	# not a second grant of any kind -- `NO LADDER PAYS IN CREDITS` climbs every
@@ -1749,9 +1755,6 @@ func _the_eleventh() -> void:
 		+ "attachment. You are not being congratulated. You are being "
 		+ "recognised, which is the only thing we have ever been able to do "
 		+ "for anybody, and it is why we keep the lights on.", Palette.RIVAL)
-
-
-var _eleventh_pending := false
 
 
 func _procession_passes_a_kept_light() -> void:
@@ -15183,8 +15186,12 @@ func _run_skill_test() -> void:
 	# The LAST one lands through a real mutator, so the signal is driven by the
 	# path the game actually takes rather than by calling the helper by hand.
 	GameState.persuasion = GameState.PERSUASION_TIERS.size() - 2
-	GameState.persuasion_xp = GameState.PERSUASION_TIERS[
-		GameState.PERSUASION_TIERS.size() - 1] - 1
+	# int() around the lookup, not decoration: PERSUASION_TIERS is an untyped
+	# const so the element is a Variant, and this feeds a typed int member.
+	# Checker rule 6 is about `:=` inference and does not reach an assignment,
+	# so this one is on the author -- which is the whole reason --parse exists.
+	GameState.persuasion_xp = int(GameState.PERSUASION_TIERS[
+		GameState.PERSUASION_TIERS.size() - 1]) - 1
 	GameState.mark_persuasion(1)
 	# And a second landing must not speak again.
 	GameState.mark_skill("filing", 1)
