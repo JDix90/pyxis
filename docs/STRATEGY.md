@@ -6305,7 +6305,7 @@ corrections are what set the commit order:
 | 5b | the rest of the roster (HUNTING, RIFT-WORK, BROKERAGE, COLONIAL, WARDENRY) | rides v27 | **BUILT** — §111; two rungs died on contact with the code and were replaced before shipping |
 | 5c | the four legacy deepenings (a t4 each for SMUGGLING, MINING, PERSUASION; ARCHEOLOGY argued complete) | rides v27 | **DEFERRED** — each legacy skill hand-writes its line function with the cap written out (a §36-era decision), and pins it in legs; extending them is an afternoon with a sweep at hand, not a night without one |
 | 6 | the sounded ground: teach the filing chain, held cells as jump anchors, colony works | rides v27 | **BUILT** — §112; the works loader's first draft validated against a store that loads seventy lines later, caught by checking the order its own comment claimed |
-| 7 | the measure: re-derive the pacing band from the sweep, derive the README's counts | none | not built |
+| 7 | the measure: the counts derived (`--counts`), the §41 re-derivation staged, the horizon closed | none | **BUILT** — §113; the PASS figure lands only when the sweep reports one |
 
 **Three premises the playtest got wrong, and the research pass caught.** The
 buy verb was never missing — it has worked since phase 1, and what was missing
@@ -11665,3 +11665,72 @@ silently dropped every work in the save. Caught by re-checking the load order
 the comment claimed rather than trusting it; the block now sits immediately
 after `_load_colonies`, with the first draft's mistake written at the site —
 the berths loader documents the same class of defect from the other direction.
+
+## 113. The measure (the horizon closes)
+
+Horizon 10, commit 7 — the closing commit, written the night the last four
+shipped and deliberately BEFORE the sweep that judges them, because its whole
+job is to say what that sweep means.
+
+### What this horizon did to the economy, in one paragraph
+
+Every commit moved income zero or negative. The shelf caps repeat farming and
+leaves the measured loop alone (asserted, not argued). The tug, the orders and
+the works are pure outflow — the rescue fee alone prices the fail state above
+the fast travel it was quietly beating, and the works are ~270k of voluntary
+sink against a documented credit cliff. Eleven ladders pay in time, choice,
+access and information, with `NO LADDER PAYS IN CREDITS` climbing every one to
+its cap to prove the wallet never moves. Nothing in seven commits added an
+income term.
+
+### The §41 debt comes due here, on purpose
+
+`MIDTIER` was measured at 2.91 ± 0.05 against a hard 3.00 before this horizon,
+and §80 already moved surveys out of the recurring term. This horizon's shelf
+caps cannot touch the standard loop (`THE SHELF SERVES THE STANDARD LOOP`
+measures exactly that), so PACINGTEST *should* read what it read. If it does,
+the reading gets recorded in the README as the new hard number and the band
+stands. **If `STEADY MIDTIER` lands red, that is not a defect in a commit — it
+is the re-derivation §41 has owed since v21, arriving.** The answer is a
+decision about yields or about the band, taken in the open, with the four
+samples §51's postscript demands. It is never a nudge toward whichever number
+makes the sweep quiet.
+
+### The counts are derived now
+
+`tools/run_harness.sh --counts` prints the run arithmetic without touching the
+Godot binary, and the README points at it instead of hand-maintaining a figure.
+That figure has been wrong twice in this repo's history — 44/61 in one place
+while 62 stood in another, and a "green at 758" that was never swept — and both
+times the error was the same shape: a measurement column maintained by hand is
+a prediction wearing a measurement's clothes. The §64 item this closes had
+stood open since §77.
+
+### What this horizon leaves open, stated rather than implied
+
+- **The four legacy deepenings (5c)** — deferred with reasons in §64; an
+  afternoon's work with a sweep at hand.
+- **The deep-event rumour at the Watch** — deep events exist (§108) and the
+  desk reads the shared event list, so they surface; a *dedicated* line
+  distinguishing the deep's weather from the chart's is copy polish for a
+  quiet moment.
+- **`SoundingMark.CANNOT_READ` at 118 characters** through an un-wrapped
+  label — §105's flag, still standing, still wanting a device rather than a
+  guess.
+- **A harness watchdog** — a runaway tag today costs a silent 1,500-second
+  timeout; a self-arming quit-after-60s inside the harness dispatch would turn
+  that into a fast failure with the error in the log. Touches all 56 tags, so
+  it wants its own small commit and a full sweep of its own.
+
+### The horizon, remembered
+
+Ten sections, §107–§113 built across seven commits and two sub-splits, one
+save bump spent on the first and ridden by the rest. The playtest's five
+complaints each got a structural answer rather than a patch: the market got a
+counter, the counter got a voice, dying got a bill, the forge got a true
+sentence and an order book, the skills got a roster and a ledger, and
+surveying — the game's own name — got taught, paid and rooted. Four defects
+were found *by* the work before any sweep saw them: a tautological assertion,
+a dead rung, a loader validating against a store that loads later, and a hint
+whose fix had restated its own bug. The checker ended the horizon with six
+rules; it began it with four.

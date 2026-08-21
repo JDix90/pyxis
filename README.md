@@ -53,8 +53,10 @@ the 56 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** i
 sequence. So a full sweep is 56 + 25 = **81 runs** (`STOCKTEST` and `migrate26`
 arrived with §107; `SKILLTEST` with §111).
 
-Those three numbers are derivable from `run_harness.sh` and nothing else, so
-check them there rather than trusting this paragraph — it has been wrong before,
+Those three numbers are derivable from `run_harness.sh` and nothing else — and
+now derived FOR you: `tools/run_harness.sh --counts` prints the arithmetic
+without touching the Godot binary. Check that rather than trusting this
+paragraph — it has been wrong before,
 in two places that disagreed with each other (STRATEGY §73).
 
 **`tools/run_harness.sh` now runs this check for you** and refuses to start the
@@ -240,11 +242,23 @@ recorded here rather than quietly deleted.
 measured on a full sweep after the nursery shipped: 78 runs, 772 PASS, 0 FAIL,
 0 script errors, save format v26.
 
-**§107–§110 swept green on the author's machine; §111 has not been swept.**
-§111 adds the `SKILLTEST` tag (5 legs) — one new run, so 81 by arithmetic — and
-grows `migrate26` with the ladder's clauses. It introduces no new `class_name`.
-The run count above is arithmetic off `run_harness.sh`; the PASS total is not,
-and none is recorded here until a sweep reports one.
+**§107–§110 swept green on the author's machine; §111–§113 (commits 5a through
+7) have not been swept.** Together they add `SKILLTEST` (one new run — 81 by
+`--counts`), grow `migrate26` with the ladder's and the works' clauses, and
+introduce no new `class_name`, so no import pass is needed. The morning sweep
+is, in order:
+
+```bash
+tools/run_harness.sh --counts                       # expect 81
+tools/run_harness.sh SKILLTEST COLONYTEST SPILLTEST CARTTEST PAUSETEST LAYOUTTEST MANUALTEST CONTACTTEST HUNTTEST RIFTTEST
+tools/run_harness.sh SAVETEST                       # migrate26 grew twice
+tools/run_harness.sh                                # the full 81
+```
+
+The run count is arithmetic; the PASS total is not, and none is recorded here
+until a sweep reports one. If `STEADY MIDTIER` lands red, that is §41's
+re-derivation arriving on schedule — see STRATEGY §113 for what to do, which
+is a decision taken in the open and not a nudge toward green.
 
 **§107 (the counted shelf), for the record.** It bumps the save to **v27**,
 adds the `STOCKTEST` tag (7 legs) and the `migrate26` mode — two new runs — and
