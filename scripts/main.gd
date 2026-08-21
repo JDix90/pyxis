@@ -1896,13 +1896,42 @@ func _tick_spill_claim(delta: float) -> void:
 	if _spill_claim_left > 0.0:
 		return
 	var where: Vector3 = (adrift[0] as Node3D).global_position
+	var taken := adrift.size()
+	# §118. WHAT THE CLAIMANT LEFT, and until now the answer was nothing at all:
+	# this function called neither note_log nor note_ledger, so the entire record
+	# of a claim was a toast that scrolled away. That is the one branch of §109's
+	# clock the player is BY DESIGN not standing in -- the window is 180s plus
+	# 0.15s per unit of depth, far longer than the flight back, so it expires
+	# only when the pilot decided not to return. A thing that happens to you
+	# while you are elsewhere and leaves no trace did not happen.
+	#
+	# THE CLAIMANT STAYS FACELESS, and three louder versions died first. A hull
+	# that arrives and works the spill needs §64's ALLIED-splash question
+	# answered (shootable is a combat encounter, unshootable is a ghost) and
+	# plays to an empty room by construction. A deep market event on the claimed
+	# good hits EVENT_MAX_DEEP := 1 and §108's bias-table bound -- no deep
+	# station's bias table holds a single salvage good, which is exactly the
+	# unbounded case that comment closes. And a NAMED claimant is the first named
+	# living stranger in this game, which §105 spent two horizons refusing to
+	# spend "for a caption": a writing-pass decision, not a side effect of a
+	# timer. What is left is the truest thing: a record.
+	var band_word := DeepSpace.band_name(deep_space.depth_at(where)) \
+		if deep_space != null else "THE DEEP"
+	GameState.note_ledger("spills_lost", taken)
+	# 48 CHARACTERS IS THE WHOLE LINE (note_log truncates at LOG_LINE_MAX with
+	# no warning), so the count and the place go first and the verb is short.
+	GameState.note_log("CLAIMED — %d ADRIFT IN %s" % [taken, band_word])
 	for c in adrift:
 		c.queue_free()
 	_spill_claim_left = 0.0
 	_spill_warned = false
 	FX.flash(system_root, where, Palette.THREAT, 3.0, 0.4)
 	if hud:
-		hud.show_toast("CLAIMED — SOMEBODY ELSE GOT THERE FIRST", Palette.THREAT)
+		# WHAT AND WHERE, not just that it happened (§58's copy rule applied to
+		# a loss): a pilot who is told only "claimed" cannot tell which of two
+		# deaths this was.
+		hud.show_toast("CLAIMED IN %s — %d CRATE%s, SOMEBODY ELSE GOT THERE FIRST"
+			% [band_word, taken, "" if taken == 1 else "S"], Palette.THREAT)
 
 
 func beacon_jump_fee(depth: float) -> int:
@@ -7984,6 +8013,10 @@ func _run_spill_test() -> void:
 	# Age is driven past the reaper rather than waited out: 25s of harness time to
 	# prove a branch is off is 25s nobody will spend, and a test nobody runs is a
 	# test that is not there.
+	# §118. Captured before the claim runs, so the leg below can say the record
+	# appeared rather than that it exists.
+	var ledger_before := int(GameState.ledger.get("spills_lost", 0))
+	var log_before := GameState.log_lines().size()
 	var spilled_n := _spill_cubes().size()
 	for c in _spill_cubes():
 		c.set("_age", 40.0)
@@ -8006,6 +8039,27 @@ func _run_spill_test() -> void:
 		alive, spilled_n, ttl_shallow, ttl_deep, after_claim, spilled_n,
 		"PASS" if alive == spilled_n and spilled_n > 0 and ttl_deep > ttl_shallow
 			and after_claim == 0 else "FAIL"])
+
+	# 4b. AND THE CLAIMANT LEAVES A RECORD (§118). Until this commit the whole
+	#     trace of a claim was a toast, on the ONE branch of the clock the pilot
+	#     is by construction not standing in -- the window is longer than the
+	#     flight back, so it expires only when they chose not to return.
+	#
+	#     BOTH SURFACES, because they answer different questions and either one
+	#     alone is satisfiable by a no-op: the ledger counts how many were taken
+	#     across the run, the log says WHEN and WHERE one was. And the count is
+	#     asserted to rise by the number actually taken, not merely to rise --
+	#     a claim that recorded 1 for a pile of six would pass a "moved" check.
+	var ledger_after := int(GameState.ledger.get("spills_lost", 0))
+	var log_after := GameState.log_lines()
+	var logged := log_after.size() > log_before \
+		and String(log_after[log_after.size() - 1]).begins_with("CLAIMED")
+	var counted := ledger_after - ledger_before == spilled_n
+	print("[spill] THE CLAIMANT LEAVES A RECORD ledger %d -> %d for %d crate(s)=%s, log gained %s=%s -> %s" % [
+		ledger_before, ledger_after, spilled_n, str(counted),
+		str(log_after[log_after.size() - 1]) if not log_after.is_empty() else "nothing",
+		str(logged),
+		"PASS" if counted and logged and spilled_n > 0 else "FAIL"])
 
 	# 5. IDENTIFIED STAYS. Reading a thing is also stowing it — the line that
 	#    gives ARCHEOLOGY a third job and makes field-reading a survival act.

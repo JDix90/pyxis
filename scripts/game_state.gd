@@ -87,6 +87,16 @@ const DEFAULT_LEDGER := {
 	# volume, this measures FIRSTS. A new key in this dict needs no save bump:
 	# the load-side merge is defaults-based.
 	"cells_filed": 0,
+	# §118. THE LEDGER'S FIRST LOSS COLUMN. Every other key here counts
+	# something the pilot DID; this counts something taken off them while they
+	# were somewhere else, and it is the only number in the game that does.
+	#
+	# It exists because §114 found this ledger holds no credit figure at all --
+	# the outflow side of a run was unmeasured by construction -- and because a
+	# claimed spill left no trace anywhere: _tick_spill_claim called neither
+	# note_log nor note_ledger, so the whole record of it was a toast that
+	# scrolled away.
+	"spills_lost": 0,
 }
 const SHIP_NAME_MAX := 24
 const DEFAULT_SHIP_NAME := "SURVEYOR"

@@ -6385,8 +6385,8 @@ below:
 | 2 | `docs/DEFECTS.md` — ten recurring defect classes, each with the rule or leg that covers it | none | **BUILT** — five of the ten are covered only by a habit, and that is the column that matters |
 | 3 | the colleague's cell: a third validated word in `survey_filed`, captured at the act because it CANNOT be derived | **v28** | **BUILT** — §115; the bump is spent on the DOWNGRADE path, and the README had gone stale a third time |
 | 4 | the trip is the cost: a fourth colony work taking a DELIVERED good, raised at the structure | rides v28 | **BUILT** — §116; the DEEP REPEATER granted nothing until a §112 defect was fixed (the relay never filtered deep weather out of a list headed CHARTED MARKETS) |
-| 5 | a kept light: the procession and a player colony, one broadcast, once per run | rides v28 | **PLANNED** |
-| 6 | what the claimant left: a claimed spill enters the captain's log and the ledger | rides v28 | **PLANNED** |
+| 5 | a kept light: the procession and a player colony, one broadcast, once per run | rides v28 | **BUILT** — §117 |
+| 6 | what the claimant left: a claimed spill enters the captain's log and the ledger | rides v28 | **BUILT** — §118; three louder versions died first, including the research pass's own recommendation |
 | 7 | the prompt holds its refusals: `prompt(text, hold_s := 0.0)` appended-optional, and the label wraps | rides v28 | **PLANNED** |
 | 8 | the eleventh: an all-ladders capstone derived from both table families, one broadcast, a visible count | rides v28 | **PLANNED** |
 | 9 | the measure: the horizon closed and the sweep read | none | **PLANNED** |
@@ -12212,3 +12212,100 @@ counts works from `COLONY_WORKS.size()` instead of saying "three", and gained a
 clause — **the delivered goods left the hold.** Without that last one a work
 that took the credits and not the goods would have satisfied every other
 clause while the delivery was a fiction.
+
+## 117. A kept light (Horizon 11, commit 5 — rides v28)
+
+One broadcast, once per run, paying nothing. Every piece of it already shipped
+and none of them had ever been pointed at each other:
+
+- `BROADCASTS[5]` is titled **A KEPT LIGHT** — *"There is a light ahead of you.
+  It is kept. It has been kept a long time, and by somebody."* Its `body_after`
+  closes with *"It is lit for whoever is still out here, which by the
+  authority's own ledger now includes you."*
+- COLONIAL t3's perk is named **KEPT LIGHTS** (§111): a founded colony borrows
+  `TIER_HOME` on the radar, so its light is never capped and never fades.
+- `Procession.ATTACHMENT` is seven named hulls that filed and were received and
+  were never read, in front of four hundred more nobody counted.
+
+**The player's colony is a kept light, in the game's own words.** This is the
+sentence that says so, and §105's rule that the formation *"never spends its
+mark"* is why it is a sentence and nothing else: no credits, no standing, no
+ledger, no store.
+
+**Fired at arrival, not at a hull.** The hulls answer taps on the same plate and
+refuse each other with `SLOWLY` precisely because it has no queue; a second
+speaker inside that moment is the collision §113 spent a red on. It asks first
+(`broadcast_busy`) and stays **unspoken rather than spent** when the plate is
+busy — `Barks.fire`'s rule that a once-ever payload must not be consumed by
+being suppressed, honoured from the other side.
+
+**The ordering is stated rather than guarded.** A pilot who founds their first
+colony *after* meeting the procession never hears it. The marks sit at
+6,500–9,000u and hyper structures at 1,600–4,200u, so anybody standing at this
+formation has flown past the colonies twice; a second trigger on the founding
+verb would cover a case the geometry barely permits, at the cost of a call site
+that could fire the line out of any moment at all.
+
+### The leg frees the plate by hand, and that is the assertion
+
+`THE PROCESSION PASSES A KEPT LIGHT` drives all three states through
+`legend_arrives` — the real caller — and the third clause needed the plate
+**cleared between runs**. With a plate still up, "it never speaks twice" passes
+on the *busy* guard whether the once-per-run flag works or not: a leg that
+cannot fail, which is exactly the defect `--legs` had just found in `TITLETEST`
+(§114's commit). A sentinel broadcast goes up first, so *"nothing new was
+written"* is measured against a known string rather than against emptiness.
+
+## 118. What the claimant left (Horizon 11, commit 6 — rides v28)
+
+§109 gave a deep spill a deadline. When it expires, `_tick_spill_claim` deleted
+the cubes, flashed, and toasted — and called **neither `note_log` nor
+`note_ledger`**, so the entire record of the loss was a sentence that scrolled
+away.
+
+That matters more than it sounds, because of *which* branch it is. The window is
+`180 + 0.15 × depth` seconds — 390s at 1,400u, ~25 minutes at the far marks —
+which is far longer than the flight back. **The clock expires only when the
+pilot decided not to return.** A thing that happens to you while you are
+somewhere else and leaves no trace did not happen.
+
+So the claim now writes a captain's-log line (the band and the count, ordered so
+the payload survives `LOG_LINE_MAX`'s silent truncation at 48 characters) and a
+`spills_lost` ledger key — **the ledger's first loss column.** Every other key
+there counts something the pilot *did*; this is the only number in the game that
+counts something taken off them. `DEFAULT_LEDGER`'s own comment records that a
+new key needs no save bump, the load-side merge being defaults-based.
+
+It renders on the **captain's log page**, conditioned on being non-zero — the
+chart legend's rule, and a zero would read as a score to improve on a page that
+is a record rather than a scoreboard. The log holds ten lines and evicts the
+oldest, so an hour-old claim is gone from the page while the fact of it is not;
+that gap is what makes the ledger key a live store rather than a dead one (§88).
+
+### Three louder versions died first
+
+Idea 3 asked for a hull that arrives, works the spill, and leaves — *"the first
+NPC that competes without fighting"*. All three attempts at it died on contact,
+and the deaths are the section:
+
+- **The hull** is blocked on §64's ALLIED-splash question, open since
+  2026-08-06 and dimensioned by `WITNESS_RANGE`/`OVERCHARGE_RADIUS`. One the
+  player can shoot is a combat encounter, which is not the feature; one they
+  cannot is a ghost; one that splash catches by accident is that §64 item under
+  a new name. And its scene plays to an empty room by construction, per above.
+- **A deep market event on the claimed good** — the research pass's own
+  recommendation, and the code refused it twice over. `EVENT_MAX_DEEP := 1`, so
+  a claim would starve the ambient deep weather §108 built; and §108's good is
+  drawn from the archetype's own `bias` table, *"not a shortcut: it is what
+  keeps a 2.2× shortage off a component at a 1.45× deep fence, **by
+  construction**"*. A spill is unread **salvage**, and **no deep station's bias
+  table contains a single salvage good** — every one is drawn from the
+  seventeen retail goods. It is precisely the unbounded case that comment
+  closes.
+- **A named claimant** is the first named living stranger in this game. §105
+  spent two horizons on the rival's anonymity and refused to break it *"for a
+  caption"*; naming somebody is a writing-pass decision, gated the way the nine
+  names were, not a side effect of a timer.
+
+What survives is the smallest true thing. The claimant gets a face the way the
+rival got one: **evidence, and never a body.**
