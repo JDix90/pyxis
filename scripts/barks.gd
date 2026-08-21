@@ -109,8 +109,19 @@ static func fire(key: String) -> void:
 	var m := tree.get_first_node_in_group("main")
 	if m != null and m.has_method("parley_live") and m.parley_live():
 		return
-	GameState.mark_bark(key)
 	var hud := tree.get_first_node_in_group("hud")
+	# §121. NOR OVER A LIVE REFUSAL, and this guard is the same sentence as the
+	# one above it applied to a second kind of lock. A refusal now owns the
+	# prompt line for a couple of seconds after the player tries something that
+	# will not happen -- so without this, prompt() below would silently decline
+	# to write while mark_bark had ALREADY spent the line. Deferred, not
+	# cancelled: the next time the condition comes round, it fires.
+	#
+	# ABOVE mark_bark for the identical reason, which is why the hud lookup
+	# moved up here rather than a second lookup being added.
+	if hud != null and hud.has_method("prompt_busy") and hud.prompt_busy():
+		return
+	GameState.mark_bark(key)
 	if hud == null or not hud.has_method("prompt"):
 		return
 	var text := line_for(key)

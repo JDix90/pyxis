@@ -189,6 +189,13 @@ const PACING_MAX_MODULES := 3.00
 # keeps this paid: the reference must sit in the middle third of the priced
 # catalog, asserted against the live module list, so the next 84% of growth
 # turns a leg red instead of quietly shortening the ruler for another year.
+# How far the ship may move on the attract screen while a bearing key is held.
+# NOT a drift tolerance in spirit -- _enter_attract disables input and parks the
+# hull, so the honest expectation is zero and this only absorbs physics settling.
+# The failure it is sized against is not subtle: a ship that actually flew would
+# cover hundreds of units in the second the leg holds the key.
+const TITLE_DRIFT_MAX := 0.5
+
 const PACING_MIDTIER := "rig_strike"
 
 # How fast the scripted bots circle-strafe an apex core, in units/second of
@@ -625,6 +632,9 @@ func _ready() -> void:
 	GameState.standing_shifted.connect(func(other: String, delta_v: int, _band: int) -> void:
 		_standing_pending[other] = int(_standing_pending.get(other, 0)) + delta_v
 		_standing_settle = STANDING_TOAST_SETTLE)
+
+	# §119. THE ELEVENTH, and the channel that never gives its name answers it.
+	GameState.last_rung_reached.connect(_the_eleventh)
 
 	GameState.system_unlocked.connect(func(id: String) -> void:
 		hud.show_toast("CHARTED — %s" % SystemDB.display_name(id), Palette.TEAL)
@@ -1292,13 +1302,72 @@ func colony_ground_sounded(colony_key: String) -> bool:
 	return GameState.is_survey_worked(DeepSpace.cell_key(String(sys), cell.x, cell.y))
 
 
+func work_delivery_met(colony_key: String, work: String) -> bool:
+	# §116. THE TRIP IS THE COST, and this is the half of it the STORE cannot
+	# ask: a work with a `goods` manifest wants the ship standing at the colony
+	# with the goods aboard, not a hold four thousand units away.
+	#
+	# THIS GATE IS THE WHOLE FEATURE. Colony works are bought from the CHART --
+	# a menu openable from anywhere in the game, including while docked at the
+	# counter the alloys were just bought from -- and no work has ever had a
+	# position gate. Without this, "delivered" would be a word with no mechanism
+	# under it, which is §110's forge hint in a new costume: copy the data does
+	# not support.
+	#
+	# Pure and exposed so the chart row can state its own terms (§58) and an
+	# assertion can ask the question without performing the purchase, which is
+	# network_filing_plan's split said again.
+	var want: Dictionary = (GameState.COLONY_WORKS.get(work, {}) as Dictionary) \
+		.get("goods", {})
+	if want.is_empty():
+		return true
+	var c: Dictionary = GameState.colonies.get(colony_key, {})
+	if c.is_empty():
+		return false
+	# IN THIS SYSTEM, standing at it. dock_aura_at's walk and its range: the
+	# DRY DOCK already decides "alongside this colony" and there is no second
+	# opinion about what that means.
+	if not colony_key.begins_with(GameState.current_system + ":"):
+		return false
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	if player == null:
+		return false
+	var dx := float(c.get("x", 0.0)) - player.global_position.x
+	var dz := float(c.get("z", 0.0)) - player.global_position.z
+	if sqrt(dx * dx + dz * dz) > GameState.DOCK_AURA_RANGE:
+		return false
+	for g_v in want:
+		if GameState.cargo_count(String(g_v)) < int(want[g_v]):
+			return false
+	return true
+
+
+func work_manifest(work: String) -> String:
+	# The manifest as one short phrase, for a refusal that names the act.
+	var want: Dictionary = (GameState.COLONY_WORKS.get(work, {}) as Dictionary) \
+		.get("goods", {})
+	var parts := PackedStringArray()
+	for g_v in want:
+		parts.append("%d %s" % [int(want[g_v]),
+			CommodityDB.short_name(String(g_v))])
+	return ", ".join(parts)
+
+
 func buy_colony_work(colony_key: String, work: String) -> bool:
-	# The gate AND the purchase, in that order, with the refusal free -- nothing
-	# is spent before the ground check. The store enforces its own four rules;
-	# this adds the one it cannot ask.
+	# The gates AND the purchase, in that order, with every refusal free --
+	# nothing is spent before either check. The store enforces its own rules;
+	# this adds the two it cannot ask.
 	if not colony_ground_sounded(colony_key):
 		if hud:
 			hud.show_toast("SOUND THE GROUND FIRST — WORK A MAST IN ITS CELL",
+				Palette.THREAT)
+		return false
+	if not work_delivery_met(colony_key, work):
+		if hud:
+			# §58: the refusal names the act and the manifest, because a pilot
+			# who cannot tell whether they are missing goods or missing the
+			# journey has been told nothing.
+			hud.show_toast("BRING %s TO THE COLONY ITSELF" % work_manifest(work),
 				Palette.THREAT)
 		return false
 	if not GameState.buy_colony_work(colony_key, work):
@@ -1507,10 +1576,17 @@ func file_charts_with_network() -> int:
 	var lost: Array = plan["lost"]
 	if cells.is_empty() and lost.is_empty():
 		return 0
+	# v28 (§115). THE ONE PLACE THAT KNOWS WHOSE RETURN PAID, and therefore the
+	# only place the distinction can be recorded. `cells` are the ones this
+	# hold's goods bought; `lost` are the ones a colleague had already clipped
+	# to a mast, which network_filing_plan sorted a few lines up by asking
+	# Rival.filed AT THIS INSTANT. That instant is the whole fact: the
+	# predicate is monotone, so asking it again tomorrow says "a colleague was
+	# here" about both piles. Written down now or not at all.
 	for key_v in cells:
 		GameState.note_survey_held(String(key_v))
 	for key_v in lost:
-		GameState.note_survey_held(String(key_v))
+		GameState.note_survey_held(String(key_v), true)
 	# §111. FILING'S FEED, and the ONE thing this verb has ever paid in besides
 	# a bearing. Counted on `cells` and deliberately NOT on `lost`: those came
 	# home free because a colleague had already reached them, and a ladder that
@@ -1628,6 +1704,102 @@ func legend_arrives(mark_system: String, index: int, kind: String, at: Vector3) 
 	if system_root == null or mark_system != system_id:
 		return
 	SystemBuilder.build_legend(system_root, mark_system, index, kind, at)
+	if kind == "procession":
+		_procession_passes_a_kept_light()
+
+
+# §117. THE UNCOUNTED HUNDREDS AND ONE LIGHT SOMEBODY KEEPS. Nothing in the
+# world moves and nothing is spawned: every piece of this already exists and
+# none of them were pointed at each other.
+#
+# BROADCASTS[5] is titled A KEPT LIGHT and says "there is a light ahead of you,
+# it is kept, and by somebody"; its `body_after` closes with "it is lit for
+# whoever is still out here, which by the authority's own ledger now includes
+# you". COLONIAL's t3 perk is named KEPT LIGHTS -- a founded colony borrows
+# TIER_HOME so its light never fades. And the Procession is seven named hulls
+# that filed and were never counted, in front of four hundred more. The player's
+# colony IS a kept light, in the game's own words. This is the sentence that
+# says so once.
+var _kept_light_spoken := false
+
+
+# §119. Held rather than dropped when the plate is busy -- the signal fires once
+# ever and GameState's flag is already set, so refusing here would lose the line
+# for the whole run. _network_reply_pending's shape and its argument.
+var _eleventh_pending := false
+
+
+func _the_eleventh() -> void:
+	# §119. NO PAYOUT. Not a credit, not a stat, not a tier, not a store, and
+	# not a second grant of any kind -- `NO LADDER PAYS IN CREDITS` climbs every
+	# ladder to its cap watching the wallet, and this arrives at exactly the
+	# moment that leg is standing on. What the eleventh rung buys is a sentence.
+	#
+	# THE SENDER IS THE ONE THAT HAS NEVER GIVEN A NAME. `CHANNEL_SENDERS` is
+	# the network's own set and every one of them is a description rather than a
+	# call sign; the band-6 broadcast is three dots. This uses the same set, so
+	# the voice that answers here is the voice that has answered every filing.
+	#
+	# It rides show_broadcast rather than the prompt line, which is a different
+	# surface with a different owner -- so none of §113's collision applies and
+	# commit 7's soft lock is not a dependency.
+	if hud == null:
+		return
+	if hud.has_method("broadcast_busy") and hud.broadcast_busy():
+		# UNSPOKEN RATHER THAN SPENT (§117's rule, and Barks.fire's): the flag
+		# that guards this lives in GameState and is already set, so the signal
+		# will not come again -- which means refusing here would lose the line
+		# for the run. Deferred by one frame instead, through the same call the
+		# network reply uses when the page is busy.
+		_eleventh_pending = true
+		return
+	_eleventh_pending = false
+	var sender := String(CHANNEL_SENDERS[
+		absi(hash("eleventh|%d" % GameState.run_seed)) % CHANNEL_SENDERS.size()])
+	hud.show_broadcast(sender,
+		"There is nothing further we can teach you, and that is not a "
+		+ "compliment. Every hand that reached this point is on the "
+		+ "attachment. You are not being congratulated. You are being "
+		+ "recognised, which is the only thing we have ever been able to do "
+		+ "for anybody, and it is why we keep the lights on.", Palette.RIVAL)
+
+
+func _procession_passes_a_kept_light() -> void:
+	# ONE SCRIPTED INTERSECTION, ONCE PER RUN, AND IT PAYS NOTHING. §105 is
+	# emphatic that the formation "never spends its mark" and that a set of ten
+	# legends needs one that only asks; this must not become the thing that
+	# breaks that. No credits, no standing, no ledger, no store.
+	#
+	# FIRED AT ARRIVAL RATHER THAN AT A HULL. The hulls answer taps on the same
+	# plate and refuse each other with SLOWLY precisely because it has no queue
+	# -- adding a second speaker to that moment would be the collision §113 spent
+	# a red on. Arrival is the beat before any of that starts.
+	#
+	# THE ORDERING IS STATED RATHER THAN GUARDED. A pilot who founds their first
+	# colony AFTER meeting the procession never hears this, and that is allowed:
+	# the marks sit at 6,500-9,000u and hyper structures at 1,600-4,200u, so
+	# anybody standing at this formation has flown past the colonies twice. A
+	# second trigger on the founding verb would cover a case the geometry barely
+	# permits, at the cost of a second call site that could fire it late and
+	# out of any moment at all.
+	if _kept_light_spoken or hud == null:
+		return
+	if GameState.colonies.is_empty():
+		return
+	# ASK FIRST, never clobber -- §96's rule for this plate, which the procession
+	# itself enforces on its own hulls. Unspoken rather than spent if the plate
+	# is busy: a once-per-run sentence must not be consumed by being suppressed
+	# (Barks.fire's rule, honoured from the other side), so the flag is set only
+	# when the plate actually carries it.
+	if hud.has_method("broadcast_busy") and hud.broadcast_busy():
+		return
+	_kept_light_spoken = true
+	hud.show_broadcast("· · ·",
+		"The line is passing a light. It is kept, and it is kept by you. "
+		+ "Nothing in the formation acknowledges it. They filed for eleven "
+		+ "years and were received and were never read, and they are still "
+		+ "pointed home; you are the first thing on this bearing in a long "
+		+ "time that somebody is still keeping a light for.", Palette.RIVAL)
 
 
 func drop_beacon_here() -> bool:
@@ -1775,13 +1947,42 @@ func _tick_spill_claim(delta: float) -> void:
 	if _spill_claim_left > 0.0:
 		return
 	var where: Vector3 = (adrift[0] as Node3D).global_position
+	var taken := adrift.size()
+	# §118. WHAT THE CLAIMANT LEFT, and until now the answer was nothing at all:
+	# this function called neither note_log nor note_ledger, so the entire record
+	# of a claim was a toast that scrolled away. That is the one branch of §109's
+	# clock the player is BY DESIGN not standing in -- the window is 180s plus
+	# 0.15s per unit of depth, far longer than the flight back, so it expires
+	# only when the pilot decided not to return. A thing that happens to you
+	# while you are elsewhere and leaves no trace did not happen.
+	#
+	# THE CLAIMANT STAYS FACELESS, and three louder versions died first. A hull
+	# that arrives and works the spill needs §64's ALLIED-splash question
+	# answered (shootable is a combat encounter, unshootable is a ghost) and
+	# plays to an empty room by construction. A deep market event on the claimed
+	# good hits EVENT_MAX_DEEP := 1 and §108's bias-table bound -- no deep
+	# station's bias table holds a single salvage good, which is exactly the
+	# unbounded case that comment closes. And a NAMED claimant is the first named
+	# living stranger in this game, which §105 spent two horizons refusing to
+	# spend "for a caption": a writing-pass decision, not a side effect of a
+	# timer. What is left is the truest thing: a record.
+	var band_word := DeepSpace.band_name(deep_space.depth_at(where)) \
+		if deep_space != null else "THE DEEP"
+	GameState.note_ledger("spills_lost", taken)
+	# 48 CHARACTERS IS THE WHOLE LINE (note_log truncates at LOG_LINE_MAX with
+	# no warning), so the count and the place go first and the verb is short.
+	GameState.note_log("CLAIMED — %d ADRIFT IN %s" % [taken, band_word])
 	for c in adrift:
 		c.queue_free()
 	_spill_claim_left = 0.0
 	_spill_warned = false
 	FX.flash(system_root, where, Palette.THREAT, 3.0, 0.4)
 	if hud:
-		hud.show_toast("CLAIMED — SOMEBODY ELSE GOT THERE FIRST", Palette.THREAT)
+		# WHAT AND WHERE, not just that it happened (§58's copy rule applied to
+		# a loss): a pilot who is told only "claimed" cannot tell which of two
+		# deaths this was.
+		hud.show_toast("CLAIMED IN %s — %d CRATE%s, SOMEBODY ELSE GOT THERE FIRST"
+			% [band_word, taken, "" if taken == 1 else "S"], Palette.THREAT)
 
 
 func beacon_jump_fee(depth: float) -> int:
@@ -2731,6 +2932,11 @@ func _process(delta: float) -> void:
 		var pending := _network_reply_pending
 		_network_reply_pending = {}
 		network_reply(int(pending["cells"]), pending["at"] as Vector3)
+	# §119. The same flush for the same reason. The eleventh rung's signal fires
+	# once ever and GameState has already set its flag, so a plate that happened
+	# to be busy at that instant would cost the line for the whole run.
+	if _eleventh_pending and hud != null and not hud.broadcast_busy():
+		_the_eleventh()
 	if not _standing_pending.is_empty():
 		_standing_settle -= delta
 		# WAITS FOR THE SURFACE, not merely for the clock. Three of the movers
@@ -7863,6 +8069,10 @@ func _run_spill_test() -> void:
 	# Age is driven past the reaper rather than waited out: 25s of harness time to
 	# prove a branch is off is 25s nobody will spend, and a test nobody runs is a
 	# test that is not there.
+	# §118. Captured before the claim runs, so the leg below can say the record
+	# appeared rather than that it exists.
+	var ledger_before := int(GameState.ledger.get("spills_lost", 0))
+	var log_before := GameState.log_lines().size()
 	var spilled_n := _spill_cubes().size()
 	for c in _spill_cubes():
 		c.set("_age", 40.0)
@@ -7885,6 +8095,27 @@ func _run_spill_test() -> void:
 		alive, spilled_n, ttl_shallow, ttl_deep, after_claim, spilled_n,
 		"PASS" if alive == spilled_n and spilled_n > 0 and ttl_deep > ttl_shallow
 			and after_claim == 0 else "FAIL"])
+
+	# 4b. AND THE CLAIMANT LEAVES A RECORD (§118). Until this commit the whole
+	#     trace of a claim was a toast, on the ONE branch of the clock the pilot
+	#     is by construction not standing in -- the window is longer than the
+	#     flight back, so it expires only when they chose not to return.
+	#
+	#     BOTH SURFACES, because they answer different questions and either one
+	#     alone is satisfiable by a no-op: the ledger counts how many were taken
+	#     across the run, the log says WHEN and WHERE one was. And the count is
+	#     asserted to rise by the number actually taken, not merely to rise --
+	#     a claim that recorded 1 for a pile of six would pass a "moved" check.
+	var ledger_after := int(GameState.ledger.get("spills_lost", 0))
+	var log_after := GameState.log_lines()
+	var logged := log_after.size() > log_before \
+		and String(log_after[log_after.size() - 1]).begins_with("CLAIMED")
+	var counted := ledger_after - ledger_before == spilled_n
+	print("[spill] THE CLAIMANT LEAVES A RECORD ledger %d -> %d for %d crate(s)=%s, log gained %s=%s -> %s" % [
+		ledger_before, ledger_after, spilled_n, str(counted),
+		str(log_after[log_after.size() - 1]) if not log_after.is_empty() else "nothing",
+		str(logged),
+		"PASS" if counted and logged and spilled_n > 0 else "FAIL"])
 
 	# 5. IDENTIFIED STAYS. Reading a thing is also stowing it — the line that
 	#    gives ARCHEOLOGY a third job and makes field-reading a survival act.
@@ -12402,6 +12633,93 @@ func _run_raid_test() -> void:
 		"PASS" if raced == "THIS MUST BE LEGIBLE" and raced_alpha > 0.9
 			else "FAIL"])
 
+	# §121. A REFUSAL OWNS THE LINE FOR A MOMENT. The defect §113 spent a red on
+	# was narrower than "the prompt is crowded": a NUDGE replaced a REFUSAL on
+	# the first-ever tap, for the pilot least able to guess. Four clauses, and
+	# the ordering they establish is
+	#     the parley's hard lock  >  a live refusal  >  everything else.
+	#
+	# Driven rather than waited out -- the hold is two seconds of wall clock and
+	# the harness sets the deadline directly, `_spill_claim_left`'s own posture:
+	# "25s of harness time to prove a branch is off is 25s nobody will spend".
+	hud._prompt_held = false
+	hud._prompt_soft_until = 0.0
+	hud.clear_prompt()
+	hud.prompt_refusal("THE NOTATION IS NOT YOURS")
+	hud.clear_prompt()
+	await get_tree().create_timer(0.3).timeout
+	var refusal_kept := hud.prompt_text()
+	# b. AND A ONCE-EVER BARK IS DEFERRED, NOT SPENT. The regression this lock
+	#    would otherwise have introduced, and the reason prompt_busy() exists:
+	#    Barks.fire guards on the HARD lock before mark_bark ("a bark that fires
+	#    once ever must not be consumed by being suppressed") and then writes --
+	#    so a soft lock with no ask-first accessor would have gone on marking
+	#    barks seen while the write was quietly declined. `first_hostiles` is
+	#    still unfired here: the leg above deferred it under the demand and
+	#    asserted so.
+	Barks.fire("first_hostiles")
+	await get_tree().process_frame
+	var bark_deferred: bool = not GameState.has_seen_bark("first_hostiles") \
+		and hud.prompt_text() == "THE NOTATION IS NOT YOURS"
+	# c. AND AN ACT IS ALWAYS ANSWERED. The clause this leg's own red earned.
+	#    The first draft of the lock blocked WRITES as well as clears, so a live
+	#    refusal swallowed the next thing the player tapped -- `THE MONUMENT
+	#    ANSWERS A TAP` went red with a warden refusal standing in for both a
+	#    locked monument's answer and a claimed one's. A deadline is a statement
+	#    about the line on screen, never a mute on the world.
+	hud.prompt("THE CHART CARRIES ITS JUMP")
+	await get_tree().process_frame
+	var act_answered := hud.prompt_text()
+	# d. A REFUSAL REPLACES A REFUSAL. The newest one is the one the player just
+	#    earned, so this must NOT be a first-writer-wins lock.
+	hud.prompt_refusal("THE GROUND IS NOT SOUNDED")
+	await get_tree().process_frame
+	var refusal_replaced := hud.prompt_text()
+	# e. AND THE DEMAND OUTRANKS IT. hold_prompt clears the soft deadline before
+	#    it writes; without that line a refusal would refuse the one sentence in
+	#    this game that gets six seconds while something closes on the player.
+	hud.hold_prompt("RAIDERS DEMAND 400 SALVAGE — PAY OR REFUSE")
+	await get_tree().process_frame
+	var demand_wins := hud.prompt_text()
+	hud.hide_parley()
+	# f. AND IT LAPSES. Not a lock the world never gets back -- with the deadline
+	#    passed, the next ambient line lands normally.
+	hud._prompt_soft_until = 0.0
+	hud.prompt("THE WORLD GETS IT BACK AGAIN")
+	await get_tree().process_frame
+	var lapsed := hud.prompt_text()
+	print("[raid] A REFUSAL SURVIVES A CLEAR held through a raw clear_prompt ('%s'); a once-ever bark deferred not spent=%s; but an ACT is always answered ('%s'); a second refusal replaces it ('%s'); the demand outranks both ('%s'); and it lapses ('%s') -> %s" % [
+		refusal_kept, str(bark_deferred), act_answered, refusal_replaced,
+		demand_wins, lapsed,
+		"PASS" if refusal_kept == "THE NOTATION IS NOT YOURS" and bark_deferred
+			and act_answered == "THE CHART CARRIES ITS JUMP"
+			and refusal_replaced == "THE GROUND IS NOT SOUNDED"
+			and demand_wins.contains("RAIDERS")
+			and lapsed == "THE WORLD GETS IT BACK AGAIN" else "FAIL"])
+
+	# §121. AND THE LINE WRAPS. §105 asked for "a device rather than a guess",
+	# and this asserts the DEVICE rather than any sentence's length: a copy edit
+	# must not redden it, and turning the wrap off must. The box is also checked
+	# to be narrower than the design space, since a width that silently grew past
+	# 720 would stop wrapping while still looking configured.
+	var wrap_on: bool = hud._prompt_label.autowrap_mode \
+		== TextServer.AUTOWRAP_WORD_SMART
+	var box_w: float = hud._prompt_label.custom_minimum_size.x
+	var boxed: bool = box_w > 0.0 and box_w < 720.0
+	# Reported, not asserted: which prompt is the longest and whether it needs
+	# the box at all. CANNOT_READ is 124 characters against a next-longest of 83,
+	# so this is one outlier and not a policy -- and if a later edit makes every
+	# prompt short, that is worth SEEING rather than going red over.
+	var font := ThemeDB.fallback_font
+	var widest := 0.0
+	if font != null:
+		widest = font.get_string_size(SoundingMark.CANNOT_READ,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+	print("[raid] THE PROMPT LINE WRAPS autowrap on=%s, box %.0fpx inside a 720 design space=%s (the longest prompt measures %.0fpx, %s the box) -> %s" % [
+		str(wrap_on), box_w, str(boxed), widest,
+		"over" if widest > box_w else "inside",
+		"PASS" if wrap_on and boxed else "FAIL"])
+
 	for n in get_tree().get_nodes_in_group("raider"):
 		if is_instance_valid(n):
 			(n as Node3D).queue_free()
@@ -13183,6 +13501,149 @@ func _run_pacing_test() -> void:
 	print("[pacing] FILING IS NOT A RAISE loop names a filing term=%s (rate %.2f rides the once-only filed set) -> %s" % [
 		str(names_filing), FIRST_FILING_RATE,
 		"PASS" if not names_filing else "FAIL"])
+
+	# --- THE LEDGER OF PRICES (Horizon 11 commit 0) --------------------------
+	#
+	# WHY THIS EXISTS. Everything above this line measures INCOME. Nothing in
+	# this project has ever measured a SINK, and `DEFAULT_LEDGER`'s seven keys
+	# hold no credit figure either -- so the entire outflow side of the economy,
+	# which is what Horizon 10 was ABOUT, has been unmeasured by construction.
+	#
+	# The consequence, found by converting the shipped constants against the
+	# loop this function has just measured: the deepest possible tug's fee is a
+	# few dozen SECONDS of standard-loop income, a full repair rather less, and
+	# every colony work in a whole run together is about an hour. §109 priced
+	# the rescue at exactly twice the beacon jump, which is correct arithmetic
+	# against a number that had itself never been anchored to anything. That is
+	# the whole defect in one sentence, and it is the rule this block hands the
+	# repo: EVERY PRICE HERE IS ANCHORED TO ANOTHER PRICE, AND NONE IS ANCHORED
+	# TO THE LOOP.
+	#
+	# IT ASSERTS LAWS, NEVER TARGETS. The re-pricing is deliberately a decision
+	# for a later horizon, taken with this table in hand (§41's own posture, and
+	# §99's: the numbers are provisional, the laws are what is checked). So
+	# nothing below asserts that a sink is BIG ENOUGH. A leg that did would be
+	# this commit quietly making the decision it exists to inform.
+	#
+	# AND IT IS HONEST ABOUT ITS REACH, `FEEDS COMPETE, SIX WAYS`' posture: the
+	# sink list below is AUTHORED, so a sink somebody adds later and does not
+	# add here is invisible to all three legs. What is derived is every PRICE --
+	# each row reads the live constant or the live port def rather than a number
+	# typed twice -- which is what makes `EVERY SINK IS PRICED` able to notice a
+	# constant that moved or a key that was renamed.
+	var sink_rows: Array = []
+	sink_rows.append({"name": "the module catalogue", "cost": float(catalog),
+		"forced": false})
+	var works_total := 0
+	for w_v in GameState.COLONY_WORKS:
+		works_total += int((GameState.COLONY_WORKS[w_v] as Dictionary).get("price", 0))
+	sink_rows.append({"name": "colony works, one colony", "cost": float(works_total),
+		"forced": false})
+	# The dearest component the order desk will ever quote, derived rather than
+	# named: a later component priced above lens_unsounded moves this row.
+	var req_max := 0
+	for cid_v in CommodityDB.ids():
+		var cid := String(cid_v)
+		if String(CommodityDB.get_good(cid).get("parent", "")) == "":
+			continue
+		req_max = maxi(req_max, Market.requisition_price(cid))
+	sink_rows.append({"name": "a requisition, dearest part", "cost": float(req_max),
+		"forced": false})
+	# THE TWO A PILOT CANNOT DECLINE. A shield-zero ship has no other way out,
+	# and a hull that will not mend is a ship that cannot be flown -- so these
+	# two are the ones the third law below is about.
+	# AT THE FAR MARKS, and the depth is FarMarks' own rather than a doubled
+	# hyper cap: the rescue ramp deliberately does NOT clamp (§109), so the row
+	# is only honest if it names the deepest place a pilot can actually die.
+	sink_rows.append({"name": "the tug, at the far marks",
+		"cost": float(rescue_fee(FarMarks.DEPTH_MAX)), "forced": true})
+	sink_rows.append({"name": "repair to full",
+		"cost": float(PortPanel.REPAIR_FULL_PRICE), "forced": true})
+	sink_rows.append({"name": "a beacon jump, at its cap",
+		"cost": float(beacon_jump_fee(float(BEACON_JUMP_MAX_DEPTH))), "forced": false})
+	sink_rows.append({"name": "a colony jump", "cost": float(COLONY_JUMP_FEE),
+		"forced": false})
+	sink_rows.append({"name": "paint", "cost": float(PortPanel.PAINT_PRICE),
+		"forced": false})
+	# The intel and rumour desks price by PORT DEF, and the dearest desk in the
+	# game is the one worth quoting -- walked rather than named, so a new deep
+	# station with a steeper desk lands in the table without an edit here.
+	var intel_max := 0
+	var rumor_max := 0
+	for pid_v in SystemDB.port_ids():
+		var pd := SystemDB.port_def_by_id(String(pid_v))
+		intel_max = maxi(intel_max, int(pd.get("hunt_price", 0)))
+		rumor_max = maxi(rumor_max, int(pd.get("rumor_price", 0)))
+	for aid_v in DeepPortDB.ids():
+		var ad := DeepPortDB.by_id(String(aid_v))
+		intel_max = maxi(intel_max, int(ad.get("hunt_price", 0)))
+		rumor_max = maxi(rumor_max, int(ad.get("rumor_price", 0)))
+	sink_rows.append({"name": "the sharpest bearing sold", "cost": float(intel_max),
+		"forced": false})
+	sink_rows.append({"name": "a rumour, dearest desk", "cost": float(rumor_max),
+		"forced": false})
+	var stake_total := 0
+	for s_v in PortPanel.GAMBLE_STAKES:
+		stake_total += int(s_v)
+	sink_rows.append({"name": "the wager, a full streak", "cost": float(stake_total),
+		"forced": false})
+
+	var loop_secs := PACING_MINUTES * 60.0
+	print("[pacing] SINKS priced against this run's own steady loop (%.0f per %.0f min)" % [
+		steady, PACING_MINUTES])
+	for row_v in sink_rows:
+		var row: Dictionary = row_v
+		var loops := float(row["cost"]) / maxf(steady, 1.0)
+		print("[pacing]   %-28s %10s   %7.3f loops   %8.0f s%s" % [
+			String(row["name"]), _comma_int(int(row["cost"])), loops,
+			loops * loop_secs, "   (cannot be declined)" if bool(row["forced"]) else ""])
+
+	# 1. Every row read a live number. A zero means the constant or the port-def
+	#    key it derives from has moved, been renamed, or gone -- at which point
+	#    the row above is a measurement column reporting on nothing, which is the
+	#    failure this whole block was built to stop being possible.
+	var unpriced: Array = []
+	for row2_v in sink_rows:
+		var row2: Dictionary = row2_v
+		if float(row2["cost"]) <= 0.0:
+			unpriced.append(String(row2["name"]))
+	print("[pacing] EVERY SINK IS PRICED %d sink(s) derived from live data, %d read zero%s -> %s" % [
+		sink_rows.size(), unpriced.size(),
+		"" if unpriced.is_empty() else (" (%s)" % ", ".join(PackedStringArray(unpriced))),
+		"PASS" if unpriced.is_empty() else "FAIL"])
+
+	# 2. The catalogue is what a run is FOR, so nothing may cost more than it.
+	#    True today by a wide margin; it goes red the moment somebody prices a
+	#    work or an order above the entire yard, which is the one direction a
+	#    re-pricing could overshoot without anybody noticing.
+	var over: Array = []
+	for row3_v in sink_rows:
+		var row3: Dictionary = row3_v
+		if String(row3["name"]) != "the module catalogue" \
+				and float(row3["cost"]) > float(catalog):
+			over.append(String(row3["name"]))
+	print("[pacing] THE CATALOGUE IS THE LONGEST PRICE catalogue %s, %d sink(s) above it%s -> %s" % [
+		_comma_int(catalog), over.size(),
+		"" if over.is_empty() else (" (%s)" % ", ".join(PackedStringArray(over))),
+		"PASS" if over.is_empty() else "FAIL"])
+
+	# 3. THE ONE PROMISE WORTH PINNING BEFORE ANY RE-PRICING, and it is a floor
+	#    rather than a ceiling on purpose. A charge a pilot cannot decline that
+	#    costs more than a whole measured loop does not price a mistake -- it
+	#    deletes the session that preceded it, which is a different game from
+	#    this one and not the one the tutorial taught. It is comfortably true
+	#    today (both forced sinks are seconds, not loops), it survives a
+	#    re-pricing in EITHER direction, and it is therefore safe to assert now
+	#    without prejudging the decision this table exists to inform.
+	var forced_over: Array = []
+	for row4_v in sink_rows:
+		var row4: Dictionary = row4_v
+		if bool(row4["forced"]) and float(row4["cost"]) > steady:
+			forced_over.append(String(row4["name"]))
+	print("[pacing] NOTHING INVOLUNTARY EXCEEDS A LOOP one loop is %s, %d forced sink(s) above it%s -> %s" % [
+		_comma_int(int(steady)), forced_over.size(),
+		"" if forced_over.is_empty() else (" (%s)" % ", ".join(PackedStringArray(forced_over))),
+		"PASS" if forced_over.is_empty() else "FAIL"])
 	get_tree().quit()
 
 
@@ -13643,33 +14104,84 @@ func _run_layout_test() -> void:
 
 # --- title harness ----------------------------------------------------------
 
+# THE ONE THAT COULD NOT FAIL, and it is worth recording how it was found
+# rather than just fixed. `tools/run_harness.sh --legs` derives each tag's
+# assertion count from `main.gd`; this tag came back with a GATE of ZERO while
+# printing four lines. Every one of them carried its expectation in PROSE --
+# `(expect 0)`, `(expect false)`, `(expect ~0)`, `(matches save present=%s)` --
+# where nothing could read it, so the tag burned a run in every sweep since it
+# shipped and had never been capable of going red.
+#
+# That is §107's MARKETTEST defect exactly ("printed five true things and
+# asserted NONE of them, for twenty-two versions"), still live in a second tag
+# two horizons after it was named. The parenthetical is the tell: a print that
+# states what it expects is an assertion that somebody stopped one line short
+# of writing.
+#
+# The four claims below are the four that were already being printed. Nothing
+# new is measured -- what changed is that the run can now say NO.
 func _run_title_test() -> void:
 	var shots: String = OS.get_environment("PYXIS_SHOTS")
 	var player: PlayerShip = get_tree().get_first_node_in_group("player")
 	await get_tree().create_timer(1.4).timeout
 	await _shot(shots, "s1_title.png")
 
-	print("[title] state=%s hostiles=%d (expect 0) hud_visible=%s (expect false)" % [
-		"ATTRACT" if state == State.ATTRACT else "PLAYING",
-		get_tree().get_nodes_in_group("hostiles").size(),
-		str(hud.chrome_visible())])
-	print("[title] continue_offered=%s (matches save present=%s)" % [
-		str(title_screen.continue_available()), str(GameState.has_save())])
+	# 1. THE ATTRACT SCREEN IS INERT. All three clauses, because each one is a
+	#    different promise: the state machine is parked, nothing was spawned to
+	#    hunt a ship the player does not control yet, and the cockpit furniture
+	#    is not sitting behind the menu.
+	var attract_state := state == State.ATTRACT
+	var no_hostiles := get_tree().get_nodes_in_group("hostiles").size()
+	var chrome_hidden: bool = not hud.chrome_visible()
+	print("[title] THE ATTRACT SCREEN IS INERT state=%s, %d hostile(s), chrome hidden=%s -> %s" % [
+		"ATTRACT" if attract_state else "PLAYING", no_hostiles,
+		str(chrome_hidden),
+		"PASS" if attract_state and no_hostiles == 0 and chrome_hidden else "FAIL"])
 
-	# Input must be inert behind the menu.
+	# 2. THE DOOR MATCHES THE FILE. An EQUALITY rather than a fixed expectation,
+	#    and that is what makes it machine-independent: this harness runs against
+	#    the real save path (lock_saving is one-way, so pressing NEW SURVEY below
+	#    cannot write over it), so whether a save exists depends on the box. What
+	#    must hold on every box is that the button and the filesystem agree --
+	#    offering CONTINUE with nothing to continue, or hiding it with a run on
+	#    disk, are the same defect in two directions.
+	var offered := title_screen.continue_available()
+	var on_disk := GameState.has_save()
+	print("[title] THE DOOR MATCHES THE FILE continue offered=%s, save on disk=%s -> %s" % [
+		str(offered), str(on_disk), "PASS" if offered == on_disk else "FAIL"])
+
+	# 3. INPUT IS LOCKED BEHIND THE MENU. `_enter_attract` calls
+	#    set_input_enabled(false) and parks the ship, so the bar is a genuine
+	#    zero rather than a tolerance for drift -- TITLE_DRIFT_MAX exists only to
+	#    absorb physics settling, and a ship that actually flew on a held key
+	#    covers hundreds of units in this second, not fractions of one.
 	var before := player.global_position
 	Input.action_press("move_up")
 	await get_tree().create_timer(1.0).timeout
 	Input.action_release("move_up")
-	print("[title] input locked: ship moved %.2f units (expect ~0)" % \
-		before.distance_to(player.global_position))
+	var moved := before.distance_to(player.global_position)
+	print("[title] INPUT IS LOCKED BEHIND THE MENU a held bearing moved the ship %.2fu over 1s, allowed %.2fu -> %s" % [
+		moved, TITLE_DRIFT_MAX, "PASS" if moved <= TITLE_DRIFT_MAX else "FAIL"])
 
-	# Starting a survey must hand over to the tutorial cleanly.
+	# 4. NEW SURVEY HANDS OVER TO THE TUTORIAL. Four clauses, and the last is the
+	#    one with history: start_new_game calls tutorial.arm() BEFORE _load_system
+	#    precisely so the builder leaves the garrison out, and that ordering is
+	#    invisible in a diff. A regression there greets a brand-new player with
+	#    three sentries, which is the arm() comment's own words.
+	#
+	#    Deterministic on every box: begin() sets _active and drives _advance()
+	#    to step 0 unconditionally, so `tutorial_seen` -- a DEVICE fact that
+	#    varies by machine -- cannot reach any of these four.
 	start_new_game()
 	await get_tree().create_timer(1.0).timeout
-	print("[title] after NEW SURVEY: state=%s tutorial_active=%s step=%d sentries=%d" % [
-		"ATTRACT" if state == State.ATTRACT else "PLAYING",
-		str(tutorial.is_active()), GameState.tutorial_step, _count_sentries()])
+	var playing := state != State.ATTRACT
+	var tut_on := tutorial.is_active()
+	var at_first := GameState.tutorial_step == 0
+	var garrison := _count_sentries()
+	print("[title] NEW SURVEY HANDS OVER TO THE TUTORIAL state=%s, tutorial active=%s at step %d, %d sentry(s) built -> %s" % [
+		"PLAYING" if playing else "ATTRACT", str(tut_on),
+		GameState.tutorial_step, garrison,
+		"PASS" if playing and tut_on and at_first and garrison == 0 else "FAIL"])
 	await _shot(shots, "s2_after_start.png")
 	get_tree().quit()
 
@@ -14755,6 +15267,86 @@ func _run_skill_test() -> void:
 	print("[skill] NO LADDER PAYS IN CREDITS %d salvage before a full climb of every ladder, %d after, first payer: %s -> %s" % [
 		purse, GameState.salvage, paid if paid != "" else "none",
 		"PASS" if paid == "" and GameState.salvage == purse else "FAIL"])
+
+	# 2b. THE ELEVENTH IS DERIVED FROM BOTH FAMILIES (§119). The count has to
+	#     span the four legacy vars and the seven table rows, and it has to be
+	#     asked of the TABLES -- the four legacy deepenings (5c) are still
+	#     deferred and each adds a rung, so a bar written as a number here would
+	#     silently move the day one lands. Driven from empty to full: nothing at
+	#     cap, then the seven, then all eleven.
+	GameState.skills = {}
+	GameState.archeology = 0
+	GameState.smuggling = 0
+	GameState.mining = 0
+	GameState.persuasion = 0
+	var total_l := GameState.ladders_total()
+	var none_capped := GameState.ladders_at_cap() == 0 \
+		and not GameState.every_ladder_capped()
+	for id_cv in GameState.skill_ids():
+		var sid_c := String(id_cv)
+		GameState.skills[sid_c] = 999999
+	var seven_only: bool = GameState.ladders_at_cap() == GameState.SKILL_TIERS.size() \
+		and not GameState.every_ladder_capped()
+	GameState.archeology = GameState.ARCHEOLOGY_TIERS.size() - 1
+	GameState.smuggling = GameState.SMUGGLING_TIERS.size() - 1
+	GameState.mining = GameState.MINING_TIERS.size() - 1
+	GameState.persuasion = GameState.PERSUASION_TIERS.size() - 1
+	var all_capped: bool = GameState.ladders_at_cap() == total_l \
+		and GameState.every_ladder_capped()
+	# AND THE BAR IS THE TABLES' OWN. Adding a rung to a legacy array must move
+	# the bar rather than leave a capped ladder capped -- which is exactly what
+	# 5c will do, and this is the clause that proves it will be noticed.
+	var deeper: bool = GameState.persuasion < GameState.PERSUASION_TIERS.size()
+	print("[skill] THE ELEVENTH COUNTS BOTH FAMILIES %d ladders (%d legacy + %d table); none capped=%s, seven capped is not eleven=%s, all eleven=%s, the bar reads the array not a number=%s -> %s" % [
+		total_l, GameState.LEGACY_TIER_ARRAYS.size(), GameState.SKILL_TIERS.size(),
+		str(none_capped), str(seven_only), str(all_capped), str(deeper),
+		"PASS" if none_capped and seven_only and all_capped and deeper
+			and total_l == 11 else "FAIL"])
+
+	# 2c. AND IT PAYS NOTHING. The capstone arrives at the exact moment
+	#     NO LADDER PAYS IN CREDITS is standing on, so it is measured there:
+	#     the wallet, the ledger and the log across the signal itself.
+	GameState.skills = {}
+	GameState.archeology = 0
+	GameState.smuggling = 0
+	GameState.mining = 0
+	GameState.persuasion = 0
+	var purse_c := GameState.salvage
+	var ledger_c := GameState.ledger.duplicate(true)
+	# AN ARRAY, NOT AN INT, and that is required rather than stylistic: GDScript
+	# lambdas capture by VALUE, so `var n := 0` followed by `n += 1` inside the
+	# closure increments a copy and the outer number never moves. PLOTTEST's
+	# legend_layout carries this exact defect in its own comment -- a cursor
+	# advanced inside a lambda, where nothing in a diff or an assertion could
+	# see it. An Array is a reference, so append() reaches the real one.
+	var fired: Array = []
+	var once := func() -> void: fired.append(1)
+	GameState.last_rung_reached.connect(once)
+	GameState._last_rung_announced = false
+	for id_ev in GameState.skill_ids():
+		GameState.skills[String(id_ev)] = 999999
+	GameState.archeology = GameState.ARCHEOLOGY_TIERS.size() - 1
+	GameState.smuggling = GameState.SMUGGLING_TIERS.size() - 1
+	GameState.mining = GameState.MINING_TIERS.size() - 1
+	# The LAST one lands through a real mutator, so the signal is driven by the
+	# path the game actually takes rather than by calling the helper by hand.
+	GameState.persuasion = GameState.PERSUASION_TIERS.size() - 2
+	# int() around the lookup, not decoration: PERSUASION_TIERS is an untyped
+	# const so the element is a Variant, and this feeds a typed int member.
+	# Checker rule 6 is about `:=` inference and does not reach an assignment,
+	# so this one is on the author -- which is the whole reason --parse exists.
+	GameState.persuasion_xp = int(GameState.PERSUASION_TIERS[
+		GameState.PERSUASION_TIERS.size() - 1]) - 1
+	GameState.mark_persuasion(1)
+	# And a second landing must not speak again.
+	GameState.mark_skill("filing", 1)
+	GameState.last_rung_reached.disconnect(once)
+	var wallet_still := GameState.salvage == purse_c
+	var ledger_still := str(ledger_c) == str(GameState.ledger)
+	print("[skill] THE ELEVENTH PAYS NOTHING signal fired %d time(s) through a real mutator, wallet %d->%d=%s, ledger byte-identical=%s -> %s" % [
+		fired.size(), purse_c, GameState.salvage, str(wallet_still),
+		str(ledger_still),
+		"PASS" if fired.size() == 1 and wallet_still and ledger_still else "FAIL"])
 
 	# 3. THE TIER IS DERIVED, NEVER STORED. The legacy four keep a tier var
 	#    beside an xp var and a loader that clamps one against the other; these
@@ -15844,6 +16436,51 @@ func _run_plot_test() -> void:
 		str(GameState.is_survey_held(held_cell)),
 		str(words_before), str(words_after),
 		"PASS" if marks_ok and legend_ok else "FAIL"])
+
+	# 9b2. AND ONE OF THEM IS NOT YOURS (v28, §115). BOTH HALVES, the posture
+	#      ONLY THE SHELF MOVES WITH STANDING uses: a colleague's cell must read
+	#      as held (or it silently loses its anchor and its ring) AND must read
+	#      as a colleague's (or the third word bought nothing). The pilot's own
+	#      cell is driven in the same breath as the control, because a store
+	#      that answered "another hand" for everything would satisfy either
+	#      clause alone.
+	var other_cell := DeepSpace.cell_key(sid, 7, 0)
+	GameState.note_survey_worked(other_cell)
+	GameState.note_survey_held(other_cell, true)
+	var words_other := cp.legend_words(false, false)
+	var other_ok: bool = GameState.is_survey_held(other_cell) \
+		and GameState.is_survey_held_by_another(other_cell) \
+		and GameState.is_survey_held(held_cell) \
+		and not GameState.is_survey_held_by_another(held_cell) \
+		and not GameState.is_survey_held_by_another(plain_cell)
+	# The legend answers to its own layer, never to HELD's: COLLEAGUE was absent
+	# while only a self-filed cell stood, and both words stand together now.
+	var other_legend: bool = not words_after.has("COLLEAGUE") \
+		and words_other.has("COLLEAGUE") and words_other.has("HELD")
+	print("[plot] A COLLEAGUE'S CELL IS HELD AND SAYS SO held=%s, by another=%s; your own cell is held and NOT another's=%s; legend %s -> %s" % [
+		str(GameState.is_survey_held(other_cell)),
+		str(GameState.is_survey_held_by_another(other_cell)),
+		str(GameState.is_survey_held(held_cell)
+			and not GameState.is_survey_held_by_another(held_cell)),
+		str(words_other),
+		"PASS" if other_ok and other_legend else "FAIL"])
+
+	# 9b3. AND THE ANCHOR DOES NOT CARE WHOSE IT IS. §112 made a held cell a
+	#      jump anchor and this commit must not quietly take that away from the
+	#      cells that come home free -- anchor_rows reads is_survey_held, which
+	#      is true for both words BY DESIGN, and this is the leg that says so
+	#      rather than leaving it to be rediscovered.
+	var tier_was := int(GameState.skills.get("filing", 0))
+	GameState.skills["filing"] = GameState.SKILL_TIERS["filing"][
+		GameState.FILING_ANCHOR_TIER]
+	var anchor_keys := PackedStringArray()
+	for r_v in anchor_rows(sid):
+		anchor_keys.append(String((r_v as Dictionary)["label"]))
+	GameState.skills["filing"] = tier_was
+	var both_anchored: bool = anchor_keys.size() >= 2
+	print("[plot] A COLLEAGUE'S CELL IS STILL AN ANCHOR at FILING t%d the rows are %s (both held cells, whoever filed them) -> %s" % [
+		GameState.FILING_ANCHOR_TIER, str(anchor_keys),
+		"PASS" if both_anchored else "FAIL"])
 
 	# 9c. AND THE RIVAL READS DIFFERENTLY TO SOMEBODY WHO FILES. Copy, not
 	#     mechanics: nothing about when the rival arrives moves. Driven on the
@@ -17854,6 +18491,49 @@ func _run_return_test() -> void:
 	#     asked of the player. Also the fiction's own constraint: the rival
 	#     stays anonymous, which is a claim about what is NOT in the table and
 	#     therefore has to be asserted rather than assumed.
+	# §117. AND ONE OF THEM PASSES A LIGHT SOMEBODY KEEPS. Driven through
+	#     legend_arrives, which is the real caller, so the leg tests the wiring
+	#     and not a helper nobody reaches. Both directions, because a sentence
+	#     that fired for every pilot would be a sentence about nothing: silent
+	#     with no colony, spoken with one, and spoken ONCE.
+	#     THE PLATE IS FREED BY HAND BETWEEN CLAUSES, and that is required
+	#     rather than convenient: the helper refuses while a plate is up (§96's
+	#     ask-first), so a "never twice" clause run against a busy plate would
+	#     pass on the BUSY guard whether the once-per-run flag worked or not --
+	#     a leg that cannot fail, which is the exact defect --legs just found in
+	#     TITLETEST. Reaching a private HUD field is the prompt sweep's own
+	#     precedent (it reads _prompt_label.modulate.a for the same kind of
+	#     reason: the public surface cannot express the state a leg must set up).
+	var kept_was := _kept_light_spoken
+	var colonies_was: Dictionary = GameState.colonies.duplicate(true)
+	var at_proc := Vector3(2400.0, 0.0, 2400.0)
+
+	_kept_light_spoken = false
+	GameState.colonies = {}
+	hud._broadcast_box.visible = false
+	legend_arrives(msid, 4, "procession", at_proc)
+	var silent_alone: bool = not _kept_light_spoken and not hud.broadcast_busy()
+
+	GameState.claim_colony(msid + ":3", 1800.0, 0.0)
+	legend_arrives(msid, 4, "procession", at_proc)
+	var spoke_with_light: bool = _kept_light_spoken \
+		and hud.broadcast_text().contains("kept by you")
+
+	# The plate is freed, so the ONLY thing that can stop a second sentence is
+	# the flag. A sentinel goes up first so "nothing new was written" is
+	# measured against a known string rather than against emptiness.
+	hud._broadcast_box.visible = false
+	hud.show_broadcast("SENTINEL", "SENTINEL", Palette.AMBER)
+	legend_arrives(msid, 4, "procession", at_proc)
+	var spoke_once: bool = hud.broadcast_text() == "SENTINEL"
+
+	hud._broadcast_box.visible = false
+	GameState.colonies = colonies_was
+	_kept_light_spoken = kept_was
+	print("[return] THE PROCESSION PASSES A KEPT LIGHT silent with no colony=%s, spoken with one=%s, and never twice with the plate FREE=%s -> %s" % [
+		str(silent_alone), str(spoke_with_light), str(spoke_once),
+		"PASS" if silent_alone and spoke_with_light and spoke_once else "FAIL"])
+
 	var proc_key := GameState.mark_key(msid, 4)
 	GameState.marks_seen = {}
 	GameState.marks_seen[proc_key] = GameState.MARK_READ
@@ -19744,6 +20424,65 @@ func _run_save_test() -> void:
 			"PASS" if ok26 and kept26 and cleaned27 and shelf27 and clamped27
 				and deep27 and orders27 and waiting27 and reads27 and skills27
 				and works27 else "FAIL"])
+	elif mode == "migrate27":
+		# v28 adds a THIRD WORD to survey_filed, and the bump is spent on
+		# exactly that -- which is worth stating, because the store's SHAPE did
+		# not change and the instinct is that a new legal value rides for free.
+		#
+		# It does not, and the direction that matters is DOWNGRADE. The loader
+		# validates by type and drops what it does not recognise, so a v28 file
+		# opened by a v27 build would find "held_other", fail both branches,
+		# and drop the cell out of survey_filed entirely -- silently un-holding
+		# it, taking its ring off the chart and its jump anchor with it. With
+		# the bump, that build hits the `version > SAVE_VERSION` gate instead,
+		# refuses to load and LOCKS SAVING, so the file survives the session.
+		# §73 already paid once for a save-destroying downgrade path; v28 is
+		# cheaper than paying twice.
+		#
+		# UPWARD there is nothing to migrate, the standing rule: a v27 file has
+		# only `true` and "held" in the store, both still legal, and loads as a
+		# pilot every one of whose held cells is their own -- which is exactly
+		# what every pilot before this section was.
+		var sys27 := SystemDB.START_SYSTEM
+		var mine27 := DeepSpace.cell_key(sys27, 3, 0)
+		var theirs27 := DeepSpace.cell_key(sys27, 4, 0)
+		var counter27 := DeepSpace.cell_key(sys27, 5, 0)
+		var junk27 := DeepSpace.cell_key(sys27, 6, 0)
+		var uncovered27 := DeepSpace.cell_key(sys27, 7, 0)
+		var v27 := {
+			"version": 27,
+			"salvage": 4000,
+			"survey_coverage": {mine27: true, theirs27: true, counter27: true,
+				junk27: true},
+			# THE RUBBISH PASS. A hand-edited file is input, not truth: a word
+			# nobody declared, and a key naming a cell this pilot never worked.
+			# The second is the subset invariant, which is the one _load_survey
+			# _filed enforces rather than a shape.
+			"survey_filed": {mine27: "held", theirs27: "held_other",
+				counter27: true, junk27: "nonsense", uncovered27: "held"},
+		}
+		var f27 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f27.store_string(JSON.stringify(v27))
+		f27.close()
+		var ok27 := GameState.load_game()
+		var mine_ok: bool = GameState.is_survey_held(mine27) \
+			and not GameState.is_survey_held_by_another(mine27)
+		# A v27 FILE CANNOT CARRY THE THIRD WORD -- but a hand-edited one can,
+		# and if it does it is legal, because the word is legal. What is being
+		# checked here is that the loader reads the VALUE rather than flattening
+		# it, which is the defect §96 records this exact function carrying for
+		# two versions.
+		var theirs_ok: bool = GameState.is_survey_held(theirs27) \
+			and GameState.is_survey_held_by_another(theirs27)
+		var counter_ok: bool = GameState.is_survey_filed(counter27) \
+			and not GameState.is_survey_held(counter27)
+		var junk_ok: bool = not GameState.is_survey_filed(junk27)
+		var uncovered_ok: bool = not GameState.is_survey_filed(uncovered27)
+		print("[savetest] v27->v28 THE THIRD WORD SURVIVES A RELOAD loaded=%s; your own held cell reads held and not another's=%s, a colleague's reads both=%s, a counter filing is still not held=%s; rubbish dropped (unknown word=%s, uncovered cell=%s) -> %s" % [
+			str(ok27), str(mine_ok), str(theirs_ok), str(counter_ok),
+			str(junk_ok), str(uncovered_ok),
+			"PASS" if ok27 and mine_ok and theirs_ok and counter_ok and junk_ok
+				and uncovered_ok else "FAIL"])
 	elif mode == "future":
 		# A SAVE FROM A NEWER BUILD. Refusing to load it was never the hard
 		# part — that clause has always been there. What it did NOT do was stop
@@ -26019,6 +26758,21 @@ func _run_colony_test() -> void:
 	GameState.claim_colony("pyx01:7", 2000.0, 0.0)
 	var wcell := DeepSpace.cell_of(Vector3(2000.0, 0.0, 0.0))
 	GameState.note_survey_worked(DeepSpace.cell_key("pyx01", wcell.x, wcell.y))
+	# §116. THE SHIP HAS TO BE THERE NOW, and this leg's premise moved rather
+	# than its rule -- §24's discipline: the delivery gate is stated here, in
+	# the commit that added it, instead of the loop being quietly patched until
+	# it passed again. Every work still costs exactly its price and still moves
+	# no stat; one of them now also wants a hold at the colony, so the leg puts
+	# the ship there and loads the manifest before it can buy anything.
+	var wplayer: PlayerShip = get_tree().get_first_node_in_group("player")
+	if wplayer != null:
+		wplayer.global_position = Vector3(2000.0, 0.0, 0.0)
+	GameState.cargo = {}
+	for wneed_v in GameState.COLONY_WORKS:
+		var wneed: Dictionary = (GameState.COLONY_WORKS[wneed_v]
+			as Dictionary).get("goods", {})
+		for g3_v in wneed:
+			GameState.cargo[String(g3_v)] = int(wneed[g3_v])
 	var stats_before := GameState.stats.duplicate(true)
 	var spent_total := 0
 	var works_ok := true
@@ -26035,10 +26789,103 @@ func _run_colony_test() -> void:
 		want_total += int((GameState.COLONY_WORKS[w2_v] as Dictionary)["price"])
 	var stats_same := str(stats_before) == str(GameState.stats)
 	var re_buy := buy_colony_work("pyx01:7", "relay")
-	print("[colony] WORKS ARE A SINK, NOT A STAT three works cost %d (want %d), stats byte-identical=%s, a re-buy refuses=%s -> %s" % [
-		spent_total, want_total, str(stats_same), str(not re_buy),
+	# AND THE MANIFEST LEFT THE HOLD. A work that took the credits and not the
+	# goods would pass every clause above it while the delivery was a fiction.
+	var hold_emptied := GameState.cargo.is_empty()
+	print("[colony] WORKS ARE A SINK, NOT A STAT %d works cost %d (want %d), the delivered goods left the hold=%s, stats byte-identical=%s, a re-buy refuses=%s -> %s" % [
+		GameState.COLONY_WORKS.size(), spent_total, want_total,
+		str(hold_emptied), str(stats_same), str(not re_buy),
 		"PASS" if works_ok and spent_total == want_total and stats_same
-			and not re_buy else "FAIL"])
+			and hold_emptied and not re_buy else "FAIL"])
+
+	# §116. THE TRIP IS THE COST, and this is the leg that says the gate is a
+	# JOURNEY and not just a manifest. Three refusals, each isolated: the goods
+	# aboard but the ship four hundred units off; the ship alongside with an
+	# empty hold; and -- the one the whole feature exists for -- the goods
+	# aboard while the chart is open from ANOTHER SYSTEM, which is exactly what
+	# a menu with no position gate would have allowed.
+	#
+	# Every refusal is free, this function's own posture, and the wallet is
+	# checked to the credit across all three.
+	#
+	# ON ITS OWN COLONY, AND THAT IS NOT TIDINESS. The first draft ran this on
+	# pyx01:7 and cleared `colony_works` to get a clean slate -- which took the
+	# DRY DOCK off the colony that THE DOCK IS TIME, NOT POWER measures eighty
+	# lines below, and turned a leg that had been green for a horizon red. The
+	# sweep caught it, which is the system working; the lesson is cheaper than
+	# the sweep. A harness block that resets SHARED state and does not restore
+	# it is a defect with a blast radius measured in whatever somebody writes
+	# after it. This one claims its own ground, at a position no other leg
+	# reads, and touches nothing else.
+	var deliver_at := Vector3(2000.0, 0.0, -1500.0)
+	var deliver_key := "pyx01:12"
+	GameState.claim_colony(deliver_key, deliver_at.x, deliver_at.z)
+	var dcell := DeepSpace.cell_of(deliver_at)
+	GameState.note_survey_worked(DeepSpace.cell_key("pyx01", dcell.x, dcell.y))
+	GameState.salvage = 30000
+	var deliver_id := ""
+	for wd_v in GameState.COLONY_WORKS:
+		if not (GameState.COLONY_WORKS[wd_v] as Dictionary).get("goods", {}).is_empty():
+			deliver_id = String(wd_v)
+			break
+	var manifest: Dictionary = (GameState.COLONY_WORKS.get(deliver_id, {})
+		as Dictionary).get("goods", {})
+	GameState.cargo = {}
+	for g4_v in manifest:
+		GameState.cargo[String(g4_v)] = int(manifest[g4_v])
+	var wallet_d := GameState.salvage
+	if wplayer != null:
+		wplayer.global_position = deliver_at + Vector3(400.0, 0.0, 0.0)
+	var far_refused := not buy_colony_work(deliver_key, deliver_id)
+	if wplayer != null:
+		wplayer.global_position = deliver_at
+	GameState.cargo = {}
+	var empty_refused := not buy_colony_work(deliver_key, deliver_id)
+	for g5_v in manifest:
+		GameState.cargo[String(g5_v)] = int(manifest[g5_v])
+	var sys_was := GameState.current_system
+	GameState.current_system = "pyx02"
+	var elsewhere_refused := not buy_colony_work(deliver_key, deliver_id)
+	GameState.current_system = sys_was
+	var met := bool(work_delivery_met(deliver_key, deliver_id))
+	var bought := buy_colony_work(deliver_key, deliver_id)
+	print("[colony] THE TRIP IS THE COST %s wants %s: refused 400u off=%s, refused with an empty hold=%s, refused from another system with the goods aboard=%s (all free, wallet %d->%d), and lands standing there=%s -> %s" % [
+		deliver_id, work_manifest(deliver_id), str(far_refused),
+		str(empty_refused), str(elsewhere_refused), wallet_d,
+		wallet_d - int((GameState.COLONY_WORKS[deliver_id] as Dictionary)["price"]),
+		str(met and bought),
+		"PASS" if far_refused and empty_refused and elsewhere_refused and met
+			and bought and GameState.salvage == wallet_d - int(
+				(GameState.COLONY_WORKS[deliver_id] as Dictionary)["price"])
+			else "FAIL"])
+
+	# §116. AND THE TWO LISTS DO NOT OVERLAP. The relay carries the CHARTED
+	# markets (its blurb's own word) and the repeater carries the deep's; the
+	# defect this commit fixed was one unfiltered loop printing both under the
+	# charted heading since §112. Asserted on the partition rather than on the
+	# rendering: every event is in exactly one half, and each half is non-empty
+	# under a fixture that has both, so a filter that dropped everything would
+	# not pass by printing nothing.
+	var events_was: Array = GameState.market_events.duplicate(true)
+	GameState.market_events = [
+		{"kind": "shortage", "port": "anchor", "good": "alloys",
+			"name": "THE ANCHOR", "mult": 2.0, "remaining": 200.0},
+		{"kind": "glut", "port": "pyx01:9:9", "good": "cores", "deep": true,
+			"name": "A SHOAL RELAY", "mult": 0.6, "remaining": 150.0},
+	]
+	var chart_half := 0
+	var deep_half := 0
+	for evp_v in GameState.market_events:
+		if bool((evp_v as Dictionary).get("deep", false)):
+			deep_half += 1
+		else:
+			chart_half += 1
+	var partitioned: bool = chart_half + deep_half == GameState.market_events.size() \
+		and chart_half > 0 and deep_half > 0
+	GameState.market_events = events_was
+	print("[colony] EACH WORK CARRIES ITS OWN WEATHER %d charted + %d deep = %d, neither half empty -> %s" % [
+		chart_half, deep_half, chart_half + deep_half,
+		"PASS" if partitioned else "FAIL"])
 
 	# SURVEYED GROUND ONLY, and the refusal is free. A colony whose cell no
 	# mast ever worked refuses every work, and refuses them for nothing.
@@ -26051,6 +26898,15 @@ func _run_colony_test() -> void:
 
 	# THE DOCK IS TIME, NOT POWER. The aura reads true alongside the yard and
 	# false a hundred units off -- the rule function, not the regen rendering.
+	#
+	# AND IT BUILDS WHAT IT MEASURES, rather than inheriting it from eighty
+	# lines up. It did inherit it, and §116's delivery leg went in between and
+	# cleared the store -- so this leg went red for something that was not
+	# wrong with the dock. Both sides of that are fixed: the block above no
+	# longer touches shared state, and this one no longer depends on distance.
+	# A precondition a leg needs is a precondition that leg should state.
+	if not GameState.has_work("pyx01:7", "dock"):
+		buy_colony_work("pyx01:7", "dock")
 	var near_aura := GameState.dock_aura_at(2000.0, 0.0)
 	var far_aura := GameState.dock_aura_at(2000.0, 500.0)
 	print("[colony] THE DOCK IS TIME, NOT POWER aura alongside=%s, 500u off=%s -> %s" % [

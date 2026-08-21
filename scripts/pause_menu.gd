@@ -299,6 +299,14 @@ func _build_ledger() -> void:
 	# press. That is the difference, and it is the whole of it.
 	_body.add_child(_heading("PILOT'S LEDGER"))
 	_body.add_child(_sub("WHAT YOU HAVE DONE, AND WHAT IT OPENED. NOTHING HERE IS SPENT."))
+	# §119. THE COUNT, AND NOTHING ELSE. A number on the header line: no
+	# percentage, no bar, no per-ladder tick, no second screen, and NOTHING
+	# ANYWHERE SAYS WHAT HAPPENS AT THE LAST ONE. The visible half is the
+	# author's decision taken in the open (§119 records what it costs against
+	# §19); the restraint everywhere else is what buys it back. This page has
+	# nothing to press and that is still true.
+	_body.add_child(_sub("%d OF %d LADDERS STAND AT THEIR LAST RUNG" % [
+		GameState.ladders_at_cap(), GameState.ladders_total()]))
 	_body.add_child(_spacer(4))
 	# The legacy four first, in the order they shipped -- they each own their own
 	# line function and their own save keys, and folding them into SKILL_TIERS
@@ -339,6 +347,19 @@ func _build_log() -> void:
 		entries.append(l)
 		_body.add_child(l)
 	UIKit.reveal_list(entries, GameState.reduce_motion())
+	# §118. AND THE ONE THING THIS RUN LOST. The log holds ten lines and evicts
+	# the oldest, so a claim from an hour ago is gone from the page above while
+	# the fact of it is not -- this is the running total, which is what a ledger
+	# key is FOR and the reason the key is not a dead store.
+	#
+	# CONDITIONED ON THE LAYER, the chart legend's own rule: a pilot who has
+	# never lost a spill is not shown a zero. A zero here would read as a score
+	# to improve, and this page is a record rather than a scoreboard.
+	var lost := int(GameState.ledger.get("spills_lost", 0))
+	if lost > 0:
+		_body.add_child(_spacer(4))
+		_body.add_child(_sub("%d CRATE%s CLAIMED BY SOMEBODY ELSE THIS SURVEY"
+			% [lost, "" if lost == 1 else "S"]))
 	_body.add_child(_spacer(4))
 	_body.add_child(_action("BACK", Palette.TEAL, func() -> void:
 		_page = "root"

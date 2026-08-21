@@ -9,6 +9,9 @@
 #
 #   tools/run_harness.sh              # every harness
 #   tools/run_harness.sh DEEPTEST     # just these tags
+#   tools/run_harness.sh --counts     # the run arithmetic, no binary
+#   tools/run_harness.sh --legs       # the leg arithmetic, no binary
+#   tools/run_harness.sh --parse      # parse EVERY script, not just main.gd
 #
 # Exit status is 0 only when FAIL is 0, no script errors appeared, and the real
 # save is byte-identical to how it started.
@@ -25,9 +28,11 @@ mkdir -p "$OUT"
 # FAIL lines -- so the sweep would print "65 runs | 0 PASS | 0 FAIL" and exit 0,
 # which is the worst possible answer: a green-looking summary that measured
 # nothing at all.
-# --counts never launches the binary (see §113 below), so it must not be
-# refused by the check that exists to protect launches.
-if [ "${1:-}" != "--counts" ] && ! [ -x "$GODOT" ] && ! command -v "$GODOT" >/dev/null 2>&1; then
+# --counts and --legs never launch the binary (§113, and Horizon 11 commit 1),
+# so they must not be refused by the check that exists to protect launches.
+# --parse is NOT in this list: it is nothing BUT launches.
+if [ "${1:-}" != "--counts" ] && [ "${1:-}" != "--legs" ] \
+		&& ! [ -x "$GODOT" ] && ! command -v "$GODOT" >/dev/null 2>&1; then
 	echo "GODOT not found: $GODOT" >&2
 	echo "Set it explicitly, e.g." >&2
 	echo "  GODOT=/Applications/Godot.app/Contents/MacOS/Godot tools/run_harness.sh" >&2
@@ -112,7 +117,13 @@ TIMEOUT_S="${PYXIS_HARNESS_TIMEOUT:-1500}"
 # SAVETEST is stateful: =write lays down a fixture the bare read consumes, so
 # the pair must stay adjacent and in this order. The migrate modes are
 # self-contained and each builds its own old-version fixture.
-SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 migrate14 migrate15 migrate16 migrate17 migrate18 migrate19 migrate20 migrate21 migrate22 migrate23 migrate24 migrate25 migrate26 future partial6)
+# ONE LIST, AND THE FILTER BELOW REUSES IT. This was written out twice --
+# here and inside the argument branch -- which is two sources of truth for one
+# fact, and it collected exactly the tax that shape always collects: adding
+# `migrate27` meant editing both, and editing one would have left a partial
+# sweep quietly running a different set from a full one.
+ALL_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 migrate14 migrate15 migrate16 migrate17 migrate18 migrate19 migrate20 migrate21 migrate22 migrate23 migrate24 migrate25 migrate26 migrate27 future partial6)
+SAVE_MODES=("${ALL_MODES[@]}")
 
 # §113. THE COUNTS, DERIVED. `tools/run_harness.sh --counts` prints the run
 # arithmetic and exits -- no Godot binary touched, so it works on any machine
@@ -127,19 +138,113 @@ if [ "${1:-}" = "--counts" ]; then
 	exit 0
 fi
 
+# THE LEG ARITHMETIC, DERIVED. `--counts` answered "how many runs"; this
+# answers "how many assertions should those runs print", scoped to the tags
+# this script actually sweeps -- which is why it passes TAGS in rather than
+# letting the tool guess: a tag that is dispatched but deliberately NOT swept
+# (the capture and demo modes above) is not a gap in the gate.
+#
+# No Godot binary, so it runs on any machine including the ones that author
+# but cannot sweep. See tools/harness_legs.py for why this is a lower bound
+# and what it refuses to gate on.
+if [ "${1:-}" = "--legs" ]; then
+	python3 "$ROOT/tools/harness_legs.py" "${TAGS[@]}"
+	exit $?
+fi
+
+# PARSE EVERY SCRIPT, NOT JUST main.gd. The pre-flight above checks main.gd,
+# which parses perfectly well while a leaf class does not -- STRATEGY §111 is
+# the whole story: survey_mast.gd failed to compile, deep_space, system_db,
+# game_state and the audio autoload all failed behind it, the gate passed, and
+# the sweep died at `SurveyMast.new()` with "Nonexistent function 'new' in base
+# 'GDScript'". §111 closed that with a static rule because the static pass is
+# cheaper. This is the other half, for the classes no static rule knows about:
+# Godot's parser is strictly stronger than check_scripts.py and always will be.
+#
+# NOT part of the default sweep. Seventy binary launches is a minute or two --
+# nothing against a full sweep, but everything against the ~0.6s pre-flight
+# that runs unconditionally. Run it before a PR, or in CI where the import
+# cache can be kept warm.
+if [ "${1:-}" = "--parse" ]; then
+	parse_bad=0
+	parse_n=0
+	while IFS= read -r f; do
+		parse_n=$((parse_n + 1))
+		plog="$OUT/parse_$(echo "$f" | tr '/.' '__').log"
+		"$GODOT" --headless --path "$ROOT" --check-only --script "$f" \
+			>"$plog" 2>&1
+		if grep -qE 'Parse Error|Could not find type|Cannot infer the type' "$plog"; then
+			parse_bad=$((parse_bad + 1))
+			echo "PARSE: $f"
+			grep -E 'Parse Error|Could not find type|Cannot infer the type' "$plog" \
+				| head -3 | sed 's/^/    /'
+		fi
+	done < <(find "$ROOT/scripts" -name '*.gd' | sort)
+	echo "---"
+	echo "$parse_n script(s) parsed | $parse_bad with errors"
+	[ "$parse_bad" -eq 0 ]
+	exit $?
+fi
+
 if [ $# -gt 0 ]; then
-	# SAVETEST names the whole stateful sequence below, never a plain tag. Left in
+	# SAVETEST names the whole stateful sequence above, never a plain tag. Left in
 	# TAGS it runs as a bare read BEFORE the =write leg has laid the fixture down,
 	# which fails five assertions that are actually fine.
+	#
+	# AND AN UNKNOWN ARGUMENT IS REFUSED RATHER THAN RUN. This branch used to
+	# accept any token as a tag, and the file's own comment forty lines up says
+	# what that costs: "an unrecognised PYXIS_* var is not an error -- the game
+	# simply boots normally and runs forever". So a typo, or a flag this build
+	# does not have, launched Godot with a variable nothing reads and sat
+	# against the 1,500-second backstop. That is not hypothetical: running
+	# `--legs` against a checkout from before it existed does exactly this, and
+	# it is how this guard came to be written.
+	#
+	# Checked against the arrays themselves, so the list of legal arguments
+	# cannot drift from the list of things that actually run.
+	ALL_TAGS=("${TAGS[@]}")
 	TAGS=()
 	SAVE_MODES=()
 	for t in "$@"; do
 		if [ "$t" = "SAVETEST" ]; then
-			SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 migrate14 migrate15 migrate16 migrate17 migrate18 migrate19 migrate20 migrate21 migrate22 migrate23 migrate24 migrate25 migrate26 future partial6)
-		else
-			TAGS+=("$t")
+			SAVE_MODES=("${ALL_MODES[@]}")
+			continue
 		fi
+		known=0
+		for k in "${ALL_TAGS[@]}"; do
+			if [ "$k" = "$t" ]; then
+				known=1
+				break
+			fi
+		done
+		if [ "$known" -eq 0 ]; then
+			echo "UNKNOWN ARGUMENT: $t" >&2
+			echo "Modes:  --counts  --legs  --parse" >&2
+			echo "Tags:   SAVETEST, or one of the ${#ALL_TAGS[@]} in TAGS:" >&2
+			printf '%s\n' "${ALL_TAGS[@]}" | sort | paste -sd' ' - | fold -sw 76 \
+				| sed 's/^/    /' >&2
+			exit 2
+		fi
+		TAGS+=("$t")
 	done
+fi
+
+# THE PER-TAG LEG GATE, cached once. `--legs` explains what this is and what it
+# deliberately refuses to gate on; this is the same numbers in a form the loop
+# below can grep. Built AFTER the argument filter, so a partial sweep is judged
+# against the tags it actually ran.
+#
+# ONE PARSE, NOT FIFTY-SIX. Calling the tool per tag would re-read 28,000 lines
+# of main.gd once per run to prove the same thing every time.
+#
+# Warn-and-continue without python3, matching the static pre-flight above. This
+# is a diagnostic layered on top of the sweep, never a precondition for it: the
+# PASS/FAIL arithmetic is unaffected by its absence, and a missing python3 has
+# already cost the more valuable of the two checks.
+GATES="$OUT/leg_gates.tsv"
+: >"$GATES"
+if command -v python3 >/dev/null 2>&1 && [ ${#TAGS[@]} -gt 0 ]; then
+	python3 "$ROOT/tools/harness_legs.py" --gates "${TAGS[@]}" >"$GATES" 2>/dev/null || : >"$GATES"
 fi
 
 # Godot's user:// for this project, so we can prove the real save is untouched.
@@ -167,22 +272,52 @@ SAVE="$USERDATA/save.json"
 # failed guard, and a guard that fails open is worse than no guard. With nothing
 # on disk the digest is simply the hash of no input, which is stable and compares
 # equal to itself -- the property the check actually needs.
+# ONE DIGEST COMMAND, RESOLVED ONCE, AND IT MUST EXIST. `md5 -q` is BSD; Linux
+# ships `md5sum`. This script is macOS-targeted (the GODOT default and USERDATA
+# above both say so), so the gap never bit -- but it failed OPEN when it did:
+# every `md5` call errored to /dev/null, the digest of nothing compared equal to
+# the digest of nothing, and the sweep printed "save intact ()" having checked
+# nothing at all. That is the exact shape this file's own comment refuses two
+# functions down ("a guard that fails open is worse than no guard"), and it is
+# live the moment any of this runs anywhere but a Mac -- which the CI work on
+# the roadmap intends. Found by running --parse on Linux.
+if command -v md5 >/dev/null 2>&1; then
+	_digest() { md5 -q; }
+elif command -v md5sum >/dev/null 2>&1; then
+	_digest() { md5sum | cut -d" " -f1; }
+else
+	echo "NO DIGEST TOOL: neither md5 nor md5sum found." >&2
+	echo "The save-untouched check cannot run, and it is the check that matters." >&2
+	exit 2
+fi
+
 save_md5() {
 	{
 		for f in "$SAVE" "$USERDATA/profiles.json" "$USERDATA/prefs.json"; do
-			[ -f "$f" ] && md5 -q "$f"
+			[ -f "$f" ] && _digest <"$f"
 		done
 		if [ -d "$USERDATA/profiles" ]; then
 			for p in $(ls "$USERDATA/profiles" 2>/dev/null | sort); do
 				[ -f "$USERDATA/profiles/$p/save.json" ] \
-					&& md5 -q "$USERDATA/profiles/$p/save.json"
+					&& _digest <"$USERDATA/profiles/$p/save.json"
 			done
 		fi
-	} 2>/dev/null | md5 -q
+	} 2>/dev/null | _digest
 }
 BEFORE="$(save_md5)"
 
-pass=0; fail=0; errs=0; runs=0
+pass=0; fail=0; errs=0; runs=0; short=0
+
+# What an engine error looks like from outside the process. Every one of these
+# ALREADY fails the sweep through `errs`, which is the whole licence for killing
+# on sight: a run that has printed one has nothing left to prove.
+#
+# Verified before it was wired: no .gd file in this project prints any of these
+# strings itself, so this pattern can only ever match Godot's own output.
+FATAL_RE='SCRIPT ERROR|Parse Error|Invalid call|Cannot call method'
+# Seconds to keep reading after the first one, so the log carries the stack
+# trace rather than only the headline. The whole point is a legible failure.
+FATAL_GRACE=3
 run_one() {  # tag, env assignment
 	local tag="$1" assign="$2"
 	local log="$OUT/${1//[^A-Za-z0-9_]/_}.log"
@@ -191,13 +326,37 @@ run_one() {  # tag, env assignment
 	# sweep with no output and no failure. Counted as an error, not silence.
 	env "$assign" "$GODOT" --headless --path "$ROOT" >"$log" 2>&1 &
 	local pid=$!
-	local waited=0
+	local waited=0 fatal=0
 	while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$TIMEOUT_S" ]; do
 		sleep 1; waited=$((waited + 1))
+		# KILL ON THE SYMPTOM, NOT ON THE CLOCK. §111's hang printed a script
+		# error and then sat here for 1,500 seconds, because a Godot runtime
+		# error aborts the FUNCTION and not the process -- so quit() is never
+		# reached and the backstop is the only thing left. The backstop was
+		# always correct; what it cost was twenty-five minutes per occurrence.
+		#
+		# A per-tag quit-after-N was the obvious fix and is refused above:
+		# PYXIS_BALANCE legitimately runs five to eleven minutes, so any bound
+		# tight enough to be useful fails the sweep for something that is not a
+		# defect, and a table of fifty-six bounds is a measurement column
+		# maintained by hand (§113's own lesson). This needs no bound and no
+		# table, because it waits for the run to say it has already failed.
+		if [ "$fatal" -eq 0 ] && grep -qE "$FATAL_RE" "$log" 2>/dev/null; then
+			fatal=1
+			sleep "$FATAL_GRACE"
+			break
+		fi
 	done
 	if kill -0 "$pid" 2>/dev/null; then
 		kill -9 "$pid" 2>/dev/null
-		echo "HARNESS TIMEOUT after ${TIMEOUT_S}s (never called quit)" >>"$log"
+		if [ "$fatal" -eq 1 ]; then
+			# Deliberately NOT matching FATAL_RE or the errs pattern: the error
+			# this reports is already counted one line below, and a marker that
+			# counted itself would inflate every early kill by one.
+			echo "KILLED AT ${waited}s AFTER AN ENGINE ERROR (the run had already failed)" >>"$log"
+		else
+			echo "HARNESS TIMEOUT after ${TIMEOUT_S}s (never called quit)" >>"$log"
+		fi
 	fi
 	wait "$pid" 2>/dev/null
 	local p f e
@@ -209,6 +368,18 @@ run_one() {  # tag, env assignment
 	e=$(grep -cE 'SCRIPT ERROR|Parse Error|Invalid call|Cannot call method|HARNESS TIMEOUT' "$log")
 	pass=$((pass + p)); fail=$((fail + f)); errs=$((errs + e))
 	printf '%-16s %3d pass  %d fail  %d err\n' "$tag" "$p" "$f" "$e"
+	# THE LEG GATE. A harness that returns early and quits CLEANLY prints fewer
+	# verdicts with no FAIL, no script error and no timeout -- invisible to all
+	# three columns above, and the shape behind "a green at 758 that was never
+	# swept". Compared against the unconditional site count only, so a leg that
+	# legitimately did not fire cannot redden this (see harness_legs.py).
+	local verdicts=$((p + f)) gate=""
+	gate=$(awk -F'\t' -v t="$tag" '$1 == t { print $2 }' "$GATES" 2>/dev/null)
+	if [ -n "$gate" ] && [ "$gate" -gt 0 ] && [ "$verdicts" -lt "$gate" ]; then
+		short=$((short + 1))
+		printf '    SHORT: %d verdict(s), at least %d expected -- legs did not run\n' \
+			"$verdicts" "$gate"
+	fi
 	if [ "$f" -gt 0 ]; then grep -- '-> FAIL' "$log" | sed 's/^/    /'; fi
 	if [ "$e" -gt 0 ]; then grep -E 'SCRIPT ERROR|Parse Error|Invalid call|Cannot call method' "$log" | head -3 | sed 's/^/    /'; fi
 }
@@ -218,11 +389,11 @@ for mode in "${SAVE_MODES[@]+"${SAVE_MODES[@]}"}"; do run_one "SAVETEST=$mode" "
 
 AFTER="$(save_md5)"
 echo "---"
-echo "$runs runs | $pass PASS | $fail FAIL | $errs script errors"
+echo "$runs runs | $pass PASS | $fail FAIL | $errs script errors | $short short"
 if [ "$BEFORE" != "$AFTER" ]; then
 	echo "SAVE TOUCHED: $BEFORE -> $AFTER   (a harness wrote the real save)"
 	exit 1
 fi
 echo "save intact ($BEFORE)"
 echo "logs: $OUT"
-[ "$fail" -eq 0 ] && [ "$errs" -eq 0 ]
+[ "$fail" -eq 0 ] && [ "$errs" -eq 0 ] && [ "$short" -eq 0 ]

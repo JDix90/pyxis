@@ -47,17 +47,27 @@ behind a `PYXIS_*` environment variable and run headless:
 PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 ```
 
-Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 56 of them —
-the 56 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
-`TAGS` at all: it is one harness with 25 stateful modes, run as its own
-sequence. So a full sweep is 56 + 25 = **81 runs** (`STOCKTEST` and `migrate26`
-arrived with §107; `SKILLTEST` with §111).
+Each prints `[tag] NAME <measurements> -> PASS|FAIL`. The tags live in
+`run_harness.sh`'s `TAGS`, plus `SAVETEST`, which is **not** in `TAGS` at all:
+it is one harness with a stateful mode per save version, run as its own
+sequence. A full sweep is every tag plus every mode.
 
-Those three numbers are derivable from `run_harness.sh` and nothing else — and
-now derived FOR you: `tools/run_harness.sh --counts` prints the arithmetic
-without touching the Godot binary. Check that rather than trusting this
-paragraph — it has been wrong before,
-in two places that disagreed with each other (STRATEGY §73).
+**The counts are not written here on purpose.** They were, and they went stale
+three times — twice in two places that disagreed with each other (STRATEGY
+§73, §77), and again the moment `migrate27` arrived with §115. They are
+derivable from `run_harness.sh` and nothing else, so they are derived FOR you
+and neither touches the Godot binary:
+
+```bash
+tools/run_harness.sh --counts   # how many runs a full sweep is
+tools/run_harness.sh --legs     # how many assertions those runs should carry
+```
+
+`--legs` is a lower bound with its one exception named out loud (`SAVETEST` is
+one harness dispatched once per mode, so its static count means nothing), and
+the sweep reddens if a tag prints fewer verdicts than its unconditional legs —
+the failure mode where a harness returns early and quits cleanly, printing less
+with no FAIL and no error.
 
 **`tools/run_harness.sh` now runs this check for you** and refuses to start the
 sweep if it fails, so the version below is only for checking a change by hand
@@ -252,11 +262,34 @@ from.
 
 **The fix was then verified by re-running RETURNTEST alone: 27 pass, 0 fail.**
 So the horizon's standing figure is **813 PASS across 81 runs, 0 FAIL, 0 script
-errors, save format v27** — and that 813 is ARITHMETIC ACROSS TWO RUNS (a full
+errors, save format v27 AS OF THAT SWEEP** — and that 813 is ARITHMETIC ACROSS
+TWO RUNS (a full
 sweep of 812/1, plus a one-tag re-run turning the 1 into a pass), not a single
 measured sweep. Written out because this repo has twice been wrong in exactly
 the direction of rounding that distinction away. The next full sweep is what
 turns 813 into a measured number.
+
+**That sweep happened, and it is Horizon 11's.** At `2f309ed`, with nine of the
+horizon's ten commits in: **82 runs | 824 PASS | 1 FAIL | 0 script errors | 0
+short**, save intact, at save format **v28**. `PACINGTEST` held at fourteen
+including `STEADY MIDTIER`, so §41's re-derivation stays a debt rather than a
+crisis; `SAVETEST=migrate27` passed, so the v28 bump is clean; and `--legs`'
+new short-count gate was silent on its first real outing.
+
+**The one red was `THE DOCK IS TIME, NOT POWER`, and it was the horizon's own
+leg** — §116's delivery block cleared `colony_works` for a clean slate and the
+aura leg measures that store eighty lines below. A second red, `THE MONUMENT
+ANSWERS A TAP`, surfaced on the targeted re-run that followed and was a real
+design flaw in §121 rather than a fixture problem (see STRATEGY §121). Both are
+fixed; both were re-run green — COLONYTEST 18/0, RAIDTEST 33/0, TITLETEST 4/0.
+
+**So the standing figure is 824 across 82 at `2f309ed`, and the current head has
+no full sweep on it.** The arithmetic says 831 — 824, plus the one red
+recovered, plus TITLETEST's four new legs and RAIDTEST's two — and **that is
+arithmetic, not a measurement.** It is written that way for the reason the
+paragraph above gives: this repo has been wrong twice in exactly the direction
+of rounding that distinction away. `tools/run_harness.sh --legs` reports a GATE
+of 770, which is the floor a full sweep must clear.
 
 **Before that sweep: §107–§110 swept green; §111–§113 were staged as follows.** Together they add `SKILLTEST` (one new run — 81 by
 `--counts`), grow `migrate26` with the ladder's and the works' clauses, and

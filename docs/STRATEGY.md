@@ -6216,6 +6216,16 @@ and a torpedo-only fit unable to open on an ALLIED ship (a torpedo's only damage
 vector is that sweep). The concrete harm that prompted the question — an escort
 parked inside the blast — is fixed independently by moving the station.
 
+**It now has a dependent, which is a reason to draw the line rather than leave
+it drawn nowhere** (2026-08-21). Horizon 11's research pass wanted an NPC that
+competes without fighting — a hull that arrives, works a spill the player left
+at a deep death, and leaves. Every version of it runs into this question: one
+the player can shoot is a combat encounter, one they cannot is a ghost, and one
+that splash catches by accident is this paragraph under a new name. The feature
+was reshaped around the question rather than forcing it (Horizon 11 commit 6
+ships a record, not a body), but the next non-combatant in the world will ask
+again.
+
 **The contact menu has no touch gesture** (deferred 2026-08-06, §72). Right-click
 opens it; a phone has no way in. This is the one place in the game where a verb
 is desktop-only, and it is deferred rather than dropped because the reason is a
@@ -6341,6 +6351,106 @@ it lands.** Every commit here moves income zero or negative — a shelf throttle
 repeat farming, and fees, orders and works are sinks — so the band will be
 measured against an honestly poorer loop, which is the sharpened version of the
 debt §80 left standing rather than a new one.
+
+**And one of those four decisions never shipped, was never deferred, and was
+refused a year before it was taken.** "Operating costs" appears exactly TWICE
+in this repository — in the paragraph above and in the identical list in
+`HORIZON-10-THE-COUNTED-SHELF.md` — and in no commit, no section, no assertion
+and no row of this inventory. Requisitions shipped (§110) and colony investment
+shipped (§112); the third category was dropped silently. **That is the failure
+this section exists to prevent, happening inside this section's own paragraph**,
+and it is worth more than the item: a decision recorded in prose and nowhere
+else is a decision that can evaporate without a diff.
+
+**It is closed as REFUSED rather than deferred, on §5's own terms (done — §114).** §5's
+base-building amendment (2026-08-04) already states the boundary: *"no clocks,
+no queues, no currency sink pretending to be a decision, and nothing that
+rewards logging in rather than flying … Nothing may be built by waiting."* An
+upkeep bill is all three at once. The refusal was already law; what was missing
+was anybody writing it down where the scope decision could meet it. Horizon 11
+commit 0 records it at the site as well as here — which is the durable half,
+since a refusal living only in STRATEGY is exactly the one that got forgotten.
+
+**Horizon 11 — the reckoning** (opened 2026-08-21, the evening Horizon 10
+closed; researched in `docs/HORIZON-11-RESEARCH.md`, specced in
+`docs/HORIZON-11-THE-RECKONING.md`). Ten commits, **all built**, plus §120 which
+the tooling in commit 1 went and found. Closed in §122. Fifteen ideas went into
+the research pass and **ten died or were reshaped on contact with the code** —
+the deaths are listed in the research doc's §5 and the survivors are below:
+
+| # | what | save | status |
+|---|---|---|---|
+| 0 | the ledger of prices: a SINKS block deriving every sink as loop-minutes off PACINGTEST's own `earned`; the §-rule; §5's refusal of operating costs recorded at the site | none | **BUILT** — §114 |
+| 1 | the runner's teeth: kill on the first SCRIPT ERROR, `--parse`, `--legs`, the checker's stale docstring | none | **BUILT** — and `--legs` found TITLETEST on its first run |
+| 2 | `docs/DEFECTS.md` — ten recurring defect classes, each with the rule or leg that covers it | none | **BUILT** — five of the ten are covered only by a habit, and that is the column that matters |
+| 3 | the colleague's cell: a third validated word in `survey_filed`, captured at the act because it CANNOT be derived | **v28** | **BUILT** — §115; the bump is spent on the DOWNGRADE path, and the README had gone stale a third time |
+| 4 | the trip is the cost: a fourth colony work taking a DELIVERED good, raised at the structure | rides v28 | **BUILT** — §116; the DEEP REPEATER granted nothing until a §112 defect was fixed (the relay never filtered deep weather out of a list headed CHARTED MARKETS) |
+| 5 | a kept light: the procession and a player colony, one broadcast, once per run | rides v28 | **BUILT** — §117 |
+| 6 | what the claimant left: a claimed spill enters the captain's log and the ledger | rides v28 | **BUILT** — §118; three louder versions died first, including the research pass's own recommendation |
+| 7 | the prompt holds its refusals: `prompt(text, hold_s := 0.0)` appended-optional, and the label wraps | rides v28 | **BUILT** — §121; adding the lock nearly converted a once-ever bark from deferred to spent |
+| 8 | the eleventh: an all-ladders capstone derived from both table families, one broadcast, a visible count | rides v28 | **BUILT** — §119; derived from the tables so 5c can land on either side of it |
+| — | the one that could not fail: TITLETEST gets the four assertions it was printing in prose | none | **BUILT** — §120; found by commit 1's own `--legs` on its first execution |
+| 9 | the measure: the horizon closed and the sweep read | none | **BUILT** — §122; the figure is 824 across 82 MEASURED, and 831 is arithmetic until a full sweep prints it |
+
+**The finding that set the order, and it is a measurement rather than a
+feeling.** This project has an income instrument and has never had a wealth
+one. `PACINGTEST` measures earning rate against a mid-tier module and asserts a
+band; **nothing anywhere measures a balance or a sink**, and `DEFAULT_LEDGER`'s
+seven keys contain no credit figure. Converted against a steady loop of roughly
+34,000: the module catalogue is ~1.1M (**~4.3 hours**) and *everything else in
+the game together* is about 300,000 — colony works ≤270k, a requisition ≤4,500,
+a full repair 1,400, and the deepest possible tug's fee 1,870, which is
+**twenty-six seconds of income**. Even at the pacing band's floor the deepest
+rescue is a fifth of one loop. So §64's own question — does a mid-game pilot
+ever feel poor again — has an answer: not after the catalogue, and Horizon 10
+moved that by about an hour. The cause is one sentence, and it is the rule
+commit 0 writes: **every price in this game is anchored to another price, and no
+price is anchored to the loop.**
+
+**Four decisions taken before any code** (2026-08-21): both halves ship (the
+measurement AND the presence work, because the measurement is what lets the
+presence work be argued income-neutral rather than assumed so); **measure
+first, re-price next horizon** — the instrument and the rule ship and no sink
+price moves, §41's own posture; the capstone's count is **visible**, with §19's
+cost accepted in the open and bought back by restraint everywhere else (a
+derived count on the ledger header, nothing that says what the eleventh does);
+and the spill claimant **stays faceless** — a record, never a body.
+
+**Three things the research pass killed outright and this horizon will not
+build.** The pressure front survives only as a *quadrant*-shaped reshape and is
+not scoped here: raiders are one kind tapered by depth (`DEEP_RAID_TAPER`)
+rather than a per-band roster, `PACK_DROP` rides the same index as
+`PACK_DIFFICULTY` so a band shift is a printer or a tax with nothing between,
+and `plan_cell` is a pure function of `(system, cx, cz)` that `THE DEEP IS
+STILL UNCLAIMED` guards. The spill claimant's *hull* is blocked behind the
+ALLIED-splash question below, and its two proposed replacements died too — a
+deep market event on the claimed good hits `EVENT_MAX_DEEP := 1` and §108's
+bias-table bound (**no deep station's bias table contains a single salvage
+good**), and a *named* claimant is a writing-pass decision gated the way the
+nine names were. And the `main.gd` refactor is misaimed: the file is 28,626
+lines of which **78% is harness**, cleanly split at line 5,219, so the game half
+is ~5,200 lines — comparable to `game_state.gd`. That measurement is recorded
+so the proposal does not recur.
+
+**And commit 1 found a live one on its first execution — now PAID (§120).**
+`TITLETEST` is in `run_harness.sh`'s `TAGS`, burns a run in every sweep, and
+**cannot fail**: `_run_title_test` prints four lines carrying their own
+expectations in prose — `expect 0`, `expect false`, `expect ~0`, `matches save
+present=` — and not one `-> PASS`/`-> FAIL` anywhere. That is §107's MARKETTEST
+defect exactly ("printed five true things and asserted **none** of them, for
+twenty-two versions"), still live in a second tag, and it means the sweep's
+headline run count has included one run that has never been able to go red.
+`--legs` reported it under CANNOT FAIL. **It was not fixed in commit 1, which
+deliberately touches no game code**; it wanted four assertions and the one
+sweep that proves them, and §120 wrote them. The sweep's CANNOT FAIL list is
+now empty.
+
+**One rule the pass produced, worth keeping loose from its commit.** A fact
+about WHEN something happened cannot be derived from a monotone predicate about
+WHETHER it has. `Rival.filed` is monotone in `played_seconds`, so a chart that
+derived "a colleague filed this" would retroactively re-label every cell the
+player filed *first* — the exact inverse of §97's `files_with_the_network()`,
+which is derivable because it is an existential over a store that only grows.
 
 ### Built, despite what the docs said
 
@@ -11722,6 +11832,27 @@ stood open since §77.
   that into a fast failure with the error in the log. Touches all 56 tags, so
   it wants its own small commit and a full sweep of its own.
 
+> **Amended 2026-08-21 (Horizon 11's research pass, `docs/HORIZON-11-RESEARCH.md`).**
+> Three of these four now have measurements against them and one is refuted, so
+> the list above is a record of what was open that night rather than a plan.
+> **The watchdog as written is refused by `run_harness.sh`'s own comment** —
+> `PYXIS_BALANCE` legitimately runs five to eleven minutes, so a 60-second bound
+> would fail the sweep for something that is not a defect, and a per-tag table
+> would be 56 hand-maintained numbers, the class §113 had just finished paying
+> off. It is also aimed at the wrong thing: `run_one` already enforces the
+> timeout and already counts `HARNESS TIMEOUT` as an error, so the sweep is
+> correct today and the cost is wall clock. The replacement kills on the
+> *symptom* — the first `SCRIPT ERROR`, which already fails the run — inside the
+> existing wait loop, in about eight lines, touching zero tags.
+> **`CANNOT_READ` is 124 characters and the next-longest prompt in the game is
+> 83**, so it is one outlier rather than a systemic wrapping problem — and the
+> device §105 asked for is nearly free, because `_prompt_label` already grows
+> upward (`GROW_DIRECTION_BEGIN`, away from the action dock) and no leg reads
+> its geometry. **The deep-event rumour line** is held rather than shipped,
+> because Horizon 11 commit 4 may want a deep repeater as its colony work and
+> shipping the copy twice is worse than shipping it late. Only **5c** stands
+> exactly as written.
+
 ### The sweep, measured (2026-08-21)
 
 **81 runs | 812 PASS | 1 FAIL | 0 script errors**, and after the fix below, a
@@ -11759,3 +11890,819 @@ were found *by* the work before any sweep saw them: a tautological assertion,
 a dead rung, a loader validating against a store that loads later, and a hint
 whose fix had restated its own bug. The checker ended the horizon with six
 rules; it began it with four.
+
+## 114. The ledger of prices (Horizon 11, commit 0)
+
+Horizon 11 opened the night §113 closed, on a research pass over fifteen ideas.
+Ten of them died or were reshaped on contact with the code, and the finding
+that reordered the rest is one sentence long:
+
+**This project has an income instrument and has never had a wealth one.**
+
+### What was unmeasured, and what that hid
+
+`PACINGTEST` folds seven measured yields over an authored eight-minute loop and
+divides by a mid-tier module, then asserts the ratio sits in `[0.60, 3.00]`.
+That is an *earning rate*. Nothing anywhere has measured a balance, a sink, or
+a lifetime spend — and `DEFAULT_LEDGER`'s seven keys carry no credit figure
+either, so the outflow side of the economy, which is what the whole of Horizon
+10 was about, was unmeasured **by construction** rather than by neglect.
+
+Converted against the loop this function already measures, the shipped
+constants read:
+
+| sink | credits | loops |
+|---|---|---|
+| the module catalogue | ~919,000 | ~27 |
+| every colony work on one colony | 18,000 | 0.53 |
+
+*(§116 adds a fourth work and moves that row to 28,000 / ~0.82 loops. The leg
+derives it from `COLONY_WORKS` and needs no edit; this table is the reading
+taken the day the block shipped, and it is corrected here rather than left to
+disagree with the sweep.)*
+| the wager, a full streak | 5,250 | 0.15 |
+| a requisition, dearest part | 4,500 | 0.13 |
+| **the tug, at the far marks** | 1,869 | **0.055** |
+| **repair to full** | 1,400 | **0.041** |
+| the sharpest bearing sold | 900 | 0.026 |
+| paint | 800 | 0.024 |
+| a beacon jump at its cap, a colony jump, a rumour | 500 | 0.015 |
+
+The two in bold are the only charges a pilot cannot decline. **The deepest
+possible rescue in the game is twenty-six seconds of standard-loop income**,
+and a full repair is twenty. Even against the pacing band's *floor* — the
+poorest economy this project asserts as legal — the deepest rescue is a fifth
+of one loop.
+
+### The rule, and it is §11's missing half
+
+§11 says no port may be a money printer, and every commit for two years has
+checked itself against it. Nothing said anything about the other direction, so
+the other direction drifted without a single assertion noticing.
+
+> **A SINK'S PRICE IS STATED IN LOOP-MINUTES.**
+
+§109 priced the tug at exactly twice the beacon jump. That arithmetic is right,
+the reasoning is written down, and `THE RESCUE COSTS MORE THAN THE JUMP` sweeps
+seven depths to keep it right. It is also anchored to a number that had itself
+never been anchored to anything — and the beacon jump was anchored to the
+colony jump, which was authored. **Every price in this game is anchored to
+another price, and none is anchored to the loop.** That is the whole defect,
+and it is invisible to every existing assertion because every existing
+assertion compares prices to each other too.
+
+### What the block asserts, and what it deliberately will not
+
+Three laws, and no targets. The re-pricing is a decision for a later horizon
+taken with this table in hand — §41's posture exactly, and §99's: the numbers
+are provisional, the laws are what is checked. **A leg asserting that a sink is
+big enough would be this commit quietly making the decision it exists to
+inform.**
+
+- `EVERY SINK IS PRICED` — every row derives its number from the live constant
+  or the live port def rather than from a figure typed twice, and a row reading
+  zero means the thing it reads has moved, been renamed or gone. Without this
+  the table is a measurement column that can lose a row in silence, which is
+  the class §113 had just finished paying off.
+- `THE CATALOGUE IS THE LONGEST PRICE` — nothing costs more than the yard. True
+  today by a wide margin, and it reddens the moment a re-pricing overshoots in
+  the one direction nobody would otherwise notice.
+- `NOTHING INVOLUNTARY EXCEEDS A LOOP` — a **floor**, not a ceiling, and the one
+  promise worth pinning before any re-pricing. A charge a pilot cannot decline
+  that costs more than a whole measured loop does not price a mistake; it
+  deletes the session that preceded it, which is a different game from this one
+  and not the one the tutorial taught. It survives a re-pricing in either
+  direction, which is what makes it safe to assert now.
+
+**And it is honest about its reach in its own comment**, `FEEDS COMPETE, SIX
+WAYS`' posture: the sink *list* is authored, so a sink somebody adds later and
+does not add here is invisible to all three legs. What is derived is every
+*price*. That distinction is the difference between a test that notices a
+changed constant and one that merely restates it.
+
+### The scope decision that evaporated, and where its refusal now lives
+
+§64 recorded four scope decisions on 2026-08-21. One named three sink
+categories: requisitions, colony/station investment, and **operating costs**.
+The first shipped as §110 and the second as §112. The third appears **twice in
+the entire repository** — in that §64 sentence and in the identical list in the
+Horizon 10 doc — and in no commit, no section, no assertion, and no row of
+§64's own deferral table. It was not built, not deferred, and not refused.
+
+That is the failure §64 exists to prevent, happening inside §64's own
+paragraph, and the item matters less than the mechanism: **a decision recorded
+in prose and nowhere near the code it describes can evaporate without a diff.**
+
+It is closed as **REFUSED**, on §5's own terms, written a year before the
+decision was taken: *"no clocks, no queues, no currency sink pretending to be a
+decision, and nothing that rewards logging in rather than flying … Nothing may
+be built by waiting."* A recurring bill against a colony is all three at once.
+
+The refusal is now recorded **at the `COLONY_WORKS` table**, which is where
+somebody would type an upkeep field, as well as here. That placement is the
+durable half and the research pass's own finding: of fifteen ideas, five died
+against a comment sitting exactly where the bad idea would have been typed,
+while the one refusal that lived only in STRATEGY is the one that got
+forgotten. **The rule is not "write the refusal down." It is "write it where
+somebody would type the mistake."**
+
+## 115. The colleague's cell (Horizon 11, commit 3 — v28)
+
+Idea 1 of the research pass asked for the rival to file with the network too,
+so some held cells on the chart would not be the player's. **It already does**,
+and had since §98: `network_filing_plan` sorts unfiled cells into `cells` (this
+hold's goods pay for them) and `lost` (a colleague clipped that mark first), and
+`file_charts_with_network` calls `note_survey_held` on **both**, with the reason
+written at the site — *"the somebody IS the network … so it is held without
+costing a reading."* The counter's copy has said so out loud since §97:
+`ALREADY HELD BY A COLLEAGUE` against `ALREADY FILED BY ANOTHER HAND`.
+
+What was missing is that the **chart could not tell them apart**: one open ring
+for every `is_survey_held(cov)`, drawn on the pilot's own cells and a
+colleague's alike.
+
+### The obvious version is wrong, and the reason is a rule
+
+The instinct is a derived read — ask `Rival.filed` at draw time, the way §97's
+`files_with_the_network()` derives its answer from the store rather than
+flagging it. That is a zero-byte fix and it does not work.
+
+`Rival.filed` is `floor(seconds / STRIDE) * STRIDE >= arrival_seconds(key,
+depth, seed)`. `arrival_seconds` is fixed per (key, seed); `played_seconds`
+only ever rises. **The predicate is monotone: once true, true forever.** So a
+cell the pilot filed *first* at hour one starts reading "a colleague reached
+this" the moment the rival's own clock catches up — and by hour twenty the
+chart would claim the whole map was somebody else's work.
+
+`files_with_the_network()` is derivable because it is an **existential over a
+store that only grows**: "has this ever happened" cannot become false. This is
+the opposite shape.
+
+> **A fact about WHEN cannot be derived from a monotone predicate about
+> WHETHER.**
+
+So it is recorded, at the one instant that knows it: `file_charts_with_network`
+already holds the two piles apart, because `network_filing_plan` asked
+`Rival.filed` *at that instant* to build them.
+
+### One word, on §98's precedent
+
+`survey_filed` gained `HELD_BY_ANOTHER`, beside `HELD` and `true`. `MARK_STATES`
+is the pattern verbatim: a validated string, so the store gained a word and
+nothing else changed. `HELD_WORDS` holds the pair and both the accessor and the
+loader read it, so a fourth word would be one array entry rather than a fourth
+branch somebody has to remember.
+
+**`is_survey_held` is true for BOTH words, deliberately.** Anchors, the chart
+legend and `files_with_the_network` all ask *does the network hold this*, and
+the answer does not turn on whose goods paid. A colleague's cell has been a
+jump anchor since §112 and stays one — `A COLLEAGUE'S CELL IS STILL AN ANCHOR`
+is the leg that says so, rather than leaving it to be rediscovered by whoever
+notices the ring changed. The distinction is drawn in exactly one place and it
+is a glyph.
+
+`note_survey_held` gained `by_another := false`, **appended and optional** —
+§108's call for this environment, and it earns itself again: six of the seven
+call sites are harness sites and all six stayed byte-identical.
+
+### Half a ring, and why not a colour
+
+§97 chose an open ring because *"a copy of this exists somewhere else — the
+mark is not fuller than an unheld cell, it is duplicated."* A colleague's cell
+draws **half** that ring.
+
+Half rather than a gap, because the ring is three pixels of radius on a phone
+and a notch at that size is noise. Half rather than a hue, because §30's
+redundancy is for things worth an alarm and this is not one. And half is the
+exact fiction: the copy exists, and the half that would have been the pilot's
+own return is not in it.
+
+The legend gains `COLLEAGUE`, conditioned on **its own** layer rather than on
+HELD's — §97's stated rule, that a legend entry for a layer the picture is not
+drawing is a promise it does not keep.
+
+### The bump, and the direction that needs it
+
+**v28, and it is spent on a store whose SHAPE did not change** — which is worth
+stating, because the instinct is that a new legal value rides for free.
+
+Upward there is indeed nothing to migrate: a v27 file holds only `true` and
+`held`, both still legal, and loads as a pilot every one of whose held cells is
+their own — which every pilot before this section was.
+
+**Downward is the reason.** `_load_survey_filed` validates by type and drops
+what it does not recognise, so a v28 file opened by a v27 build would find
+`held_other`, fail both branches, and **drop the cell out of `survey_filed`
+entirely** — silently un-holding it, taking its ring off the chart and its jump
+anchor with it. With the bump that build hits the `version > SAVE_VERSION` gate
+instead: it refuses to load and **locks saving**, so the file survives the
+session. §73 already paid once for a save-destroying downgrade path.
+
+`migrate27` drives it both ways and carries the rubbish pass the store's shape
+invites: an undeclared word, and a filed key naming a cell the pilot never
+worked (the subset invariant, which is what that loader actually enforces).
+
+### And the README stopped counting again
+
+`migrate27` moved the sweep's run count, and the README was still carrying
+`56 + 25 = 81 runs` in prose — the third time that figure has gone stale (§73,
+§77, and now). §113 built `--counts` precisely so it would not have to be
+retyped, and the paragraph retyped it anyway. **The numbers are gone from the
+README**, replaced by the two commands that derive them.
+
+## 116. The trip is the cost (Horizon 11, commit 4 — rides v28)
+
+The fourth colony work, and the first one that takes a **delivery**. §5 wrote
+its shape on 2026-08-04, in the amendment that lifted base building's
+exclusion:
+
+> If a structure takes time to become something, the time is *spent flying to
+> it with what it needs* — **the trip is the cost**, which is the trade the
+> whole game already rests on.
+
+That sentence sat unbuilt for a year while three works shipped that a pilot
+could raise from a menu.
+
+### The defect the naive version carries, and it is the whole feature
+
+Colony works are bought from the **chart panel** — a sheet openable from
+anywhere in the game, including while docked at the counter the alloys were
+just bought from. **No work has ever had a position gate.** A `cargo_count`
+check on that button would have let twelve alloys teleport four thousand units,
+and the word "delivered" would have been a fiction with no mechanism under it:
+§110's forge hint in a new costume, copy the data does not support.
+
+So the gate is a **journey**, and it lives in `Main.work_delivery_met` — the
+world half of the question, beside `colony_ground_sounded`, which is already
+the only thing that asks the world on the store's behalf. In this system,
+within `DOCK_AURA_RANGE` (the DRY DOCK already decides what "alongside this
+colony" means and there is no second opinion), with the manifest aboard.
+`THE TRIP IS THE COST` drives all three refusals separately, and the third is
+the one the feature exists for: **the goods aboard, the chart open, and the
+pilot in another system.**
+
+### The annex could not have carried it, and the refusal is a §11 closure
+
+The tempting alternative was to route the goods through the BONDED ANNEX, which
+already requires flying there. It cannot: `can_store == no_retail`, and alloys
+are retail. The comment at `can_store` says why in full — an open bay on a
+retail good is a timed-arbitrage printer (buy under a 0.55× glut, put it down,
+sell at the same counter for 1.61× when the event lapses) that
+`NO ROUND-TRIP PROFIT` structurally cannot see, because that leg prices both
+legs in one instant under one `market_events` array. The bonded rule refuses
+alloys by design, and it was right to.
+
+### The goods are a GATE, not a price
+
+Twelve alloys is about 480 credits of base value — **under ten seconds of
+standard-loop income** by §114's own table. The goods cost nothing in money and
+everything in **hold**: alloys are `space: 2`, so twelve of them is 24 space,
+which is a starter hold exactly. That is the same yardstick §107 sized
+`STOCK_BASE` against, and it is chosen for the same reason — it is the one unit
+of *"a dedicated run carrying nothing else"* this game already has.
+
+GATES, NEVER PRICES (§72), applied to a work. The credit half stays a credit
+price, and it is **priced to its siblings deliberately** (10,000 against
+4,000/6,000/8,000) rather than to §114's new rule. §114's decision was
+*measure first, re-price next horizon*; pricing one new row to the new rule
+would be making that decision on one work, invisibly.
+
+### It does NOT feed BROKERAGE
+
+Tempting and refused. §111 pinned that ladder to deliveries only because *"any
+contract would rise alongside three other ladders' work"*, and a colony haul is
+colony play, which already feeds COLONIAL. Two ladders rising off one afternoon
+is §19's clock arriving through a feed — and `FEEDS COMPETE, SIX WAYS` would
+**not** catch it, because that leg fires one feed and checks one ladder moved.
+This is a fact about where the call lives, not about what it does, which is the
+same honesty that leg states in its own comment.
+
+### And the work it enables was dead until a defect was fixed
+
+The service chosen was a **deep repeater**: the chart carries the deep
+stations' weather the way the RELAY MAST carries the chart's. Information,
+§26's currency, no stat and no income term.
+
+**It granted nothing, and finding that out is what this section is really
+about.** `market_events` carries chart and deep weather in one array under a
+`deep` flag (§108). The relay's row loop **never filtered it**. So since §112
+shipped, a RELAY MAST has been reporting deep-station weather under a heading
+that reads `THE CHARTED MARKETS TONIGHT` — while the work's own blurb, in the
+same file, promises *"THE CHARTED MARKETS' WEATHER"*. The data said charted and
+the code said everything.
+
+That is two defects at once: §110's class (copy the table contradicts) and, had
+the repeater shipped on top of it, §111's (a rung that grants what everybody
+already has — the exact test RIFT-WORK's `THE SHEAR HEARD` candidate failed and
+was cut for).
+
+It is **fixed rather than reworded**, because the blurb is the promise the
+player bought and the word in it is "charted". `_build_weather_rows` now
+partitions the one array into two sections that cannot print the same line
+twice, each with its own quiet line — the rumour desk's `NOTHING NEW TONIGHT`
+courtesy (§108), and it matters more here because the player *paid* for the
+surface. `EACH WORK CARRIES ITS OWN WEATHER` asserts the partition rather than
+the rendering, with both halves non-empty so a filter that dropped everything
+could not pass by printing nothing.
+
+### And the sweep caught what the reading did not
+
+`THE DOCK IS TIME, NOT POWER` went red on the first full sweep of this horizon,
+and the cause was this commit's own leg. `THE TRIP IS THE COST` cleared
+`colony_works` to get a clean slate for the delivery refusals — which took the
+DRY DOCK off the colony the aura leg measures **eighty lines below**. Nothing
+was wrong with the dock.
+
+Both sides are fixed, because either one alone leaves the trap armed. The
+delivery leg now **claims its own colony** at a position no other leg reads and
+touches no shared store; and the aura leg **builds the precondition it
+measures** rather than inheriting it from a distance. That is DEFECTS.md's
+class 2 arriving from the opposite direction to §112's loader — same cure, same
+sentence: *state the dependency at the site, or remove it.*
+
+The corollary is the reusable part: **a harness block that resets shared state
+and does not restore it is a defect whose blast radius is whatever somebody
+writes after it.**
+
+### The leg whose premise moved
+
+`WORKS ARE A SINK, NOT A STAT` loops **every** work and buys it, so a work with
+a manifest broke it. §24's discipline rather than a quiet patch: the leg now
+places the ship at the colony and loads the manifest before it buys anything,
+counts works from `COLONY_WORKS.size()` instead of saying "three", and gained a
+clause — **the delivered goods left the hold.** Without that last one a work
+that took the credits and not the goods would have satisfied every other
+clause while the delivery was a fiction.
+
+## 117. A kept light (Horizon 11, commit 5 — rides v28)
+
+One broadcast, once per run, paying nothing. Every piece of it already shipped
+and none of them had ever been pointed at each other:
+
+- `BROADCASTS[5]` is titled **A KEPT LIGHT** — *"There is a light ahead of you.
+  It is kept. It has been kept a long time, and by somebody."* Its `body_after`
+  closes with *"It is lit for whoever is still out here, which by the
+  authority's own ledger now includes you."*
+- COLONIAL t3's perk is named **KEPT LIGHTS** (§111): a founded colony borrows
+  `TIER_HOME` on the radar, so its light is never capped and never fades.
+- `Procession.ATTACHMENT` is seven named hulls that filed and were received and
+  were never read, in front of four hundred more nobody counted.
+
+**The player's colony is a kept light, in the game's own words.** This is the
+sentence that says so, and §105's rule that the formation *"never spends its
+mark"* is why it is a sentence and nothing else: no credits, no standing, no
+ledger, no store.
+
+**Fired at arrival, not at a hull.** The hulls answer taps on the same plate and
+refuse each other with `SLOWLY` precisely because it has no queue; a second
+speaker inside that moment is the collision §113 spent a red on. It asks first
+(`broadcast_busy`) and stays **unspoken rather than spent** when the plate is
+busy — `Barks.fire`'s rule that a once-ever payload must not be consumed by
+being suppressed, honoured from the other side.
+
+**The ordering is stated rather than guarded.** A pilot who founds their first
+colony *after* meeting the procession never hears it. The marks sit at
+6,500–9,000u and hyper structures at 1,600–4,200u, so anybody standing at this
+formation has flown past the colonies twice; a second trigger on the founding
+verb would cover a case the geometry barely permits, at the cost of a call site
+that could fire the line out of any moment at all.
+
+### The leg frees the plate by hand, and that is the assertion
+
+`THE PROCESSION PASSES A KEPT LIGHT` drives all three states through
+`legend_arrives` — the real caller — and the third clause needed the plate
+**cleared between runs**. With a plate still up, "it never speaks twice" passes
+on the *busy* guard whether the once-per-run flag works or not: a leg that
+cannot fail, which is exactly the defect `--legs` had just found in `TITLETEST`
+(§114's commit). A sentinel broadcast goes up first, so *"nothing new was
+written"* is measured against a known string rather than against emptiness.
+
+## 118. What the claimant left (Horizon 11, commit 6 — rides v28)
+
+§109 gave a deep spill a deadline. When it expires, `_tick_spill_claim` deleted
+the cubes, flashed, and toasted — and called **neither `note_log` nor
+`note_ledger`**, so the entire record of the loss was a sentence that scrolled
+away.
+
+That matters more than it sounds, because of *which* branch it is. The window is
+`180 + 0.15 × depth` seconds — 390s at 1,400u, ~25 minutes at the far marks —
+which is far longer than the flight back. **The clock expires only when the
+pilot decided not to return.** A thing that happens to you while you are
+somewhere else and leaves no trace did not happen.
+
+So the claim now writes a captain's-log line (the band and the count, ordered so
+the payload survives `LOG_LINE_MAX`'s silent truncation at 48 characters) and a
+`spills_lost` ledger key — **the ledger's first loss column.** Every other key
+there counts something the pilot *did*; this is the only number in the game that
+counts something taken off them. `DEFAULT_LEDGER`'s own comment records that a
+new key needs no save bump, the load-side merge being defaults-based.
+
+It renders on the **captain's log page**, conditioned on being non-zero — the
+chart legend's rule, and a zero would read as a score to improve on a page that
+is a record rather than a scoreboard. The log holds ten lines and evicts the
+oldest, so an hour-old claim is gone from the page while the fact of it is not;
+that gap is what makes the ledger key a live store rather than a dead one (§88).
+
+### Three louder versions died first
+
+Idea 3 asked for a hull that arrives, works the spill, and leaves — *"the first
+NPC that competes without fighting"*. All three attempts at it died on contact,
+and the deaths are the section:
+
+- **The hull** is blocked on §64's ALLIED-splash question, open since
+  2026-08-06 and dimensioned by `WITNESS_RANGE`/`OVERCHARGE_RADIUS`. One the
+  player can shoot is a combat encounter, which is not the feature; one they
+  cannot is a ghost; one that splash catches by accident is that §64 item under
+  a new name. And its scene plays to an empty room by construction, per above.
+- **A deep market event on the claimed good** — the research pass's own
+  recommendation, and the code refused it twice over. `EVENT_MAX_DEEP := 1`, so
+  a claim would starve the ambient deep weather §108 built; and §108's good is
+  drawn from the archetype's own `bias` table, *"not a shortcut: it is what
+  keeps a 2.2× shortage off a component at a 1.45× deep fence, **by
+  construction**"*. A spill is unread **salvage**, and **no deep station's bias
+  table contains a single salvage good** — every one is drawn from the
+  seventeen retail goods. It is precisely the unbounded case that comment
+  closes.
+- **A named claimant** is the first named living stranger in this game. §105
+  spent two horizons on the rival's anonymity and refused to break it *"for a
+  caption"*; naming somebody is a writing-pass decision, gated the way the nine
+  names were, not a side effect of a timer.
+
+What survives is the smallest true thing. The claimant gets a face the way the
+rival got one: **evidence, and never a body.**
+
+## 119. The eleventh (Horizon 11, commit 8 — rides v28)
+
+Every ladder at its own last rung. No payout, one broadcast, from the channel
+that has never given its name.
+
+### It is derived from both families, and that is what keeps 5c free
+
+The eleven ladders live in two shapes. The legacy four each own a var, an xp
+var and a hand-written tier array — a deliberate §36-era decision, and §111
+records why extending them is its own afternoon. The other seven are one table
+with a derived tier.
+
+`LEGACY_TIER_ARRAYS` bridges them, holding the **arrays** rather than copies of
+their lengths, so there is nothing here that can disagree with them. Its keys
+are the vars' own names, which is what lets `get(id)` read a legacy tier without
+a four-way branch — the legacy four have been named one-var-per-ladder since
+they shipped, and that convention is load-bearing exactly once, here.
+
+**Everything is asked of the tables.** The four legacy deepenings (5c) are still
+deferred in §64 and each of them adds a rung; a capstone written as *"eleven
+ladders, this many tiers"* would silently move the day one lands. Asked of the
+tables, the bar rises with them, and 5c can be paid on either side of this
+without anybody remembering to come back. `THE ELEVENTH COUNTS BOTH FAMILIES`
+has a clause for exactly that: the bar reads the array, not a number.
+
+### The visible count, and what it costs
+
+**The author's decision, taken in the open: the count is visible.** The research
+pass recommended against it, and the objection is §19's own — skill feeds must
+*compete*, and a reward for capping all eleven tells the player the long-run
+answer is *do all of it*, which §111 already named as *"a checklist that cannot
+be finished."*
+
+What buys it back is restraint everywhere else. The ledger page's header carries
+`N OF 11 LADDERS STAND AT THEIR LAST RUNG` and **nothing else**: no percentage,
+no bar, no per-ladder tick, no second screen, no notification when the number
+moves — and **nothing anywhere says what happens at the eleventh.** A player can
+infer that something might; the game never poses it. That is the register
+`SINGULAR` legends and THE WATCH already use (§102, §112). The page still has
+nothing on it to press, which was §111's whole argument for its existence.
+
+Refused in the spec and in the code's comments: a second grant of any kind, a
+credit payout, a stat, and any per-ladder progress rendering beyond the count.
+
+### A signal, because five mutators can be the one that lands it
+
+`mark_smuggling`, `mark_persuasion`, `mark_mining`, `mark_archeology` and
+`mark_skill` each return "a tier landed", and any of them can be the last. There
+is no choke point a tier passes through, and hooking `_queue_save()` would be a
+save concern answering a skill question — so `_check_last_rung()` is called from
+all five, is idempotent, and emits once.
+
+The flag is **session-only**, `_kept_light_spoken`'s shape for its reason (§117):
+the capstone is a moment rather than a trophy, there is nothing to re-collect,
+and nothing on any screen reads wrong after a reload. A store would be a byte
+spent so a sentence could refuse to be said twice in a run that already heard
+it.
+
+`NO LADDER PAYS IN CREDITS` climbs every ladder to its cap watching the wallet,
+and this arrives at precisely the moment that leg is standing on — so
+`THE ELEVENTH PAYS NOTHING` is measured there: the signal fires **once**, driven
+through a real mutator rather than by calling the helper by hand, with the
+wallet unmoved and the ledger byte-identical.
+
+### Two traps the code had already documented
+
+**The lambda captures by value.** The leg's first draft counted firings with
+`var fired := 0` and `fired += 1` inside the closure — which increments a copy
+and leaves the outer number at zero, so the assertion would have measured
+nothing while passing. `legend_layout` carries this exact defect in its own
+comment (§97: *"a cursor captured by a lambda, which GDScript copies by
+value … nothing in a diff or an assertion could see it"*). An Array is a
+reference, so `append()` reaches the real one.
+
+**And the first draft of `_legacy_cap` used single-line `match` arms**, an idiom
+with **no precedent anywhere in this repo** — and there is no Godot binary in
+the authoring environment, so a wrong guess there is a parse error the static
+pass cannot see and the class-registry cascade `check_scripts.py` exists to
+prevent. It was rewritten as a dictionary lookup before it was ever run, which
+is DEFECTS.md class 10 avoided rather than paid for.
+
+## 120. The one that could not fail (Horizon 11 — rides v28)
+
+`tools/run_harness.sh --legs` derives each tag's assertion count from `main.gd`.
+On its first execution `TITLETEST` came back with a **GATE of zero** while
+printing four lines.
+
+Every one of those lines carried its expectation in **prose** — `(expect 0)`,
+`(expect false)`, `(expect ~0)`, `(matches save present=%s)` — where nothing
+could read it. The tag is in `TAGS`, so it burned a run in every sweep since it
+shipped, and it had never been capable of going red.
+
+That is §107's MARKETTEST defect precisely (*"printed five true things and
+asserted **none** of them, for twenty-two versions"*), still live in a second
+tag two horizons after it was named and written down. **The parenthetical is
+the tell**: a print that states what it expects is an assertion somebody stopped
+one line short of writing.
+
+### The four claims were already there
+
+Nothing new is measured. What changed is that the run can now say no.
+
+- `THE ATTRACT SCREEN IS INERT` — parked state, nothing spawned to hunt a ship
+  the player does not control yet, and no cockpit furniture behind the menu.
+- `THE DOOR MATCHES THE FILE` — an **equality**, not a fixed expectation, and
+  that is what makes it machine-independent. This harness runs against the real
+  save path (`lock_saving()` is one-way, precisely so pressing NEW SURVEY cannot
+  write over it), so whether a save exists depends on the box. What holds on
+  every box is that the button and the filesystem agree — offering CONTINUE with
+  nothing to continue, and hiding it with a run on disk, are one defect in two
+  directions.
+- `INPUT IS LOCKED BEHIND THE MENU` — `_enter_attract` disables input and parks
+  the hull, so the honest bar is zero and `TITLE_DRIFT_MAX` only absorbs physics
+  settling. The failure it is sized against is not subtle: a ship that actually
+  flew covers hundreds of units in the second the leg holds the key.
+- `NEW SURVEY HANDS OVER TO THE TUTORIAL` — and the fourth clause is the one
+  with history. `start_new_game` calls `tutorial.arm()` **before**
+  `_load_system` so the builder leaves the garrison out, an ordering that is
+  invisible in a diff; a regression there greets a brand-new player with three
+  sentries, which is `arm()`'s own comment.
+
+**Deterministic on every box, checked rather than assumed:** `begin()` sets
+`_active` and drives `_advance()` to step 0 unconditionally, so `tutorial_seen`
+— a *device* fact that varies by machine — cannot reach any of the four.
+
+### And the PROSE column earned itself
+
+`--legs` also reports print lines carrying no verdict, as a **question and never
+a gate**, because telling a measurement line from a check that forgot to check
+needs a human. Reading the remaining ones found `[market] CARGO overflow load
+returned %d (expect 0 …)` — same shape, and **not** a defect: the next line is
+`THE HOLD IS A WALL`, which asserts that exact value. That is the column working
+as designed. The count is a question; the answer here was "covered".
+
+## 121. A refusal owns the line (Horizon 11, commit 7 — rides v28)
+
+Idea 10 asked for a priority queue on the prompt line. **It is refused in
+writing, at the site, twice** — `hud.gd`'s *"A LOCK RATHER THAN A PRIORITY
+NUMBER, because there is exactly one thing in this game that gets six seconds
+to be read while something closes on you"*, and `procession.gd`'s *"THE PROMPT
+LINE IS FOR REFUSALS ONLY."* Four devices for the class already shipped
+(`_prompt_held`, `clear_prompt_if`, `prompt_text`, `broadcast_busy`/
+`toast_busy`), and §113 added a fifth.
+
+So the defect is narrower than "the line is crowded" — and §113 measured it: **a
+nudge replaced a refusal on the first-ever tap**, for the pilot least able to
+guess.
+
+### A deadline on the LINE, not a mute on the world
+
+`prompt(text, hold_s := 0.0)` — **appended and optional**, §108's call for this
+environment said again: no Godot binary, a wrong arity is a parse error the
+static pass cannot see, and there are sixty-three call sites. Fifty-eight stay
+byte-identical.
+
+**The first draft got the semantics wrong, and the sweep caught it.** It read
+the deadline as a lock and blocked *writes* as well as clears — so a live
+refusal refused everything for two seconds. That reads fine until you ask what
+a player does next: **they tap something else.**
+`THE MONUMENT ANSWERS A TAP` went red with a warden refusal from an earlier
+hold standing in for *both* a locked monument's answer and a claimed one's,
+because two `clear_prompt()` calls and two taps had all been swallowed. In the
+game that is a monument answering a tap with somebody else's sentence — §88's
+own complaint (*"a tap that moves the ship without a word"*) with a stale line
+on top of it.
+
+So the deadline is a statement about **the line currently on screen** — *this is
+a refusal, do not clear it yet* — and never a global mute:
+
+- **An act is always answered.** A tap, a hold, a verb just tried: whatever it
+  has to say, it says.
+- **`clear_prompt()` waits**, because "the player drifted out of a seam's range"
+  is not a reason to delete the sentence explaining why the thing they tapped
+  said no.
+- **`prompt_busy()` reports**, so a caller with something that can wait asks
+  first — which is §113's evidenced defect exactly, a once-ever *bark* firing
+  inline over a refusal, and it is fixed by the **voluntary** half rather than
+  by muting the world.
+- **The deadline travels with the line.** A new sentence replaces the old one's
+  claim too, or the next clear of *that* line would be refused on behalf of a
+  refusal no longer on screen.
+
+The hard lock is untouched and outranks all of it; `hold_prompt` clears the
+deadline before it writes, and that line is load-bearing — without it a refusal
+would refuse the demand. A **queue** is refused for its own reason: it would
+deliver sentences *after* the moment that made them true, which is worse than
+losing them.
+
+**The lesson is worth more than the mechanism.** The blocking version bought
+exactly one thing — a range prompt could not stomp a refusal — and cost the
+player's own next act an answer. Reading it, that trade was invisible; run, it
+took four seconds to expose. It is the difference between protecting a sentence
+and silencing the game.
+
+### Which prompts are refusals is a rule, not a list
+
+    fired by an ACT    -- a tap, a hold, a verb just tried, saying why not
+    fired by RANGE     -- re-asserted every frame, cleared on the way out
+
+A range line needs no protecting: it says itself again a frame later, and
+locking one would make the world sticky — worse than the defect. Five sites
+convert (`CANNOT_READ` ×2, the warden hold refusal whose own comment says *"a
+refusal the player cannot read is a bug report"*, and the procession's `SLOWLY`
+and `NOT_SALVAGE`). `mineable_seam`'s *"SEAM TOO DEEP"* is the case worth
+knowing: it reads like a refusal, is edge-triggered off range, and stays a plain
+prompt.
+
+**They call `prompt_refusal(text)`, never `prompt(text, HUD.SOME_CONST)`.** All
+three of those world classes reach the HUD through
+`get_tree().get_first_node_in_group("hud")` — a group lookup with **no
+class-name edge** — and reading a constant off `HUD` to pass as an argument
+would create one, from a leaf, in a project where a leaf that fails to compile
+takes the whole chain down behind it (§111).
+
+### The regression this nearly shipped
+
+`Barks.fire` checks the hard lock **before** `mark_bark`, deliberately: *"a bark
+that fires once ever must not be consumed by being suppressed."* Then it writes.
+
+Add a second lock the guard does not know about, and that ordering quietly
+inverts: the bark is **marked seen** and the write is **silently declined** — a
+once-ever onboarding line spent on a player who never saw it. Which is the exact
+defect the guard exists to prevent, arriving through a door it does not cover,
+in the commit written to protect exactly this class of sentence.
+
+The fix is `prompt_busy()`, `broadcast_busy`/`toast_busy`'s posture verbatim — a
+caller with something that can wait asks first — and `Barks.fire`'s hud lookup
+moving above `mark_bark` so the new guard sits beside the old one. **The rule
+worth keeping: a lock without an ask-first accessor converts "deferred" into
+"spent" for every once-ever caller.** `A REFUSAL OWNS THE LINE` asserts the
+deferral as its own clause so it cannot come back.
+
+### And the line wraps
+
+§105 flagged `SoundingMark.CANNOT_READ` as *"still wanting a device rather than
+a guess"*. The measurement is what makes it a device: it is **124 characters and
+the next-longest prompt in the entire game is 83** — one outlier at 1.5×, not a
+policy.
+
+The layout already supported the fix and nobody had used it: `grow_vertical` is
+`GROW_DIRECTION_BEGIN`, so a second line grows **upward**, away from the action
+dock the label's `-152` was carefully chosen to clear, and `grow_horizontal` is
+`BOTH`, so a fixed width centres itself. A width and `autowrap_mode` is the whole
+change.
+
+`THE PROMPT LINE WRAPS` asserts the **device** — autowrap on, and a box narrower
+than the 720 design space so a width that silently grew past it could not stop
+wrapping while still looking configured — and *reports* the longest prompt's
+measured width without asserting it. A copy edit must not redden this; turning
+the wrap off must.
+
+## 122. The measure (the horizon closes)
+
+Horizon 11, commit 9 — the closing commit, written the way §113 was: **before
+the sweep that judges it**, because its job is to say what that sweep means
+rather than to report it.
+
+### What this horizon did to the economy, in one paragraph
+
+Nothing. Deliberately. Not one commit moved a yield, and the one that changed a
+credit total moved it **outward** — §116's fourth colony work is 10,000 more of
+voluntary sink, priced to its siblings rather than to §114's new rule, because
+pricing one row to a rule the horizon deferred would be making that decision
+invisibly. `STEADY MIDTIER` should therefore read exactly what it read, and a
+red there is a regression rather than §41's re-derivation arriving. It read
+what it read.
+
+### The horizon's own finding, and why it is the whole of it
+
+This project has measured **earning rate** since §41 and has never measured a
+**sink**. Converted against the loop `PACINGTEST` already computes, the deepest
+possible rescue in the game is twenty-six seconds of standard-loop income and a
+full repair is twenty; every voluntary sink together is under an hour against a
+catalogue that takes four. §109's tug is priced at exactly twice the beacon
+jump, which is right, and anchored to a number that was itself never anchored to
+anything.
+
+> **A sink's price is stated in loop-minutes** — §11's missing half.
+
+§114 builds the instrument and asserts three **laws** and no targets, because
+the re-pricing is next horizon's decision taken with the table in hand. The one
+promise it pins now is the one that survives a re-pricing in either direction:
+`NOTHING INVOLUNTARY EXCEEDS A LOOP`. A charge a pilot cannot decline that costs
+more than a measured loop does not price a mistake; it deletes the session
+before it.
+
+### What the tooling found the moment it existed
+
+`--legs` was built to make the PASS total checkable. On its **first execution**
+it reported a tag with a GATE of zero: `TITLETEST` was in `TAGS`, burned a run
+in every sweep since it shipped, and could not fail — four print lines carrying
+their expectations in prose where nothing could read them. §107's MARKETTEST
+defect, still live in a second tag two horizons after it was named and written
+down. Paid in §120.
+
+That is the argument for instruments stated better than any paragraph could:
+**the check found a four-year-old hole in the first second it ran.**
+
+### Three reds, all of them ours, and what each one cost
+
+The sweep is the record, so the reds are recorded rather than smoothed over.
+
+1. **`THE DOCK IS TIME, NOT POWER`** — §116's delivery leg cleared
+   `colony_works`, and the aura leg measures that store eighty lines below.
+   DEFECTS.md class 2 from the opposite direction to §112's loader, so the class
+   was generalised rather than split: *state the dependency at the site, or
+   remove it.*
+2. **`THE MONUMENT ANSWERS A TAP`** — and this one was **not** a fixture
+   problem. §121's first draft read the prompt deadline as a lock and blocked
+   writes as well as clears, so a refusal swallowed the player's next tap. It
+   took four seconds of runtime to expose what reading it could not: the
+   blocking version bought one thing and cost an act its answer.
+3. **A stale checkout, twice** — `--legs` run against a tree from before it
+   existed became a *tag*, and the game booted normally and ran forever. The
+   runner's own comment predicted it forty lines above the bug; the fix refuses
+   unknown arguments with exit 2.
+
+**Two of the three were caught by the sweep and not by reading**, and both were
+in game code written without a Godot binary. That is the honest cost of this
+authoring environment, and it is worth carrying into the next horizon's scoping
+rather than being surprised by again: `--parse` catches what will not compile;
+nothing catches what compiles and means the wrong thing.
+
+### The figure, and what it is not
+
+**Measured, at `2f309ed`, nine of ten commits in: 82 runs | 824 PASS | 1 FAIL |
+0 script errors | 0 short**, save intact, at save format v28. `PACINGTEST` held
+at fourteen. `SAVETEST=migrate27` passed. `--legs`' short-count gate was silent.
+
+Then: COLONYTEST **18/0**, RAIDTEST **33/0**, TITLETEST **4/0** on targeted
+re-runs at `dce38fc`.
+
+**The arithmetic says 831. It is arithmetic.** No full sweep has been taken on
+the current head, and this repo has been wrong twice in exactly the direction of
+rounding that distinction away — §113 spent a paragraph on it and §77 and §73
+are the two instances. `--legs` reports a **GATE of 770**, which is the floor a
+full sweep must clear; the hard number is whatever the next one prints.
+
+### What this horizon leaves open, stated rather than implied
+
+- **The re-pricing.** §114 hands it a table. The decision — raise the sinks,
+  accept post-scarcity and pay in the other currencies, or set a measured band
+  the way `PACINGTEST` sets one for income — is the first thing on the next
+  horizon and is explicitly not taken here.
+- **The four legacy deepenings (5c)**, unchanged from §111's deferral. §119's
+  capstone is derived from the tables precisely so 5c can land on either side of
+  it without moving the bar.
+- **§64's ALLIED-splash question**, open since 2026-08-06 and now with a
+  dependent: the next non-combatant in the world will ask it again. §118 was
+  shaped so it did not have to.
+- **The quadrant front** — idea 4 survived research only as a reshape
+  (`quadrant_of`, moving `DEEP_RAID_TAPER` and nothing else) and wants its own
+  pacing argument against `_pacing_earned`, which §114 now makes possible.
+- **`--legs`' gate is new and has been silent once.** If it ever fires on
+  something legitimate, demote it to a report rather than teaching anybody to
+  ignore a red.
+
+### The horizon, remembered
+
+Nine sections across ten commits and one save bump, opened by a research pass
+that killed or reshaped **ten of fifteen ideas** before any code was written.
+The deaths are the output: a chart read that could not be derived because the
+predicate is monotone, a colony work whose "delivered" was a word with nothing
+under it, a claimant whose three louder versions each hit a written refusal, a
+prompt queue refused twice in the files it would have lived in, and a
+refactor aimed at the wrong eighteen per cent of a file.
+
+Four defects were found **by** the work rather than by a sweep — a relay
+reporting deep weather under a charted heading since §112, a scope decision that
+evaporated between two documents, a fail-open digest guard, and a lock that
+would have spent the barks it suppressed. Two more were found by the sweep, and
+one by the instrument built to look for exactly it.
+
+The checker ended the horizon with six rules, as it began. The harness ended it
+with three commands that need no binary and one gate that did not exist.

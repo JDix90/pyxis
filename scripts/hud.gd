@@ -764,6 +764,23 @@ func _ready() -> void:
 	# just the box.
 	_prompt_label.position = Vector2(0, -152)
 	_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# §121. AND IT WRAPS. §105 flagged this line as "still wanting a device
+	# rather than a guess", and the measurement is what makes it one outlier
+	# rather than a policy: SoundingMark.CANNOT_READ is 124 characters and the
+	# NEXT-LONGEST prompt in the entire game is 83. At font 16 on a 720-wide
+	# design space an un-wrapped label ran that sentence off BOTH edges.
+	#
+	# The layout already supported this and nobody had used it. grow_vertical is
+	# GROW_DIRECTION_BEGIN, so a second line grows UPWARD -- away from the action
+	# dock the -152 above was carefully chosen to clear -- and grow_horizontal is
+	# BOTH, so a fixed width centres itself. PROMPT_WIDTH is 640 of the 720,
+	# leaving 40 a side.
+	#
+	# Nothing measures this label's geometry: every prompt leg reads
+	# prompt_text(), and exactly one reads modulate.a. So the wrap changes what
+	# the pixels look like and no assertion's meaning.
+	_prompt_label.custom_minimum_size.x = PROMPT_WIDTH
+	_prompt_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_prompt_label.add_theme_color_override("font_color", Palette.AMBER)
 	_prompt_label.add_theme_font_size_override("font_size", 16)
 	_prompt_label.modulate.a = 0.0
@@ -1110,6 +1127,10 @@ func hide_parley() -> void:
 	# the five call sites that end a parley, so the lock cannot outlive the
 	# plates: whatever ends the standoff, it ends through this function.
 	_prompt_held = false
+	# §121. And nothing inherits a soft hold from before the standoff: the demand
+	# cleared it on the way in, so leaving a stale deadline here would let a
+	# refusal from two minutes ago outrank the world for two seconds.
+	_prompt_soft_until = 0.0
 
 
 func bluff_text() -> String:
@@ -1928,12 +1949,76 @@ func _flush_gain() -> void:
 	tw.tween_property(_gain_label, "modulate:a", 0.0, 0.75).set_ease(Tween.EASE_IN)
 
 
-func prompt(text: String) -> void:
-	# Refused while a demand holds the line — see hold_prompt.
+# §121. HOW LONG A REFUSAL OWNS THE LINE. Two seconds is a read of a short
+# sentence plus the beat it takes to look up -- long enough that the pilot who
+# just tapped a thing gets told why, short enough that it never feels stuck.
+const PROMPT_REFUSAL_HOLD := 2.0
+
+# 640 of the 720-wide design space, 40 a side. See _build for why this is a
+# device rather than a guess.
+const PROMPT_WIDTH := 640.0
+
+# When the soft lock lapses, on the HUD's own ticks clock (_show's idiom). A
+# WALL clock rather than played_seconds on purpose: this measures reading, not
+# flying, and it must lapse the same way whether the game is running fast or
+# slow.
+var _prompt_soft_until := 0.0
+
+
+func prompt(text: String, hold_s := 0.0) -> void:
+	# APPENDED AND OPTIONAL, which is §108's call for this environment said
+	# again: there is no Godot binary here, a wrong arity is a parse error
+	# check_scripts.py cannot see, and there are sixty-three call sites. With a
+	# default, fifty-eight of them stay byte-identical.
+	#
+	# A SOFT LOCK, NOT A QUEUE, AND NOT A PRIORITY NUMBER. hold_prompt's own
+	# comment refuses the second of those by name -- "A LOCK RATHER THAN A
+	# PRIORITY NUMBER, because there is exactly one thing in this game that gets
+	# six seconds to be read while something closes on you" -- and that hard lock
+	# is untouched and still outranks this. A QUEUE is refused for its own
+	# reason: it would deliver sentences AFTER the moment that made them true,
+	# which is worse than losing them.
+	#
+	# WHAT THE DEADLINE MEANS, and the first draft got this wrong in a way the
+	# sweep caught: it is a statement about THE LINE CURRENTLY ON SCREEN --
+	# "this is a refusal, do not CLEAR it yet" -- and never a global mute.
+	#
+	# The draft blocked writes as well, so a live refusal refused everything for
+	# two seconds. That reads fine until you notice what a player does next:
+	# they tap something else. `THE MONUMENT ANSWERS A TAP` went red because a
+	# warden refusal from an earlier hold was still holding the line, and BOTH
+	# subsequent taps -- and the clears between them -- were swallowed. In the
+	# game that is a monument answering a tap with somebody else's sentence,
+	# which is §88's complaint ("a tap that moves the ship without a word") with
+	# a stale line on top.
+	#
+	# AN ACT IS ALWAYS ANSWERED. A tap, a hold, a verb the player just tried --
+	# whatever it has to say, it says. What the deadline actually buys is the
+	# two things that were genuinely wrong:
+	#
+	#   * clear_prompt() waits, so drifting out of a seam's range cannot delete
+	#     the refusal the player is mid-read of;
+	#   * prompt_busy() reports, so a caller with something that can WAIT asks
+	#     first -- which is §113's evidenced defect exactly, a once-ever BARK
+	#     firing inline over a refusal, and it is fixed by the voluntary half
+	#     rather than by muting the world.
+	#
+	# The hard lock is untouched and still outranks all of it.
 	if _prompt_held:
 		return
+	var now := Time.get_ticks_msec() / 1000.0
 	if _prompt_label.text == text and _prompt_label.modulate.a > 0.5:
+		# RE-ARMED ON A REPEAT, not merely skipped. A refusal fired again by a
+		# player still holding the same thing should keep owning the line rather
+		# than ageing out mid-read.
+		if hold_s > 0.0:
+			_prompt_soft_until = now + hold_s
 		return
+	# THE DEADLINE TRAVELS WITH THE LINE. A new sentence replaces the old one, so
+	# it replaces the old one's claim too -- an ambient write clears the hold
+	# rather than inheriting it, or the next clear of THAT line would be refused
+	# on behalf of a refusal that is no longer on screen.
+	_prompt_soft_until = (now + hold_s) if hold_s > 0.0 else 0.0
 	_prompt_label.text = text
 	# THE FADE-OUT HAS TO DIE FIRST, and not doing so is a defect this line
 	# carried for a long time. Two tweens on one property both keep running, so a
@@ -1952,6 +2037,46 @@ func prompt(text: String) -> void:
 	_prompt_tween.tween_property(_prompt_label, "modulate:a", 1.0, 0.2)
 
 
+func prompt_busy() -> bool:
+	# §121. WHETHER THE LINE IS SPOKEN FOR -- by the parley's hard lock or by a
+	# refusal still inside its window. broadcast_busy() and toast_busy()'s exact
+	# posture, and it exists for the exact reason they do: a caller with
+	# something that can WAIT asks first.
+	#
+	# IT IS NOT OPTIONAL FURNITURE. Adding a lock without this accessor silently
+	# converts "deferred" into "spent" for every once-ever caller: Barks.fire
+	# checks the hard lock BEFORE mark_bark on purpose -- "a bark that fires once
+	# ever must not be consumed by being suppressed" -- and would have gone on
+	# marking barks seen while a refusal quietly swallowed them. The guard has to
+	# grow with the lock or the lock takes the guard's promise with it.
+	return _prompt_held \
+		or Time.get_ticks_msec() / 1000.0 < _prompt_soft_until
+
+
+func prompt_refusal(text: String) -> void:
+	# §121. THE VERB A REFUSAL USES, and it exists so a caller never has to name
+	# a duration. Every one of the world classes that refuses something reaches
+	# this HUD through `get_tree().get_first_node_in_group("hud")` -- a GROUP
+	# lookup, with no class-name edge -- and reading a constant off HUD to pass
+	# as an argument would create one, from a leaf, in a project where a leaf
+	# that fails to compile takes the whole chain down behind it (§111). So the
+	# duration stays here, where it is one number for every refusal in the game.
+	#
+	# WHICH PROMPTS ARE REFUSALS is a rule rather than a list, and the rule is
+	# about what FIRES them:
+	#
+	#   fired by an ACT   -- a tap, a hold, a verb the player just tried, and it
+	#                        says why it will not happen  ->  this
+	#   fired by RANGE    -- re-asserted every frame while the ship is near a
+	#                        thing, and cleared on the way out  ->  plain prompt
+	#
+	# A range line does not need protecting: it says itself again a frame later.
+	# Locking one would make the world sticky, which is worse than the defect.
+	# mineable_seam is the case worth knowing -- "SEAM TOO DEEP" reads like a
+	# refusal and is edge-triggered off range, so it stays a plain prompt.
+	prompt(text, PROMPT_REFUSAL_HOLD)
+
+
 func hold_prompt(text: String) -> void:
 	# THE DEMAND OWNS THE PROMPT LINE FOR ITS WINDOW (v18, playtest round 4).
 	#
@@ -1967,6 +2092,12 @@ func hold_prompt(text: String) -> void:
 	# Held for the length of the standoff and released by hide_parley, so the
 	# lock cannot outlive the plates it is describing — every path that ends a
 	# parley already goes through there.
+	# §121. THE SOFT LOCK IS CLEARED FIRST, and this line is load-bearing: a
+	# refusal still holding the line would otherwise REFUSE the demand, and the
+	# demand is the one thing in this game that gets six seconds while something
+	# closes on you. The hard lock outranks everything, including the mechanism
+	# added to protect refusals.
+	_prompt_soft_until = 0.0
 	_prompt_held = false
 	prompt(text)
 	_prompt_held = true
@@ -1974,6 +2105,13 @@ func hold_prompt(text: String) -> void:
 
 func clear_prompt() -> void:
 	if _prompt_held:
+		return
+	# §121. Nor while a refusal is still being read. Range-exit clears are the
+	# common caller here, and "the player flew a metre" is not a reason to
+	# delete the sentence explaining why the thing they just tapped said no.
+	# clear_prompt_if is unaffected and needs no guard: it already only clears a
+	# line that is still its own, and a refusal on the label is not.
+	if Time.get_ticks_msec() / 1000.0 < _prompt_soft_until:
 		return
 	# Same rule in the other direction: a clear that raced a fade-in would leave
 	# a stale sentence at full alpha.

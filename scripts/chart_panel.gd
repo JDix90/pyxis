@@ -407,8 +407,19 @@ func legend_words(live: bool, has_ship: bool) -> PackedStringArray:
 	# v25 (§97). Conditioned on the layer being drawn, like every entry above
 	# it: held cells are a subset of coverage, so HELD can only follow SURVEYED
 	# and only when this system actually holds one.
-	if not GameState.held_cells(_selected).is_empty():
+	var held: Array = GameState.held_cells(_selected)
+	if not held.is_empty():
 		out.append("HELD")
+	# v28 (§115). Conditioned on ITS OWN layer rather than on HELD's, the same
+	# rule one line up: a colleague's cell is a subset of the held set, so this
+	# can only follow HELD and only when this system actually carries one.
+	# Walked here rather than given its own GameState accessor -- held_cells
+	# already did the expensive half, and a near-duplicate walker in the store
+	# is a second thing to keep in step for one boolean.
+	for h_v in held:
+		if GameState.is_survey_held_by_another(String(h_v)):
+			out.append("COLLEAGUE")
+			break
 	return out
 
 
@@ -434,6 +445,58 @@ func legend_layout(words: PackedStringArray) -> PackedFloat32Array:
 			adv += 6.0 * w.length()
 		lx += adv
 	return out
+
+
+func _build_weather_rows(has_relay: bool, has_repeater: bool) -> void:
+	# §112 + §116. TWO WORKS, ONE LIST, AND EACH ONE OWNS ITS OWN HALF OF IT.
+	# The relay carries the CHARTED markets (its blurb's own word); the repeater
+	# carries the deep stations'. A pilot with one sees one section, with both
+	# sees both, and the two can never print the same line twice because the
+	# `deep` flag partitions the array rather than filtering it twice.
+	#
+	# `event_place` is what makes the deep half legible at all: a deep station
+	# streams OUT while its weather runs, so the cell persists and the node does
+	# not, and §108 captured the name on the event for exactly this reader.
+	var sections: Array = []
+	if has_relay:
+		sections.append({"head": "RELAY MAST — THE CHARTED MARKETS TONIGHT",
+			"quiet": "   NOTHING MOVING ON THE CHART", "deep": false})
+	if has_repeater:
+		sections.append({"head": "DEEP REPEATER — PAST THE CHART TONIGHT",
+			"quiet": "   NOTHING MOVING PAST THE CHART", "deep": true})
+	for sec_v in sections:
+		var sec: Dictionary = sec_v
+		var want_deep := bool(sec["deep"])
+		var head := Label.new()
+		head.text = String(sec["head"])
+		head.add_theme_font_size_override("font_size", 10)
+		head.add_theme_color_override("font_color", Palette.GOLD)
+		_colony_rows.add_child(head)
+		var shown := 0
+		for ev_v in GameState.market_events:
+			var ev: Dictionary = ev_v
+			if bool(ev.get("deep", false)) != want_deep:
+				continue
+			shown += 1
+			var eline := Label.new()
+			eline.text = "   %s AT %s — %s, %s LEFT" % [
+				Market.event_label(ev), Market.event_place(ev),
+				CommodityDB.short_name(String(ev.get("good", ""))),
+				"%d:%02d" % [int(float(ev.get("remaining", 0.0))) / 60,
+					int(float(ev.get("remaining", 0.0))) % 60]]
+			eline.add_theme_font_size_override("font_size", 10)
+			eline.add_theme_color_override("font_color", Market.event_color(ev))
+			_colony_rows.add_child(eline)
+		if shown == 0:
+			# A SECTION THAT SAYS NOTHING IS A WORK THAT LOOKS BROKEN. The quiet
+			# line is the same courtesy the rumour desk's NOTHING NEW TONIGHT
+			# pays (§108): a paid-for surface that renders empty reads as a
+			# defect, and this one is worse because the player bought it.
+			var quiet := Label.new()
+			quiet.text = String(sec["quiet"])
+			quiet.add_theme_font_size_override("font_size", 10)
+			quiet.add_theme_color_override("font_color", Palette.AMBER_DIM)
+			_colony_rows.add_child(quiet)
 
 
 func ring_label(id: String, band: int) -> String:
@@ -629,7 +692,20 @@ func _draw_plot() -> void:
 		#     unheld cell, it is duplicated. The chart becomes two documents
 		#     read at once: what the Authority counted, and what the network
 		#     holds.
-		if GameState.is_survey_held(cov):
+		#     v28 (§115). AND WHOSE COPY IT IS. A cell the network holds because
+		#     a COLLEAGUE filed it first draws HALF the ring, and the choice of
+		#     half rather than a gap or a second colour is about size: this ring
+		#     is three pixels of radius on a phone, where a notch is noise and a
+		#     hue is §30's redundancy spent on a distinction that is not worth
+		#     an alarm. Half a ring reads at any scale.
+		#
+		#     It is also the exact fiction. The ring means "a copy of this
+		#     exists somewhere else"; on a cell your own return never paid for,
+		#     the half that would have been yours is not there.
+		if GameState.is_survey_held_by_another(cov):
+			_plot.draw_arc(centre, HELD_RING_PX, -PI * 0.5, PI * 0.5, 8,
+				Color(cc.r, cc.g, cc.b, 0.85), 1.0, true)
+		elif GameState.is_survey_held(cov):
 			_plot.draw_arc(centre, HELD_RING_PX, 0.0, TAU, 14,
 				Color(cc.r, cc.g, cc.b, 0.85), 1.0, true)
 
@@ -850,6 +926,11 @@ func _draw_plot() -> void:
 				c = Palette.band_color(2)
 				_plot.draw_arc(Vector2(lx + 3.5, ly), HELD_RING_PX, 0.0, TAU, 14,
 					Color(c.r, c.g, c.b, 0.85), 1.0, true)
+			elif word == "COLLEAGUE":
+				# Half a ring here too, for the same reason and to the pixel.
+				c = Palette.band_color(2)
+				_plot.draw_arc(Vector2(lx + 3.5, ly), HELD_RING_PX,
+					-PI * 0.5, PI * 0.5, 8, Color(c.r, c.g, c.b, 0.85), 1.0, true)
 			else:
 				c = Palette.TEAL
 				_plot.draw_arc(Vector2(lx + 3.5, ly), 3.5, 0.0, TAU, 12, c, 1.0, true)
@@ -1269,6 +1350,15 @@ func _refresh_colonies() -> void:
 				wb.text = "%s — SOUND ITS GROUND FIRST (WORK A MAST IN ITS CELL)" \
 					% String(wdef["name"])
 				wb.disabled = true
+			elif not bool(main.work_delivery_met(key, wid)):
+				# §116. A work with a manifest names it, and names where. The
+				# button is the affordance and it is DISABLED rather than
+				# absent, which is the hunt desk's rule (a dead control is its
+				# own kind of lie) and the unsounded row's own posture one
+				# branch up: the refusal is what teaches the verb.
+				wb.text = "%s — BRING %s TO THE COLONY" % [String(wdef["name"]),
+					main.work_manifest(wid)]
+				wb.disabled = true
 			else:
 				wb.text = "RAISE %s — %s" % [String(wdef["name"]),
 					str(int(wdef["price"]))]
@@ -1286,29 +1376,25 @@ func _refresh_colonies() -> void:
 	for cr_v in GameState.colonies_in(_selected):
 		if GameState.has_work(String((cr_v as Dictionary)["key"]), "relay"):
 			has_relay = true
-	if has_relay:
-		var rhead := Label.new()
-		rhead.text = "RELAY MAST — THE CHARTED MARKETS TONIGHT"
-		rhead.add_theme_font_size_override("font_size", 10)
-		rhead.add_theme_color_override("font_color", Palette.GOLD)
-		_colony_rows.add_child(rhead)
-		if GameState.market_events.is_empty():
-			var quiet := Label.new()
-			quiet.text = "   NOTHING MOVING ON THE CHART"
-			quiet.add_theme_font_size_override("font_size", 10)
-			quiet.add_theme_color_override("font_color", Palette.AMBER_DIM)
-			_colony_rows.add_child(quiet)
-		for ev_v in GameState.market_events:
-			var ev: Dictionary = ev_v
-			var eline := Label.new()
-			eline.text = "   %s AT %s — %s, %s LEFT" % [
-				Market.event_label(ev), Market.event_place(ev),
-				CommodityDB.short_name(String(ev.get("good", ""))),
-				"%d:%02d" % [int(float(ev.get("remaining", 0.0))) / 60,
-					int(float(ev.get("remaining", 0.0))) % 60]]
-			eline.add_theme_font_size_override("font_size", 10)
-			eline.add_theme_color_override("font_color", Market.event_color(ev))
-			_colony_rows.add_child(eline)
+	# §116. AND THE REPEATER, which is the other half of the same list.
+	var has_repeater := false
+	for cr2_v in GameState.colonies_in(_selected):
+		if GameState.has_work(String((cr2_v as Dictionary)["key"]), "repeater"):
+			has_repeater = true
+	# §116. THE RELAY WAS SHOWING BOTH, and its own blurb says CHARTED MARKETS.
+	# `market_events` carries the deep's weather in the same array under a
+	# `deep` flag (§108), this loop never filtered, and the header above it read
+	# "THE CHARTED MARKETS TONIGHT" -- so since §112 a relay has been quietly
+	# reporting deep-station weather under a heading the data contradicts. That
+	# is §110's forge hint again: copy derived from a table under a false
+	# assumption about it.
+	#
+	# It is fixed rather than reworded, because the blurb is the promise the
+	# player bought and the WORD in it is "charted". Fixing it is also what
+	# makes the repeater a real grant instead of a rung that gives what
+	# everybody already has -- the §111 test RIFT-WORK's t2 candidate failed.
+	if has_relay or has_repeater:
+		_build_weather_rows(has_relay, has_repeater)
 
 	# §112, FILING t3. THE HELD CELL IS AN ANCHOR: the nearest few cells the
 	# network holds, as jump rows on the beacon jump's own fee and its own cap.

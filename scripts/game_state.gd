@@ -31,9 +31,14 @@ signal lane_opened(id: String)
 # only discover by docking somewhere and reading a line is not feedback for an
 # act you committed four hundred units away.
 signal standing_shifted(other: String, delta: int, band: int)
+# §119. Emitted the once, when the last of the eleven ladders reaches its own
+# last rung. A SIGNAL rather than a return value because five different mutators
+# can be the one that lands it, and because the thing that answers is a
+# broadcast plate this autoload cannot and must not reach.
+signal last_rung_reached
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 27
+const SAVE_VERSION := 28
 const SAVE_DEBOUNCE := 1.0
 
 # v6 defaults. Kept as one dictionary each so a migration only has to merge
@@ -87,6 +92,16 @@ const DEFAULT_LEDGER := {
 	# volume, this measures FIRSTS. A new key in this dict needs no save bump:
 	# the load-side merge is defaults-based.
 	"cells_filed": 0,
+	# §118. THE LEDGER'S FIRST LOSS COLUMN. Every other key here counts
+	# something the pilot DID; this counts something taken off them while they
+	# were somewhere else, and it is the only number in the game that does.
+	#
+	# It exists because §114 found this ledger holds no credit figure at all --
+	# the outflow side of a run was unmeasured by construction -- and because a
+	# claimed spill left no trace anywhere: _tick_spill_claim called neither
+	# note_log nor note_ledger, so the whole record of it was a toast that
+	# scrolled away.
+	"spills_lost": 0,
 }
 const SHIP_NAME_MAX := 24
 const DEFAULT_SHIP_NAME := "SURVEYOR"
@@ -350,6 +365,21 @@ const FILING_REACH_MULT := 1.5      # come alongside from further out
 # §112. COLONY WORKS -- the investment sink. One-time, per colony, and every
 # return is a SERVICE (§26's currencies): the relay is information, the dock is
 # time, the annex is access. No work touches a stat, a price or an income term.
+#
+# AND NOBODY MAY GIVE A WORK AN UPKEEP, which is written here because here is
+# where somebody would type it. "Operating costs" was one of three sink
+# categories approved on 2026-08-21 (§64) and it is the one that never shipped;
+# it was not deferred and not refused, it simply evaporated, because the
+# decision lived in prose and nowhere near the code it described.
+#
+# §5 refused it a year earlier and the sentence is exact: "no clocks, no
+# queues, NO CURRENCY SINK PRETENDING TO BE A DECISION, and nothing that
+# rewards logging in rather than flying ... Nothing may be built by waiting."
+# A recurring bill against a colony is all three at once -- it is a clock, it
+# is not a decision, and it pays attention rather than flying. §5's own
+# alternative is the one to reach for instead: "if a structure takes time to
+# become something, the time is spent flying to it with what it needs -- the
+# trip is the cost."
 const COLONY_WORKS := {
 	"relay": {"name": "RELAY MAST", "price": 4000,
 		"blurb": "THE CHART CARRIES THE CHARTED MARKETS' WEATHER OUT TO THIS SYSTEM"},
@@ -357,6 +387,26 @@ const COLONY_WORKS := {
 		"blurb": "YOUR SHIELD MENDS AT TWICE THE PACE ALONGSIDE THIS COLONY"},
 	"annex": {"name": "BONDED ANNEX", "price": 8000,
 		"blurb": "A BONDED BAY OF ITS OWN — HOLD AT THE COLONY TO USE IT"},
+	# v28 (§116). THE FIRST WORK THAT TAKES A DELIVERY, and §5 wrote the shape
+	# of it on 2026-08-04: "if a structure takes time to become something, the
+	# time is spent flying to it with what it needs -- THE TRIP IS THE COST."
+	#
+	# THE GOODS ARE A GATE, NOT A PRICE (§72's rule, applied to a work). Twelve
+	# alloys is about 480 credits of base value, which §114's table puts at
+	# under ten seconds of standard-loop income -- the goods cost nothing and
+	# everything in HOLD: alloys are space 2, so twelve of them is 24 space,
+	# which is a starter hold exactly. That is the same yardstick §107 sized
+	# STOCK_BASE against, and it is chosen for the same reason: it is the one
+	# unit of "a dedicated run carrying nothing else" this game already has.
+	#
+	# PRICED TO ITS SIBLINGS, DELIBERATELY. §114 has just measured that every
+	# sink in this game is small, and the decision about what to do is next
+	# horizon's, taken in the open with that table in hand. Pricing this one
+	# work to the new rule would be making that decision on one row, invisibly.
+	# So it sits at the top of the family it belongs to and moves when they do.
+	"repeater": {"name": "DEEP REPEATER", "price": 10000,
+		"goods": {"alloys": 12},
+		"blurb": "THE CHART CARRIES THE DEEP STATIONS' WEATHER, THE WAY THE RELAY CARRIES THE CHART'S"},
 }
 const DOCK_AURA_RANGE := 30.0
 const DOCK_AURA_MULT := 2.0
@@ -1864,6 +1914,27 @@ func is_survey_filed(key: String) -> bool:
 # cap for free -- a held cell is evicted with its coverage key like any other,
 # and the wreck's four-hundred-cell log stays true.
 const HELD := "held"
+# v28 (§115). A THIRD WORD, and it is recorded rather than derived because it
+# CANNOT be derived. `Rival.filed` is
+# `floor(seconds / STRIDE) * STRIDE >= arrival_seconds(key, depth, seed)`:
+# arrival_seconds is fixed per (key, seed) and played_seconds only rises, so
+# the predicate is MONOTONE -- once true, true forever. A chart that asked it
+# at draw time would answer "a colleague reached this first" about every cell
+# the pilot filed FIRST, as soon as the rival's own clock caught up. The fact
+# is about WHEN, and only the act knows that.
+#
+# That is the exact inverse of files_with_the_network() twenty lines down,
+# which IS derivable because it is an existential over a store that only
+# grows. Worth keeping as a rule: A FACT ABOUT WHEN CANNOT BE DERIVED FROM A
+# MONOTONE PREDICATE ABOUT WHETHER.
+#
+# §98's MARK_STATES precedent, verbatim in shape: a validated string, so the
+# store gained one word and nothing else changed.
+const HELD_BY_ANOTHER := "held_other"
+# Both words mean the network holds the cell. Only the second says whose
+# return bought it, so every rule that asks "is this held" reads the pair and
+# only the CHART tells them apart.
+const HELD_WORDS := [HELD, HELD_BY_ANOTHER]
 
 
 func is_survey_held(key: String) -> bool:
@@ -1871,16 +1942,32 @@ func is_survey_held(key: String) -> bool:
 	# store asked `.has()` and nothing anywhere looked at a value.
 	#
 	# TYPE FIRST, and this is not defensive style -- it is required. The store
-	# now holds TWO types: `true` for a counter filing and HELD for a network
-	# one, and `String(true)` is not a constructor GDScript has. Written as a
-	# bare String() this errored on every counter-filed cell it was asked about
-	# and then returned false anyway, so the assertions around it PASSED while
-	# the run logged a script error: a green leg standing on a broken call.
+	# holds `true` for a counter filing and a WORD for a network one, and
+	# `String(true)` is not a constructor GDScript has. Written as a bare
+	# String() this errored on every counter-filed cell it was asked about and
+	# then returned false anyway, so the assertions around it PASSED while the
+	# run logged a script error: a green leg standing on a broken call.
+	#
+	# v28: TRUE FOR BOTH WORDS, deliberately. Anchors, the chart legend and
+	# files_with_the_network all ask "does the network hold this", and the
+	# answer does not depend on whose goods paid for it -- a colleague's cell
+	# has been an anchor since §112 and stays one. The distinction is drawn in
+	# exactly one place, and it is a glyph.
 	var v = survey_filed.get(key, false)
-	return typeof(v) == TYPE_STRING and String(v) == HELD
+	return typeof(v) == TYPE_STRING and HELD_WORDS.has(String(v))
 
 
-func note_survey_held(key: String) -> bool:
+func is_survey_held_by_another(key: String) -> bool:
+	# The narrow question, for the chart alone. Through the same typed read for
+	# is_survey_held's own stated reason: the store holds two types and there
+	# is ONE place that knows how to ask it, so a second reader re-deriving the
+	# comparison is how the invalid-constructor defect got written twice in one
+	# file inside one hour.
+	var v = survey_filed.get(key, false)
+	return typeof(v) == TYPE_STRING and String(v) == HELD_BY_ANOTHER
+
+
+func note_survey_held(key: String, by_another := false) -> bool:
 	# THE SIBLING MUTATOR, and it exists because note_survey_filed CANNOT do
 	# this. That function's first line refuses a key already in the store --
 	# correctly, for its own job, since filing twice at a counter must not pay
@@ -1893,7 +1980,12 @@ func note_survey_held(key: String) -> bool:
 	# in exactly the session the player flew six thousand units for it.
 	if not survey_coverage.has(key) or is_survey_held(key):
 		return false
-	survey_filed[key] = HELD
+	# v28. APPENDED AND OPTIONAL, §108's call for this environment: there is no
+	# Godot binary here, a wrong arity is a parse error check_scripts.py cannot
+	# see, and every existing caller stays byte-identical with a default. False
+	# means "my own goods paid for this", which is what every previous filing
+	# was.
+	survey_filed[key] = HELD_BY_ANOTHER if by_another else HELD
 	_queue_save()
 	return true
 
@@ -2117,9 +2209,16 @@ func _load_survey_filed(saved: Dictionary) -> void:
 		# legal; anything else -- a number, a dictionary, "nonsense" -- is not a
 		# third state to be tolerated, it is a corrupt entry to drop. `false`
 		# drops here as it always did, which keeps migrate21's rubbish pass true.
+		# v28. THROUGH HELD_WORDS rather than a second literal comparison, so
+		# a fourth word would be one array entry and not a fourth branch here
+		# that somebody has to remember. Still validated by TYPE rather than by
+		# bool() coercion: exactly three values are legal and anything else --
+		# a number, a dictionary, "nonsense" -- is a corrupt entry to drop, not
+		# a state to tolerate. `false` drops here as it always did, which keeps
+		# migrate21's rubbish pass true.
 		var raw = saved[key_v]
-		if typeof(raw) == TYPE_STRING and String(raw) == HELD:
-			survey_filed[key] = HELD
+		if typeof(raw) == TYPE_STRING and HELD_WORDS.has(String(raw)):
+			survey_filed[key] = String(raw)
 		elif typeof(raw) == TYPE_BOOL and bool(raw):
 			survey_filed[key] = true
 
@@ -3091,6 +3190,7 @@ func mark_smuggling(units: int) -> bool:
 	# announcement would be a log describing a different evening.
 	if gained:
 		note_log("SMUGGLING %d — THE LANES KNOW YOU" % smuggling)
+		_check_last_rung()
 	_queue_save()
 	return gained
 
@@ -3139,6 +3239,7 @@ func mark_persuasion(wins: int) -> bool:
 	# ONE line naming the tier the player LANDED on, like the other three.
 	if gained:
 		note_log("PERSUASION %d — THEY LISTEN TO YOU" % persuasion)
+		_check_last_rung()
 	_queue_save()
 	return gained
 
@@ -3257,6 +3358,7 @@ func mark_mining(band: int) -> bool:
 	# cut can cross two at once, and the log must not disagree with the toast.
 	if gained:
 		note_log("MINING %d — THE ROCK READS DIFFERENTLY NOW" % mining)
+		_check_last_rung()
 	_queue_save()
 	return gained
 
@@ -3437,6 +3539,7 @@ func mark_archeology(xp: int) -> bool:
 	if gained:
 		note_log("ARCHEOLOGY %d — READS %s" % [archeology,
 			DeepSpace.BAND_NAMES[mini(archeology, DeepSpace.BAND_NAMES.size() - 1)]])
+		_check_last_rung()
 	_queue_save()
 	return gained
 
@@ -3450,6 +3553,80 @@ func can_read(salvage_id: String, at_lab: bool) -> bool:
 
 func skill_ids() -> Array:
 	return SKILL_TIERS.keys()
+
+
+# §119. THE ELEVENTH. The legacy four each own a var, an xp var and a
+# hand-written tier array (a deliberate §36-era decision; §111 records why
+# extending them is its own afternoon), while the other seven are one table with
+# a derived tier. This dict is the bridge, and it holds the ARRAYS rather than
+# copies of their lengths so there is nothing here that can disagree with them.
+#
+# THE KEY IS THE VAR'S OWN NAME, which is why `get(id)` below can read the tier
+# without a four-way branch: the legacy four have been named this way since they
+# shipped, one var per ladder, and the naming convention is load-bearing exactly
+# once -- here. A fifth legacy ladder would be one row.
+#
+# AND THAT IS WHAT KEEPS 5c FREE. The four legacy deepenings are still deferred
+# in §64 and each adds a rung. A capstone written as "eleven ladders, this many
+# tiers" would silently move the day one lands; asked of the tables, the bar
+# rises with them and the deferral can be paid on either side of this without
+# anybody remembering to come back.
+const LEGACY_TIER_ARRAYS := {
+	"archeology": ARCHEOLOGY_TIERS,
+	"smuggling": SMUGGLING_TIERS,
+	"mining": MINING_TIERS,
+	"persuasion": PERSUASION_TIERS,
+}
+
+
+func ladders_total() -> int:
+	# Eleven today, twelve the day a twelfth row is authored in either family.
+	return LEGACY_TIER_ARRAYS.size() + SKILL_TIERS.size()
+
+
+func ladders_at_cap() -> int:
+	# HOW MANY STAND AT THEIR OWN LAST RUNG. Not a score, not a percentage, and
+	# not a promise: it is the one number the ledger page carries, and nothing
+	# anywhere says what happens at eleven.
+	var n := 0
+	for id_v in LEGACY_TIER_ARRAYS:
+		var id := String(id_v)
+		var cap := (LEGACY_TIER_ARRAYS[id_v] as Array).size() - 1
+		# `get(id)` reads the member var of the same name -- see the note above.
+		# A missing property returns null and int(null) is 0, so a renamed var
+		# reads as "never capped" rather than erroring, which is the safe
+		# direction: this can under-report and can never award the capstone for
+		# a ladder that is not there.
+		if cap > 0 and int(get(id)) >= cap:
+			n += 1
+	for id2_v in SKILL_TIERS:
+		var id2 := String(id2_v)
+		if skill_tier(id2) >= (SKILL_TIERS[id2_v] as Array).size() - 1:
+			n += 1
+	return n
+
+
+func every_ladder_capped() -> bool:
+	return ladders_at_cap() >= ladders_total()
+
+
+# Session-only, deliberately. The capstone is a MOMENT rather than a trophy:
+# there is nothing to re-collect, nothing on any screen that would read wrong
+# after a reload, and a store would be a byte spent so that a sentence could
+# refuse to be said twice in a run that has already heard it. `_kept_light_spoken`
+# is the same shape for the same reason (§117).
+var _last_rung_announced := false
+
+
+func _check_last_rung() -> void:
+	# Called from every tier landing in both families -- five sites, each one
+	# line, because there is no single choke point a tier passes through and a
+	# hook on _queue_save() would be a save concern answering a skill question.
+	# Idempotent, so an extra call can never cost anything.
+	if _last_rung_announced or not every_ladder_capped():
+		return
+	_last_rung_announced = true
+	last_rung_reached.emit()
 
 
 func skill_xp(id: String) -> int:
@@ -3498,6 +3675,7 @@ func mark_skill(id: String, n := 1) -> bool:
 	# mark_smuggling's rule.
 	note_log("%s %d — %s" % [String(SKILL_LABELS.get(id, id.to_upper())), after,
 		String((SKILL_PERKS.get(id, []) as Array)[after])])
+	_check_last_rung()
 	return true
 
 
@@ -3581,9 +3759,23 @@ func buy_colony_work(key: String, work: String) -> bool:
 		return false
 	if has_work(key, work):
 		return false
+	# v28. THE GOODS ARE CHECKED BEFORE ANYTHING IS SPENT, which is this
+	# function's existing posture (the refusal is free) and §110's rule for
+	# credits said in the other direction: nothing may vanish. Checking every
+	# line of the manifest first means the spend below cannot land on a hold
+	# that turns out to be one unit short.
+	var want: Dictionary = (COLONY_WORKS[work] as Dictionary).get("goods", {})
+	for g_v in want:
+		if cargo_count(String(g_v)) < int(want[g_v]):
+			return false
 	var price := int((COLONY_WORKS[work] as Dictionary).get("price", 0))
 	if not spend_salvage(price):
 		return false
+	# AND ONLY THEN THE HOLD. Every count was proven above and cargo cannot
+	# change between these two lines -- there is no await here and no signal
+	# handler that could reach it.
+	for g2_v in want:
+		unload_cargo(String(g2_v), int(want[g2_v]))
 	var lst: Array = colony_works.get(key, [])
 	lst.append(work)
 	colony_works[key] = lst
