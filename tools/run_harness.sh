@@ -117,7 +117,13 @@ TIMEOUT_S="${PYXIS_HARNESS_TIMEOUT:-1500}"
 # SAVETEST is stateful: =write lays down a fixture the bare read consumes, so
 # the pair must stay adjacent and in this order. The migrate modes are
 # self-contained and each builds its own old-version fixture.
-SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 migrate14 migrate15 migrate16 migrate17 migrate18 migrate19 migrate20 migrate21 migrate22 migrate23 migrate24 migrate25 migrate26 migrate27 future partial6)
+# ONE LIST, AND THE FILTER BELOW REUSES IT. This was written out twice --
+# here and inside the argument branch -- which is two sources of truth for one
+# fact, and it collected exactly the tax that shape always collects: adding
+# `migrate27` meant editing both, and editing one would have left a partial
+# sweep quietly running a different set from a full one.
+ALL_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 migrate14 migrate15 migrate16 migrate17 migrate18 migrate19 migrate20 migrate21 migrate22 migrate23 migrate24 migrate25 migrate26 migrate27 future partial6)
+SAVE_MODES=("${ALL_MODES[@]}")
 
 # §113. THE COUNTS, DERIVED. `tools/run_harness.sh --counts` prints the run
 # arithmetic and exits -- no Godot binary touched, so it works on any machine
@@ -181,17 +187,45 @@ if [ "${1:-}" = "--parse" ]; then
 fi
 
 if [ $# -gt 0 ]; then
-	# SAVETEST names the whole stateful sequence below, never a plain tag. Left in
+	# SAVETEST names the whole stateful sequence above, never a plain tag. Left in
 	# TAGS it runs as a bare read BEFORE the =write leg has laid the fixture down,
 	# which fails five assertions that are actually fine.
+	#
+	# AND AN UNKNOWN ARGUMENT IS REFUSED RATHER THAN RUN. This branch used to
+	# accept any token as a tag, and the file's own comment forty lines up says
+	# what that costs: "an unrecognised PYXIS_* var is not an error -- the game
+	# simply boots normally and runs forever". So a typo, or a flag this build
+	# does not have, launched Godot with a variable nothing reads and sat
+	# against the 1,500-second backstop. That is not hypothetical: running
+	# `--legs` against a checkout from before it existed does exactly this, and
+	# it is how this guard came to be written.
+	#
+	# Checked against the arrays themselves, so the list of legal arguments
+	# cannot drift from the list of things that actually run.
+	ALL_TAGS=("${TAGS[@]}")
 	TAGS=()
 	SAVE_MODES=()
 	for t in "$@"; do
 		if [ "$t" = "SAVETEST" ]; then
-			SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 migrate14 migrate15 migrate16 migrate17 migrate18 migrate19 migrate20 migrate21 migrate22 migrate23 migrate24 migrate25 migrate26 migrate27 future partial6)
-		else
-			TAGS+=("$t")
+			SAVE_MODES=("${ALL_MODES[@]}")
+			continue
 		fi
+		known=0
+		for k in "${ALL_TAGS[@]}"; do
+			if [ "$k" = "$t" ]; then
+				known=1
+				break
+			fi
+		done
+		if [ "$known" -eq 0 ]; then
+			echo "UNKNOWN ARGUMENT: $t" >&2
+			echo "Modes:  --counts  --legs  --parse" >&2
+			echo "Tags:   SAVETEST, or one of the ${#ALL_TAGS[@]} in TAGS:" >&2
+			printf '%s\n' "${ALL_TAGS[@]}" | sort | paste -sd' ' - | fold -sw 76 \
+				| sed 's/^/    /' >&2
+			exit 2
+		fi
+		TAGS+=("$t")
 	done
 fi
 
