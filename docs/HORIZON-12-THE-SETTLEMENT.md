@@ -30,14 +30,14 @@ seven ideas died (research §6).
 
 ## The commits
 
-| # | commit | save | size | risk |
-|---|---|---|---|---|
-| 0 | **The death price** — rescue decoupled from the jump ramp onto its own constants; the band leg `THE DEATH PRICE SITS IN ITS BAND` (measured-steady fraction ∈ [0.30, 0.50]); repair recorded as band-blind and moved ≤2× or not at all | none | ~60 lines + 2 legs | medium — the numbers everyone feels |
-| 1 | **The wider margin** — `REQ_MULT` 5→8; jump fees revisited against the new rescue curve; `THE ORDER DESK IS NOT A PRINTER` re-derives and must still clear | none | ~20 lines | low |
-| 2 | **The ladder stands** — `requires` staging in `COLONY_WORKS`; existing four works re-priced steeply; `WORKS ARE A SINK` grows the prereq clauses; `EVERY SINK IS PRICED` rows updated in the same commit | none | ~80 lines + legs | low |
-| 3 | **EXPANDED VAULTS + THE YARD** — the keyed `warehouse_space_of(key)` accessor (60→120 with the work); a colony `repair_price` on the deep ports' own per-def pattern | none | ~100 lines + legs | medium — STORETEST's bay legs re-derive |
-| 4 | **THE LIGHT + THE ARCHIVE** — a held spill in the colony's system does not expire (extends §109's clock, braids §118's record); the Archive rendered entirely from existing stores, granting nothing | none | ~120 lines + legs | low |
-| 5 | **The measure** — the horizon closed, the sweep read, the sink table re-printed at its new prices | none | docs | low |
+| # | commit | save | size | risk | state |
+|---|---|---|---|---|---|
+| 0 | **The death price** — rescue decoupled from the jump ramp onto its own constants; the band leg `THE DEATH PRICE SITS IN ITS BAND` (measured-steady fraction ∈ [0.30, 0.50]); repair recorded as band-blind and moved ≤2× or not at all | none | ~60 lines + 2 legs | medium — the numbers everyone feels | **BUILT** — §123 |
+| 1 | **The wider margin** — `REQ_MULT` 5→8; jump fees revisited against the new rescue curve; `THE ORDER DESK IS NOT A PRINTER` re-derives and must still clear | none | ~20 lines | low | PLANNED |
+| 2 | **The ladder stands** — `requires` staging in `COLONY_WORKS`; existing four works re-priced steeply; `WORKS ARE A SINK` grows the prereq clauses; `EVERY SINK IS PRICED` rows updated in the same commit | none | ~80 lines + legs | low | PLANNED |
+| 3 | **EXPANDED VAULTS + THE YARD** — the keyed `warehouse_space_of(key)` accessor (60→120 with the work); a colony `repair_price` on the deep ports' own per-def pattern | none | ~100 lines + legs | medium — STORETEST's bay legs re-derive | PLANNED |
+| 4 | **THE LIGHT + THE ARCHIVE** — a held spill in the colony's system does not expire (extends §109's clock, braids §118's record); the Archive rendered entirely from existing stores, granting nothing | none | ~120 lines + legs | low | PLANNED |
+| 5 | **The measure** — the horizon closed, the sweep read, the sink table re-printed at its new prices | none | docs | low | PLANNED |
 
 ## The laws that hold it (all existing, all still asserted)
 

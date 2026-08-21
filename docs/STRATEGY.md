@@ -6474,7 +6474,7 @@ status); and the spec followed a research pass.
 
 | # | what | save | status |
 |---|---|---|---|
-| 0 | the death price: rescue on its own constants, banded [0.30, 0.50] of measured steady; repair recorded as band-blind | none | **PLANNED** |
+| 0 | the death price: rescue on its own constants, banded [0.30, 0.50] of measured steady; repair recorded as band-blind | none | **BUILT** — §123; repair turned out never to have been involuntary, and the ceiling law was sampled rather than total |
 | 1 | the wider margin: REQ_MULT 5→8, jumps revisited | none | **PLANNED** |
 | 2 | the ladder stands: `requires` staging, the four works re-priced | none | **PLANNED** |
 | 3 | EXPANDED VAULTS + THE YARD | none | **PLANNED** |
@@ -12735,3 +12735,84 @@ one by the instrument built to look for exactly it.
 
 The checker ended the horizon with six rules, as it began. The harness ended it
 with three commands that need no binary and one gate that did not exist.
+
+## 123. The death price (Horizon 12, commit 0)
+
+§114 measured the deepest possible rescue in the game at **twenty-six seconds**
+of standard-loop income and deliberately asserted no target, because the
+decision belonged to a later horizon taken with the table in hand. This is that
+horizon and that decision.
+
+### Its own constants, and the anchor that was never there
+
+`rescue_fee` walked `beacon_jump_fee`'s ramp at twice the price. The arithmetic
+was right, `THE RESCUE COSTS MORE THAN THE JUMP` swept seven depths to keep it
+right, and the anchor underneath it was a guess: **the jump's own fee had never
+been anchored to anything either.** §114 named that defect; this is its last
+site.
+
+The fee now has its own two constants expressing loop-fraction intent — ~240
+just past the chart edge, ~2,200 at a shallow deep death, ~7,600 at the band-6
+floor, **13,000 at the far marks**.
+
+### It clamps now, which reverses §109 rather than forgetting it
+
+§109 refused `beacon_jump_fee`'s clamp with a good reason: that one sits at
+`BEACON_JUMP_MAX_DEPTH` (4,200) while content runs out to 9,000, so inheriting
+it would flatten the bill across the entire far deep — *"cheapest exactly where
+it should cost the most."*
+
+This clamp sits at the far marks **themselves**. `FarMarks.DEPTH_MAX` is the
+deepest authored thing in the game, so there is no content in the flat region at
+all. The ramp measures the flight home, and past the marks there is nothing out
+there the tug could have been called to.
+
+It also makes §114's ceiling law **total rather than sampled**. Unclamped, a fee
+rising forever crosses one measured loop somewhere past ~24,000u — true of a
+pilot who flew into empty space, invisible to a leg that prices one depth, and a
+promise quietly broken out where nobody looks. `NOTHING INVOLUNTARY EXCEEDS A
+LOOP` now prices the fee at **ten times** the marks, and
+`THE RESCUE COSTS MORE THAN THE JUMP` grew a clause asserting the ramp really
+does stop.
+
+### The band is the point, not the raise
+
+A one-time raise is a nudge that expires. Yields move, the loop grows, and the
+death price silently becomes twenty-six seconds again with nothing to notice —
+which is precisely how it got there the first time.
+
+> `THE DEATH PRICE SITS IN ITS BAND` — the deepest rescue, as a fraction of the
+> loop `PACINGTEST` measures, in **[0.30, 0.50]**.
+
+Income's own instrument shape: an authored constant, a measured ratio, a red
+when they drift apart. Measured against **STEADY**, never the best case — the
+best-case loop carries a once-per-system derelict, and pricing a recurring
+consequence against a windfall would make death cheapest for the pilot who just
+found one (`ROUTE PARITY` picks steady for the same reason). A red here is one
+constant moving, not a crisis: `RESCUE_FEE_FAR` is the provisional half and the
+band is the thing being defended.
+
+### And repair was never involuntary
+
+§114's table shipped calling repair a forced charge. **It is not**, and
+`repair_full`'s own comment says so in as many words:
+
+> *"The slow recovery in `_tick_shield` is the free option; this is the one you
+> pay to skip."*
+
+A docked repair is a **time purchase competing with waiting** — the same thing
+the DRY DOCK sells. The misclassification made the ceiling law weaker than it
+read, because half of what it checked was a convenience. The forced set is now
+exactly one row, and the law means what its name says.
+
+**So repair is deliberately not re-priced**, for two reasons that compound:
+
+- `PACINGTEST` measures a loop that runs `invulnerable` and **never pays a
+  repair**, so any raise moves real-play net income while `STEADY MIDTIER` reads
+  exactly what it read — a stealth nerf the band structurally cannot see,
+  landing hardest on the pilot who fights every loop.
+- Its competitor is **free**. Raising the price of skipping a wait does not
+  deepen a sink; it buys more waiting, which is tedium sold as economy.
+
+Both are recorded at the row rather than in this section alone, because the next
+person to reach for the obvious knob will be looking at the table.

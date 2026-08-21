@@ -1858,16 +1858,47 @@ const BEACON_JUMP_MIN_FEE := 120
 # any depth at no charge, which made it strictly cheaper than the 120-500 credit
 # beacon jump and therefore the best fast travel in the game.
 #
-# The fee walks beacon_jump_fee's own ramp at twice the price and WITHOUT its
-# clamp, so it keeps climbing past the depth a jump will reach: ~240 at the
-# chart edge, 1,000 where a jump stops being offered at all, ~1,870 at the far
-# marks. THE RESCUE COSTS MORE THAN THE JUMP sweeps it.
+# §123 RE-PRICES IT AND CUTS IT LOOSE. The original walked beacon_jump_fee's own
+# ramp at twice the price, which put the deepest possible death at 1,869 --
+# TWENTY-SIX SECONDS of standard-loop income (§114's table). The arithmetic was
+# right and the anchor was not: the jump's own fee had never been anchored to
+# anything either, so the death price was a multiple of a guess. That is exactly
+# the defect §114 named, and this is its last site.
+#
+# ITS OWN CONSTANTS NOW, and they express loop-fraction intent rather than a
+# multiple of a neighbour. ~240 just past the chart edge, ~2,300 at a shallow
+# deep death, ~7,700 at the band-6 floor, RESCUE_FEE_FAR at the marks.
+const RESCUE_FEE_EDGE := 240
+const RESCUE_FEE_FAR := 13000
+
+# AND IT CLAMPS AT THE FAR MARKS, which reverses §109's decision rather than
+# forgetting it. §109 refused beacon_jump_fee's clamp because that one sits at
+# BEACON_JUMP_MAX_DEPTH (4,200) while content runs out to 9,000 -- flattening
+# the bill across the entire far deep, "cheapest exactly where it should cost
+# the most". This clamp sits at the far marks THEMSELVES: FarMarks.DEPTH_MAX is
+# the deepest authored thing in the game, so there is no content in the flat
+# region at all. The ramp measures the flight home, and past the marks there is
+# nothing out there the tug could have been called to.
+#
+# It also makes §114's ceiling law TOTAL rather than sampled. Unclamped, a fee
+# rising forever crosses one measured loop somewhere past ~24,000u -- true of a
+# pilot who flew into empty space, invisible to a leg that checks one depth, and
+# a promise ("an involuntary charge larger than a loop deletes the session
+# before it") quietly broken out where nobody looks.
 #
 # The numbers are provisional and they are all in this block, §99's posture --
 # the LAWS are what is asserted (deeper costs more, always more than a jump,
-# nothing at all inside the chart), so a retune changes three lines and no
-# assertion.
-const RESCUE_FEE_MULT := 2.0
+# nothing at all inside the chart, and the band below), so a retune changes two
+# constants and no assertion.
+#
+# THE BAND IS THE POINT OF THE RE-PRICING. A one-time raise is a nudge that
+# expires: yields move, the loop grows, and the death price silently becomes
+# twenty-six seconds again with nothing to notice. So the deepest fee is pinned
+# to a FRACTION of the loop PACINGTEST measures, income's own instrument shape
+# -- an authored constant, a measured ratio, and a red when they drift apart.
+# THE DEATH PRICE SITS IN ITS BAND is the leg.
+const RESCUE_BAND_MIN := 0.30
+const RESCUE_BAND_MAX := 0.50
 
 # THE CLAIM. A spill used to be immortal: `spill` cubes skip the 25s reaper, so
 # cargo dropped at a deep death sat there for the rest of the visit and the whole
@@ -1891,13 +1922,10 @@ func rescue_fee(depth: float) -> int:
 	# what it was taught with and what CHART DEATH INTACT asserts.
 	if depth <= 0.0:
 		return 0
-	# Deliberately NOT beacon_jump_fee(depth) * 2: that function clamps its ramp
-	# at BEACON_JUMP_MAX_DEPTH because past there a jump is refused outright, and
-	# borrowing the clamp would make the rescue flat across the entire far deep --
-	# cheapest exactly where it should cost the most.
-	var t := depth / float(BEACON_JUMP_MAX_DEPTH)
-	var one_way := lerpf(float(BEACON_JUMP_MIN_FEE), float(COLONY_JUMP_FEE), t)
-	return int(round(one_way * RESCUE_FEE_MULT))
+	# Its own ramp, over the FAR MARKS rather than over the jump's cap -- see the
+	# constants block for why this one clamps where §109's refused to.
+	var t := clampf(depth / FarMarks.DEPTH_MAX, 0.0, 1.0)
+	return int(round(lerpf(float(RESCUE_FEE_EDGE), float(RESCUE_FEE_FAR), t)))
 
 
 func spill_claim_seconds(depth: float) -> float:
@@ -8202,9 +8230,18 @@ func _run_spill_test() -> void:
 	#     expensive exit rather than the convenient one"; it was not.
 	#
 	# Swept rather than spot-checked, because the two curves are only guaranteed
-	# to stay apart if the rescue does NOT borrow beacon_jump_fee's clamp -- and
-	# the far deep, past where a jump is refused at all, is exactly where an
-	# inherited clamp would have made the rescue flattest.
+	# to stay apart across the whole range, and the far deep -- past where a jump
+	# is refused at all -- is where a badly placed clamp would flatten the
+	# rescue.
+	#
+	# §123 AMENDS THIS LEG'S PREMISE RATHER THAN QUIETLY PASSING IT (§24). The
+	# original swept a rescue that borrowed beacon_jump_fee's RAMP at 2x and
+	# refused its clamp; the rescue now has its own constants and DOES clamp --
+	# at the far marks, which is the deepest authored thing in the game rather
+	# than the mid-range cap §109 refused. So the sweep grows a clause: the fee
+	# must still be flat past the marks, because a bill that rose forever would
+	# cross a measured loop out in empty space where §114's ceiling law samples
+	# nothing.
 	var fee_bad := ""
 	var fee_last := 0
 	var fee_rises := true
@@ -8216,10 +8253,15 @@ func _run_spill_test() -> void:
 		if rf <= fee_last:
 			fee_rises = false
 		fee_last = rf
-	print("[spill] THE RESCUE COSTS MORE THAN THE JUMP 7 depths swept, %du costs %d, deeper always dearer=%s, first cheaper-than-a-jump: %s -> %s" % [
-		9000, rescue_fee(9000.0), str(fee_rises),
+	# AND IT STOPS WHERE THE CONTENT DOES. Ten times past the marks is a pilot
+	# in empty space; the tug's bill is the flight home, and there is nothing out
+	# there it could have been called to.
+	var fee_capped: bool = rescue_fee(FarMarks.DEPTH_MAX * 10.0) \
+		== rescue_fee(FarMarks.DEPTH_MAX)
+	print("[spill] THE RESCUE COSTS MORE THAN THE JUMP 7 depths swept, %du costs %d, deeper always dearer=%s, flat past the marks=%s, first cheaper-than-a-jump: %s -> %s" % [
+		9000, rescue_fee(9000.0), str(fee_rises), str(fee_capped),
 		fee_bad if fee_bad != "" else "none",
-		"PASS" if fee_bad == "" and fee_rises else "FAIL"])
+		"PASS" if fee_bad == "" and fee_rises and fee_capped else "FAIL"])
 
 	# 11. THE TUG TAKES WHAT YOU HAVE. A rescue that could fail for want of
 	#     credits is a soft-lock with a story attached -- there is no other way
@@ -13549,16 +13591,30 @@ func _run_pacing_test() -> void:
 		req_max = maxi(req_max, Market.requisition_price(cid))
 	sink_rows.append({"name": "a requisition, dearest part", "cost": float(req_max),
 		"forced": false})
-	# THE TWO A PILOT CANNOT DECLINE. A shield-zero ship has no other way out,
-	# and a hull that will not mend is a ship that cannot be flown -- so these
-	# two are the ones the third law below is about.
-	# AT THE FAR MARKS, and the depth is FarMarks' own rather than a doubled
-	# hyper cap: the rescue ramp deliberately does NOT clamp (§109), so the row
-	# is only honest if it names the deepest place a pilot can actually die.
+	# THE ONE A PILOT CANNOT DECLINE, and §123 corrects the count. This block
+	# shipped calling repair forced too, and it is not: `repair_full`'s own
+	# comment says so in as many words -- "the slow recovery in _tick_shield is
+	# the FREE option; this is the one you pay to SKIP". A docked repair is a
+	# TIME purchase competing with waiting, the same thing the DRY DOCK sells.
+	#
+	# The mistake made the ceiling law weaker than it read: half of what it
+	# checked was a convenience. A shield-zero ship genuinely has no other way
+	# out, so the forced set is exactly one row, and the law below now means what
+	# its name says.
+	#
+	# AT THE FAR MARKS, which is both the deepest place a pilot can die and --
+	# since §123 -- where the ramp stops climbing.
 	sink_rows.append({"name": "the tug, at the far marks",
 		"cost": float(rescue_fee(FarMarks.DEPTH_MAX)), "forced": true})
-	sink_rows.append({"name": "repair to full",
-		"cost": float(PortPanel.REPAIR_FULL_PRICE), "forced": true})
+	# AND IT IS DELIBERATELY NOT RE-PRICED (§123), for two reasons that compound.
+	# PACINGTEST measures a loop that runs `invulnerable` and never pays a
+	# repair, so any raise here moves real-play net income while STEADY MIDTIER
+	# reads exactly what it read -- a stealth nerf the band structurally cannot
+	# see, landing hardest on the pilot who fights every loop. And its competitor
+	# is FREE: raising the price of skipping a wait does not deepen a sink, it
+	# just buys more waiting, which is tedium sold as economy.
+	sink_rows.append({"name": "repair to full (a wait you may skip)",
+		"cost": float(PortPanel.REPAIR_FULL_PRICE), "forced": false})
 	sink_rows.append({"name": "a beacon jump, at its cap",
 		"cost": float(beacon_jump_fee(float(BEACON_JUMP_MAX_DEPTH))), "forced": false})
 	sink_rows.append({"name": "a colony jump", "cost": float(COLONY_JUMP_FEE),
@@ -13640,10 +13696,41 @@ func _run_pacing_test() -> void:
 		var row4: Dictionary = row4_v
 		if bool(row4["forced"]) and float(row4["cost"]) > steady:
 			forced_over.append(String(row4["name"]))
-	print("[pacing] NOTHING INVOLUNTARY EXCEEDS A LOOP one loop is %s, %d forced sink(s) above it%s -> %s" % [
-		_comma_int(int(steady)), forced_over.size(),
+	# §123. AND THE LAW IS TOTAL NOW, NOT SAMPLED. The rows above price the
+	# forced sink at one depth; before the rescue clamped, a fee rising forever
+	# crossed a loop somewhere out in empty space that no row named. Ten times
+	# past the marks is the check that the ramp really does stop.
+	var deepest_forced := float(rescue_fee(FarMarks.DEPTH_MAX * 10.0))
+	if deepest_forced > steady:
+		forced_over.append("the tug past the marks")
+	print("[pacing] NOTHING INVOLUNTARY EXCEEDS A LOOP one loop is %s, the deepest forced charge anywhere is %s, %d above it%s -> %s" % [
+		_comma_int(int(steady)), _comma_int(int(deepest_forced)),
+		forced_over.size(),
 		"" if forced_over.is_empty() else (" (%s)" % ", ".join(PackedStringArray(forced_over))),
 		"PASS" if forced_over.is_empty() else "FAIL"])
+
+	# §123. THE DEATH PRICE SITS IN ITS BAND, and this is the re-pricing made
+	# into a LAW rather than a nudge. §114 measured the deepest possible rescue
+	# at twenty-six seconds of loop income and deliberately asserted no target,
+	# because the decision belonged to a later horizon taken with the table in
+	# hand. This is that horizon and that decision: the fee is pinned to a
+	# FRACTION of the loop PACINGTEST measures, so a yield retune that quietly
+	# cheapens death reddens here instead of waiting a year for somebody to
+	# wonder.
+	#
+	# Measured against STEADY, never against the best case: the best-case loop
+	# carries a once-per-system derelict, and pricing a recurring consequence
+	# against a windfall would make death cheapest for the pilot who just found
+	# one. `ROUTE PARITY` picks steady for the same reason.
+	#
+	# A RED HERE IS ONE CONSTANT, NOT A CRISIS (§99): RESCUE_FEE_FAR moves, the
+	# band stands, and the band is the thing being defended.
+	var death_frac := float(rescue_fee(FarMarks.DEPTH_MAX)) / maxf(steady, 1.0)
+	print("[pacing] THE DEATH PRICE SITS IN ITS BAND deepest rescue %s is %.3f of a steady loop (%s) vs [%.2f, %.2f] -> %s" % [
+		_comma_int(rescue_fee(FarMarks.DEPTH_MAX)), death_frac,
+		_comma_int(int(steady)), RESCUE_BAND_MIN, RESCUE_BAND_MAX,
+		"PASS" if death_frac >= RESCUE_BAND_MIN and death_frac <= RESCUE_BAND_MAX
+			else "FAIL"])
 	get_tree().quit()
 
 
