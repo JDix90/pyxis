@@ -224,6 +224,80 @@ def check_infer(path: str):
     return out
 
 
+# --------------------------------------------------------- untyped containers ---
+
+UNTYPED_CONST = re.compile(
+    r'^\s*const\s+([A-Z][A-Z0-9_]*)\s*:=\s*[\[{]')
+
+
+def untyped_consts(paths):
+    """class_name -> const names declared as an untyped Array or Dictionary.
+
+    `const BAND_NAMES := [...]` has no element type, so BAND_NAMES[i] is a
+    Variant. Collected per class so the rule below can be exact about which
+    lookups cannot be inferred from, instead of guessing at every `[`.
+    """
+    out = {}
+    for path in paths:
+        src = open(path, encoding="utf-8").read()
+        m = CLASSNAME.search(src)
+        if not m:
+            continue
+        names = set()
+        for line in src.split("\n"):
+            d = UNTYPED_CONST.match(line)
+            if d:
+                names.add(d.group(1))
+        if names:
+            out[m.group(1)] = names
+    return out
+
+
+def check_container_infer(path: str, consts):
+    """`var x := Class.UNTYPED_CONST[...]` / `.get(...)` -- same parse error.
+
+    THE SIXTH RULE, and the THIRD form of one defect. check_infer catches the
+    untyped math globals; this catches untyped CONTAINERS, which fail for the
+    identical reason and produce the identical message:
+
+        var band_name := DeepSpace.BAND_NAMES[i]
+        Cannot infer the type of "band_name" because the value doesn't have a
+        set type.
+
+    It cost a run to learn, and it was worse than the fifth rule's parse error
+    in one specific way: that one was in an autoload, so everything died at
+    once and loudly. THIS one was in a LEAF class, and the pre-flight only
+    parse-checks main.gd -- which parses perfectly well on its own. So the
+    gate passed, the sweep started, survey_mast.gd failed to compile at load,
+    and deep_space, system_db, game_state and the audio autoload went down
+    behind it while the harness printed three cheerful PASS lines first.
+
+    Exact rather than heuristic: only lookups into a const this project
+    actually declares untyped are flagged, so a typed Array[String] or a local
+    dictionary is never reported. `.get()` is included because it returns
+    Variant no matter what the container holds.
+    """
+    out = []
+    pat = re.compile(
+        r"^\s*var\s+[A-Za-z_]\w*\s*:=\s*([A-Z]\w*)\.([A-Z][A-Z0-9_]*)"
+        r"\s*(\[|\.get\()")
+    for lineno, line in enumerate(open(path, encoding="utf-8"), 1):
+        code = line.split("#", 1)[0]
+        m = pat.match(code)
+        if not m:
+            continue
+        cls, const = m.group(1), m.group(2)
+        if const not in consts.get(cls, ()):  # typed, or not a const we know
+            continue
+        out.append((lineno, "`:=` cannot infer from `%s.%s`, an untyped "
+                    "const %s -- wrap it (String(...), int(...)) or declare "
+                    "the local's type" % (cls, const,
+                                          "dictionary" if m.group(3) != "["
+                                          else "array"),
+                    line.rstrip()))
+    return out
+
+
 def check_shadow(path: str):
     """A `for` variable OR a `var` colliding with a local that is still in scope.
 
@@ -387,11 +461,13 @@ def main(argv):
     # command line is still a class, and indexing only the targets would report
     # every reference into it as unresolved.
     members, parent, home = build_index(every)
+    consts = untyped_consts(every)
 
     found = 0
     for path in targets:
         for lineno, why, text in check_indent(path) + check_duplicates(path) + \
                 check_shadow(path) + check_infer(path) + \
+                check_container_infer(path, consts) + \
                 check_refs(path, members, parent, home):
             rel = os.path.relpath(path, root)
             print("%s:%d: %s\n    %s" % (rel, lineno, why, text[:88]))

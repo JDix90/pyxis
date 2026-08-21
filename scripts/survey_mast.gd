@@ -169,8 +169,13 @@ func rival_was_first() -> bool:
 func _prompt_line() -> String:
 	# The band was all this ever said. Two SURVEYING tiers add to it, and both
 	# are INFORMATION -- neither changes what the mast yields or what it costs.
-	var band_name := DeepSpace.BAND_NAMES[
-		clampi(band, 0, DeepSpace.BAND_NAMES.size() - 1)]
+	# String(), and NOT because it is tidier: BAND_NAMES is an untyped const
+	# Array, so indexing it yields a Variant and `:=` has nothing to infer from.
+	# That is a PARSE error, and a parse error in a leaf class takes down every
+	# script that depends on it -- deep_space, system_db, game_state and the
+	# audio autoload all failed to compile behind this one line.
+	var band_name := String(DeepSpace.BAND_NAMES[
+		clampi(band, 0, DeepSpace.BAND_NAMES.size() - 1)])
 	var line := "HOLD TO SURVEY — %s" % band_name
 	# t1, THE READING IS NAMED. What comes aboard, before you spend the hold --
 	# which matters most in the one case the mast already refuses for: a hold
