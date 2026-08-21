@@ -6116,7 +6116,7 @@ decisions R1–R4). Six commits, **five built** (commit 3 split at build time in
 | 3a | THE PROVING DRIFT, plus the encounter machinery all nine legends share, plus the prototype tier | rides v25 | **BUILT** — §99; `MARK_STATES` gained one word and nothing else changed, which is what §98's validated-string decision was for |
 | 3b | LEGENDS I, the rest of the common three: THE VEIN, THE LAYUP (deposit and withdrawal) | rides v25 | **BUILT** — §101; the state ladder became a four-word lattice, and "no tally" is asserted as byte-equality of save images |
 | 4 | LEGENDS II, the dangerous three: THE STILLNESS' GROUND, THE STANDING ORDER (it hails first), THE SOUNDING SERPENT | none | **BUILT** — §102; the asset flies feral and wears teal, the becalming is its own mechanism, and the serpent never spends its mark |
-| 5 | LEGENDS III, the ongoing four — **orrery BUILT (§103), forge BUILT (§104), procession BUILT (§105)**; only the nursery (v26, its own store) remains | **v26** (nursery store only) | **RESEARCH DONE** (2026-08-20, `docs/LEGENDS-III-RESEARCH.md`) — decisions S4–S8 open; the nine names need a writing pass before the procession can build. The pass killed three naive versions: the escort wing already ships (REQUEST ESCORT — the forge needs a spawner and a lifetime, not a class), the nursery cannot ride `colonies` (byte-identical key formats collide, and a deep jump anchor breaks `A FOOTHOLD, NOT A FARM` silently), and a sold orrery windfall would clear the Grand Commission's chart pillar in one ALL press because `chart_data_sold` counts units with no cell join |
+| 5 | LEGENDS III, the ongoing four — **ALL FOUR BUILT** — orrery §103, forge §104, procession §105, nursery §106 (v26); Horizon 9 is complete | **v26** (nursery store only) | **RESEARCH DONE** (2026-08-20, `docs/LEGENDS-III-RESEARCH.md`) — decisions S4–S8 open; the nine names need a writing pass before the procession can build. The pass killed three naive versions: the escort wing already ships (REQUEST ESCORT — the forge needs a spawner and a lifetime, not a class), the nursery cannot ride `colonies` (byte-identical key formats collide, and a deep jump anchor breaks `A FOOTHOLD, NOT A FARM` silently), and a sold orrery windfall would clear the Grand Commission's chart pillar in one ALL press because `chart_data_sold` counts units with no cell join |
 
 **The prototype tier is under a research pass the player is running** (opened
 2026-08-20). §99 shipped the mechanism, the laws and provisional entries in one
@@ -10732,3 +10732,86 @@ answers it.
 **S7 taken, in one line and never explained:** the living nomad fleet is named
 *for* this place. It is stated exactly once, in the deposit's response, and
 nothing mechanical connects them.
+
+---
+
+## 106. The Tally's nursery (v26)
+
+Horizon 9 commit 5, last of four, and the horizon's last commit. The only
+thing in Pyxis you can own and then have to keep — and the only legend that
+costs a save byte.
+
+### Its own store, because the key formats collide
+
+`colony_key(sid, i)` and `mark_key(sid, i)` are the **same string format**,
+`"%s:%d"`. A nursery filed under `colonies` at FarMarks index 3 would claim
+the same key as hyper-structure index 3's colony: claiming one would make the
+other read as claimed, suppress its chart diamond and mislabel its jump row.
+And a prefixed key does not escape it — `_load_colonies` requires a two-part
+key and silently drops anything else. **There is no key shape that both
+survives that loader and avoids the collision**, which is why `nursery` is its
+own store and why this commit is the v26 bump.
+
+### The clock is derived, and that is the whole design
+
+`taken_at` is a persisted `played_seconds` stamp; which assault is due falls
+out of it exactly the way a contract board falls out of the clock, quantised
+to a stride so two world rebuilds seconds apart cannot disagree — the rival's
+rule. Nothing schedules, nothing ticks, nothing can drift out of step with
+itself. It races the player's own clock, so closing the game for a month does
+not return them to a nursery under its hundredth assault.
+
+**Three ordering bugs came out of tracing it**, all found before the sweep:
+
+1. **Taking summoned wave zero.** `_assault_index` starts at −1 so a nursery
+   rebuilt mid-siege forms it on the first tick — but at the moment of taking
+   the due index is 0, and −1 made that "overdue". Pinned to the current index
+   at the taking.
+2. **The siege stopped forever after the first victory.** Turning a wave back
+   restamps `taken_at` (it must, or the next assault arrives already overdue),
+   which sends the derived index back to 0 — leaving `_assault_index` at the
+   wave just fought made the comparison false permanently.
+3. **Every wave would have been the first one.** Wave *size* was read off the
+   clock index, which now resets on every victory. Size comes from the
+   **record** — the persisted count of what the pilot has actually turned back
+   — and the clock says only *when*. The clock says when; the record says how
+   many.
+
+### S4 taken in the open: held, not owned
+
+The nursery's jump anchor reaches FarMarks depth, and `A FOOTHOLD, NOT A FARM`
+derived its bound from `HYPER_DEPTH_MAX` — a **constant**, not the world — so
+it would have gone on printing PASS while the number it prints stopped being
+true. The beacon cap's own comment predicted this exact failure in as many
+words.
+
+So the leg is re-derived in the same commit against
+`max(HYPER_DEPTH_MAX, FarMarks.DEPTH_MAX)`, and the bound moves 3.0 → 5.5 with
+its arithmetic stated: at 5.5 the cooldown cannot fall below ~285s without
+going red, which pins it **tighter** to the authored 300 than the old bound
+pinned it (~245s). The guard got stricter as the reach grew. A new clause
+asserts the derivation reaches past the far marks at all, which is the clause
+that would have caught the silent break had it existed.
+
+What pays for the widened reach is the one thing no beacon or colony offers:
+**the anchor exists only while the ground is held.** A beacon jump is bought
+once for 500 credits and is a door forever; this one is priced in fights,
+forever, and closes the day the Tally take the ground back. That is rent, not
+a farm.
+
+### S5: losing a siege, never a supply run
+
+Assaults form only while the player is in-system — a siege nobody could have
+attended is a loss nobody could have prevented. Leaving with the ground quiet
+keeps it; leaving with them **on** it loses it, checked in `_load_system`
+before the teardown, because every nursery node is a `SystemRoot` child and a
+check made afterwards would be made on nothing. And the count of waves turned
+back **survives the loss**: a pilot who held it through nine assaults and lost
+the tenth has still held it through nine, and retaking does not make them a
+novice.
+
+### The horizon closes
+
+Ten legends, ten plates, all standing. The far deep now answers a pilot who
+files with the network: bearings to marks, marks to legends, and one piece of
+ground that answers back.

@@ -50,7 +50,7 @@ PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 54 of them —
 the 54 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
 `TAGS` at all: it is one harness with 23 stateful modes, run as its own
-sequence. So a full sweep is 54 + 23 = **77 runs**.
+sequence. So a full sweep is 54 + 24 = **78 runs** (23 modes through v25; `migrate25` arrives with §106).
 
 Those three numbers are derivable from `run_harness.sh` and nothing else, so
 check them there rather than trusting this paragraph — it has been wrong before,
@@ -234,6 +234,12 @@ One earlier revision of this paragraph also called §99 "green" on the strength
 of a passing remark rather than a count. That was a prediction typed as a
 measurement, which is the one thing this paragraph exists to refuse; it is
 recorded here rather than quietly deleted.
+
+**§106 (the nursery) is the next figure and it is a prediction, not a
+measurement.** It bumps the save to **v26**, adds the `migrate25` mode (one
+new run carrying one) and two `RETURNTEST` legs, and introduces one new
+`class_name` (`TallyNursery`) — so run `"$GODOT" --headless --path . --import`
+first. A full sweep should be **54 + 24 = 78 runs** reading **772 across 78**.
 
 (§96's adversarial pass reported after both commits shipped; its two confirmed
 findings were folded back in without changing any count — one strengthened an

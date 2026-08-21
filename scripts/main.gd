@@ -2003,6 +2003,16 @@ func _load_system(id: String) -> void:
 	# Storms die with system_root too, and are cleared for the same reason.
 	live_storms.clear()
 	live_rift = null
+	# §106, S5. THE GROUND IS LOST BY WALKING OUT OF A SIEGE, and this is the
+	# only place that can notice: every nursery node is a SystemRoot child and
+	# dies in the free below, so a check made after the teardown would be made
+	# on nothing. Asked of the NODE rather than of the store, because "is an
+	# assault standing right now" is a fact about the world and not about the
+	# save -- and leaving with the ground quiet is a supply run, not a rout.
+	for n_v in get_tree().get_nodes_in_group("legend"):
+		var nurse := n_v as TallyNursery
+		if nurse != null and nurse.abandon_if_besieged():
+			break
 	# The convoy died with it too, same rule. _tick_procession will re-seat it
 	# if this window's system is the one being loaded.
 	_procession = null
@@ -2306,6 +2316,67 @@ func colony_jump_to(key: String) -> void:
 	GameState.last_outbound_jump = GameState.played_seconds
 	warping = true
 	_colony_jump_sequence(Vector3(float(e["x"]), 0.0, float(e["z"])), key)
+
+
+# §106, S4. THE NURSERY'S ANCHOR — HELD, NOT OWNED. The deep jump the research
+# pass flagged as a real reversal, taken deliberately and re-derived in the
+# open rather than slipped past an assertion that could not see it.
+#
+# A FOOTHOLD, NOT A FARM derives "deepest reachable" from
+# bounds_of("pyx03") + HYPER_DEPTH_MAX and would have gone on printing PASS
+# while a nursery anchor at FarMarks depth made the true figure twice that.
+# The beacon cap's own comment predicted this exact failure. So the leg is
+# re-derived against max(HYPER_DEPTH_MAX, FarMarks.DEPTH_MAX) in the same
+# commit, and what pays for the widened bound is the ONE thing a beacon or a
+# colony cannot offer:
+#
+#   THE ANCHOR EXISTS ONLY WHILE THE GROUND IS HELD. A beacon jump is bought
+#   once with 500 credits and is a door forever. This one is priced in fights,
+#   forever, and the day the Tally take it back the door closes with it. That
+#   is not a farm; it is rent.
+func can_nursery_jump() -> bool:
+	if not GameState.holds_nursery():
+		return false
+	if state != State.PLAYING or warping or boss_active or docked_port != null:
+		return false
+	if GameState.salvage < COLONY_JUMP_FEE:
+		return false
+	return colony_jump_ready_in() <= 0.0
+
+
+func nursery_jump() -> bool:
+	# ONE CLOCK FOR ALL OUTBOUND, the shared stamp's whole rule: founding five
+	# colonies never multiplied how often a pilot can be outbound, and holding
+	# the deepest ground in the game must not either.
+	if not can_nursery_jump():
+		if hud:
+			var why := "NURSERY JUMP UNAVAILABLE"
+			if not GameState.holds_nursery():
+				why = "THE GROUND IS NOT YOURS"
+			elif GameState.salvage < COLONY_JUMP_FEE:
+				why = "JUMP COSTS %d — NOT ENOUGH BANKED" % COLONY_JUMP_FEE
+			elif colony_jump_ready_in() > 0.0:
+				why = "DRIVES STILL COOLING — %ds" % int(ceil(colony_jump_ready_in()))
+			elif boss_active:
+				why = "NOT WITH AN ENGINE AWAKE"
+			hud.prompt(why)
+			Sfx.play("hit", -10.0, 0.7)
+		return false
+	var key := GameState.nursery_key()
+	var bits := key.split(":")
+	if bits.size() != 2 or String(bits[0]) != system_id:
+		# SAME SYSTEM ONLY, structurally: the anchor is a place in this system
+		# and a jump is not a warp.
+		if hud:
+			hud.prompt("THE GROUND IS IN ANOTHER PYX")
+		return false
+	if not GameState.spend_salvage(COLONY_JUMP_FEE):
+		return false
+	GameState.last_outbound_jump = GameState.played_seconds
+	warping = true
+	_colony_jump_sequence(Vector3(float(GameState.nursery.get("x", 0.0)), 0.0,
+		float(GameState.nursery.get("z", 0.0))), key)
+	return true
 
 
 func _colony_jump_sequence(at: Vector3, key: String) -> void:
@@ -16829,10 +16900,111 @@ func _run_return_test() -> void:
 		"PASS" if proc_stood and refused_empty_p and left_it and never_spent
 			and stands_again and paid_nothing_p else "FAIL"])
 
+	# 26. THE GROUND IS TAKEN, AND THEN IT IS KEPT. The nursery's own store, the
+	#     keepers that gate the taking, and the clock — asserted as a DERIVATION
+	#     rather than as a stored countdown, because that is the whole reason it
+	#     costs one save field instead of a scheduler.
+	var nur_key := GameState.mark_key(msid, 0)
+	GameState.marks_seen = {}
+	GameState.marks_seen[nur_key] = GameState.MARK_READ
+	GameState.nursery = {}
+	var nur_at := Vector3(3000.0, 0.0, 3000.0)
+	var nursery := SystemBuilder.build_legend(system_root, msid, 0, "nursery",
+		nur_at) as TallyNursery
+	var nur_stood := nursery != null
+	var keepers_up := 0
+	var locked_refused := false
+	var took := false
+	var no_instant_wave := false
+	var wave_due := false
+	var wave_grows := false
+	var clock_derived := false
+	if nur_stood:
+		await get_tree().process_frame
+		nursery._wake_keepers()
+		keepers_up = nursery.keepers_standing()
+		# THE KEEPERS GATE THE TAKING, and the refusal names the count.
+		if pilot_m != null:
+			pilot_m.teleport_to(nursery.global_position)
+		nursery.hold_begin()
+		locked_refused = not nursery._holding
+		for k_v in get_tree().get_nodes_in_group("hostiles"):
+			var kk := k_v as Node3D
+			if kk != null and kk.has_meta("nursery_keeper"):
+				kk.free()
+		nursery.hold_begin()
+		nursery.hold_tick(TallyNursery.TAKE_TIME + 0.1)
+		took = GameState.holds_nursery() and GameState.nursery_key() == nur_key \
+			and nursery.is_held()
+		# TAKING IS NOT THE FIRST ASSAULT: the ground changing hands must not
+		# summon a wave on the same frame.
+		nursery._tick_assault(0.016, 0.0)
+		no_instant_wave = nursery._assault.is_empty()
+		# THE CLOCK IS DERIVED. Winding played_seconds forward is the only input
+		# the wave index has -- no timer, no stored countdown, nothing ticking.
+		var t_keep := GameState.played_seconds
+		GameState.played_seconds = t_keep + GameState.NURSERY_PERIOD * 2.0
+		clock_derived = GameState.nursery_wave_index() == 2
+		nursery._tick_assault(0.016, 0.0)
+		wave_due = not nursery._assault.is_empty()
+		# AND THEY COME IN INCREASING NUMBERS, sized off the RECORD rather than
+		# the clock -- the clock restarts on every victory, so a size derived
+		# from it would make every wave forever the first one.
+		wave_grows = GameState.nursery_wave_size(4) > GameState.nursery_wave_size(0)
+		GameState.played_seconds = t_keep
+	print("[return] THE GROUND IS TAKEN AND THEN KEPT %d keepers stand and refuse the hold=%s; cleared, the hold takes the ground=%s; taking summons no wave on the same frame=%s; two periods on the clock alone makes the index 2=%s and forms the assault=%s; and the waves grow with what the pilot has survived=%s -> %s" % [
+		keepers_up, str(locked_refused), str(took), str(no_instant_wave),
+		str(clock_derived), str(wave_due), str(wave_grows),
+		"PASS" if nur_stood and keepers_up == TallyNursery.KEEPER_COUNT
+			and locked_refused and took and no_instant_wave and clock_derived
+			and wave_due and wave_grows else "FAIL"])
+
+	# 27. HELD, NOT OWNED. The jump anchor exists only while the ground does —
+	#     which is what pays for A FOOTHOLD, NOT A FARM's widened bound. And
+	#     losing it is losing a SIEGE, never a supply run: walking out with the
+	#     ground quiet keeps it, walking out with them on it does not.
+	var anchor_open := false
+	var quiet_exit_keeps := false
+	var siege_exit_loses := false
+	var record_survives := false
+	var anchor_closed := false
+	if nur_stood and GameState.holds_nursery():
+		GameState.salvage = maxi(GameState.salvage, COLONY_JUMP_FEE * 2)
+		anchor_open = can_nursery_jump()
+		# A quiet departure is a supply run.
+		nursery._assault.clear()
+		quiet_exit_keeps = not nursery.abandon_if_besieged() \
+			and GameState.holds_nursery()
+		# A departure mid-assault is a rout. Driven through the same entry point
+		# _load_system calls, so the leg cannot pass on a path the world does
+		# not take.
+		GameState.note_nursery_wave_turned()
+		GameState.note_nursery_wave_turned()
+		nursery._form_assault(1)
+		siege_exit_loses = nursery.abandon_if_besieged() \
+			and not GameState.holds_nursery()
+		# THE RECORD OUTLIVES THE LOSS (S5): retaking does not make a pilot who
+		# held it through two assaults a novice.
+		GameState.take_nursery(nur_key, nur_at.x, nur_at.z)
+		record_survives = GameState.nursery_waves_turned() == 2
+		GameState.release_nursery()
+		anchor_closed = not can_nursery_jump()
+		for a_v in get_tree().get_nodes_in_group("hostiles"):
+			var aa := a_v as Node3D
+			if aa != null and aa.has_meta("nursery_keeper"):
+				aa.free()
+		nursery.queue_free()
+	print("[return] HELD, NOT OWNED the anchor opens while the ground is held=%s; leaving with it quiet keeps it=%s; leaving mid-assault loses it=%s; the count of what was turned back survives the loss=%s; and with the ground gone the anchor is gone=%s -> %s" % [
+		str(anchor_open), str(quiet_exit_keeps), str(siege_exit_loses),
+		str(record_survives), str(anchor_closed),
+		"PASS" if anchor_open and quiet_exit_keeps and siege_exit_loses
+			and record_survives and anchor_closed else "FAIL"])
+
 	GameState.survey_coverage = {}
 	GameState.survey_filed = {}
 	GameState.deep_logs = {}
 	GameState.marks_seen = {}
+	GameState.nursery = {}
 	GameState.owned.clear()
 	GameState.cargo = {}
 	get_tree().quit()
@@ -16941,6 +17113,7 @@ func _run_profile_test() -> void:
 	# single most expensive fact a pilot can own, so it is the one a shared
 	# store would be most obviously wrong about.
 	GameState.note_mark_read(GameState.mark_key("pyx01", 0))
+	GameState.take_nursery(GameState.mark_key("pyx01", 1), 6800.0, -120.0)
 	GameState.save_game()
 	var b_id := Profiles.create("PILOT B", 3000.0)
 	GameState.switch_profile(b_id)
@@ -16968,6 +17141,9 @@ func _run_profile_test() -> void:
 		leaks.append("deep_logs")
 	if GameState.is_mark_read(GameState.mark_key("pyx01", 0)):
 		leaks.append("marks_seen")
+	# v26: and a fifth time. Ground one pilot took is not ground another holds.
+	if GameState.holds_nursery():
+		leaks.append("nursery")
 	var bled := ", ".join(leaks)
 	print("[profile] NO BLEED BETWEEN PILOTS B sees salvage=%d name='%s' commissioned=%s accent=%d; leaked=%s -> %s" % [
 		GameState.salvage, GameState.ship_name, str(GameState.commissioned),
@@ -18267,6 +18443,84 @@ func _run_save_test() -> void:
 			str(kept24), str(none_held), str(no_marks24), str(cleaned25),
 			"PASS" if ok24 and kept24 and none_held and no_marks24 and cleaned25
 				else "FAIL"])
+	elif mode == "migrate25":
+		# v26 adds the NURSERY, its own store. No migration branch, the standing
+		# rule: a v25 file has no key, gets {}, and loads as a pilot who never
+		# took the ground -- true of every pilot before it existed.
+		#
+		# THE RUBBISH PASS IS THE POINT. This store's value is a dictionary with
+		# a key that must name a mark the GENERATOR still deals, and a stamp
+		# that must be a real point on the player's own clock. A hand-edited
+		# file must not be able to hand out ground that is not there, nor a
+		# clock that runs backwards.
+		var v25 := {
+			"version": 25,
+			"salvage": 7100,
+			"current_system": "pyx01",
+			"run_seed": 252525,
+			"tutorial_step": -1,
+			"played_seconds": 5000.0,
+		}
+		var f25 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f25.store_string(JSON.stringify(v25))
+		f25.close()
+		var ok25 := GameState.load_game()
+		var kept25: bool = GameState.salvage == 7100 and not GameState.holds_nursery()
+
+		# A GOOD ONE SURVIVES, with its clock intact.
+		var good26 := {
+			"version": 26,
+			"salvage": 7100,
+			"current_system": "pyx01",
+			"run_seed": 252525,
+			"tutorial_step": -1,
+			"played_seconds": 5000.0,
+			"nursery": {"key": "pyx01:1", "x": 6800.0, "z": -120.0,
+				"taken_at": 1400.0, "waves": 3},
+		}
+		var fg := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fg.store_string(JSON.stringify(good26))
+		fg.close()
+		GameState.load_game()
+		var held26: bool = GameState.holds_nursery() \
+			and GameState.nursery_key() == "pyx01:1" \
+			and GameState.nursery_waves_turned() == 3 \
+			and is_equal_approx(float(GameState.nursery.get("taken_at", 0.0)), 1400.0)
+		# AND THE CLOCK DERIVES RATHER THAN BEING STORED: 3600s at a 900s period
+		# is the fourth wave, computed from the stamp and nothing else.
+		var derived26: bool = GameState.nursery_wave_index() == 4
+
+		# THE RUBBISH: an index past what the generator deals, and a stamp from
+		# the future. Both must drop the store rather than be tolerated.
+		var far_idx := GameState.nursery_key()
+		var bad_idx := good26.duplicate(true)
+		bad_idx["nursery"] = {"key": "pyx01:99", "x": 1.0, "z": 1.0,
+			"taken_at": 100.0, "waves": 0}
+		var fb := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fb.store_string(JSON.stringify(bad_idx))
+		fb.close()
+		GameState.load_game()
+		var dropped_idx: bool = not GameState.holds_nursery()
+
+		var bad_clock := good26.duplicate(true)
+		bad_clock["nursery"] = {"key": "pyx01:1", "x": 1.0, "z": 1.0,
+			"taken_at": 9.9e9, "waves": 0}
+		var fc := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fc.store_string(JSON.stringify(bad_clock))
+		fc.close()
+		GameState.load_game()
+		# CLAMPED, NOT DROPPED. A stamp in the future is the one rubbish value
+		# that must not cost the pilot their ground -- it is corrupt bookkeeping
+		# about a fact that is still true. Clamped to now, the clock reads zero
+		# and the next wave is a period away, which is the safe direction.
+		var clamped: bool = GameState.holds_nursery() \
+			and GameState.nursery_wave_index() == 0
+		GameState.nursery = {}
+		print("[savetest] v25->v26 A V25 SAVE HOLDS NO GROUND kept=%s; a good entry reloads held (%s, %d waves)=%s with the wave index DERIVED from the stamp=%s; an index past the generator drops the store=%s; a stamp from the future is clamped rather than dropped=%s -> %s" % [
+			str(kept25), far_idx, 3, str(held26), str(derived26),
+			str(dropped_idx), str(clamped),
+			"PASS" if ok25 and kept25 and held26 and derived26 and dropped_idx
+				and clamped else "FAIL"])
 	elif mode == "future":
 		# A SAVE FROM A NEWER BUILD. Refusing to load it was never the hard
 		# part — that clause has always been there. What it did NOT do was stop
@@ -24347,9 +24601,31 @@ func _run_colony_test() -> void:
 	# The rate that matters is saved-seconds per cooldown-second — above 1.0 the
 	# player is gaining more travel time than the clock costs them.
 	var speed := float(ModuleDB.BASE.get("max_speed", 5.75))
-	var deepest := SystemDB.bounds_of("pyx03") + SystemDB.HYPER_DEPTH_MAX
+	# §106, S4. RE-DERIVED AGAINST THE DEEPEST THING A JUMP CAN NOW REACH, and
+	# this is the reversal taken in the open rather than slipped past. The line
+	# read `HYPER_DEPTH_MAX` alone, which computes the deepest reachable point
+	# from a CONSTANT rather than from the world -- so the day the nursery's
+	# anchor put a jumpable destination at FarMarks depth, this leg would have
+	# gone on printing PASS while the number it prints stopped being true. The
+	# beacon cap's own comment (main.gd, BEACON_JUMP_MAX_DEPTH) predicted this
+	# exact failure in as many words.
+	#
+	# The bound MOVES with it, and the argument for moving it is the thing that
+	# makes the nursery's anchor different in kind from every other jump: it is
+	# HELD, NOT OWNED. A beacon jump is bought once and is a door forever; this
+	# one is priced in fights, forever, and closes the day the Tally take the
+	# ground back. That is rent, not a farm -- so the guard the bound has to
+	# keep is unchanged in spirit (a cooldown that stops mattering) while the
+	# distance it is measured over has honestly doubled.
+	var deepest := SystemDB.bounds_of("pyx03") \
+		+ maxf(SystemDB.HYPER_DEPTH_MAX, FarMarks.DEPTH_MAX)
 	var saved := deepest / speed
 	var ratio := saved / COLONY_JUMP_COOLDOWN
+	# 5.5 rather than 3.0, and the arithmetic is stated so a retune argues with
+	# a number instead of a feeling: at 5.5 the clock cannot fall below ~285s
+	# without this going red, which pins it TIGHTER to the authored 300 than the
+	# old bound pinned it (~245s). The guard got stricter as the reach grew.
+	var bound := 5.5
 	# THE BOUND IS A GUARD ON THE COOLDOWN, and it is worth saying what it is
 	# not. A ratio above 1.0 means the jump saves more flying than it costs in
 	# waiting — which is the POINT of an earned foothold, not a defect, and the
@@ -24358,11 +24634,16 @@ func _run_colony_test() -> void:
 	# catches is a cooldown that stops mattering: at 3.0 the clock cannot fall
 	# below ~245s without this going red, which pins it to within ~20% of the
 	# authored 300 and makes "someone tuned it to 30s" impossible to ship.
-	var floor_cooldown := saved / 3.0
-	print("[colony] A FOOTHOLD, NOT A FARM deepest %.0fu = %.0fs flown at %.2f u/s, against a %.0fs shared cooldown = %.2f saved-seconds per cooldown-second (bound 3.0, i.e. the cooldown may not fall below %.0fs; the %d fee is %.0f cr/min, a rounding error — the clock is the mechanism) -> %s" % [
-		deepest, saved, speed, COLONY_JUMP_COOLDOWN, ratio, floor_cooldown,
+	var floor_cooldown := saved / bound
+	# AND THE DEEPEST REACHABLE POINT IS MEASURED, NOT ASSUMED. The clause that
+	# would have caught the silent break if it had existed: whatever the deepest
+	# jumpable destination in the game is, this leg must be deriving from it.
+	var reach_ok: bool = deepest >= SystemDB.bounds_of("pyx03") + FarMarks.DEPTH_MAX
+	print("[colony] A FOOTHOLD, NOT A FARM deepest %.0fu (past the far marks=%s) = %.0fs flown at %.2f u/s, against a %.0fs shared cooldown = %.2f saved-seconds per cooldown-second (bound %.1f, i.e. the cooldown may not fall below %.0fs; the %d fee is %.0f cr/min, a rounding error — the clock is the mechanism) -> %s" % [
+		deepest, str(reach_ok), saved, speed, COLONY_JUMP_COOLDOWN, ratio, bound,
+		floor_cooldown,
 		COLONY_JUMP_FEE, float(COLONY_JUMP_FEE) * 60.0 / COLONY_JUMP_COOLDOWN,
-		"PASS" if ratio <= 3.0 else "FAIL"])
+		"PASS" if ratio <= bound and reach_ok else "FAIL"])
 
 	# --- J. and it names no pacing term --------------------------------------
 	var named := PACING_LOOP.has("colony") or PACING_LOOP.has("hyper")

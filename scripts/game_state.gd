@@ -33,7 +33,7 @@ signal lane_opened(id: String)
 signal standing_shifted(other: String, delta: int, band: int)
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 25
+const SAVE_VERSION := 26
 const SAVE_DEBOUNCE := 1.0
 
 # v6 defaults. Kept as one dictionary each so a migration only has to merge
@@ -336,6 +336,33 @@ var deep_logs := {}
 # most PER_SYSTEM per system, so this is bounded at fifteen entries across the
 # whole game. Asserted against the generator rather than hoped.
 var marks_seen := {}
+# v26 (§106). THE NURSERY, HELD. Keyed by MARK key ("system:index") and kept in
+# its OWN store rather than in `colonies`, which the research pass found is not
+# a choice but a requirement:
+#
+#   colony_key(sid, i) and mark_key(sid, i) are the SAME FORMAT -- "%s:%d" --
+#   so a nursery filed under `colonies` at FarMarks index 3 would collide with
+#   hyper-structure index 3's colony. Claiming one would make the other read as
+#   claimed, suppress its chart diamond and mislabel its jump row. And a
+#   prefixed key does not escape it: _load_colonies REQUIRES a two-part key and
+#   silently drops anything else. There is no key shape that both survives that
+#   loader and avoids the collision.
+#
+# Value: {"x": float, "z": float, "taken_at": float, "waves": int}. `taken_at`
+# is the recapture clock's anchor and `waves` is what the pilot has actually
+# turned back -- the ONE thing the derivation cannot reconstruct, because it is
+# a fact about them rather than about the clock. Everything else (which wave is
+# due, how many hulls it brings) is DERIVED from taken_at against
+# played_seconds, the rival's rule: nothing to keep in step, nothing that can
+# disagree with itself.
+#
+# NEEDS NO CAP, generator-bounded like its neighbours: FarMarks deals at most
+# one nursery in an entire run, so this store holds at most one entry, ever.
+var nursery := {}
+# What each nursery key has survived, kept across a LOSS so retaking does not
+# reset the record (S5). Session-only and deliberately so: it is a courtesy to
+# a pilot inside one sitting, not a fact the save owes anyone.
+var _nursery_waves_memory := {}
 
 # v16. THE INTEL DOSSIER. Keyed by system id; each value is an Array of hint
 # dictionaries the player has PAID FOR or EARNED, and together they are the only
@@ -1185,6 +1212,7 @@ func reset_to_starter() -> void:
 	structures_seen = {}
 	deep_logs = {}
 	marks_seen = {}
+	nursery = {}
 	apex_intel = {}
 	beacons = {}
 	colonies = {}
@@ -1944,6 +1972,123 @@ func _load_structures_seen(saved: Dictionary) -> void:
 		if idx < 0 or idx >= SystemDB.hyper_positions(sid, run_seed).size():
 			continue
 		structures_seen[key] = true
+
+
+# §106. THE RECAPTURE CLOCK, and it costs zero new mechanism. The wave index is
+# DERIVED from a persisted anchor exactly the way ContractDB.board_bucket
+# derives a board from played_seconds, and quantised the way Rival quantises
+# its strides -- so two world rebuilds seconds apart can never disagree about
+# which wave is due, and closing the game for a month does not return the pilot
+# to a nursery under its hundredth assault. It races the player's own clock.
+const NURSERY_PERIOD := 900.0
+# The stride the anchor is rounded to before any comparison. Rival's rule: a
+# clock read twice inside one stride answers the same both times.
+const NURSERY_STRIDE := 60.0
+# What the first wave brings, and what each one after it adds. "In increasing
+# numbers, forever" is the index feeding this, capped so forever stays playable
+# -- the muster releases six at a time and that is the pacing precedent.
+const NURSERY_WAVE_BASE := 3
+const NURSERY_WAVE_STEP := 1
+const NURSERY_WAVE_MAX := 8
+
+
+func nursery_key() -> String:
+	return String(nursery.get("key", ""))
+
+
+func holds_nursery() -> bool:
+	return not nursery.is_empty()
+
+
+func take_nursery(key: String, x: float, z: float) -> bool:
+	# Taking the ground. Refuses a second claim outright -- there is at most one
+	# nursery in a run, and a re-take must go through release_nursery first so
+	# the clock restarts from the moment it was actually retaken.
+	if holds_nursery():
+		return false
+	nursery = {"key": key, "x": x, "z": z, "taken_at": played_seconds,
+		"waves": int(_nursery_waves_memory.get(key, 0))}
+	note_log("TOOK THE TALLY'S GROUND")
+	_queue_save()
+	return true
+
+
+func release_nursery() -> void:
+	# THEY TOOK IT BACK. The count of waves turned back is remembered against
+	# the key rather than reset -- S5: the clock restarts, the record does not.
+	# A pilot who held it through nine assaults and lost the tenth has still
+	# held it through nine, and retaking it does not make them a novice.
+	if not holds_nursery():
+		return
+	_nursery_waves_memory[String(nursery.get("key", ""))] = int(nursery.get("waves", 0))
+	nursery = {}
+	note_log("THE TALLY TOOK IT BACK")
+	_queue_save()
+
+
+func nursery_wave_index() -> int:
+	# Which assault is due, derived. Quantised to the stride BEFORE the divide,
+	# so a rebuild mid-stride cannot advance it.
+	if not holds_nursery():
+		return 0
+	var since := played_seconds - float(nursery.get("taken_at", played_seconds))
+	if since <= 0.0:
+		return 0
+	var strided := floor(since / NURSERY_STRIDE) * NURSERY_STRIDE
+	return int(floor(strided / NURSERY_PERIOD))
+
+
+func nursery_wave_size(index: int) -> int:
+	return clampi(NURSERY_WAVE_BASE + NURSERY_WAVE_STEP * maxi(index, 0),
+		NURSERY_WAVE_BASE, NURSERY_WAVE_MAX)
+
+
+func nursery_waves_turned() -> int:
+	return int(nursery.get("waves", 0))
+
+
+func note_nursery_wave_turned() -> void:
+	if not holds_nursery():
+		return
+	nursery["waves"] = int(nursery.get("waves", 0)) + 1
+	# THE CLOCK RESTARTS FROM THE VICTORY, not from the founding. Without this
+	# the derived index would run away while the pilot was busy winning, and the
+	# next assault would arrive already overdue -- several at once, forever.
+	nursery["taken_at"] = played_seconds
+	_queue_save()
+
+
+func _load_nursery(saved: Dictionary) -> void:
+	# _load_colonies' posture with the generator check its sibling deliberately
+	# omits: a colony's stored position IS the colony, but a nursery is pinned
+	# to a MARK, so an index FarMarks no longer deals is a nursery standing at
+	# nothing. Validated the way marks_seen is.
+	nursery = {}
+	if saved.is_empty():
+		return
+	var key := String(saved.get("key", ""))
+	var bits := key.split(":")
+	if bits.size() != 2:
+		return
+	var sid := String(bits[0])
+	if not SystemDB.exists(sid) or not String(bits[1]).is_valid_int():
+		return
+	var idx := int(bits[1])
+	if idx < 0 or idx >= FarMarks.positions(sid, run_seed).size():
+		return
+	var x = saved.get("x", null)
+	var z = saved.get("z", null)
+	if typeof(x) not in [TYPE_FLOAT, TYPE_INT] or typeof(z) not in [TYPE_FLOAT, TYPE_INT]:
+		return
+	if not is_finite(float(x)) or not is_finite(float(z)):
+		return
+	# taken_at is clamped to NOW at the top: a hand-edited stamp in the future
+	# would make `since` negative forever and freeze the clock, and one absurdly
+	# far in the past would land the pilot mid-siege on load.
+	var stamp := clampf(float(saved.get("taken_at", played_seconds)),
+		0.0, played_seconds)
+	nursery = {"key": key, "x": float(x), "z": float(z), "taken_at": stamp,
+		"waves": maxi(int(saved.get("waves", 0)), 0)}
 
 
 func _load_marks_seen(saved: Dictionary) -> void:
@@ -3556,6 +3701,7 @@ func save_dict() -> Dictionary:
 		"structures_seen": structures_seen,
 		"deep_logs": deep_logs,
 		"marks_seen": marks_seen,
+		"nursery": nursery,
 		"apex_intel": apex_intel,
 		"beacons": beacons,
 		"colonies": colonies,
@@ -3880,6 +4026,10 @@ func load_game() -> bool:
 	# 98. Rides v25 with no bump: a file from either earlier v25 commit has no
 	# key, gets {}, and loads as a pilot who has read no marks.
 	_load_marks_seen(data.get("marks_seen", {}))
+	# v26. Defaults-not-branches, the standing rule: a v25 file has no key, gets
+	# {}, and loads as a pilot who never took the ground -- true of every pilot
+	# before the nursery existed.
+	_load_nursery(data.get("nursery", {}))
 	_load_apex_intel(data.get("apex_intel", {}))
 	# v20. Beacons: no migration branch, per this file's standing rule — an
 	# absent key is an empty store and a full stock, which is exactly what a

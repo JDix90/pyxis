@@ -1,6 +1,6 @@
 # Horizon 9 — The True Copy
 
-**Status: COMMITS 0-4 BUILT (§96 v25, §97 no bump, §98–§102 ride v25). Commit 3 split at build time: 3a (§99) is the proving drift plus the shared encounter machinery and the prototype tier — §100 added the weapon prototype's overdraw mechanism; 3b (§101) is the vein and the layup; §102 is the dangerous three, with the Standing Order riding a boss-scale Hostile rather than ApexBoss (the apex death path charts systems — see §102 for the argument). Only commit 5 remains, behind its research pass. Prose gated on `docs/FAR-MARKS-DRAFT.md`
+**Status: COMPLETE — ALL COMMITS BUILT (§96 v25, §97 no bump, §98–§102 ride v25). Commit 3 split at build time: 3a (§99) is the proving drift plus the shared encounter machinery and the prototype tier — §100 added the weapon prototype's overdraw mechanism; 3b (§101) is the vein and the layup; §102 is the dangerous three, with the Standing Order riding a boss-scale Hostile rather than ApexBoss (the apex death path charts systems — see §102 for the argument). Only commit 5 remains, behind its research pass. Prose gated on `docs/FAR-MARKS-DRAFT.md`
 (second draft; R1–R4 and S1–S3 answered).** When any of it is adopted,
 record it in `docs/STRATEGY.md` §64 in the same commit, per the house rule.
 
@@ -66,7 +66,7 @@ after any commit and still be a whole thing.
 | 3a | THE PROVING DRIFT + the shared encounter machinery + the prototype tier | rides v25 | **BUILT (§99, §100)** |
 | 3b | LEGENDS I, the rest — VEIN, LAYUP (deposit + withdrawal) | rides v25 | **BUILT (§101)** |
 | 4 | LEGENDS II, the dangerous three — STILLNESS' GROUND, STANDING ORDER, SOUNDING SERPENT | none | **BUILT (§102)** |
-| 5 | LEGENDS III, the ongoing three — TALLY'S NURSERY, PATTERN FORGE, PROCESSION'S END | **v26** | largest |
+| 5 | LEGENDS III, the ongoing four — ORRERY, FORGE, PROCESSION, NURSERY | **v26** | **BUILT (§103–§106)**, after the research pass in `docs/LEGENDS-III-RESEARCH.md` |
 
 **Commit 5 is the largest single mechanical addition since the horizon system**
 — a capturable colony with a recapture clock, and an escort wing. It wants its

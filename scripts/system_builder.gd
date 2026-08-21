@@ -199,6 +199,11 @@ static func build_legend(container: Node3D, system_id: String, index: int,
 			# serpent's and the forge's rule — read → given, and `closed` is
 			# unreachable because nothing here is ever spent.
 			return _build_procession(container, key, at)
+		"nursery":
+			# NEVER SPENDS ITS MARK: holding is not consuming, and the day the
+			# Tally take it back the plate has to still read. The nursery's own
+			# store carries whether it is held.
+			return _build_nursery(container, key, at)
 		"serpent":
 			# NEVER spent -- S2's rule enforced by never asking. The serpent
 			# leaves rather than dies, so the mark keeps its warning and the
@@ -334,6 +339,17 @@ static func _build_procession(container: Node3D, key: String, at: Vector3) -> No
 	container.add_child(pr)
 	pr.global_position = at + Vector3(LEGEND_STANDOFF * 2.0, 0.0, 0.0)
 	return pr
+
+
+static func _build_nursery(container: Node3D, key: String, at: Vector3) -> Node3D:
+	var n := TallyNursery.new()
+	n.owns_mark = key
+	container.add_child(n)
+	# Standing well off the buoy: the cluster is thirty units across and its
+	# keepers ring it at sixteen more, so a mark any closer would be inside a
+	# fight the player has not chosen yet.
+	n.global_position = at + Vector3(LEGEND_STANDOFF * 2.5, 0.0, 0.0)
+	return n
 
 
 static func _build_serpent(container: Node3D, key: String, at: Vector3) -> Node3D:
