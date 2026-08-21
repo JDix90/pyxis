@@ -42,6 +42,7 @@ const PAGES := [
 	{"id": "ship",    "title": "YOUR SHIP"},
 	{"id": "deep",    "title": "THE DEEP"},
 	{"id": "living",  "title": "MAKING A LIVING"},
+	{"id": "network", "title": "THE NETWORK"},
 	{"id": "first",   "title": "YOUR FIRST HOUR"},
 ]
 
@@ -191,6 +192,7 @@ func _refresh() -> void:
 		"ship":     _build_ship()
 		"deep":     _build_deep()
 		"living":   _build_living()
+		"network":  _build_network()
 		"first":    _build_first()
 		_:          _build_contents()
 	# Per-PAGE, not per-window: these pages differ wildly in length, and
@@ -378,6 +380,20 @@ func _build_living() -> void:
 	# §111. DERIVED, so the count can never lie again -- this paragraph said
 	# "Four skills" right up until there were eleven.
 	_body.add_child(_para("%d skills, each fed by a different verb so no single run levels them all: ARCHEOLOGY reads salvage, SMUGGLING moves what a market will not touch, MINING cuts rock, PERSUASION talks a pack out of a toll — and the pilot's ledger on the pause menu carries the rest, from SURVEYING to WARDENRY, each naming the act that trains it. Not one of them pays you in credits — they buy time, information, a choice, and access." % [4 + GameState.skill_ids().size()]))
+	_body.add_child(_back())
+
+
+func _build_network() -> void:
+	# §112. THE CHAIN, TAUGHT. Every mechanical link below shipped across two
+	# horizons and playtesters found none of it -- the longest chain in the game
+	# was also the only one nothing taught. This page says what the world will
+	# only imply, and stops exactly where discovery starts: it names the ACTS,
+	# never the places, and it does not say what a legend is.
+	_body.add_child(_heading("THE NETWORK"))
+	_body.add_child(_para("Survey data has two buyers, and only one of them pays in credits."))
+	_body.add_child(_para("THE AUTHORITY'S COUNTER. Any market that lists a survey buys it. The first reading of a cell files it under your name and pays a bonus once, ever; the Grand Commission counts every unit you sell. This is the chart's economy, and it is the whole of what the Commission will ever know about you."))
+	_body.add_child(_para("THE OTHER FILING. Out past the chart, some masts are not the Authority's. Deepest of all, something keeps records — read the last of one and you will be asked for something. Answer at a foreign mast, with survey data aboard, and you are given no money at all. What you are given is literacy: the far deep is marked, and a filer can read the markings."))
+	_body.add_child(_para("Nothing on the HUD counts any of this, and nothing here will. The chart shows a held cell as an open ring — a copy of your work exists somewhere else. That is the whole record."))
 	_body.add_child(_back())
 
 

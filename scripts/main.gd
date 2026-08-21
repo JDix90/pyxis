@@ -1278,6 +1278,65 @@ func _build_beacons() -> void:
 const FIRST_FILING_RATE := 0.5
 
 
+func colony_ground_sounded(colony_key: String) -> bool:
+	# §112. NOBODY BUILDS ON AN UNSOUNDED BOTTOM. The colony's own cell must be
+	# in coverage -- worked by a mast, or auto-sounded by a COLONIAL t2 founding.
+	# Main owns this join for cell_depth_of_key's reason: GameState holds the
+	# colony as opaque data and never references DeepSpace.
+	var c: Dictionary = GameState.colonies.get(colony_key, {})
+	if c.is_empty():
+		return false
+	var cell := DeepSpace.cell_of(Vector3(float(c.get("x", 0.0)), 0.0,
+		float(c.get("z", 0.0))))
+	var sys := colony_key.split(":")[0] if colony_key.contains(":") else system_id
+	return GameState.is_survey_worked(DeepSpace.cell_key(String(sys), cell.x, cell.y))
+
+
+func buy_colony_work(colony_key: String, work: String) -> bool:
+	# The gate AND the purchase, in that order, with the refusal free -- nothing
+	# is spent before the ground check. The store enforces its own four rules;
+	# this adds the one it cannot ask.
+	if not colony_ground_sounded(colony_key):
+		if hud:
+			hud.show_toast("SOUND THE GROUND FIRST — WORK A MAST IN ITS CELL",
+				Palette.THREAT)
+		return false
+	if not GameState.buy_colony_work(colony_key, work):
+		return false
+	if hud:
+		hud.set_value(GameState.salvage)
+		hud.show_toast("WORKS RAISED — %s" % String(
+			(GameState.COLONY_WORKS[work] as Dictionary).get("name", work)),
+			Palette.GOLD)
+	Sfx.play("breach", -10.0, 1.1)
+	return true
+
+
+func anchor_rows(sys: String) -> Array:
+	# §112, FILING t3. The held cells of one system as jump rows -- nearest
+	# first, capped at four so a long-armed filer's chart stays a chart rather
+	# than a ledger. Same row shape beacon_rows returns, labels synthesized the
+	# same way, because the jump handler downstream is the same handler.
+	# Gated HERE as well as at the chart -- the button is the affordance, this
+	# is the rule, and a rule that lived only in a panel would hand the rows to
+	# any future caller free.
+	if GameState.skill_tier("filing") < GameState.FILING_ANCHOR_TIER:
+		return []
+	var out: Array = []
+	for k_v in GameState.held_cells(sys):
+		var key := String(k_v)
+		var bits := key.split(":")
+		if bits.size() != 3:
+			continue
+		var centre := DeepSpace.cell_centre(int(String(bits[1])), int(String(bits[2])))
+		out.append({"x": centre.x, "z": centre.z,
+			"depth": cell_depth_of_key(key),
+			"label": "HELD %s:%s" % [String(bits[1]), String(bits[2])]})
+	out.sort_custom(func(a, b) -> bool:
+		return float((a as Dictionary)["depth"]) < float((b as Dictionary)["depth"]))
+	return out.slice(0, 4)
+
+
 func cell_depth_of_key(key: String) -> float:
 	# "pyx01:7:-3" -> the depth of that cell's centre. Main owns this glue for
 	# drop_beacon_here's reason inverted: GameState deliberately holds coverage
@@ -19605,6 +19664,16 @@ func _run_save_test() -> void:
 			# so there is no second number here to disagree with the first.
 			"skills": {"surveying": 20, "filing": 4, "basket_weaving": 9,
 				"surveying_typo": 0},
+			# §112. Works ride the same version. One real colony with one real
+			# work and one junk id; one whole entry for a colony this save does
+			# not hold. The colony itself must be in the fixture or the works
+			# loader (which runs after the colonies loader) rightly drops it.
+			"colonies": {"pyx01:3": {"x": 2100.0, "z": -300.0,
+				"founded_at": 900.0}},
+			"colony_works": {
+				"pyx01:3": ["relay", "monorail"],
+				"pyx01:9": ["dock"],
+			},
 		}
 		var fg27 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
 		fg27.store_string(JSON.stringify(good27))
@@ -19649,6 +19718,10 @@ func _run_save_test() -> void:
 		# clears surveying's third rung (16) and not its fourth (34), so it reads
 		# tier 2, and 4 clears filing's second (3) so it reads tier 1. An unknown
 		# id and a zero drop, the same way an unknown good does two blocks up.
+		var works27: bool = GameState.colony_works.size() == 1 \
+			and GameState.has_work("pyx01:3", "relay") \
+			and not GameState.has_work("pyx01:3", "monorail") \
+			and not GameState.colony_works.has("pyx01:9")
 		var skills27: bool = GameState.skills.size() == 2 \
 			and GameState.skill_xp("surveying") == 20 \
 			and GameState.skill_tier("surveying") == 2 \
@@ -19659,15 +19732,18 @@ func _run_save_test() -> void:
 		GameState.requisition_orders = []
 		GameState.reads_done = {}
 		GameState.skills = {}
+		GameState.colony_works = {}
+		GameState.colonies = {}
 		GameState.market_stock = {}
-		print("[savetest] v26->v27 ORDERS 2 of 4 survived (a bulk good and an unknown part dropped, a future stamp clamped)=%s, the clamped one is still in transit while the old one is ready=%s, reads_done kept only real components=%s, and two ladders reload with their tiers DERIVED from xp=%s" % [
-			str(orders27), str(waiting27), str(reads27), str(skills27)])
+		print("[savetest] v26->v27 ORDERS 2 of 4 survived (a bulk good and an unknown part dropped, a future stamp clamped)=%s, the clamped one is still in transit while the old one is ready=%s, reads_done kept only real components=%s, two ladders reload with tiers DERIVED from xp=%s, and colony works keep only real works on real colonies=%s" % [
+			str(orders27), str(waiting27), str(reads27), str(skills27),
+			str(works27)])
 		print("[savetest] v26->v27 A V26 SAVE HAS EVERY SHELF FULL kept=%s; rubbish pass kept 3 of 6 (unknown good, missing join and a zero deficit dropped)=%s with a 12-unit hole reloading as %d of %d=%s, a future stamp clamped to now=%s, and a deep row keyed on its CELL surviving JSON=%s -> %s" % [
 			str(kept26), str(cleaned27), cap26 - 12, cap26, str(shelf27),
 			str(clamped27), str(deep27),
 			"PASS" if ok26 and kept26 and cleaned27 and shelf27 and clamped27
 				and deep27 and orders27 and waiting27 and reads27 and skills27
-				else "FAIL"])
+				and works27 else "FAIL"])
 	elif mode == "future":
 		# A SAVE FROM A NEWER BUILD. Refusing to load it was never the hard
 		# part — that clause has always been there. What it did NOT do was stop
@@ -25930,6 +26006,94 @@ func _run_colony_test() -> void:
 			and claimed_text.contains("JUMP")
 	print("[colony] THE MONUMENT ANSWERS A TAP unclaimed says '%s'; claimed says '%s'; both name themselves and their verb -> %s" % [
 		tap_text, claimed_text, "PASS" if tap_ok else "FAIL"])
+
+	# --- §112. THE SOUNDED GROUND ---------------------------------------------
+
+	# WORKS ARE GATES, AND THE INVESTMENT IS A SINK. One purchase of each work
+	# on a sounded colony: the wallet moves by exactly the price, nothing pays
+	# anything back, and no ship stat moves -- measured, §26's whole claim.
+	GameState.colonies = {}
+	GameState.colony_works = {}
+	GameState.skills = {}
+	GameState.salvage = 30000
+	GameState.claim_colony("pyx01:7", 2000.0, 0.0)
+	var wcell := DeepSpace.cell_of(Vector3(2000.0, 0.0, 0.0))
+	GameState.note_survey_worked(DeepSpace.cell_key("pyx01", wcell.x, wcell.y))
+	var stats_before := GameState.stats.duplicate(true)
+	var spent_total := 0
+	var works_ok := true
+	for w_v in GameState.COLONY_WORKS:
+		var wid := String(w_v)
+		var before_w := GameState.salvage
+		if not buy_colony_work("pyx01:7", wid):
+			works_ok = false
+		spent_total += before_w - GameState.salvage
+		if not GameState.has_work("pyx01:7", wid):
+			works_ok = false
+	var want_total := 0
+	for w2_v in GameState.COLONY_WORKS:
+		want_total += int((GameState.COLONY_WORKS[w2_v] as Dictionary)["price"])
+	var stats_same := str(stats_before) == str(GameState.stats)
+	var re_buy := buy_colony_work("pyx01:7", "relay")
+	print("[colony] WORKS ARE A SINK, NOT A STAT three works cost %d (want %d), stats byte-identical=%s, a re-buy refuses=%s -> %s" % [
+		spent_total, want_total, str(stats_same), str(not re_buy),
+		"PASS" if works_ok and spent_total == want_total and stats_same
+			and not re_buy else "FAIL"])
+
+	# SURVEYED GROUND ONLY, and the refusal is free. A colony whose cell no
+	# mast ever worked refuses every work, and refuses them for nothing.
+	GameState.claim_colony("pyx01:8", -2600.0, 400.0)
+	var before_ground := GameState.salvage
+	var ground_refused := not buy_colony_work("pyx01:8", "relay")
+	print("[colony] SURVEYED GROUND ONLY an unsounded bottom refuses=%s and the refusal cost %d -> %s" % [
+		str(ground_refused), before_ground - GameState.salvage,
+		"PASS" if ground_refused and GameState.salvage == before_ground else "FAIL"])
+
+	# THE DOCK IS TIME, NOT POWER. The aura reads true alongside the yard and
+	# false a hundred units off -- the rule function, not the regen rendering.
+	var near_aura := GameState.dock_aura_at(2000.0, 0.0)
+	var far_aura := GameState.dock_aura_at(2000.0, 500.0)
+	print("[colony] THE DOCK IS TIME, NOT POWER aura alongside=%s, 500u off=%s -> %s" % [
+		str(near_aura), str(far_aura),
+		"PASS" if near_aura and not far_aura else "FAIL"])
+
+	# THE ANNEX IS THE WAREHOUSE'S OWN LAW. Storables in, the bonded set only,
+	# and back out -- through store_cargo/withdraw_cargo, so the 60-space bay
+	# and can_store == no_retail hold here exactly as at a dock.
+	GameState.cargo = {}
+	GameState.load_cargo("plate_ablative", 3)
+	GameState.load_cargo("alloys", 2)
+	var put := GameState.store_cargo("pyx01:7", "plate_ablative", 3)
+	var bulk_refused := GameState.store_cargo("pyx01:7", "alloys", 2) == 0
+	var got_back := GameState.withdraw_cargo("pyx01:7", "plate_ablative", 3)
+	print("[colony] THE ANNEX IS BONDED 3 plates in=%d, bulk goods refused=%s, 3 back out=%d -> %s" % [
+		put, str(bulk_refused), got_back,
+		"PASS" if put == 3 and bulk_refused and got_back == 3 else "FAIL"])
+
+	# THE ANCHOR IS EARNED, AND OBEYS THE CAP. anchor_rows is empty below
+	# FILING t3 by the chart's own gate; at t3 a held cell rows up with its
+	# depth, and the jump verb keeps the beacon cap -- a 5000u held cell offers
+	# no jump. The fee is the beacon's own curve at the anchor's own depth.
+	GameState.skills = {}
+	GameState.survey_coverage = {}
+	GameState.note_survey_worked("pyx01:40:0")
+	GameState.note_survey_held("pyx01:40:0")
+	var rows_low := anchor_rows("pyx01")
+	GameState.skills = {"filing": 999}
+	var rows_high := anchor_rows("pyx01")
+	var arow: Dictionary = rows_high[0] if not rows_high.is_empty() else {}
+	var adepth := float(arow.get("depth", -1.0))
+	var afee := beacon_jump_fee(adepth)
+	var capped_ok := not can_beacon_jump(9000.0)
+	print("[colony] THE ANCHOR IS EARNED rows below the tier=%d, at t3=%d at %du for %d, and 9000u still refuses a jump=%s -> %s" % [
+		rows_low.size(), rows_high.size(), int(adepth), afee, str(capped_ok),
+		"PASS" if rows_low.is_empty() and rows_high.size() == 1
+			and adepth > 0.0 and afee > 0 and capped_ok else "FAIL"])
+
+	GameState.skills = {}
+	GameState.survey_coverage = {}
+	GameState.colony_works = {}
+	GameState.cargo = {}
 
 	GameState.colonies = {}
 	get_tree().quit()

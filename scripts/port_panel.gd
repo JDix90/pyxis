@@ -1405,6 +1405,21 @@ func _build_rumors() -> void:
 	note.add_theme_color_override("font_color", Color(0.6, 0.6, 0.66))
 	_body.add_child(note)
 
+	# §112. THE WATCH KNOWS WHAT YOU STARTED. One unpriced line, at this desk
+	# only, for a pilot who has read at least a fragment of the deepest record
+	# and not yet finished it -- a nudge toward the one chain nothing taught,
+	# offered exactly to the person who has demonstrably begun it. It sells
+	# nothing and charges nothing, so it lives outside the rumour ladder.
+	if String(_port_def.get("id", "")) == "deep_watch" \
+			and GameState.return_archive_started() \
+			and not GameState.heard_the_request():
+		var watch_line := Label.new()
+		watch_line.text = "THE WATCH, UNPROMPTED: \"YOU HAVE BEEN READING THE OLD RECORDS. READ THE LAST OF ONE — THEY DO NOT END WHERE YOU THINK.\""
+		watch_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		watch_line.add_theme_font_size_override("font_size", 10)
+		watch_line.add_theme_color_override("font_color", Palette.RIVAL)
+		_body.add_child(watch_line)
+
 	_build_hunt_desk()
 
 

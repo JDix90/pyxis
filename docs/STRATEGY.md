@@ -6304,7 +6304,7 @@ corrections are what set the commit order:
 | 5a | the ladder: the machinery, the shared ledger page, and the first two (SURVEYING, FILING) | rides v27 | **BUILT** — §111; HUNTING moved to 5b rather than ship tiers that grant nothing (§88) |
 | 5b | the rest of the roster (HUNTING, RIFT-WORK, BROKERAGE, COLONIAL, WARDENRY) | rides v27 | **BUILT** — §111; two rungs died on contact with the code and were replaced before shipping |
 | 5c | the four legacy deepenings (a t4 each for SMUGGLING, MINING, PERSUASION; ARCHEOLOGY argued complete) | rides v27 | **DEFERRED** — each legacy skill hand-writes its line function with the cap written out (a §36-era decision), and pins it in legs; extending them is an afternoon with a sweep at hand, not a night without one |
-| 6 | the sounded ground: teach the filing chain, held cells as jump anchors, colony works | rides v27 | not built |
+| 6 | the sounded ground: teach the filing chain, held cells as jump anchors, colony works | rides v27 | **BUILT** — §112; the works loader's first draft validated against a store that loads seventy lines later, caught by checking the order its own comment claimed |
 | 7 | the measure: re-derive the pacing band from the sweep, derive the README's counts | none | not built |
 
 **Three premises the playtest got wrong, and the research pass caught.** The
@@ -11591,3 +11591,77 @@ each moves in the direction its grant claims — error down, reach up, warning
 up, sight up, rate up. A helper that reads the same at both ends is a tier
 granting nothing, measured.
 
+
+## 112. The sounded ground (rides v27)
+
+Horizon 10, commit 6. The playtest's fourth complaint was the deepest one:
+*"why should surveying matter to the goal players actually care about?"* The
+answer has existed since Horizon 9 — filing buys far-mark literacy, and the
+marks are where the legends stand — and the playtest proved the other half of
+the sentence: **a chain nothing teaches does not exist.** This commit teaches
+it, pays it off, and roots the credit sink in it.
+
+### The chain, taught in three registers
+
+**The manual** gains THE NETWORK — the one page that says what the world only
+implies: survey data has two buyers and only one pays in credits. It names the
+ACTS and stops exactly where discovery starts: no places, no names, and not one
+word about what a legend is.
+
+**A bark** fires the first time a mark refuses the read. The refusal already
+named the act (§58 — *file a return at a foreign mast*); the bark names where
+the ask comes from, which was the one link nothing anywhere pointed at.
+
+**The Watch** speaks once, unprompted and unpriced, to a pilot who has read at
+least a fragment of the deepest record and not yet finished it — a nudge
+offered exactly to the person who has demonstrably begun. It sells nothing, so
+it lives outside the rumour ladder.
+
+### The held cell is an anchor (FILING t3)
+
+The payoff the chain was missing, and the user-approved answer to "the worst
+part of dying is flying all the way back out." A cell the network holds is a
+place somebody keeps a light on: at FILING t3 it takes a **jump**, on the
+beacon jump's own fee curve and its own depth cap, drawn on the chart as rows
+beside the colonies (nearest four, so a long-armed filer's chart stays a chart).
+
+**§87 is answered, not waved at.** Eight beacons were cut to three because
+*free, early* route-threading killed the recover verb. This network is late —
+behind the longest chain in the game — earned per cell, paid per jump, and
+capped at the same depth every jump has always stopped at. Past the cap the row
+itself says *THE COURSE STILL SERVES*: the refusal removes the shortcut, never
+the destination. The gate lives in `anchor_rows` as well as in the chart,
+because a rule that lived only in a panel would hand the rows to any future
+caller free.
+
+### Colony works — the sink with a survey gate
+
+Three one-time works per colony, and every return is a **service** in §26's
+currencies: the RELAY MAST (4,000) carries the charted markets' weather out to
+the colony's system on the chart — information; the DRY DOCK (6,000) doubles
+shield mend alongside your own yard, behind the calm delay by position, so in
+a fight it is nothing — time, the same product every repair bay sells, still
+costing the flying there; the BONDED ANNEX (8,000) is a warehouse bay on the
+colony's own key, worked by the hold gesture — access, and every bound is the
+warehouse's own law reused (`can_store == no_retail` holds at the annex exactly
+as at a dock, so it can never become the timed-arbitrage shelf STORETEST
+closed).
+
+**Nobody builds on an unsounded bottom.** A work requires the colony's own cell
+in coverage — worked by a mast, or auto-sounded by a COLONIAL t2 founding — and
+the refusal names the act. That is the third leg of surveying's answer: the
+teaching makes the chain visible, the anchor makes filing pay, and the ground
+gate makes the *sink* pass through the survey verb.
+
+Up to ~270k of voluntary sink across a full run, against the credit cliff §110
+documented: the first place late-game money has ever had to go.
+
+### The defect the first draft carried
+
+The works loader sat with the other v27 stores and validated every key against
+`colonies` — **which loads seventy lines later.** On any real boot it would
+have validated against the previous session's colony set (or nothing) and
+silently dropped every work in the save. Caught by re-checking the load order
+the comment claimed rather than trusting it; the block now sits immediately
+after `_load_colonies`, with the first draft's mistake written at the site —
+the berths loader documents the same class of defect from the other direction.

@@ -227,6 +227,10 @@ var requisition_orders: Array = []
 var reads_done := {}
 # v27 (§111). skill id -> xp. The TIER is never stored; skill_tier derives it.
 var skills := {}
+# v27 (§112). colony key -> Array[String] of works built. Parallel to
+# `colonies` rather than inside its entries, so the colony loader's shape
+# checks stay exactly what they were.
+var colony_works := {}
 
 # v27 (§111). THE LADDER. Four skills shipped one at a time over twenty
 # versions, each with its own var, its own xp var, its own tier constant and its
@@ -257,7 +261,7 @@ const SKILL_TIERS := {
 	# Returns filed with the refusers' network, and far marks read for the first
 	# time. Deliberately the two halves of one act -- filing is what buys the
 	# literacy, and a mark is what the literacy is FOR (§98).
-	"filing": [0, 3, 8],
+	"filing": [0, 3, 8, 18],
 }
 const SKILL_LABELS := {
 	"surveying": "SURVEYING",
@@ -288,7 +292,8 @@ const SKILL_PERKS := {
 	# pins NAMES to FarMarks.kinds() rather than trusting the comment. A tier
 	# that revealed the kind at range would delete the one thing reading a mark
 	# is FOR. Both of these buy the same reading, sooner and from further out.
-	"filing": ["", "A QUICKER HAND", "ALONGSIDE FROM FURTHER"],
+	"filing": ["", "A QUICKER HAND", "ALONGSIDE FROM FURTHER",
+		"THE HELD CELL IS AN ANCHOR"],
 	# §111 commit 5b, the rest of the roster. Every grant is a helper below with
 	# a world class as its one consumer, so A TIER IS A GATE can measure the
 	# rule off-tree without building the world that renders it.
@@ -333,7 +338,28 @@ const WARDEN_WINDOW_MULT := 1.25    # a hulk whose post you cleared cracks faste
 const FILING_QUICK_TIER := 1
 const FILING_QUICK_BONUS := 0.25    # a quarter off the hold
 const FILING_REACH_TIER := 2
+# t3, and the payoff the whole chain was missing (§112). A cell the network
+# holds is a place somebody keeps a light on: the jump verb may target it, at
+# the beacon jump's own fee and its own depth cap. §87 cut beacons 8 -> 3
+# because FREE, EARLY route-threading killed the recover verb; this network is
+# late, earned through the longest chain in the game, paid per jump and capped
+# -- every property §87's failure lacked.
+const FILING_ANCHOR_TIER := 3
 const FILING_REACH_MULT := 1.5      # come alongside from further out
+
+# §112. COLONY WORKS -- the investment sink. One-time, per colony, and every
+# return is a SERVICE (§26's currencies): the relay is information, the dock is
+# time, the annex is access. No work touches a stat, a price or an income term.
+const COLONY_WORKS := {
+	"relay": {"name": "RELAY MAST", "price": 4000,
+		"blurb": "THE CHART CARRIES THE CHARTED MARKETS' WEATHER OUT TO THIS SYSTEM"},
+	"dock": {"name": "DRY DOCK", "price": 6000,
+		"blurb": "YOUR SHIELD MENDS AT TWICE THE PACE ALONGSIDE THIS COLONY"},
+	"annex": {"name": "BONDED ANNEX", "price": 8000,
+		"blurb": "A BONDED BAY OF ITS OWN — HOLD AT THE COLONY TO USE IT"},
+}
+const DOCK_AURA_RANGE := 30.0
+const DOCK_AURA_MULT := 2.0
 
 const REQ_MAX_OPEN := 3
 # Five played minutes. Long enough that ordering is a decision made on the way
@@ -1340,6 +1366,7 @@ func reset_to_starter() -> void:
 	requisition_orders = []
 	reads_done = {}
 	skills = {}
+	colony_works = {}
 	market_events = []
 	archeology = 0
 	archeology_xp = 0
@@ -2351,6 +2378,17 @@ const DIRECTIVE_STAGE := 2
 # other cartographer's own log, not one of the authority's datums, and holding
 # it says nothing about how much of the record the pilot has.
 const ARCHIVE_KINDS := ["meridian", "glass", "return"]
+
+
+func return_archive_started() -> bool:
+	# §112. Has the pilot read ANY fragment of the bearing-terminus record --
+	# the rung below knowing what it says. Gates one unpriced line at the
+	# Watch's desk: a nudge toward finishing a thing already started, offered
+	# only to somebody who has demonstrably started it.
+	for key_v in deep_logs:
+		if String(key_v).ends_with(":return") and int(deep_logs[key_v]) >= 1:
+			return true
+	return false
 
 
 func knows_directive_9() -> bool:
@@ -3525,6 +3563,51 @@ func wardenry_breach_mult() -> float:
 	return 1.0
 
 
+func works_of(key: String) -> Array:
+	return colony_works.get(key, [])
+
+
+func has_work(key: String, work: String) -> bool:
+	return (colony_works.get(key, []) as Array).has(work)
+
+
+func buy_colony_work(key: String, work: String) -> bool:
+	# PURE STORE RULES: a real colony, a known work, not already built, and the
+	# credits in hand. The one gate this cannot ask -- is the colony's ground
+	# sounded -- is the WORLD's question, so Main.buy_colony_work asks it first
+	# and is the only caller. (GameState never references DeepSpace; the same
+	# edge rule cell_depth_of_key documents.)
+	if not colonies.has(key) or not COLONY_WORKS.has(work):
+		return false
+	if has_work(key, work):
+		return false
+	var price := int((COLONY_WORKS[work] as Dictionary).get("price", 0))
+	if not spend_salvage(price):
+		return false
+	var lst: Array = colony_works.get(key, [])
+	lst.append(work)
+	colony_works[key] = lst
+	note_log("WORKS RAISED — %s" % String((COLONY_WORKS[work] as Dictionary).get("name", work)))
+	_queue_save()
+	return true
+
+
+func dock_aura_at(x: float, z: float) -> bool:
+	# §112, THE DRY DOCK. True within DOCK_AURA_RANGE of any owned colony that
+	# built one, in the current system. TIME, not power: out of combat the
+	# shield mends free anyway -- alongside your own yard it mends at twice the
+	# pace, and in combat this reads false by the caller's own calm-delay gate.
+	for c_v in colonies_in(current_system):
+		var c: Dictionary = c_v
+		if not has_work(String(c["key"]), "dock"):
+			continue
+		var dx := float(c["x"]) - x
+		var dz := float(c["z"]) - z
+		if sqrt(dx * dx + dz * dz) <= DOCK_AURA_RANGE:
+			return true
+	return false
+
+
 func note_read(component: String) -> void:
 	# The order desk's gate, written by the one thing that produces a component.
 	if CommodityDB.is_component(component):
@@ -4018,6 +4101,7 @@ func save_dict() -> Dictionary:
 		"requisition_orders": requisition_orders,
 		"reads_done": reads_done,
 		"skills": skills,
+		"colony_works": colony_works,
 		"market_events": market_events,
 		# NO `settings` AND NO `audio_muted`. Both moved to prefs.json when the
 		# save became per-pilot: they belong to the device, and leaving them here
@@ -4447,6 +4531,25 @@ func load_game() -> bool:
 	# v20 stage 6, riding the same version as beacons — one bump for both stores,
 	# since neither needs a grandfather and an absent key is the correct empty.
 	_load_colonies(data.get("colonies", {}))
+	# v27 (§112). Works only for colonies this save actually holds, only work
+	# ids this build knows, deduplicated. IMMEDIATELY after _load_colonies and
+	# never before it -- the first draft of this block sat 70 lines up with the
+	# other v27 stores and validated every key against the PREVIOUS session's
+	# colony set, which is the load-order defect the berths loader's own
+	# comment warns about from the other direction.
+	colony_works = {}
+	for wk in data.get("colony_works", {}):
+		var wkey := str(wk)
+		if not colonies.has(wkey):
+			continue
+		var wraw = data["colony_works"][wk]
+		var wlist: Array = []
+		for w_v in (wraw as Array if wraw is Array else []):
+			var wid := str(w_v)
+			if COLONY_WORKS.has(wid) and not wlist.has(wid):
+				wlist.append(wid)
+		if not wlist.is_empty():
+			colony_works[wkey] = wlist
 	# BOTH KEYS, and no version bump. A rename is a shape change only if the old
 	# file stops loading; reading the legacy key as the default for the new one
 	# means a v20 save keeps its cooldown instead of silently coming back with

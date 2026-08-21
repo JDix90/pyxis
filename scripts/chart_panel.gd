@@ -1247,6 +1247,105 @@ func _refresh_colonies() -> void:
 		b.pressed.connect(func() -> void: colony_jump_requested.emit(key))
 		_colony_rows.add_child(b)
 
+		# §112. THE WORKS, under the colony they belong to. Built works are a
+		# line of record; unbuilt ones are the sink, each stating its price and
+		# its service in the same breath -- and an unsounded bottom refuses in
+		# words, through main, which owns the world half of that question.
+		for w_v in GameState.COLONY_WORKS:
+			var wid := String(w_v)
+			var wdef: Dictionary = GameState.COLONY_WORKS[wid]
+			if GameState.has_work(key, wid):
+				var done := Label.new()
+				done.text = "   %s — STANDING" % String(wdef["name"])
+				done.add_theme_font_size_override("font_size", 10)
+				done.add_theme_color_override("font_color", Palette.TEAL)
+				_colony_rows.add_child(done)
+				continue
+			var wb := Button.new()
+			wb.custom_minimum_size = Vector2(0, COLONY_ROW_H)
+			wb.add_theme_font_size_override("font_size", 11)
+			var sounded: bool = bool(main.colony_ground_sounded(key))
+			if not sounded:
+				wb.text = "%s — SOUND ITS GROUND FIRST (WORK A MAST IN ITS CELL)" \
+					% String(wdef["name"])
+				wb.disabled = true
+			else:
+				wb.text = "RAISE %s — %s" % [String(wdef["name"]),
+					str(int(wdef["price"]))]
+				wb.disabled = GameState.salvage < int(wdef["price"])
+			wb.tooltip_text = String(wdef["blurb"])
+			wb.pressed.connect(func() -> void:
+				if bool(main.buy_colony_work(key, wid)):
+					_refresh_colonies())
+			_colony_rows.add_child(wb)
+
+	# §112, THE RELAY MAST. With one standing anywhere in this system, the
+	# chart carries the charted markets' weather out here -- the same event
+	# list the rumour desk reads, as lines of record rather than a purchase.
+	var has_relay := false
+	for cr_v in GameState.colonies_in(_selected):
+		if GameState.has_work(String((cr_v as Dictionary)["key"]), "relay"):
+			has_relay = true
+	if has_relay:
+		var rhead := Label.new()
+		rhead.text = "RELAY MAST — THE CHARTED MARKETS TONIGHT"
+		rhead.add_theme_font_size_override("font_size", 10)
+		rhead.add_theme_color_override("font_color", Palette.GOLD)
+		_colony_rows.add_child(rhead)
+		if GameState.market_events.is_empty():
+			var quiet := Label.new()
+			quiet.text = "   NOTHING MOVING ON THE CHART"
+			quiet.add_theme_font_size_override("font_size", 10)
+			quiet.add_theme_color_override("font_color", Palette.AMBER_DIM)
+			_colony_rows.add_child(quiet)
+		for ev_v in GameState.market_events:
+			var ev: Dictionary = ev_v
+			var eline := Label.new()
+			eline.text = "   %s AT %s — %s, %s LEFT" % [
+				Market.event_label(ev), Market.event_place(ev),
+				CommodityDB.short_name(String(ev.get("good", ""))),
+				"%d:%02d" % [int(float(ev.get("remaining", 0.0))) / 60,
+					int(float(ev.get("remaining", 0.0))) % 60]]
+			eline.add_theme_font_size_override("font_size", 10)
+			eline.add_theme_color_override("font_color", Market.event_color(ev))
+			_colony_rows.add_child(eline)
+
+	# §112, FILING t3. THE HELD CELL IS AN ANCHOR: the nearest few cells the
+	# network holds, as jump rows on the beacon jump's own fee and its own cap.
+	# Below the tier the section simply is not here -- the ledger names the
+	# rung, and an empty slot in a list is not a refusal surface (§58 applies
+	# to verbs the player can reach, not to ones they have not earned).
+	if GameState.skill_tier("filing") >= GameState.FILING_ANCHOR_TIER:
+		var anchors: Array = main.anchor_rows(_selected)
+		if not anchors.is_empty():
+			var ahead := Label.new()
+			ahead.text = "THE NETWORK'S LIGHTS — HELD CELLS TAKE A JUMP"
+			ahead.add_theme_font_size_override("font_size", 10)
+			ahead.add_theme_color_override("font_color", Palette.RIVAL)
+			_colony_rows.add_child(ahead)
+		for a_v in anchors:
+			var an: Dictionary = a_v
+			var ax := float(an["x"])
+			var az := float(an["z"])
+			var adepth := float(an["depth"])
+			var alabel := String(an["label"])
+			var ab := Button.new()
+			ab.custom_minimum_size = Vector2(0, COLONY_ROW_H)
+			ab.add_theme_font_size_override("font_size", 12)
+			ab.add_theme_color_override("font_color", Palette.RIVAL)
+			var acool: float = float(main.colony_jump_ready_in())
+			if adepth > main.BEACON_JUMP_MAX_DEPTH:
+				ab.text = "%s — TOO DEEP, THE COURSE STILL SERVES" % alabel
+			elif acool > 0.0:
+				ab.text = "%s — %ds" % [alabel, int(ceil(acool))]
+			else:
+				ab.text = "JUMP TO %s  (%d)" % [alabel,
+					int(main.beacon_jump_fee(adepth))]
+			ab.disabled = not bool(main.can_beacon_jump(adepth))
+			ab.pressed.connect(func() -> void:
+				beacon_jump_requested.emit(ax, az, adepth, alabel))
+			_colony_rows.add_child(ab)
+
 
 func _refresh_recall() -> void:
 	var main := get_tree().get_first_node_in_group("main")

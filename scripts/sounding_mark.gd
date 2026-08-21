@@ -222,6 +222,7 @@ func on_tapped() -> void:
 		# the ship for nothing, which is the affordance problem inverted.
 		if hud:
 			hud.prompt(CANNOT_READ)
+			Barks.fire("far_mark_locked")
 		return
 	if hud:
 		if is_read():
@@ -239,6 +240,7 @@ func hold_begin() -> void:
 		var hud := get_tree().get_first_node_in_group("hud")
 		if hud:
 			hud.prompt(CANNOT_READ)
+			Barks.fire("far_mark_locked")
 		return
 	if not _player_in_range():
 		_approach()

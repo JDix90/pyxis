@@ -45,7 +45,7 @@ Taken by the author on 2026-08-21, before any code:
 | 5a | **The ladder** — machinery, ledger page, SURVEYING + FILING | rides v27 | **BUILT** — §111 |
 | 5b | **The rest of the roster** — five more ladders | rides v27 | **BUILT** — §111 |
 | 5c | the four legacy deepenings | rides v27 | **DEFERRED** — see §64 |
-| 6 | **The sounded ground** — teach the chain, held cells as anchors, colony works | rides v27 | not built |
+| 6 | **The sounded ground** — teach the chain, held cells as anchors, colony works | rides v27 | **BUILT** — §112 |
 | 7 | **The measure** — re-derive the pacing band, derive the README's counts | none | not built |
 
 ## The constraint that shapes all seven
