@@ -6302,7 +6302,8 @@ corrections are what set the commit order:
 | 3 | the tug and the claim: a depth-scaled rescue fee, and a claim clock on deep spills | rides v27 | **BUILT** — §109; dying was cheaper than a beacon jump, and the code's own comment claiming otherwise was aspirational |
 | 4 | the order book: the forge hint that lied, TWO widened read windows (the third was cut by its own arithmetic), and requisitions as the first real credit sink | rides v27 | **BUILT** — §110; the hint was a v22 fix restating the bug it fixed |
 | 5a | the ladder: the machinery, the shared ledger page, and the first two (SURVEYING, FILING) | rides v27 | **BUILT** — §111; HUNTING moved to 5b rather than ship tiers that grant nothing (§88) |
-| 5b | the rest of the roster (HUNTING, RIFT-WORK, BROKERAGE, COLONIAL, WARDENRY) and the four deepenings | rides v27 | not built |
+| 5b | the rest of the roster (HUNTING, RIFT-WORK, BROKERAGE, COLONIAL, WARDENRY) | rides v27 | **BUILT** — §111; two rungs died on contact with the code and were replaced before shipping |
+| 5c | the four legacy deepenings (a t4 each for SMUGGLING, MINING, PERSUASION; ARCHEOLOGY argued complete) | rides v27 | **DEFERRED** — each legacy skill hand-writes its line function with the cap written out (a §36-era decision), and pins it in legs; extending them is an afternoon with a sweep at hand, not a night without one |
 | 6 | the sounded ground: teach the filing chain, held cells as jump anchors, colony works | rides v27 | not built |
 | 7 | the measure: re-derive the pacing band from the sweep, derive the README's counts | none | not built |
 
@@ -11550,3 +11551,43 @@ included, watching the wallet — a tier that paid on arrival would slip past a
 single-call check. That is what keeps all of this clear of PACINGTEST's band,
 which matters more this horizon than most: `MIDTIER` has under a tenth of a
 mid-tier module of headroom.
+### Commit 5b — the rest of the roster
+
+Five more ladders, every grant a rule function with one consumer, every feed a
+single site beside the bound that already policed it.
+
+| skill | feed (the site) | tiers | grants |
+|---|---|---|---|
+| HUNTING | an engine down (`award_apex_bonus`, first per system — its own guard is the anti-farm) and a legend resolved (`note_mark_spent`, first-only by construction) | [0,1,4] | t1 THE COLD TRAIL — every intel channel lands ×0.85 error at the one intake door; t2 THE CIRCLE READ — each filing names what it was worth ("CIRCLE 240u → 175u") |
+| RIFT-WORK | rift crates CLAIMED — loaded, not scrapped; the hold-full path pays this nothing | [0,24,72,150] | t1 THE FUSE READ — pulses remaining, in a number; t2 THE WIDE READING — the shear's own ±4° reading taken from ×1.5 out; t3 THE LAST SECOND — the klaxon three seconds early |
+| BROKERAGE | a delivery filled (deliveries ONLY — "any contract" would rise alongside three other ladders' work) and a convoy sale (per SALE, not per unit) | [0,4,11,24] | t1 THE MANIFEST HAIL — a hail quotes the hold, behind the trade's own two gates; t2 THE STANDING WORD — a consignment row reads the weather at its destination; t3 ROUTE SENSE — the pair, NEVER the margin: deliberately weaker than the paid rumour |
+| COLONIAL | a colony founded (in the one mutator, success path only) | [0,1,3,6] | t1 THE SILHOUETTE NAMED — sighted from ×2; t2 THE GROUND SOUNDED — founding marks the cell worked, through the one door every mast reading takes, no chart good and no SURVEYING xp; t3 KEPT LIGHTS — a founded colony borrows TIER_HOME on the radar, the beacon-course precedent, so its light is never capped and never fades |
+| WARDENRY | a post cleared (beside the ledger line, behind `_counted`'s once-per-post bound) | [0,5,14,30] | t1 THE POST READ — the breach prompt counts the watch; t2 THE COUNT KEPT — each guard down names how many stand; t3 THE BREACH WINDOW — the hull this post guarded cracks ×1.25, flag on the WORLD, rate in the tier, either alone doing nothing |
+
+**Two rungs died on contact with the code, which is 5a's lesson holding.**
+RIFT-WORK t2 was written as THE SHEAR HEARD — a spawn announcement with a
+bearing — and the spawn already announces itself to everybody on the comms
+plate, bearing included: a tier that grants what everyone has is a rung that
+grants nothing (§88, caught by reading the surface before wiring the perk).
+And BROKERAGE's t2 candidate "the board holds a posting for you across docks"
+died on pacing: `_pacing_contract_yield` measures the stranger's board, and a
+tier that changed what boards offer would move a measured number with a skill,
+which is the §26 shape exactly.
+
+**HUNTING is two rungs and that is its honest length.** Three engines and a
+handful of legends exist per game; a ladder longer than its feed is a checklist
+that cannot be finished.
+
+**The deepenings (legacy t4s) are deferred to §64, with the reason written
+down.** Extending a legacy tier array is mechanically safe — the walk is
+generic — but each of the four carries a hand-written line function whose cap
+is written out rather than derived (a deliberate §36-era decision), legs that
+pin that cap, and copy that names it. Doing that unswept, at night, against
+SMUGTEST and MINETEST, is the wrong risk for four rungs; it is an afternoon's
+work with a sweep at hand, and it is recorded as owed rather than dropped.
+
+`A TIER IS A GATE` grew the five 5b helpers, at zero and at cap, asserting
+each moves in the direction its grant claims — error down, reach up, warning
+up, sight up, rate up. A helper that reads the same at both ends is a tier
+granting nothing, measured.
+

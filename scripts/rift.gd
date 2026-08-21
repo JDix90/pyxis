@@ -38,6 +38,8 @@ var _spin := 0.0
 # seconds and a player parked on a tear would narrow the estimate for free --
 # the same "precision must be bought" rule add_apex_hint enforces for masts.
 var _intel_read := false
+var _warned := false
+var _in_range_last := false
 
 
 func _ready() -> void:
@@ -119,6 +121,7 @@ func _spill_pot() -> void:
 		# cubes would reap themselves at 25s and vacuum themselves to the player
 		# from any distance at 1.3s — a pot that collects itself is not a pot.
 		cube.spill = true
+		cube.from_rift = true
 		add_child(cube)
 		var ang := randf() * TAU
 		cube.position = Vector3(cos(ang), 0.0, sin(ang)) * randf_range(1.5, SCATTER)
@@ -132,9 +135,40 @@ func _process(delta: float) -> void:
 		_tear_mat.emission_energy_multiplier = 2.4 + sin(_spin * 3.1) * 1.0 \
 			+ float(pulses_done) * 0.9
 
+	# §111, RIFT-WORK t3. THE LAST SECOND: the klaxon a practiced hand hears
+	# before the tear moves. TIME, literally -- the pulse itself is unchanged.
+	var warn := GameState.rift_warn_seconds()
+	if warn > 0.0 and not _warned and _pulse_timer <= warn \
+			and pulses_done < PULSES:
+		_warned = true
+		Sfx.play("klaxon", -14.0, 1.8)
+		var hud_w := get_tree().get_first_node_in_group("hud")
+		if hud_w and _player_near():
+			hud_w.show_toast("THE TEAR IS ABOUT TO MOVE", Palette.THREAT)
+
+	# t1. THE FUSE READ: the escalation was always legible as danger; a worked
+	# hand reads it as a NUMBER. Prompt while near, pulses remaining, and gone
+	# again the moment you leave -- information, not a control.
+	var near := _player_near()
+	if near != _in_range_last:
+		_in_range_last = near
+		var hud_p := get_tree().get_first_node_in_group("hud")
+		if hud_p:
+			if near and GameState.skill_tier("rift_work") >= GameState.RIFT_FUSE_TIER \
+					and pulses_done < PULSES:
+				hud_p.prompt("AN OPEN SHEAR — %d PULSE%s LEFT IN IT" % [
+					PULSES - pulses_done, "" if PULSES - pulses_done == 1 else "S"])
+			elif not near:
+				hud_p.clear_prompt()
+
 	_pulse_timer -= delta
 	if _pulse_timer <= 0.0:
 		pulse()
+
+
+func _player_near() -> bool:
+	var p: Node3D = get_tree().get_first_node_in_group("player")
+	return p != null and p.global_position.distance_to(global_position) <= INTEL_READ_RANGE
 
 
 func pulse() -> void:
@@ -144,6 +178,7 @@ func pulse() -> void:
 		return
 	pulses_done += 1
 	_pulse_timer = pulse_interval
+	_warned = false
 
 	var tree := get_tree()
 	# THE TEAR SHOWS WHAT IS BEHIND IT. Read on the pulse rather than on spawn,
@@ -154,7 +189,8 @@ func pulse() -> void:
 		var p: Node3D = tree.get_first_node_in_group("player")
 		var m2 := tree.get_first_node_in_group("main")
 		if p != null and m2 != null and m2.has_method("file_apex_intel") \
-				and p.global_position.distance_to(global_position) <= INTEL_READ_RANGE:
+				and p.global_position.distance_to(global_position) \
+					<= INTEL_READ_RANGE * GameState.rift_read_mult():
 			_intel_read = true
 			m2.file_apex_intel("rift", global_position, INTEL_ERROR_DEG)
 	Sfx.play("klaxon", -9.0, 1.3)

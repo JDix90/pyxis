@@ -43,7 +43,8 @@ Taken by the author on 2026-08-21, before any code:
 | 3 | **The tug and the claim** — depth-scaled rescue fee, claim clock on deep spills | rides v27 | **BUILT** — §109 |
 | 4 | **The order book** — the hint that lied, two widened read windows, requisitions | rides v27 | **BUILT** — §110 |
 | 5a | **The ladder** — machinery, ledger page, SURVEYING + FILING | rides v27 | **BUILT** — §111 |
-| 5b | **The rest of the roster** — five more ladders and the four deepenings | rides v27 | not built |
+| 5b | **The rest of the roster** — five more ladders | rides v27 | **BUILT** — §111 |
+| 5c | the four legacy deepenings | rides v27 | **DEFERRED** — see §64 |
 | 6 | **The sounded ground** — teach the chain, held cells as anchors, colony works | rides v27 | not built |
 | 7 | **The measure** — re-derive the pacing band, derive the README's counts | none | not built |
 

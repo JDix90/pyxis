@@ -245,6 +245,15 @@ const SKILL_TIERS := {
 	# coverage has counted it persistently and bounded since v21, and no ladder
 	# has ever read the count.
 	"surveying": [0, 6, 16, 34, 60],
+	# Apexes downed and legends spent: at most three of one and a handful of the
+	# other in a whole game, so two rungs is the honest length of this ladder.
+	"hunting": [0, 1, 4],
+	# Rift CRATES claimed, not pots -- a pot is 30-36 crates and a third of what
+	# stands evaporates per pulse, so the count is the risk actually taken.
+	"rift_work": [0, 24, 72, 150],
+	"brokerage": [0, 4, 11, 24],
+	"colonial": [0, 1, 3, 6],
+	"wardenry": [0, 5, 14, 30],
 	# Returns filed with the refusers' network, and far marks read for the first
 	# time. Deliberately the two halves of one act -- filing is what buys the
 	# literacy, and a mark is what the literacy is FOR (§98).
@@ -253,11 +262,21 @@ const SKILL_TIERS := {
 const SKILL_LABELS := {
 	"surveying": "SURVEYING",
 	"filing": "FILING",
+	"hunting": "HUNTING",
+	"rift_work": "RIFT-WORK",
+	"brokerage": "BROKERAGE",
+	"colonial": "COLONIAL",
+	"wardenry": "WARDENRY",
 }
 # What to do if you want the first tier. §58's rule: a refusal names the act.
 const SKILL_VERBS := {
 	"surveying": "WORK A SURVEY MAST OUT PAST THE CHART",
 	"filing": "FILE A RETURN AT A FOREIGN MAST",
+	"hunting": "PUT AN APEX ENGINE DOWN",
+	"rift_work": "CLAIM CRATES OUT OF AN OPEN SHEAR",
+	"brokerage": "FILL A CONSIGNMENT OR TRADE WITH A CONVOY",
+	"colonial": "FOUND A COLONY ON A HYPER-STRUCTURE",
+	"wardenry": "CLEAR A GUARD POST IN THE DEEP",
 }
 # Index by tier, so index 0 is the unearned rung and reads as "".
 const SKILL_PERKS := {
@@ -270,6 +289,18 @@ const SKILL_PERKS := {
 	# that revealed the kind at range would delete the one thing reading a mark
 	# is FOR. Both of these buy the same reading, sooner and from further out.
 	"filing": ["", "A QUICKER HAND", "ALONGSIDE FROM FURTHER"],
+	# §111 commit 5b, the rest of the roster. Every grant is a helper below with
+	# a world class as its one consumer, so A TIER IS A GATE can measure the
+	# rule off-tree without building the world that renders it.
+	"hunting": ["", "THE COLD TRAIL", "THE CIRCLE READ"],
+	# NOT "the shear heard" -- the spawn already announces itself to everybody
+	# on the comms plate, bearing included, and a tier that grants what everyone
+	# has is a rung that grants nothing (§88, caught by reading the surface
+	# before wiring the perk). The middle rung is reach at the tear instead.
+	"rift_work": ["", "THE FUSE READ", "THE WIDE READING", "THE LAST SECOND"],
+	"brokerage": ["", "THE MANIFEST HAIL", "THE STANDING WORD", "ROUTE SENSE"],
+	"colonial": ["", "THE SILHOUETTE NAMED", "THE GROUND SOUNDED", "KEPT LIGHTS"],
+	"wardenry": ["", "THE POST READ", "THE COUNT KEPT", "THE BREACH WINDOW"],
 }
 
 # The tiers, named where the world reads them so a call site says what it means.
@@ -279,6 +310,26 @@ const SURVEY_TEMPO_BONUS := 0.25    # a quarter off the hold
 const SURVEY_RIVAL_TIER := 3
 const SURVEY_REACH_TIER := 4
 const SURVEY_REACH_MULT := 1.5      # far enough to work a guarded hull's mast
+const HUNTING_TRAIL_TIER := 1
+const HUNTING_TRAIL_MULT := 0.85    # every filed bearing lands a little truer
+const HUNTING_CIRCLE_TIER := 2
+const RIFT_FUSE_TIER := 1
+const RIFT_READ_TIER := 2
+const RIFT_READ_MULT := 1.5     # the shear's own reading, taken from further out
+const RIFT_WARN_TIER := 3
+const RIFT_WARN_SECONDS := 3.0
+const BROKER_HAIL_TIER := 1
+const BROKER_WORD_TIER := 2
+const BROKER_ROUTE_TIER := 3
+const COLONIAL_NAME_TIER := 1
+const COLONIAL_NAME_MULT := 2.0     # the silhouette answers from twice as far
+const COLONIAL_SOUND_TIER := 2
+const COLONIAL_LIGHTS_TIER := 3
+const WARDEN_READ_TIER := 1
+const WARDEN_COUNT_TIER := 2
+const WARDEN_WINDOW_TIER := 3
+const WARDEN_WINDOW_MULT := 1.25    # a hulk whose post you cleared cracks faster
+
 const FILING_QUICK_TIER := 1
 const FILING_QUICK_BONUS := 0.25    # a quarter off the hold
 const FILING_REACH_TIER := 2
@@ -1968,6 +2019,10 @@ func note_mark_spent(key: String) -> bool:
 	if not is_mark_read(key) or is_mark_spent(key):
 		return false
 	marks_seen[key] = MARK_CLOSED if is_mark_given(key) else MARK_SPENT
+	# §111. HUNTING's second feed: a legend resolved. First transitions only by
+	# construction -- the guard above already refused a re-spend -- so a legend
+	# pays this ladder exactly once, the way a mark pays FILING exactly once.
+	mark_skill("hunting")
 	_queue_save()
 	return true
 
@@ -2542,6 +2597,9 @@ func claim_colony(key: String, x: float, z: float) -> bool:
 		return false
 	colonies[key] = {"x": x, "z": z, "founded_at": played_seconds}
 	note_log("COLONY FOUNDED — %s" % key)
+	# §111. COLONIAL's one feed, in the one mutator, on the success path only --
+	# a duplicate key returned above and paid nothing.
+	mark_skill("colonial")
 	_queue_save()
 	return true
 
@@ -3418,6 +3476,53 @@ func skill_line(id: String) -> String:
 	if left < 0:
 		return "%s %d — %s · NOTHING LEFT TO LEARN" % [label, t, perk]
 	return "%s %d — %s · %d TO NEXT" % [label, t, perk, left]
+
+
+# §111 commit 5b. THE GRANTS, AS RULE FUNCTIONS. Each of these is the whole of
+# its tier's mechanism; the world class that consumes it renders the result and
+# decides nothing. That is what lets A TIER IS A GATE measure every one of them
+# off-tree, and it is §19's "test the rule, not the rendering" made structural.
+
+func hunting_error_mult() -> float:
+	# t1. Applied at file_apex_intel's intake, so every channel -- mast, relic,
+	# both desks, a cleared post, a shear -- lands a little truer. INFORMATION:
+	# nothing is free that was paid for before, the same readings just age
+	# better in a practiced hand.
+	if skill_tier("hunting") >= HUNTING_TRAIL_TIER:
+		return HUNTING_TRAIL_MULT
+	return 1.0
+
+
+func rift_read_mult() -> float:
+	# t2. The once-per-shear ±4° reading -- the sharpest channel in the game --
+	# taken from half again the distance, which is less time spent standing in
+	# a collapse zone. Reach at a thing that already pays, never a new payout.
+	if skill_tier("rift_work") >= RIFT_READ_TIER:
+		return RIFT_READ_MULT
+	return 1.0
+
+
+func rift_warn_seconds() -> float:
+	# t3. TIME, literally: the collapse klaxon sounds this many seconds before
+	# the pulse rather than on it.
+	if skill_tier("rift_work") >= RIFT_WARN_TIER:
+		return RIFT_WARN_SECONDS
+	return 0.0
+
+
+func colonial_name_mult() -> float:
+	if skill_tier("colonial") >= COLONIAL_NAME_TIER:
+		return COLONIAL_NAME_MULT
+	return 1.0
+
+
+func wardenry_breach_mult() -> float:
+	# t3. Only a hulk whose OWN post the player just cleared -- the consumer
+	# checks the flag, this supplies the rate. TIME, and earned at the exact
+	# hull it was earned on.
+	if skill_tier("wardenry") >= WARDEN_WINDOW_TIER:
+		return WARDEN_WINDOW_MULT
+	return 1.0
 
 
 func note_read(component: String) -> void:

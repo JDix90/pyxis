@@ -137,7 +137,11 @@ func _process(delta: float) -> void:
 	# this the only thing you learned in fifty minutes of sweeping evaporates.
 	# GameState refuses the repeat, so this is one dictionary lookup per frame
 	# per instance and no toast after the first.
-	if d <= SIGHT_RANGE and system_id != "" and index >= 0:
+	# §111, COLONIAL t1. THE SILHOUETTE NAMED: a founder's eye files the
+	# sighting from twice the distance. Same toast, same one-per-structure
+	# refusal in GameState -- the tier moves WHEN you learn it, never what.
+	if d <= SIGHT_RANGE * GameState.colonial_name_mult() \
+			and system_id != "" and index >= 0:
 		if GameState.note_structure_seen(claim_key()):
 			var hud := get_tree().get_first_node_in_group("hud")
 			if hud != null and hud.has_method("show_toast"):
@@ -295,6 +299,17 @@ func _found() -> void:
 	# is where the player actually stood, not a recipe for recomputing it.
 	_holding = false
 	GameState.claim_colony(claim_key(), global_position.x, global_position.z)
+	# §111, COLONIAL t2. THE GROUND SOUNDED: nobody founds a colony without
+	# walking its ground, and at t2 the chart agrees -- the cell is marked
+	# worked, through the same one door every mast reading takes, so the
+	# sentinel guard and the cap apply here identically. COVERAGE ONLY: this
+	# routes around the mast's own feed, so it pays SURVEYING nothing, and it
+	# yields no chart good -- shading, not income.
+	if GameState.skill_tier("colonial") >= GameState.COLONIAL_SOUND_TIER:
+		var main_cs := get_tree().get_first_node_in_group("main")
+		if main_cs != null and main_cs.deep_space != null:
+			main_cs.deep_space.note_surveyed(
+				main_cs.deep_space.cell_of(global_position))
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud:
 		hud.crack_progress(-1.0)

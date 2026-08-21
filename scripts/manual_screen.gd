@@ -375,7 +375,9 @@ func _build_living() -> void:
 	# about precisely the rungs that make the deepest salvage readable, telling
 	# the player the only thing that opens the Fathoms does not exist. Both
 	# numbers are derived, and the sentence now says which skill is the long one.
-	_body.add_child(_para("Four skills, each fed by a different verb so no single run levels them all: ARCHEOLOGY reads salvage, SMUGGLING moves what a market will not touch, MINING cuts rock, PERSUASION talks a pack out of a toll. Most have %d tiers and ARCHEOLOGY has %d, because the deepest salvage needs the last two. Not one of them pays you in credits — they buy information, a choice, and access." % [GameState.MINING_TIERS.size() - 1, GameState.ARCHEOLOGY_TIERS.size() - 1]))
+	# §111. DERIVED, so the count can never lie again -- this paragraph said
+	# "Four skills" right up until there were eleven.
+	_body.add_child(_para("%d skills, each fed by a different verb so no single run levels them all: ARCHEOLOGY reads salvage, SMUGGLING moves what a market will not touch, MINING cuts rock, PERSUASION talks a pack out of a toll — and the pilot's ledger on the pause menu carries the rest, from SURVEYING to WARDENRY, each naming the act that trains it. Not one of them pays you in credits — they buy time, information, a choice, and access." % [4 + GameState.skill_ids().size()]))
 	_body.add_child(_back())
 
 

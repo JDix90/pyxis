@@ -3107,6 +3107,16 @@ func hail_contact(ship) -> void:
 		if "designation" in (ship as Node3D) else ""
 	if desig != "":
 		line += " · %s" % desig
+	# §111, BROKERAGE t1. THE MANIFEST HAIL: a broker hears a hail as a quote.
+	# Convoys at FRIENDLY+ only -- the same pair of gates the trade verb itself
+	# stands behind, so this never names a number the menu will not honour.
+	# INFORMATION: the trade, at the same rate, is one more tap either way.
+	if GameState.skill_tier("brokerage") >= GameState.BROKER_HAIL_TIER \
+			and (ship as Node3D).is_in_group("deep_convoy") \
+			and band <= FactionDB.Band.FRIENDLY:
+		var q := space_trade_quote()
+		if int(q["total"]) > 0:
+			line += " · THEY'D PAY %s FOR THE HOLD" % _comma_int(int(q["total"]))
 	_contact_toast(line, FactionDB.tint_of(flag))
 
 
@@ -3247,6 +3257,10 @@ func space_trade(ship) -> void:
 	for id_v in goods:
 		GameState.unload_cargo(String(id_v), int(goods[id_v]))
 	GameState.add_salvage(total)
+	# §111. BROKERAGE's second feed: a convoy dealt with, once per SALE rather
+	# than once per unit -- units would make one bulk haul a whole tier, which
+	# is volume wearing a verb's clothes.
+	GameState.mark_skill("brokerage")
 	# The dock's own sale sound, for the dock's own reason: this is the same
 	# transaction happening somewhere with no counter.
 	Sfx.play_streak("pickup", -8.0)
@@ -4660,6 +4674,13 @@ func file_apex_intel(kind: String, from: Vector3, err_deg: float) -> bool:
 	# reading can refuse to charge for one that would have been a duplicate.
 	if not SystemDB.exists(system_id):
 		return false
+	# §111, HUNTING t1. THE COLD TRAIL: a practiced hand files every channel's
+	# reading a little truer. At the intake, so the mast, the relic, both desks,
+	# the post and the shear all benefit equally -- and only the bearing tier,
+	# because the ring tier has no error to narrow.
+	if err_deg > 0.0:
+		err_deg *= GameState.hunting_error_mult()
+	var before_est: Dictionary = Hunt.estimate(system_id)
 	var hint: Dictionary = Hunt.ring_hint(system_id, GameState.run_seed) if err_deg <= 0.0 \
 		else Hunt.bearing_hint(system_id, from, kind, err_deg, GameState.run_seed)
 	if not GameState.add_apex_hint(system_id, hint):
@@ -4671,6 +4692,17 @@ func file_apex_intel(kind: String, from: Vector3, err_deg: float) -> bool:
 	var est: Dictionary = Hunt.estimate(system_id)
 	var engine := String((SystemDB.get_system(system_id).get("apex", {}) as Dictionary)
 		.get("name", "THE ENGINE"))
+	# §111, HUNTING t2. THE CIRCLE READ: what this reading was WORTH, said in
+	# the same breath. "The circle got smaller" was always the only legible
+	# feedback; a practiced hunter reads it in units. INFORMATION about your own
+	# dossier, never about the engine.
+	var shrink_note := ""
+	if GameState.skill_tier("hunting") >= GameState.HUNTING_CIRCLE_TIER \
+			and not before_est.is_empty() and not est.is_empty():
+		var r0 := float(before_est.get("radius", 0.0))
+		var r1 := float(est.get("radius", 0.0))
+		if r0 > r1:
+			shrink_note = " · CIRCLE %du -> %du" % [int(r0), int(r1)]
 	var line := ""
 	if err_deg <= 0.0:
 		line = "INTEL — %s IN %s, %s" % [engine,
@@ -4678,9 +4710,9 @@ func file_apex_intel(kind: String, from: Vector3, err_deg: float) -> bool:
 	else:
 		# The hint's stored bearing is in the world convention (and is in players'
 		# saves that way); it is turned into a compass number here, at the glass.
-		line = "INTEL — %s · BEARING %03d ±%d° · SEARCH ±%du" % [engine,
+		line = "INTEL — %s · BEARING %03d ±%d° · SEARCH ±%du%s" % [engine,
 			DeepSpace.to_compass(float(hint["bearing"])), int(round(err_deg)),
-			int(round(float(est["radius"])))]
+			int(round(float(est["radius"]))), shrink_note]
 	if hud:
 		hud.show_toast(line, Palette.GOLD)
 	GameState.note_log(line)
@@ -5011,6 +5043,10 @@ func award_apex_bonus(sys_id: String, bonus: int) -> void:
 	if sys_id == "" or GameState.has_killed_apex(sys_id):
 		return
 	GameState.mark_apex_killed(sys_id)
+	# §111. HUNTING's first feed: an engine down, first kill per system only --
+	# this function's own guard is the anti-farm, and a repeat kill pays the
+	# ladder the same nothing it pays the bonus.
+	GameState.mark_skill("hunting")
 	add_salvage(bonus)
 	if hud:
 		hud.show_toast("FIRST KILL BONUS  +%d" % bonus, Palette.GOLD)
@@ -14626,7 +14662,8 @@ func _run_skill_test() -> void:
 	#    about where the calls live, checked by reading them: breach, read,
 	#    fence-sale, seam-cut, parley, mast, filing -- seven acts, no overlap).
 	var feeds := ["archeology", "smuggling", "mining", "persuasion",
-		"surveying", "filing"]
+		"surveying", "filing", "hunting", "rift_work", "brokerage",
+		"colonial", "wardenry"]
 	var crossed := ""
 	for f in feeds:
 		var before := _skill_snapshot()
@@ -14639,9 +14676,9 @@ func _run_skill_test() -> void:
 		var moved := _skill_moved(before)
 		if moved.size() != 1 or String(moved[0]) != f:
 			crossed = "%s moved %s" % [f, str(moved)]
-	print("[skill] FEEDS COMPETE, SIX WAYS one feed fired at a time across %d ladders, first crossover: %s -> %s" % [
+	print("[skill] FEEDS COMPETE, ELEVEN WAYS one feed fired at a time across %d ladders, first crossover: %s -> %s" % [
 		feeds.size(), crossed if crossed != "" else "none",
-		"PASS" if crossed == "" else "FAIL"])
+		"PASS" if crossed == "" and feeds.size() == 11 else "FAIL"])
 
 	# 2. NO LADDER PAYS IN CREDITS. §19/§26's first law, and the one that keeps
 	#    every ladder clear of PACINGTEST's band. Swept across a full climb of
@@ -14690,17 +14727,35 @@ func _run_skill_test() -> void:
 	var reach0 := mast.reach()
 	var read0 := mark.read_seconds()
 	var near0 := mark.read_range()
-	GameState.skills = {"surveying": 999, "filing": 999}
+	var at_zero := [GameState.hunting_error_mult(), GameState.rift_read_mult(),
+		GameState.rift_warn_seconds(), GameState.colonial_name_mult(),
+		GameState.wardenry_breach_mult()]
+	GameState.skills = {"surveying": 999, "filing": 999, "hunting": 999,
+		"rift_work": 999, "brokerage": 999, "colonial": 999, "wardenry": 999}
 	var hold1 := mast.survey_seconds()
 	var reach1 := mast.reach()
 	var read1 := mark.read_seconds()
 	var near1 := mark.read_range()
+	var at_cap := [GameState.hunting_error_mult(), GameState.rift_read_mult(),
+		GameState.rift_warn_seconds(), GameState.colonial_name_mult(),
+		GameState.wardenry_breach_mult()]
 	mast.free()
 	mark.free()
+	# Every 5b helper must MOVE across the climb, in the direction its grant
+	# claims: error down, reach up, warning up, sight up, rate up. A helper
+	# that reads the same at zero and at cap is a tier granting nothing.
+	var helpers_ok: bool = float(at_cap[0]) < float(at_zero[0]) \
+		and float(at_cap[1]) > float(at_zero[1]) \
+		and float(at_cap[2]) > float(at_zero[2]) \
+		and float(at_cap[3]) > float(at_zero[3]) \
+		and float(at_cap[4]) > float(at_zero[4])
 	var gates_ok: bool = hold1 < hold0 and reach1 > reach0 \
-		and read1 < read0 and near1 > near0
-	print("[skill] A TIER IS A GATE mast hold %.2fs->%.2fs, reach %.1f->%.1f; plate read %.2fs->%.2fs, alongside %.1f->%.1f -> %s" % [
+		and read1 < read0 and near1 > near0 and helpers_ok
+	print("[skill] A TIER IS A GATE mast hold %.2fs->%.2fs, reach %.1f->%.1f; plate read %.2fs->%.2fs, alongside %.1f->%.1f; the five 5b helpers all move (error %.2f->%.2f, shear reach %.1fx->%.1fx, warn %.0fs->%.0fs, sight %.1fx->%.1fx, breach %.2fx->%.2fx) -> %s" % [
 		hold0, hold1, reach0, reach1, read0, read1, near0, near1,
+		float(at_zero[0]), float(at_cap[0]), float(at_zero[1]), float(at_cap[1]),
+		float(at_zero[2]), float(at_cap[2]), float(at_zero[3]), float(at_cap[3]),
+		float(at_zero[4]), float(at_cap[4]),
 		"PASS" if gates_ok else "FAIL"])
 
 	# 5. EVERY RUNG SAYS WHAT IT BOUGHT. A tier with no perk string is a tier

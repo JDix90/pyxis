@@ -1865,6 +1865,39 @@ func _build_contract_board() -> void:
 
 	for offer in contracts.board(_port.port_id):
 		_body.add_child(_contract_row(offer, free))
+		# §111, BROKERAGE t2. THE STANDING WORD: a broker reads a consignment
+		# against the weather at its destination. Fine print under the row it is
+		# about, INFORMATION only -- the reward and the terms move by nothing.
+		if GameState.skill_tier("brokerage") >= GameState.BROKER_WORD_TIER \
+				and String(offer.get("kind", "")) == "deliver":
+			var cdef := ContractDB.get_contract(String(offer.get("id", "")))
+			var dest := String(cdef.get("dest", ""))
+			var dgood := String(cdef.get("good", ""))
+			var dev := Market.event_for(dest, dgood)
+			if not dev.is_empty():
+				var word := Label.new()
+				word.text = "THE WORD: %s AT %s — %s RUNS OUT IN %s" % [
+					Market.event_label(dev), Market.event_place(dev),
+					CommodityDB.short_name(dgood),
+					_mmss(float(dev.get("remaining", 0.0)))]
+				word.add_theme_font_size_override("font_size", 9)
+				word.add_theme_color_override("font_color", Market.event_color(dev))
+				_body.add_child(word)
+
+	# §111, BROKERAGE t3. ROUTE SENSE: the pair, NEVER the margin. The paid
+	# rumour quotes the number; a broker's own read of the board names only
+	# where things are moving -- deliberately the weaker product, the same
+	# ordering the hunt desk keeps between the free mast and the paid word.
+	if GameState.skill_tier("brokerage") >= GameState.BROKER_ROUTE_TIER:
+		var route := Market.best_stocked_route()
+		if not route.is_empty():
+			var sense := Label.new()
+			sense.text = "ROUTE SENSE — %s IS MOVING %s TO %s TONIGHT" % [
+				CommodityDB.short_name(String(route["good"])),
+				String(route["from"]), String(route["to"])]
+			sense.add_theme_font_size_override("font_size", 10)
+			sense.add_theme_color_override("font_color", Palette.TEAL)
+			_body.add_child(sense)
 
 
 func _contract_row(offer: Dictionary, slots_free: int) -> Control:
