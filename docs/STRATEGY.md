@@ -6382,7 +6382,7 @@ below:
 |---|---|---|---|
 | 0 | the ledger of prices: a SINKS block deriving every sink as loop-minutes off PACINGTEST's own `earned`; the §-rule; §5's refusal of operating costs recorded at the site | none | **BUILT** — §114 |
 | 1 | the runner's teeth: kill on the first SCRIPT ERROR, `--parse`, `--legs`, the checker's stale docstring | none | **BUILT** — and `--legs` found TITLETEST on its first run |
-| 2 | `docs/DEFECTS.md` — ten recurring defect classes, each with the rule or leg that covers it | none | **PLANNED** |
+| 2 | `docs/DEFECTS.md` — ten recurring defect classes, each with the rule or leg that covers it | none | **BUILT** — five of the ten are covered only by a habit, and that is the column that matters |
 | 3 | the colleague's cell: a third validated word in `survey_filed`, captured at the act because it CANNOT be derived | **v28** | **PLANNED** |
 | 4 | the trip is the cost: a fourth colony work taking a DELIVERED good, raised at the structure | rides v28 | **PLANNED** |
 | 5 | a kept light: the procession and a player colony, one broadcast, once per run | rides v28 | **PLANNED** |
