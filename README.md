@@ -207,25 +207,33 @@ save bump. §98 then adds three legs to `RETURNTEST` and one clause each to
 bump, since `marks_seen` rides v25 — that sweep came back green at **755 across
 77**, after one red leg it found in §94 (`MINING COSTS A MOUNT` had been
 counting utility slots off the static table since berths grew it, and had
-therefore been checking nothing for three commits). §99 then adds three more
-legs to `RETURNTEST`, again with no new run, no new mode and no save bump,
-for a predicted **758 across 77** — **never confirmed by a recorded count**,
-and an earlier revision of this paragraph called it "green" on the strength of
-a passing remark. That was a prediction typed as a measurement, which is the
-one thing this paragraph exists to refuse. **755 across 77 (through §98) is
-the last hard number in this repo.** §100 then adds one more `RETURNTEST` leg (the
-overdraw mechanism), no new run and no bump; §101 adds two more (the vein and
-the layup), likewise; §102 adds three more (the dangerous three legends), also
-with no new run, mode or bump — but it introduces three new `class_name`s
-(`StillnessGround`, `StandingOrder`, `SoundingSerpent`), so run
-`"$GODOT" --headless --path . --import` before the next sweep. That sweep
-should read **764 across 77**. §103 (the orrery) then adds two more
-`RETURNTEST` legs and one more `class_name` (`Orrery`) — still no new run, no
-new mode and no save bump — so the sweep after that should read **766 across
-77**. §104 (the forge) then adds one more leg and one more `class_name`
-(`PatternForge`), again with no new run, mode or bump: **767 across 77**.
-§105 (the procession) then adds two more legs and one more `class_name`
-(`Procession`): **769 across 77**.
+therefore been checking nothing for three commits).
+
+**§99–§105 were built without a sweep between them** — seven commits, eleven
+new `RETURNTEST` legs and six new `class_name`s, while no machine with Godot
+on it was to hand. The sweep that finally ran them came back **769 across 77,
+all green, at save format v25**, and that is the current hard number. It took
+three rounds to get there, and what it found is the argument for never
+stacking that many unswept commits again:
+
+- **One real defect.** `PatternForge._watch_the_bed` walked the `hostiles`
+  group looking for `is_dying()`, and `Hostile._die` leaves that group on its
+  opening two lines — so the forge could not have armed once, in the harness
+  or in play. The parser, the static checker and every reading of the file
+  took it for correct.
+- **Four defective assertions**, three of them measuring something true but
+  not the thing they claimed: a leg that parked the ship at the mark instead
+  of at the legend and then passed its deferral clause on nothing having
+  happened; a leg that read a stale broadcast plate from three legs earlier as
+  a failure of the code under test; and a pays-nothing clause whose capture
+  sat above a 0.4s await, so it measured four tenths of a second of the whole
+  world rather than the act. That last one is §96's `DIRECTIVETEST` lesson
+  repeating verbatim in the same file.
+
+One earlier revision of this paragraph also called §99 "green" on the strength
+of a passing remark rather than a count. That was a prediction typed as a
+measurement, which is the one thing this paragraph exists to refuse; it is
+recorded here rather than quietly deleted.
 
 (§96's adversarial pass reported after both commits shipped; its two confirmed
 findings were folded back in without changing any count — one strengthened an
