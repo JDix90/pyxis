@@ -12633,6 +12633,83 @@ func _run_raid_test() -> void:
 		"PASS" if raced == "THIS MUST BE LEGIBLE" and raced_alpha > 0.9
 			else "FAIL"])
 
+	# §121. A REFUSAL OWNS THE LINE FOR A MOMENT. The defect §113 spent a red on
+	# was narrower than "the prompt is crowded": a NUDGE replaced a REFUSAL on
+	# the first-ever tap, for the pilot least able to guess. Four clauses, and
+	# the ordering they establish is
+	#     the parley's hard lock  >  a live refusal  >  everything else.
+	#
+	# Driven rather than waited out -- the hold is two seconds of wall clock and
+	# the harness sets the deadline directly, `_spill_claim_left`'s own posture:
+	# "25s of harness time to prove a branch is off is 25s nobody will spend".
+	hud._prompt_held = false
+	hud._prompt_soft_until = 0.0
+	hud.clear_prompt()
+	hud.prompt_refusal("THE NOTATION IS NOT YOURS")
+	hud.prompt("A DERELICT IS WITHIN RANGE")
+	hud.clear_prompt()
+	await get_tree().create_timer(0.3).timeout
+	var refusal_kept := hud.prompt_text()
+	# b. AND A ONCE-EVER BARK IS DEFERRED, NOT SPENT. The regression this lock
+	#    would otherwise have introduced, and the reason prompt_busy() exists:
+	#    Barks.fire guards on the HARD lock before mark_bark ("a bark that fires
+	#    once ever must not be consumed by being suppressed") and then writes --
+	#    so a soft lock with no ask-first accessor would have gone on marking
+	#    barks seen while the write was quietly declined. `first_hostiles` is
+	#    still unfired here: the leg above deferred it under the demand and
+	#    asserted so.
+	Barks.fire("first_hostiles")
+	await get_tree().process_frame
+	var bark_deferred: bool = not GameState.has_seen_bark("first_hostiles") \
+		and hud.prompt_text() == refusal_kept
+	# c. A REFUSAL REPLACES A REFUSAL. The newest one is the one the player just
+	#    earned, so this must NOT be a first-writer-wins lock.
+	hud.prompt_refusal("THE GROUND IS NOT SOUNDED")
+	await get_tree().process_frame
+	var refusal_replaced := hud.prompt_text()
+	# d. AND THE DEMAND OUTRANKS IT. hold_prompt clears the soft deadline before
+	#    it writes; without that line a refusal would refuse the one sentence in
+	#    this game that gets six seconds while something closes on the player.
+	hud.hold_prompt("RAIDERS DEMAND 400 SALVAGE — PAY OR REFUSE")
+	await get_tree().process_frame
+	var demand_wins := hud.prompt_text()
+	hud.hide_parley()
+	# e. AND IT LAPSES. Not a lock the world never gets back -- with the deadline
+	#    passed, the next ambient line lands normally.
+	hud._prompt_soft_until = 0.0
+	hud.prompt("THE WORLD GETS IT BACK AGAIN")
+	await get_tree().process_frame
+	var lapsed := hud.prompt_text()
+	print("[raid] A REFUSAL OWNS THE LINE held through a nudge and a raw clear ('%s'); a once-ever bark deferred not spent=%s; a second refusal replaces it ('%s'); the demand outranks both ('%s'); and it lapses ('%s') -> %s" % [
+		refusal_kept, str(bark_deferred), refusal_replaced, demand_wins, lapsed,
+		"PASS" if refusal_kept == "THE NOTATION IS NOT YOURS" and bark_deferred
+			and refusal_replaced == "THE GROUND IS NOT SOUNDED"
+			and demand_wins.contains("RAIDERS")
+			and lapsed == "THE WORLD GETS IT BACK AGAIN" else "FAIL"])
+
+	# §121. AND THE LINE WRAPS. §105 asked for "a device rather than a guess",
+	# and this asserts the DEVICE rather than any sentence's length: a copy edit
+	# must not redden it, and turning the wrap off must. The box is also checked
+	# to be narrower than the design space, since a width that silently grew past
+	# 720 would stop wrapping while still looking configured.
+	var wrap_on: bool = hud._prompt_label.autowrap_mode \
+		== TextServer.AUTOWRAP_WORD_SMART
+	var box_w: float = hud._prompt_label.custom_minimum_size.x
+	var boxed: bool = box_w > 0.0 and box_w < 720.0
+	# Reported, not asserted: which prompt is the longest and whether it needs
+	# the box at all. CANNOT_READ is 124 characters against a next-longest of 83,
+	# so this is one outlier and not a policy -- and if a later edit makes every
+	# prompt short, that is worth SEEING rather than going red over.
+	var font := ThemeDB.fallback_font
+	var widest := 0.0
+	if font != null:
+		widest = font.get_string_size(SoundingMark.CANNOT_READ,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+	print("[raid] THE PROMPT LINE WRAPS autowrap on=%s, box %.0fpx inside a 720 design space=%s (the longest prompt measures %.0fpx, %s the box) -> %s" % [
+		str(wrap_on), box_w, str(boxed), widest,
+		"over" if widest > box_w else "inside",
+		"PASS" if wrap_on and boxed else "FAIL"])
+
 	for n in get_tree().get_nodes_in_group("raider"):
 		if is_instance_valid(n):
 			(n as Node3D).queue_free()

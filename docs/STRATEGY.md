@@ -6387,7 +6387,7 @@ below:
 | 4 | the trip is the cost: a fourth colony work taking a DELIVERED good, raised at the structure | rides v28 | **BUILT** — §116; the DEEP REPEATER granted nothing until a §112 defect was fixed (the relay never filtered deep weather out of a list headed CHARTED MARKETS) |
 | 5 | a kept light: the procession and a player colony, one broadcast, once per run | rides v28 | **BUILT** — §117 |
 | 6 | what the claimant left: a claimed spill enters the captain's log and the ledger | rides v28 | **BUILT** — §118; three louder versions died first, including the research pass's own recommendation |
-| 7 | the prompt holds its refusals: `prompt(text, hold_s := 0.0)` appended-optional, and the label wraps | rides v28 | **PLANNED** |
+| 7 | the prompt holds its refusals: `prompt(text, hold_s := 0.0)` appended-optional, and the label wraps | rides v28 | **BUILT** — §121; adding the lock nearly converted a once-ever bark from deferred to spent |
 | 8 | the eleventh: an all-ladders capstone derived from both table families, one broadcast, a visible count | rides v28 | **BUILT** — §119; derived from the tables so 5c can land on either side of it |
 | 9 | the measure: the horizon closed and the sweep read | none | **PLANNED** |
 
@@ -12444,3 +12444,93 @@ needs a human. Reading the remaining ones found `[market] CARGO overflow load
 returned %d (expect 0 …)` — same shape, and **not** a defect: the next line is
 `THE HOLD IS A WALL`, which asserts that exact value. That is the column working
 as designed. The count is a question; the answer here was "covered".
+
+## 121. A refusal owns the line (Horizon 11, commit 7 — rides v28)
+
+Idea 10 asked for a priority queue on the prompt line. **It is refused in
+writing, at the site, twice** — `hud.gd`'s *"A LOCK RATHER THAN A PRIORITY
+NUMBER, because there is exactly one thing in this game that gets six seconds
+to be read while something closes on you"*, and `procession.gd`'s *"THE PROMPT
+LINE IS FOR REFUSALS ONLY."* Four devices for the class already shipped
+(`_prompt_held`, `clear_prompt_if`, `prompt_text`, `broadcast_busy`/
+`toast_busy`), and §113 added a fifth.
+
+So the defect is narrower than "the line is crowded" — and §113 measured it: **a
+nudge replaced a refusal on the first-ever tap**, for the pilot least able to
+guess.
+
+### A soft lock with a duration, and three rules
+
+    the parley's hard lock  >  a live refusal  >  everything else
+
+`prompt(text, hold_s := 0.0)` — **appended and optional**, §108's call for this
+environment said again: no Godot binary, a wrong arity is a parse error the
+static pass cannot see, and there are sixty-three call sites. Fifty-eight stay
+byte-identical.
+
+A refusal **replaces** a refusal, because the newest is the one the player just
+earned; a repeat of the same line **re-arms** rather than ageing out mid-read;
+`clear_prompt()` waits, because "the player flew a metre" is not a reason to
+delete the sentence explaining why the thing they tapped said no. A **queue** is
+refused for its own reason: it would deliver sentences *after* the moment that
+made them true, which is worse than losing them.
+
+`hold_prompt` clears the soft deadline before it writes, and that line is
+load-bearing — without it, a refusal would refuse the demand.
+
+### Which prompts are refusals is a rule, not a list
+
+    fired by an ACT    -- a tap, a hold, a verb just tried, saying why not
+    fired by RANGE     -- re-asserted every frame, cleared on the way out
+
+A range line needs no protecting: it says itself again a frame later, and
+locking one would make the world sticky — worse than the defect. Five sites
+convert (`CANNOT_READ` ×2, the warden hold refusal whose own comment says *"a
+refusal the player cannot read is a bug report"*, and the procession's `SLOWLY`
+and `NOT_SALVAGE`). `mineable_seam`'s *"SEAM TOO DEEP"* is the case worth
+knowing: it reads like a refusal, is edge-triggered off range, and stays a plain
+prompt.
+
+**They call `prompt_refusal(text)`, never `prompt(text, HUD.SOME_CONST)`.** All
+three of those world classes reach the HUD through
+`get_tree().get_first_node_in_group("hud")` — a group lookup with **no
+class-name edge** — and reading a constant off `HUD` to pass as an argument
+would create one, from a leaf, in a project where a leaf that fails to compile
+takes the whole chain down behind it (§111).
+
+### The regression this nearly shipped
+
+`Barks.fire` checks the hard lock **before** `mark_bark`, deliberately: *"a bark
+that fires once ever must not be consumed by being suppressed."* Then it writes.
+
+Add a second lock the guard does not know about, and that ordering quietly
+inverts: the bark is **marked seen** and the write is **silently declined** — a
+once-ever onboarding line spent on a player who never saw it. Which is the exact
+defect the guard exists to prevent, arriving through a door it does not cover,
+in the commit written to protect exactly this class of sentence.
+
+The fix is `prompt_busy()`, `broadcast_busy`/`toast_busy`'s posture verbatim — a
+caller with something that can wait asks first — and `Barks.fire`'s hud lookup
+moving above `mark_bark` so the new guard sits beside the old one. **The rule
+worth keeping: a lock without an ask-first accessor converts "deferred" into
+"spent" for every once-ever caller.** `A REFUSAL OWNS THE LINE` asserts the
+deferral as its own clause so it cannot come back.
+
+### And the line wraps
+
+§105 flagged `SoundingMark.CANNOT_READ` as *"still wanting a device rather than
+a guess"*. The measurement is what makes it a device: it is **124 characters and
+the next-longest prompt in the entire game is 83** — one outlier at 1.5×, not a
+policy.
+
+The layout already supported the fix and nobody had used it: `grow_vertical` is
+`GROW_DIRECTION_BEGIN`, so a second line grows **upward**, away from the action
+dock the label's `-152` was carefully chosen to clear, and `grow_horizontal` is
+`BOTH`, so a fixed width centres itself. A width and `autowrap_mode` is the whole
+change.
+
+`THE PROMPT LINE WRAPS` asserts the **device** — autowrap on, and a box narrower
+than the 720 design space so a width that silently grew past it could not stop
+wrapping while still looking configured — and *reports* the longest prompt's
+measured width without asserting it. A copy edit must not redden this; turning
+the wrap off must.

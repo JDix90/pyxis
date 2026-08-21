@@ -123,7 +123,7 @@ class Hull:
 		FX.ring_pulse(get_parent(), global_position, Palette.RIVAL, 2.2, 0.7)
 		if hud:
 			if hud.has_method("broadcast_busy") and hud.broadcast_busy():
-				hud.prompt(Procession.SLOWLY)
+				hud.prompt_refusal(Procession.SLOWLY)
 			elif hull_name == "":
 				hud.show_broadcast("A HULL, POINTED HOME",
 					Procession.UNNAMED_LINE, Palette.RIVAL)
@@ -139,7 +139,7 @@ class Hull:
 		if GameState.cargo_used() <= 0:
 			var hud_e = _hud()
 			if hud_e:
-				hud_e.prompt(Procession.NOT_SALVAGE)
+				hud_e.prompt_refusal(Procession.NOT_SALVAGE)
 			return
 		if not _in_range():
 			_approach()

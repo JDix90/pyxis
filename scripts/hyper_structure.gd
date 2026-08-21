@@ -236,7 +236,7 @@ func hold_begin() -> void:
 		# no-op. A refusal the player cannot read is a bug report.
 		var hud := get_tree().get_first_node_in_group("hud")
 		if hud:
-			hud.prompt("%d WARDEN(S) STILL STANDING — CLEAR THEM TO FOUND THIS COLONY"
+			hud.prompt_refusal("%d WARDEN(S) STILL STANDING — CLEAR THEM TO FOUND THIS COLONY"
 				% wardens_standing())
 		return
 	if not _player_in_range():

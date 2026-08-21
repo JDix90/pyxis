@@ -243,7 +243,7 @@ func on_tapped() -> void:
 		# something they have just been told they cannot read is the tap moving
 		# the ship for nothing, which is the affordance problem inverted.
 		if hud:
-			hud.prompt(CANNOT_READ)
+			hud.prompt_refusal(CANNOT_READ)
 			_refused = true
 		return
 	if hud:
@@ -261,7 +261,7 @@ func hold_begin() -> void:
 	if not GameState.files_with_the_network():
 		var hud := get_tree().get_first_node_in_group("hud")
 		if hud:
-			hud.prompt(CANNOT_READ)
+			hud.prompt_refusal(CANNOT_READ)
 			_refused = true
 		return
 	if not _player_in_range():
