@@ -6431,7 +6431,7 @@ lines of which **78% is harness**, cleanly split at line 5,219, so the game half
 is ~5,200 lines — comparable to `game_state.gd`. That measurement is recorded
 so the proposal does not recur.
 
-**And commit 1 found a live one on its first execution, which is now owed.**
+**And commit 1 found a live one on its first execution — now PAID (§120).**
 `TITLETEST` is in `run_harness.sh`'s `TAGS`, burns a run in every sweep, and
 **cannot fail**: `_run_title_test` prints four lines carrying their own
 expectations in prose — `expect 0`, `expect false`, `expect ~0`, `matches save
@@ -6439,9 +6439,10 @@ present=` — and not one `-> PASS`/`-> FAIL` anywhere. That is §107's MARKETTE
 defect exactly ("printed five true things and asserted **none** of them, for
 twenty-two versions"), still live in a second tag, and it means the sweep's
 headline run count has included one run that has never been able to go red.
-`--legs` reports it under CANNOT FAIL. **It is not fixed in commit 1, which
-deliberately touches no game code**; it wants four assertions and the one
-sweep that proves them, and it is owed by this horizon.
+`--legs` reported it under CANNOT FAIL. **It was not fixed in commit 1, which
+deliberately touches no game code**; it wanted four assertions and the one
+sweep that proves them, and §120 wrote them. The sweep's CANNOT FAIL list is
+now empty.
 
 **One rule the pass produced, worth keeping loose from its commit.** A fact
 about WHEN something happened cannot be derived from a monotone predicate about
@@ -12390,3 +12391,56 @@ the authoring environment, so a wrong guess there is a parse error the static
 pass cannot see and the class-registry cascade `check_scripts.py` exists to
 prevent. It was rewritten as a dictionary lookup before it was ever run, which
 is DEFECTS.md class 10 avoided rather than paid for.
+
+## 120. The one that could not fail (Horizon 11 — rides v28)
+
+`tools/run_harness.sh --legs` derives each tag's assertion count from `main.gd`.
+On its first execution `TITLETEST` came back with a **GATE of zero** while
+printing four lines.
+
+Every one of those lines carried its expectation in **prose** — `(expect 0)`,
+`(expect false)`, `(expect ~0)`, `(matches save present=%s)` — where nothing
+could read it. The tag is in `TAGS`, so it burned a run in every sweep since it
+shipped, and it had never been capable of going red.
+
+That is §107's MARKETTEST defect precisely (*"printed five true things and
+asserted **none** of them, for twenty-two versions"*), still live in a second
+tag two horizons after it was named and written down. **The parenthetical is
+the tell**: a print that states what it expects is an assertion somebody stopped
+one line short of writing.
+
+### The four claims were already there
+
+Nothing new is measured. What changed is that the run can now say no.
+
+- `THE ATTRACT SCREEN IS INERT` — parked state, nothing spawned to hunt a ship
+  the player does not control yet, and no cockpit furniture behind the menu.
+- `THE DOOR MATCHES THE FILE` — an **equality**, not a fixed expectation, and
+  that is what makes it machine-independent. This harness runs against the real
+  save path (`lock_saving()` is one-way, precisely so pressing NEW SURVEY cannot
+  write over it), so whether a save exists depends on the box. What holds on
+  every box is that the button and the filesystem agree — offering CONTINUE with
+  nothing to continue, and hiding it with a run on disk, are one defect in two
+  directions.
+- `INPUT IS LOCKED BEHIND THE MENU` — `_enter_attract` disables input and parks
+  the hull, so the honest bar is zero and `TITLE_DRIFT_MAX` only absorbs physics
+  settling. The failure it is sized against is not subtle: a ship that actually
+  flew covers hundreds of units in the second the leg holds the key.
+- `NEW SURVEY HANDS OVER TO THE TUTORIAL` — and the fourth clause is the one
+  with history. `start_new_game` calls `tutorial.arm()` **before**
+  `_load_system` so the builder leaves the garrison out, an ordering that is
+  invisible in a diff; a regression there greets a brand-new player with three
+  sentries, which is `arm()`'s own comment.
+
+**Deterministic on every box, checked rather than assumed:** `begin()` sets
+`_active` and drives `_advance()` to step 0 unconditionally, so `tutorial_seen`
+— a *device* fact that varies by machine — cannot reach any of the four.
+
+### And the PROSE column earned itself
+
+`--legs` also reports print lines carrying no verdict, as a **question and never
+a gate**, because telling a measurement line from a check that forgot to check
+needs a human. Reading the remaining ones found `[market] CARGO overflow load
+returned %d (expect 0 …)` — same shape, and **not** a defect: the next line is
+`THE HOLD IS A WALL`, which asserts that exact value. That is the column working
+as designed. The count is a question; the answer here was "covered".

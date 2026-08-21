@@ -198,13 +198,13 @@ and is strictly stronger than anything static.
 
 ## Standing debts this document names
 
-- **`TITLETEST` cannot fail.** It is in `TAGS`, burns a run every sweep, and
-  `_run_title_test` carries four print lines with their expectations in prose
-  (`expect 0`, `expect false`, `expect ~0`) and **no verdict anywhere.** That is
-  class 5 wearing class 9's clothes, and it is §107's MARKETTEST defect
-  ("printed five true things and asserted none of them, for twenty-two
-  versions") still live in a second tag. Reported by `--legs` under CANNOT FAIL.
-  Owed by Horizon 11.
+- ~~**`TITLETEST` cannot fail.**~~ **PAID (§120).** It was in `TAGS`, burned a
+  run every sweep, and carried four print lines with their expectations in prose
+  (`expect 0`, `expect false`, `expect ~0`) and no verdict anywhere — §107's
+  MARKETTEST defect still live in a second tag, found by `--legs` on its first
+  execution. Four assertions written; the sweep's CANNOT FAIL list is now empty.
+  **The reusable part is the tell: a print that states what it expects is an
+  assertion somebody stopped one line short of writing.**
 - **`run_harness.sh` is macOS-targeted** and its save-untouched guard failed
   open anywhere else until Horizon 11 commit 1: `md5 -q` is BSD-only, so off a
   Mac every digest errored to `/dev/null` and the sweep printed

@@ -189,6 +189,13 @@ const PACING_MAX_MODULES := 3.00
 # keeps this paid: the reference must sit in the middle third of the priced
 # catalog, asserted against the live module list, so the next 84% of growth
 # turns a leg red instead of quietly shortening the ruler for another year.
+# How far the ship may move on the attract screen while a bearing key is held.
+# NOT a drift tolerance in spirit -- _enter_attract disables input and parks the
+# hull, so the honest expectation is zero and this only absorbs physics settling.
+# The failure it is sized against is not subtle: a ship that actually flew would
+# cover hundreds of units in the second the leg holds the key.
+const TITLE_DRIFT_MAX := 0.5
+
 const PACING_MIDTIER := "rig_strike"
 
 # How fast the scripted bots circle-strafe an apex core, in units/second of
@@ -14010,33 +14017,84 @@ func _run_layout_test() -> void:
 
 # --- title harness ----------------------------------------------------------
 
+# THE ONE THAT COULD NOT FAIL, and it is worth recording how it was found
+# rather than just fixed. `tools/run_harness.sh --legs` derives each tag's
+# assertion count from `main.gd`; this tag came back with a GATE of ZERO while
+# printing four lines. Every one of them carried its expectation in PROSE --
+# `(expect 0)`, `(expect false)`, `(expect ~0)`, `(matches save present=%s)` --
+# where nothing could read it, so the tag burned a run in every sweep since it
+# shipped and had never been capable of going red.
+#
+# That is §107's MARKETTEST defect exactly ("printed five true things and
+# asserted NONE of them, for twenty-two versions"), still live in a second tag
+# two horizons after it was named. The parenthetical is the tell: a print that
+# states what it expects is an assertion that somebody stopped one line short
+# of writing.
+#
+# The four claims below are the four that were already being printed. Nothing
+# new is measured -- what changed is that the run can now say NO.
 func _run_title_test() -> void:
 	var shots: String = OS.get_environment("PYXIS_SHOTS")
 	var player: PlayerShip = get_tree().get_first_node_in_group("player")
 	await get_tree().create_timer(1.4).timeout
 	await _shot(shots, "s1_title.png")
 
-	print("[title] state=%s hostiles=%d (expect 0) hud_visible=%s (expect false)" % [
-		"ATTRACT" if state == State.ATTRACT else "PLAYING",
-		get_tree().get_nodes_in_group("hostiles").size(),
-		str(hud.chrome_visible())])
-	print("[title] continue_offered=%s (matches save present=%s)" % [
-		str(title_screen.continue_available()), str(GameState.has_save())])
+	# 1. THE ATTRACT SCREEN IS INERT. All three clauses, because each one is a
+	#    different promise: the state machine is parked, nothing was spawned to
+	#    hunt a ship the player does not control yet, and the cockpit furniture
+	#    is not sitting behind the menu.
+	var attract_state := state == State.ATTRACT
+	var no_hostiles := get_tree().get_nodes_in_group("hostiles").size()
+	var chrome_hidden: bool = not hud.chrome_visible()
+	print("[title] THE ATTRACT SCREEN IS INERT state=%s, %d hostile(s), chrome hidden=%s -> %s" % [
+		"ATTRACT" if attract_state else "PLAYING", no_hostiles,
+		str(chrome_hidden),
+		"PASS" if attract_state and no_hostiles == 0 and chrome_hidden else "FAIL"])
 
-	# Input must be inert behind the menu.
+	# 2. THE DOOR MATCHES THE FILE. An EQUALITY rather than a fixed expectation,
+	#    and that is what makes it machine-independent: this harness runs against
+	#    the real save path (lock_saving is one-way, so pressing NEW SURVEY below
+	#    cannot write over it), so whether a save exists depends on the box. What
+	#    must hold on every box is that the button and the filesystem agree --
+	#    offering CONTINUE with nothing to continue, or hiding it with a run on
+	#    disk, are the same defect in two directions.
+	var offered := title_screen.continue_available()
+	var on_disk := GameState.has_save()
+	print("[title] THE DOOR MATCHES THE FILE continue offered=%s, save on disk=%s -> %s" % [
+		str(offered), str(on_disk), "PASS" if offered == on_disk else "FAIL"])
+
+	# 3. INPUT IS LOCKED BEHIND THE MENU. `_enter_attract` calls
+	#    set_input_enabled(false) and parks the ship, so the bar is a genuine
+	#    zero rather than a tolerance for drift -- TITLE_DRIFT_MAX exists only to
+	#    absorb physics settling, and a ship that actually flew on a held key
+	#    covers hundreds of units in this second, not fractions of one.
 	var before := player.global_position
 	Input.action_press("move_up")
 	await get_tree().create_timer(1.0).timeout
 	Input.action_release("move_up")
-	print("[title] input locked: ship moved %.2f units (expect ~0)" % \
-		before.distance_to(player.global_position))
+	var moved := before.distance_to(player.global_position)
+	print("[title] INPUT IS LOCKED BEHIND THE MENU a held bearing moved the ship %.2fu over 1s, allowed %.2fu -> %s" % [
+		moved, TITLE_DRIFT_MAX, "PASS" if moved <= TITLE_DRIFT_MAX else "FAIL"])
 
-	# Starting a survey must hand over to the tutorial cleanly.
+	# 4. NEW SURVEY HANDS OVER TO THE TUTORIAL. Four clauses, and the last is the
+	#    one with history: start_new_game calls tutorial.arm() BEFORE _load_system
+	#    precisely so the builder leaves the garrison out, and that ordering is
+	#    invisible in a diff. A regression there greets a brand-new player with
+	#    three sentries, which is the arm() comment's own words.
+	#
+	#    Deterministic on every box: begin() sets _active and drives _advance()
+	#    to step 0 unconditionally, so `tutorial_seen` -- a DEVICE fact that
+	#    varies by machine -- cannot reach any of these four.
 	start_new_game()
 	await get_tree().create_timer(1.0).timeout
-	print("[title] after NEW SURVEY: state=%s tutorial_active=%s step=%d sentries=%d" % [
-		"ATTRACT" if state == State.ATTRACT else "PLAYING",
-		str(tutorial.is_active()), GameState.tutorial_step, _count_sentries()])
+	var playing := state != State.ATTRACT
+	var tut_on := tutorial.is_active()
+	var at_first := GameState.tutorial_step == 0
+	var garrison := _count_sentries()
+	print("[title] NEW SURVEY HANDS OVER TO THE TUTORIAL state=%s, tutorial active=%s at step %d, %d sentry(s) built -> %s" % [
+		"PLAYING" if playing else "ATTRACT", str(tut_on),
+		GameState.tutorial_step, garrison,
+		"PASS" if playing and tut_on and at_first and garrison == 0 else "FAIL"])
 	await _shot(shots, "s2_after_start.png")
 	get_tree().quit()
 
