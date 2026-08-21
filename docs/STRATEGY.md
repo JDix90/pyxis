@@ -6029,15 +6029,15 @@ answer is a decision about yields or the band, taken in the open, not a nudge
 to whichever number makes it green.
 
 **Horizon 7 — the filed frontier** (opened 2026-08-18; specced in
-`docs/HORIZON-7-THE-FILED-FRONTIER.md`). Six commits, **none built**:
+`docs/HORIZON-7-THE-FILED-FRONTIER.md`). Six commits, **all built**:
 
 | # | what | save | status |
 |---|---|---|---|
 | 0 | pay §41's `MIDTIER` re-derivation | none | **PAID** — §86: the reference moves to `rig_strike`, the yields and band stand, `THE YARDSTICK IS MID-TIER` keeps it paid |
 | 1 | marks: `survey_filed` as a second set, and `structures_seen` for hyper structures seen but not claimed | **v22** | **BUILT** — §82 |
 | 2 | the counter pays a first-filing bonus, once ever per cell | none | **BUILT** — §83 |
-| 3 | a rival cartographer — evidence only, a pure function, zero save | none | **BUILT** — §84, wreck deferred to the writing pass |
-| 4 | THE UNSOUNDED answers: one authored multi-expedition structure per system past 5,200u | **v23** | **fragments DRAFTED** (`docs/UNSOUNDED-FRAGMENTS-DRAFT.md`) — code waits on the read-aloud, per the plan's own gate |
+| 3 | a rival cartographer — evidence only, a pure function, zero save | none | **BUILT** — §84; the wreck deferred to the writing pass landed in commit 4 |
+| 4 | THE UNSOUNDED answers: one authored structure per system past 5,200u, plus the rival's hull in band 5 | **v23** | **BUILT** — §91; fragments approved as drafted, the per-visit meter cut (the flight is the gate) |
 | 5 | beacon stock re-derived against §79's navigation; band-entry teaching through §76's broadcasts | none | **BUILT** — §85 (teaching), §87 (stock 8 → 3, decided from live play, legacy saves grandfathered) |
 
 **Commit 0 is PAID (§86).** The measurement found the reference at the 18th
@@ -6054,16 +6054,100 @@ stands; the missing record is not.
 
 **Long expeditions are deferred on purpose**, not forgotten: provisioning is the
 idea most likely to become tedium, and it only earns its place once commit 4
-gives THE UNSOUNDED something worth the trip.
+gives THE UNSOUNDED something worth the trip. Commit 4 has now shipped that
+trip, so the question is live again — and §91 records the argument against a
+first provisioning system dressed as a fragment cap: a refusal with no fiction
+behind it is manufactured tedium, whatever it is called.
 
 **From the nine-note playtest of 2026-08-18** (triage and fixes in §88–§90),
 the two items that remain open and are genuinely new design:
 
 | what | status |
 |---|---|
-| purchasable slot expansion (Utility III, Weapon III…) with power/section/speed tradeoffs | **Horizon 8's headline** — touches the fit dict, refit UI, section damage, and every BALANCE/PACING assertion; deserves the full spec treatment |
-| faction contracts offered on hail, with standing gain; standing LOSS already exists (witnessed kills, fence deals) | **Horizon 8 second act** — the offer verb is the one new piece, rides existing contract + faction machinery |
-| rival-remnant inspection with staged reveals (hold on a foreign beacon = read it) | folds into commit 4's writing pass, already gated on the fragments read |
+| purchasable slot expansion (Utility III, Weapon III…) with power/section/speed tradeoffs | **Horizon 8 commit 2** — touches the fit dict, refit UI, section damage, and every BALANCE/PACING assertion; still wants its own research pass before it is specced in detail |
+| faction contracts offered on hail, with standing gain; standing LOSS already exists (witnessed kills, fence deals) | **Horizon 8 commit 3** — the offer verb is the one new piece, rides existing contract + faction machinery |
+| rival-remnant inspection with staged reveals (hold on a foreign beacon = read it) | **SPECCED as Horizon 8 commit 1** — the rival's hull and log shipped in §91; the foreign-beacon read is now the delivery channel for Directive 9's pages, pure function, zero save |
+
+**Horizon 8 — the closed file** (opened 2026-08-19; specced in
+`docs/HORIZON-8-THE-CLOSED-FILE.md`, prose gated on
+`docs/DIRECTIVE-NINE-DRAFT.md`). Four commits, **none built**:
+
+| # | what | save | status |
+|---|---|---|---|
+| 0 | the second register, STAGED: the private beat at the read, the living voices only at the whole record | none | **BUILT** — §92; no save bump, both flags derived from v23 |
+| 1 | the refusers' network: Directive 9's pages on band-3+ foreign beacons | none | **BUILT** — §93; the band gate lives in one pure function so no spawn site can re-decide the pacing |
+| 2 | purchasable slot expansion — shipped as **berths**: a slot AND the power to use it, paid for in permanent mass | **v24** | **BUILT** — §94; the research killed the obvious version (a pilot at the top already owns a bay the reactor cannot feed), and the penalty axis was decided as mass |
+| 3 | faction contracts offered on hail — shipped as **commissions**: work a faction posts for a pilot it already trusts, paying standing, costing double to abandon | none | **BUILT** — §95; no save bump, standing and contract state both already persist |
+
+**The finding that shaped it, and the rule it hands the pass.** The authority's
+voice CANNOT change, because bands 1–4 of `BROADCASTS` are recordings and THE
+LAST RETURN's final entry already says the machines were never told. So the
+chart-edge beacon goes on telling a commissioned pilot *"the bearing is yours,
+and it is written down"* forever — which becomes the most frightening line in
+the game the moment somebody has read the order. What changes is what is alive:
+bands 5 and 6 (never the GSA's), the player's own file, the player's own ship.
+`THE MACHINES DO NOT KNOW` is that rule as an assertion, and it goes red the
+moment somebody tries to finish the table.
+
+**The first read-aloud set a register rule worth keeping beyond this horizon:**
+every line is understandable on first read — eeriness comes from what a line
+MEANS, never from being hard to parse. The player always knows what they were
+just told; what grows with depth is how much they wish they had not been told
+it. And the reveal is STAGED to protect the slow burn: pages hint from band 3,
+the archive read changes only what is private (bark, log, Commission field —
+which per R4 appears only after the read, corroborating rather than teasing),
+and the two living voices answer only a pilot holding all nine fragments.
+
+**And the verb the last fragment asks for is deferred on purpose.** Filing
+returns with the refusers instead of the Authority is what *"file a return for
+us"* is asking, it rides existing fence machinery, and it must not ship in the
+same horizon as the revelation. A discovery that immediately becomes a menu
+option was never a discovery. It is now Horizon 9's spine — see below.
+
+**Horizon 9 — the true copy** (opened 2026-08-20; specced in
+`docs/HORIZON-9-THE-TRUE-COPY.md`, prose gated on `docs/FAR-MARKS-DRAFT.md`,
+decisions R1–R4). Six commits, **five built** (commit 3 split at build time into 3a/3b; §100's overdraw mechanism rode between them; only commit 5 remains, behind its research pass):
+
+| # | what | save | status |
+|---|---|---|---|
+| 0 | THE FILED RETURN: two-stage hold on deep foreign beacons — give the goods, no credits, no Commission; the channel answers with a bearing | **v25** | **BUILT** — §96; a research fan-out killed four parts of the design first, including a loader that would have eaten the feature whole |
+| 1 | THE TRUE CHART: held cells marked on the plot (shape, not hue); the rival annotation re-read as colleagueship | none | **BUILT** — §97 |
+| 2 | THE FAR MARKS: the network's sounding buoys at 6,500–9,000u, five per system on `hyper_positions`' pattern; visible to all, readable only by filers | rides v25 | **BUILT** — §98; `marks_seen` carries a validated STATE from its first line rather than a boolean that grows a vocabulary later |
+| 3a | THE PROVING DRIFT, plus the encounter machinery all nine legends share, plus the prototype tier | rides v25 | **BUILT** — §99; `MARK_STATES` gained one word and nothing else changed, which is what §98's validated-string decision was for |
+| 3b | LEGENDS I, the rest of the common three: THE VEIN, THE LAYUP (deposit and withdrawal) | rides v25 | **BUILT** — §101; the state ladder became a four-word lattice, and "no tally" is asserted as byte-equality of save images |
+| 4 | LEGENDS II, the dangerous three: THE STILLNESS' GROUND, THE STANDING ORDER (it hails first), THE SOUNDING SERPENT | none | **BUILT** — §102; the asset flies feral and wears teal, the becalming is its own mechanism, and the serpent never spends its mark |
+| 5 | LEGENDS III, the ongoing four — **ALL FOUR BUILT** — orrery §103, forge §104, procession §105, nursery §106 (v26); Horizon 9 is complete | **v26** (nursery store only) | **RESEARCH DONE** (2026-08-20, `docs/LEGENDS-III-RESEARCH.md`) — decisions S4–S8 open; the nine names need a writing pass before the procession can build. The pass killed three naive versions: the escort wing already ships (REQUEST ESCORT — the forge needs a spawner and a lifetime, not a class), the nursery cannot ride `colonies` (byte-identical key formats collide, and a deep jump anchor breaks `A FOOTHOLD, NOT A FARM` silently), and a sold orrery windfall would clear the Grand Commission's chart pillar in one ALL press because `chart_data_sold` counts units with no cell join |
+
+**The prototype tier is under a research pass the player is running** (opened
+2026-08-20). §99 shipped the mechanism, the laws and provisional entries in one
+block; what the research owes back is the final numbers. The one open design
+question §99 framed — a weapon prototype cannot carry a ship-stat defect, so
+its cost had to be a new mechanism or a pure parameter trade — was answered the
+same day: **overdraw** (§100), a per-shot draw off the firing ship's own shield
+bus. The tier now covers all four categories.
+
+The ideation decisions are settled and recorded in the spec: filing point is
+foreign beacons, all three payoffs ship, filing stays a donation, the hold is
+two-stage, the channel answers under no fixed name, the layup takes deposits
+as well as withdrawals, and the Standing Order hails before it fires — the
+goods are the price, the response is the pay, and the network pays in
+bearings, the only currency it has.
+
+**TEN legend kinds, in two classes, and the classes are the pacing.** COMMON
+(vein, layup, proving drift) may repeat; SINGULAR (the other seven) appear at
+most ONCE in an entire game and a given run does not carry all of them.
+A run with no serpent in it is a normal run — that is what makes a legend
+something a player describes to somebody rather than a checklist row. Nine of
+the ten ride machinery that already exists; only the escort wing is genuinely
+new. The far marks are the answer to "what
+makes it worth surveying past the archives": legends are WINDFALLS, never
+income (the charted seams' own posture, no pacing term), so a network filer
+trades steady counter money for access to the deep's windfalls. The Authority
+never notices any of it — no standing shift, no Cordon reaction, and the
+Commission's retired field never moves, which is the horror register keeping
+its own rule. Refused in advance, in the spec's own words: a loyalty system, a
+punishment for filing with the GSA, an eviction exemption for held cells, an
+anatomy for the Stillness, and any counter or checklist for the marks.
 
 **The README's harness counts should be derived, not typed** (open 2026-08-17,
 §77). Three numbers — tag count, SAVETEST mode count, total runs — are
@@ -9016,6 +9100,19 @@ prompts, and `hyper` joins the ladder last, for the hold ladder's own stated
 reason: the biggest thing on screen should lose every contested tap to the
 smaller thing in front of it.
 
+**And its assertion was wrong on first measurement, in the direction worth
+recording.** `THE MONUMENT ANSWERS A TAP` shipped here and was first actually
+run two commits later (§91's sweep), where it came back red quoting a prompt
+that was *correct*: `THE ORRERY · FIRST INSTRUMENT — CLAIMED. THE CHART CARRIES
+ITS JUMP.` The leg took whatever `get_nodes_in_group("hyper")` returned first
+and demanded the unclaimed wording — but `ONE CLOCK FOR ALL OF THEM`, four legs
+earlier in the same suite, claims `pyx01:0` and `pyx01:1` by hand. First-in-tree
+was a claimed monument answering its claimed branch perfectly. The leg now
+picks by STATE rather than by tree order and taps BOTH, which is the promise
+this section actually made: every branch answers. A test that depends on tree
+order is depending on something nothing guarantees — the same class of mistake
+as reading a function's absence off a caller's silence, one paragraph up.
+
 ### And the checker gained a third rule
 
 The duplicate above passed `check_scripts.py` clean and detonated on Godot as
@@ -9073,3 +9170,1671 @@ recording: the answer to "is this implemented?" was yes four times over, and
 the player asking after weeks of play means the *surfaces* are quiet, not
 absent. If a future playtest asks again, the answer is louder surfaces — not
 doubt about the machinery.
+
+## 91. The unsounded answers (v23)
+
+Horizon 7 commit 4, and the last of the horizon. Past the last band edge each
+system carries one authored structure, and PYX-01 carries a second thing in
+band 5: the other cartographer's hull, found. They are the places that say what
+killed the frontier.
+
+Nothing here is a fight — §76's rule at full volume. The deep already has
+hulks, packs, traps and standing guards; these are graves with paperwork, and
+the reward for reaching one is an **answer**. `IT IS NOT A FIGHT` asserts that
+as an emptiness over ten groups: an `UnsoundedSite` joins `"unsounded"` and
+nothing else. Not `"hyper"` (the warden sweeps iterate that group and cast to
+`HyperStructure`), and not `"crackable"` — the radar collects that group, and a
+permanent arrow pointing 5,600 units out would spoil exactly the expedition the
+silhouette design exists to create. Both interaction ladders pick `"unsounded"`
+explicitly and last, in the same commit: §88's lesson is that a wired verb with
+no affordance is an unbuilt feature, so the hold path and the tap path grew the
+rung together.
+
+### One class, four kinds, and the meter that was cut
+
+`UnsoundedSite` is one class carrying four records — §17's "the gradient is
+parameters, not new classes", the signature sites' own pattern one shelf up.
+Which kind stands in which system is data (`SystemDB.unsounded_kind_of`,
+`rival_wreck_in`), consumed by the builder and never by the generator, so no
+draw moves and the world fingerprint stands untouched.
+
+The plan called for a per-visit fragment cap, forcing the record to take
+several expeditions. **It was cut**, and the reasoning is worth keeping: a cap
+like that is a refusal with no fiction behind it — the archive has no reason to
+stop talking halfway — and manufactured revisits are precisely the tedium the
+long-expedition work was deferred over. The gate is already real and already
+expensive: the structures sit past 5,200 units where §79's jump ceiling is
+4,200, so the only way to one is a fifteen-minute outbound flight, in band-6
+weather, leaving the hull unattended at the far end of it. `ONLY OUT THERE`
+pins that per kind rather than as a minimum, so the wreck's band-5 exception —
+the rival died *outbound*, which is what their log says — cannot quietly become
+a licence for the others to drift inward.
+
+What the hold pays is `chart_unsounded`: the band-6 chart good that shipped
+priced and unearnable now has its source. Two units a fragment, and the read
+defers on a full hold rather than burning a persisted stage — the survey mast's
+own guard, on the store where losing a stage costs the player a six-thousand-
+unit flight. A completed archive re-shows its last page and pays nothing, which
+keeps a fourteen-second hold from being an income faucet out where the fiction
+says everything has stopped, and states its own terms by *being* the last
+fragment again (§58).
+
+### The number in the log is the number in the store
+
+The rival's log says four hundred cells filed. `SURVEY_CELL_CAP` is four
+hundred (§80). `THE WRECK QUOTES THE REAL CAP` pins both directions, so a
+retune of the cap that left the line alone goes red instead of making the
+game's strongest sentence quietly false. That is the same posture as the
+manual-versus-cancel-ladder assertion: fiction that states a mechanic is
+checked against the mechanic.
+
+### The save (v23)
+
+`deep_logs`, keyed `"system:kind"` → the highest fragment reached. An int
+rather than a boolean because the record is sequential, and generator-bounded
+rather than capped: four entries across the whole game. `note_deep_log`
+advances by one and never past the record's total, so no caller can skip to the
+end. The loader validates entry-by-entry against what *can* exist — system
+authored, kind in `DEEP_LOG_KINDS`, stage in range — and drops rather than
+crashes. `migrate22` proves a v22 file arrives having read nothing and keeps
+everything else, then feeds it eight entries of rubbish and keeps the two that
+are real. No migration branch: defaults-not-branches, and "has read none of the
+unsounded" is exactly true of every pilot whose build had none to read.
+
+### What it is for
+
+Horizon 7 asked what the deep is *for* once the chart is legible and somebody
+else is racing you for it. This is the answer: the frontier is not a place that
+was never surveyed, it is a place that was surveyed, measured, and then
+classified out of existence. The three datums are position, time and bearing —
+the three things a chart is made of — and each one records the moment it stopped
+being able to tell the truth. The last fragment of THE LAST RETURN hands the
+job to whoever is reading it, which is the only ending a cartography game can
+honestly have.
+
+## 92. The machines were never told
+
+Horizon 8 commit 0, and no save bump — every flag here is derived from v23's
+`deep_logs` (§91). The frontier's answer has been readable since the UNSOUNDED
+shipped; this is the game hearing it.
+
+### What could not change, and why that is the feature
+
+The plan going in was that the authority's broadcasts would turn cold once the
+player had read Directive 9. Reading the table killed that and replaced it with
+something better. `BROADCASTS` bands 1–4 are an automated beacon, a relay, a
+degraded relay and a dead carrier — **every one of them a recording** — and THE
+LAST RETURN's final entry already says it out loud: *SOMEBODY DECIDED THE
+MACHINES DID NOT NEED TO KNOW.*
+
+So the chart-edge beacon goes on telling a commissioned pilot *"Charts on file.
+This marker stands on your readings… the bearing is yours, and it is written
+down"* forever, warmly, to somebody who now knows the returns were refused.
+That line was already in the game. It becomes the most frightening one in it
+without a word being edited.
+
+`THE MACHINES DO NOT KNOW` is that rule as an assertion: bands 1–4 resolve
+identically under every combination of both flags, in every system,
+commissioned or not. It goes red the moment somebody "finishes" the table —
+which is exactly what the first version of this design would have done.
+
+### The reveal is staged, because the first draft leaked
+
+The playtest note that shaped this: *shouldn't the game feel normal first, and
+only get unsettling after several eerie interactions?* Yes — and the first
+draft failed that badly. Directive 9's pages were to ride foreign beacons,
+which spawn wherever the rival has filed, from `CONTENT_MIN_DEPTH` (24u)
+outward. The rival takes the shallows in single sessions, so the order's text
+would have been sitting at the chart edge inside a new pilot's first hours.
+
+Three beats now, ordered by geography rather than by a quest flag:
+
+1. **Hints**, band 3 and deeper only (commit 1) — a page at a time, out of
+   order, understandable but incomplete.
+2. **The order**, past 5,200u — and it changes only what is PRIVATE: the ship
+   says one line, the log takes one entry, the Commission page grows one field.
+   The world does not react at all. You know, and nothing else does.
+3. **The answer**, once all nine fragments are held — the two voices out here
+   that were never the authority's say something different.
+
+`knows_directive_9()` and `holds_whole_record()` carry those, both derived by
+SCANNING `deep_logs` for a suffix rather than naming pyx03, so a future system
+authoring the datum is covered without a second place to edit.
+`THE WORLD WAITS FOR THE WHOLE RECORD` pins the staging: at 3/3/2 — two
+archives finished and the order itself read — every voice must still say what
+it always said.
+
+### The register rule, which outlives this horizon
+
+From the same note: the copy was more cryptic than it needed to be. The rule
+now, and it applies to everything written after this:
+
+> **Every line is understandable on first read. Eeriness comes from what a line
+> MEANS, never from being hard to parse.** The player always knows what they
+> were just told; what grows with depth is how much they wish they had not been
+> told it.
+
+The frontier was not closed because something was wrong with it. It was closed
+because repeated resurvey produced charts that did not agree, and an authority
+that sells charts cannot publish two that disagree. That is the whole twist,
+and it is said in those words — not implied, not encoded.
+
+### The two living voices, and the override that correctly wins
+
+Bands 5 and 6 gain `body_after` on the optional-key-with-fallback shape
+`broadcast_for` already uses. The sender never changes: it is the same voice
+saying more, so there is no `from_after` and no need for one.
+
+The clause sits BELOW the per-system override, and that is a decision rather
+than an ordering accident. Two of the three systems replace one of these rows
+with their own line — pyx01 speaks band 6 as a GSA repeater, pyx03 speaks band
+5 as a sounding mark — and **both of those are machines**. An after-line
+jumping the override there would break the governing rule to deliver the
+payoff. It does not have to: pyx01 keeps band 5, pyx02 keeps both, pyx03 keeps
+band 6, so every system still carries one living voice.
+`EVERY SYSTEM KEEPS ONE LIVING VOICE` asserts that per system, because a future
+override on the last living band in a system would delete the payoff there and
+nothing else would notice.
+
+### The field that was switched off
+
+The Commission page — the authority's file on you — gains one field once the
+order is read:
+
+> RETURNS LOGGED FROM THE RECLASSIFIED VOLUME: —
+> FIELD RETIRED AT RESURVEY 44. FILINGS FROM THE VOLUME ARE ACCEPTED AND
+> COUNTED ABOVE.
+
+Resurvey 44 is THE FIRST MERIDIAN's own fragment, the one that found the datum
+had moved. Two records agreeing about a date without either explaining the
+other.
+
+**It appears with the order rather than being there all along**, and that was
+the fourth review decision. An unexplained dash from the first dock is a
+teaser, and §90 settled that this page states rather than teases. After the
+order it is corroboration. `THE FIELD ARRIVES WITH THE ORDER` checks all three
+halves: absent before, present after, and unmoved by filing more charts — it is
+a statement, not a counter.
+
+### And it cost nothing, which is now checkable
+
+`save_dict()` is extracted out of `save_game` so a harness can compare two save
+images without writing a file. `NOTHING NEW IS STORED` walks every key and
+requires that reading Directive 9 moves `deep_logs` and nothing else. The claim
+"this horizon costs zero bytes" was worth exactly as much as the check behind
+it, and until this commit there was no way to make that check that did not
+involve the disk.
+
+## 93. The pages, and where they are not
+
+Horizon 8 commit 1, and no save bump again. Directive 9 travels the way a
+banned document travels: one page at a time, out of order, clipped to the masts
+of people who were told not to file and filed anyway.
+
+### It is met first and built second
+
+In play this is the FIRST beat of the reveal — a mid-game pilot finds a page,
+reads a clause of an order they have no context for, and understands every word
+of it without yet knowing what it is part of. §92's private beat and the two
+living voices both come later. It was built second because the pages are
+corroboration for a fact the game had to be able to state first; that is a
+build order, not a play order, and the distinction is worth writing down
+because the two are opposites here.
+
+### The band gate is the whole pacing decision, so it lives in one function
+
+The playtest note that shaped this horizon — *shouldn't the game feel normal
+first?* — is answered here or not at all. Foreign beacons stand wherever the
+rival has filed, and the rival's arrival begins at `CONTENT_MIN_DEPTH`, 24
+units out. The shallows go inside single sessions. An ungated page would
+therefore have put the order's own text at the chart edge in a new pilot's
+first hours: the twist, delivered before the game has said anything is wrong.
+
+`Beacon.page_for(cell_key, band)` owns the rule — which page, and whether there
+is one at all — as a single pure function, with `PAGE_MIN_BAND = 3`. The
+spawner calls it and decides nothing. That placement is deliberate: a band
+check written at the spawn site is a pacing decision sitting in a place where
+the next caller will not think to look for it, and there is now no way to spawn
+a foreign beacon that quietly disagrees about where the order is allowed to be.
+`THE PAGES KEEP TO THE DEEP` sweeps every band over three hundred keys each,
+and red-verifies by dropping the band clause.
+
+Band 3 is also where the shipped broadcast arc already turns strange — the
+relay goes to SIGNAL DEGRADED, the ship's own bark starts naming things that
+shoot back. The hints arrive exactly when the game has stopped being reassuring,
+and the fiction agrees with the pacing: you do not leave contraband where the
+authority still sweeps.
+
+### Reading costs nothing and leaves nothing
+
+The rival's covenant (§84), applied to the people the rival was one of. No
+cargo, no credits, no stage, no store entry, no seen-set: zero bytes, and the
+mast is still standing afterwards. A page that vanished on being read would be
+a collectible, and this is not a collectible — it is a thing somebody left
+where the next crew through would find it. `THE PAGE LEAVES NOTHING BEHIND`
+drives the whole verb on a real node and compares two `save_dict()` images
+across it.
+
+There is no counter anywhere. A player who wants the whole order flies until
+they have seen six different deep beacons, and the game never tells them how
+many they are missing — the same refusal the silhouette design makes (§68) and
+for the same reason.
+
+**And that leg was red on its first run, for a reason worth keeping.** It took
+its before-image, ran the read, then waited 0.4s for the broadcast plate to
+fade in before taking the after-image — and came back red because
+`played_seconds += delta` is in the save dict and four hundred milliseconds of
+it had gone by. The save had moved; reading had not moved it. The rule the fix
+states: **a leg that brackets an act must bracket only the act.** The two
+images now sit either side of `hold_tick` with no frame boundary between them,
+and the plate wait happens after. This is the second assertion in two horizons
+to be red on its first run for a test-side reason (§88's was tree order), and
+both had the same shape — the leg measured something true but not the thing it
+claimed to measure.
+
+### The refusal did not go away, it got a sibling
+
+A foreign beacon with no page still answers exactly as it did: *NOT YOUR ANCHOR
+CODE — THIS BEACON ANSWERS TO SOMEBODY ELSE*. Out in the near ring that is the
+whole truth — there is nothing clipped to the mast, and the anchor code is
+still not the player's to release. One question, `reading()`, is asked in all
+four places the three verbs diverge, so recovery, refusal and reading cannot
+drift apart.
+
+`on_tapped` gained what §88 said it should have had all along. It used to pulse
+and fly the ship in without a word, which is the affordance problem one layer
+down — and it matters more now that a tap can land on three beacons that do
+three different things. All three branches say which one this is.
+
+### Not in the manual, deliberately
+
+The manual documents the player's instruments and the player's verbs. A page
+clipped to somebody else's mast is neither: it is something found, and the tap
+prompt teaches it at the moment it is in front of the player. Writing it into
+the manual would turn a discovery into a checklist item — the same argument
+§90 made for the Commission page not being a quest log.
+
+## 94. The berths (v24)
+
+Horizon 8 commit 2, and the horizon's headline: the playtest asked for
+purchasable slots, and the research found that selling slots alone would have
+been a bad product.
+
+### The finding, and why it changed the feature
+
+Power is the binding constraint on fitting, protected by a live assertion:
+greedy best-per-slot draws **32 against the Mk V reactor's 24**. `module_db`'s
+own reactor note ends the top-end product description with *"and the second
+utility bay still empty."*
+
+A pilot at the top of the game **already owns a slot the reactor cannot feed.**
+Selling them a Utility III would have been ninety thousand credits for a bay
+that stays empty — the players most likely to buy it are exactly the ones it
+does nothing for. That is not an argument against the note; it is the note's
+real content. What was being asked for underneath *"more slots"* is **more
+ship**, and slots are simply how the refit console renders that idea.
+
+So a berth is **a slot and the power to use it**, welded on, paid for in
+**mass** — permanently, in the one axis the deep punishes hardest. That is what
+makes a fully berthed hull a build rather than an upgrade, and it cannot be
+bought back: `buy_berth` is one-way by design, because a berth you could sell
+back is a rental — buy it for the fight, refund it for the flight home.
+
+| berth | slot | price | power | speed |
+|---|---|---|---|---|
+| UTILITY BERTH | UTILITY III | 60,000 | +3 | −0.25 |
+| DRIVE BERTH | DRIVE II | 80,000 | +2 | −0.30 |
+| WEAPON BERTH | WEAPON III | 120,000 | +4 | −0.45 |
+
+**Every berth adds less power than the best module that could stand in its
+slot** (weapon 7, drive 4, utility 5), so the invariant holds and strengthens:
+bare, greedy is 32 against 24 — a margin of 8; fully berthed, 48 against 33 — a
+margin of 15. `ALL-BEST IS STILL OUT OF REACH` now measures **both hulls** and
+requires the margin never to shrink, rather than being re-pinned to a new
+constant. Its hand-written `weapon * 2 … utility * 2` multipliers are gone,
+derived from `SLOT_CATEGORY` — they were the shipped hull's slot counts spelled
+out, correct until the day a slot was added, at which point the invariant would
+have gone on reporting green about a ship nobody flies.
+
+### The trap this commit was written around
+
+`compute_stats` carried **two hand-written slot lists**. A slot added to the
+enum and forgotten in them would have been purchasable, equippable and powered
+— and would have contributed *nothing at all*, silently, with no error
+anywhere. Both are now derived from `SLOT_CATEGORY`, and `EVERY SLOT REACHES
+THE STATS` fits the same module in every slot of its category and requires the
+stats to move each time.
+
+The enum's new names are **appended, never inserted**: those integers are what
+`fit` is keyed by and what every save on disk holds, so a name in the middle
+would silently re-slot every fitted module in every existing pilot's file.
+
+### Two doors into the fit, and both are locked
+
+`can_equip` refuses a slot no berth has opened. That is the door the console
+uses; **the loader is the other one**, and a hand-edited save is exactly the
+thing that walks through it — so `_load` drops any fit entry naming an unbought
+berth slot, and `A LOCKED SLOT HOLDS NOTHING` checks both doors. The berth list
+loads *before* the fit for this reason: read afterwards, every module standing
+in a berth slot would be dropped on every load.
+
+### Where they are sold
+
+Berths appear where the Mk V appears and nowhere else — counters naming
+`reactor_cap` ≥ 4, which today is one deep archetype at the far end of the
+Unsounded. A yard that cannot sell the reactor to run a berth has no business
+selling the berth, and the Waypoint Anchor does not become the place a new
+pilot buys a third hardpoint with their first windfall. `THE YARD IS AT THE FAR
+END` asserts that no charted counter sells one.
+
+They sit with the reactor row rather than in `stock`, because that is what they
+are: hull work, priced against the power budget. In `stock` they would have
+been modules — ownable, fittable, swappable — which is the one thing a welded
+hardpoint is not. The row states the mass on its own face rather than in a
+tooltip: it is permanent, and §58's rule applies to a purchase as much as to a
+refusal.
+
+### The count is the ship's, not the catalog's
+
+Three surfaces printed `SLOT_NAMES.size()`; all three now read
+`GameState.open_slots()`. A manual that kept printing the table's size would
+promise a berthed pilot's slots to a pilot who has none, and the refit console
+would draw chips for bays that do not exist. `SECOND SLOT` keeps its literal 6
+— that is the ship every pilot starts with, and it is the fact the leg was
+written to pin — but checks it against what a fresh hull can actually fit,
+plus the berth count separately, so a fourth berth cannot quietly change what a
+new pilot begins with.
+
+### Amended after the first full sweep that ran MINETEST (2026-08-20)
+
+`MINING COSTS A MOUNT` went red, and it was this commit's regression surfacing
+three commits later: berths cut three new slots into `SLOT_CATEGORY`, and that
+leg counted **the table** rather than `open_slots()`. So it started answering
+"3 utility slots" for a hull that ships with two, and the claim it existed to
+guard — *three mining modules can never fly together* — stopped being checked
+at all.
+
+`open_slots()`' own comment says "and the assertions that count them". This
+commit moved every other one, including the harder case
+(`ALL-BEST IS STILL OUT OF REACH` learned to measure the bare hull AND the
+berthed one). It missed exactly one, and the miss was invisible until a sweep
+ran the suite that owned it.
+
+**The claim was not wrong, it had grown a second half.** A berthed pilot really
+can mount all three tools; that is what 60,000 credits and a permanent quarter
+of a unit of top speed buy, and dissolving the assertion would have been the
+wrong reading of a red leg. The amended leg keeps the shipped-hull claim,
+adds a clause that the third bay is BOUGHT (red the day it becomes free, or the
+day the berth stops costing speed), and then asks the question the leg's name
+actually promises: **even berthed, a Mk III carrying all three tools still
+cannot feed the strike frame** — 19 drawn against 21, two spare against a
+frame that wants four. The mount is bought back by the reactor (§94's own
+17b), never by the bay.
+
+Worth stating as a rule, because this is the second time a horizon has left a
+stale reader behind: **when a store or a table grows, the thing to grep for is
+not the new name but every reader of the old one.**
+
+## 95. Commissions — what being trusted is for
+
+Horizon 8 commit 3, and no save bump: standing already persists (`faction_deltas`,
+§18) and contract state already persists, so this is entirely new behaviour over
+two stores that existed.
+
+The playtest note was *"convoy Hail does nothing — faction contracts that raise
+standing, and a way to LOSE influence."* The first clause was already half
+false: a hail files an apex-intel fix (§28). What was true is that standing had
+no use it could not already have — you earned FRIENDLY and the game said thank
+you.
+
+### A commission is not a way in
+
+Two keys turn a contract into a commission: `faction` (who posted it) and
+`standing` (what filling it is worth). The rule that makes them worth anything
+is the gate: **a commission is offered only to a pilot the faction already
+trusts** — FRIENDLY or better, *the same band their convoys will speak to you
+at*. So it is not a ladder to climb from NEUTRAL. It is what being trusted is
+FOR.
+
+That one definition is shared rather than duplicated: `Contracts.trusted_factions()`
+answers "who knows this pilot", the board reads it, and `THE TRUST LIST IS THE
+HAIL'S OWN BAND` pins it against `DeepSpace.CONVOY_HAIL_MIN_BAND`. Two
+thresholds drifting apart would mean a faction that talks to you but will not
+hire you, with nothing on screen explaining the difference.
+
+### Keeping a promise is ordinary; breaking one is news
+
+Filling a commission pays **+1** standing. Abandoning one costs **−2**, and the
+asymmetry is the design — `COMMISSION_BREAK_MULT`, stated on the board row
+before the ACCEPT button, because a cost a player can only discover by paying
+it is not a cost they agreed to.
+
+`drop()` still works, and that is not in tension with its own "free, and
+deliberately so" comment. That rule is about never trapping a player, and
+nothing here traps them. A commission that could be dropped for free would make
+standing a thing you accumulate rather than a thing you keep.
+
+The credit rewards sit **below** the equivalent survey contract on the same
+board. A commission trades money for a name, and a pilot who only wants money
+should take the other row — that choice is the whole feature.
+
+### Two things the build had to get right
+
+**The catalog stays pure.** `ContractDB` has zero references to `GameState`, and
+keeping it that way is what lets a harness ask what a board would hold for a
+standing the player does not have. So `available_for` takes `trusted` as an
+argument; `Contracts.board` is the one caller that knows the player, and the one
+that fills it in.
+
+**Pacing measures the stranger's board, deliberately.** `_pacing_contract_yield`
+calls `available_for` with no `trusted`, so commissions are not in the mean
+reward. They are not steady income — gated on standing a new pilot does not
+have, and paying below the row beside them — and folding them in would quietly
+lower the measured band for every pilot, including the ones who cannot see
+them. The omission is the model, and it is written where the omission is.
+
+### The hail points at it, once
+
+Commissions live on the ordinary contract board, where a player has no reason to
+go looking for something new. So the first time a convoy ever speaks to you —
+the first proof a faction knows who you are — the ship says one line, once ever,
+naming the surface and not a gesture. Fired from the hail rather than announced
+by the board itself: a board that advertises is a quest log (§90).
+
+### Two fixture bugs caught before they shipped, both the same shape
+
+Neither is in the feature; both are worth recording because they are the third
+and fourth instances of a leg measuring something true but not the thing it
+claimed.
+
+1. The standing fixture walked attitude to `ATTITUDE_MAX` to buy trust, then
+   measured a +1 reward — but `faction_attitude` **clamps at read time (±6)**,
+   so the payout would have measured as zero and reported working code as
+   broken. Trust costs FRIENDLY, not ALLIED; the fixture now buys exactly that
+   and leaves headroom in both directions.
+2. The board-row leg asked one board for one commission. The board is a seeded
+   **five-of-twelve** shuffle, so that is a coin flip — a flake wearing an
+   assertion's clothes. It now sweeps forty time buckets, which is exhaustive
+   rather than lucky because the shuffle is deterministic per (port, bucket).
+
+### And a third one got out, which is why the checker has a fourth rule
+
+The bucket sweep shipped as `for b in 40`, two hundred lines below a `var b`
+in the same function. GDScript rejects that outright — *"There is already a
+variable named b in this scope"* — which is a parse error, which takes the
+whole class registry down (§77's cascade). It reached the other machine and
+cost a pull.
+
+Neither `check_scripts.py` nor a re-read caught it, and the reason is worth
+stating: **both halves were correct on their own, they were two screens apart,
+and the diff showed only the new one.** That is the exact profile the checker
+exists for, so it now carries `check_shadow` — a `for` variable that collides
+with a local still in scope.
+
+Scope is tracked by INDENTATION, and that is what makes the rule keepable. A
+`var` inside an `if` body dies with the block, so a later loop at lower indent
+may legitimately reuse the name. The naive version — "has this name appeared
+in this function" — reported **28 collisions against a tree that parses**, and
+a checker that cries 28 times about working code is one nobody runs twice. The
+shipped rule reports zero on the clean tree, names the exact pair when the
+defect is reintroduced, and was red-verified against a fixture holding one
+legal reuse and one illegal one.
+
+Four rules now, and all four came from a defect that had already shipped:
+bad indent (§77), unresolved static reference (§77), duplicate declaration
+(§88), shadowed loop variable (here).
+
+## 96. The filed return (v25)
+
+Horizon 9 commit 0. The verb the last fragment asks for: a pilot at a deep
+foreign beacon can file their surveyed cells with the refusers' network instead
+of selling charts at an Authority counter. No credits, no first-filing bonus,
+no Commission progress. The goods leave the hold and the cells become **held**.
+
+The whole payment is that somebody reads it.
+
+### The research pass, and the four things it killed
+
+This commit was preceded by a five-way research fan-out over every subsystem it
+touches, and the design that went in is not the design that came out. Four
+findings, each of which would have shipped a silent defect:
+
+**1. The loader would have eaten the feature whole.** `_load_survey_filed` wrote
+the hard-coded literal `true` and discarded the file's value — harmless for two
+versions, because `true` was the only value that had ever existed. The moment a
+cell can be `"held"`, that line converts every network filing back into a
+counter filing on the next load: right all session, wrong forever after,
+nothing dropped and no error. **Every existing save assertion would have stayed
+green**, because all of them test key presence and none has ever looked at a
+value. The loader now validates by TYPE (`_load_deep_logs`' posture for a store
+whose value means something) and preserves both legal states; `false` still
+drops, which is what keeps migrate21's rubbish pass true.
+
+**2. `note_survey_filed` cannot upgrade.** Its first line refuses a key already
+in the store — correct for a counter that must not pay twice, useless for a
+promotion. Hence `note_survey_held`, a sibling that upgrades and still refuses a
+cell outside coverage.
+
+**3. §93's own assertion would have gone red.** `THE PAGE LEAVES NOTHING BEHIND`
+drives `hold_tick(READ_TIME + 1.0)` — a single 4.0-second tick against a
+3.0-second read, reaching 1.333 in one call — and then requires the save, the
+cargo and the wallet unmoved. Had the overshoot rolled into the filing stage, a
+green assertion about the page would have failed because of a verb it was never
+testing. The stage boundary now **discards the overshoot**: each stage costs a
+fresh hold's worth of seconds, which is also what the bar is telling the player.
+
+**4. The reply had nowhere to fire.** The draft hung it on the next outward band
+crossing. `_tick_broadcast` fires only on `band > _broadcast_band`, band tops out
+at 6, and this verb lives on band-3+ beacons — so a pilot filing in THE
+UNSOUNDED has already spent every crossing getting there, and two per-system
+overrides would have eaten it in two more systems. **The channel answers at the
+mast instead**, which is the better beat regardless: an irreversible act that
+costs cargo should be answered where it happens, not fifteen minutes later
+somewhere else.
+
+The same pass measured the draft's log line at 63 characters against `note_log`'s
+silent 48-character truncation — the bearing, which is the entire payload, would
+have been cut off. It is 32 now.
+
+### And a bug of my own, two horizons old
+
+**`Beacon.on_tapped` has never been reachable.** The hold ladder has picked
+`"beacon"` since v20; the select ladder never has. So the function existed, was
+improved in §93 to answer all three of its cases, and could not be reached by a
+finger or a mouse on any device. That is §88's exact lesson — *a wired verb with
+no affordance is an unbuilt feature* — repeating on the file §88 was written
+about, and the tell is that §93 improved the FUNCTION without checking the
+LADDER. `camera_rig._select` gains the missing branch, in the hold ladder's own
+order so both resolve a contested tap the same way.
+
+### The shape of the verb
+
+**Two stops in one hold** (R1): the first completion reads the page as it
+always did; keeping the finger down rolls into the filing, with the gauge
+relabelled to the terms — the deeper commitment literally deeper in the
+gesture. A `_stage` latch rather than a taller `_progress`, because
+`crack_progress` clamps to 0..1 and a progress running to 2.0 would pin the bar
+full for the whole second stage and show nothing.
+
+**The goods are the price, so the goods are the limit.** The counter's join is
+*"the band must match the good because the good IS the band"*; the network's is
+that join read backwards — every chart good in the hold files as many cells of
+its own band as it holds whole readings. That bound is load-bearing:
+`unfiled_cells()` spans every system and can carry a thousand keys while a hold
+caps near a hundred units, so filing "everything" without the join would file
+cells the pilot has nothing to pay with.
+
+**The rival's cells come home free**, and this is the counter's sweep with its
+meaning inverted. At a counter a rival-filed cell is a loss. Here the somebody
+who was first IS the network — their colleague already clipped that mark to a
+mast — so it is held without costing a reading. `THE RIVAL NEVER TAKES WHAT YOU
+HAVE` still holds: they took the chance, and out here the chance was never
+money.
+
+**No exemption from the cap.** A held cell ages out of the 400-cell window like
+any other. An exemption would be precisely the second unbounded store §17
+refuses, and it would make the wreck's four-hundred-cell log false.
+
+### And then an adversarial pass found seven more
+
+The build was reviewed by six lenses and each finding refuted by three
+skeptics before it was believed. Fifteen raw findings, and the ones that
+survived are recorded here because four of them are the same defect class this
+project keeps meeting.
+
+**A filing of only rival-reached cells announced a refusal.**
+`file_charts_with_network` returned `cells.size()`, counting the cells the hold
+paid readings for and not the ones a colleague had already filed — so a hold
+where every matching cell was rival-reached moved N cells to held, queued a
+save, and told the player NOTHING NEW TO FILE. Routine rather than exotic: the
+rival takes the shallows within a couple of hours of play.
+
+**And the harness could not have caught it**, which is the more useful half.
+`reset_to_starter` leaves `played_seconds` at 0, RETURNTEST runs synchronously
+so no frame advances it, and `Rival.filed` is false for every cell at t=0 —
+so the entire sweep branch ran in play and never once under test. `THE RIVAL'S
+CELLS COME HOME FREE` now winds the clock forward and drives it.
+
+**The reply destroyed the page it followed.** The filing hold raises two plates
+four seconds apart — the page at the read stop, the channel at the filing stop
+— and `show_broadcast` has no queue: the second kills the first. So obeying the
+prompt's own instruction wiped the page the player had held three seconds to
+earn, and page 5 is the one this arc calls its spine. The reply now waits on a
+new `hud.broadcast_busy()`, `_standing_pending`'s shape and its argument, and
+it is HELD rather than dropped — Barks' rule that a once-per-act payload must
+not be consumed by being suppressed.
+
+**Three assertions were vacuous**, all in the way this project has now met four
+times — measuring something true, but not the thing they claimed:
+
+- `THE ASK IS THE GATE` tested only the accessor's truth table. The gate's sole
+  enforcement point is `Beacon._can_file`, so deleting it from the beacon
+  entirely left the leg green. It now drives a real node.
+- `THE GOODS ARE THE LIMIT` surveyed ONE band-2 cell against one reading, so
+  the `taken >= readings` guard was never reached — the leg measured the band
+  join and nothing else. Four cells now make the budget binding.
+- `THE CAP TAKES HELD CELLS TOO` was satisfied by an EMPTY filed store: a
+  subset loop is vacuously true over nothing, and a size check only bounds from
+  above. A cap that wiped every held mark on the four-hundred-and-first cell
+  would have printed PASS. It now requires equality.
+
+**And `far_marks` contradicted its own spec.** Fifteen slots against seven
+singular kinds meant `run_plan` dealt all seven into every run — *"a run with
+no serpent in it is a normal run"* was a sentence in a document that the code
+disproved on every seed. `SINGULAR_PER_RUN` (four of seven) is the rule; the
+constant is the pacing, not a knob.
+
+Two smaller ones: `hold_release` cleared the stage before reading the gauge
+label, stamping READING THE PAGE on a bar the player was filing with — the
+exact mislabelling the commit's own comment claimed to guard against — and the
+two-stop prompt was 109 characters against a label with no autowrap, which runs
+off both ends of a phone.
+
+### And the sweep's third signal is what caught the last one
+
+`RETURNTEST` came back **8 pass, 0 fail, 1 script error** — every assertion
+green over a broken call. `is_survey_held` read the store's value through a
+bare `String()`, and the store now holds two types: `true` for a counter filing
+and `HELD` for a network one. **`String(true)` is not a constructor GDScript
+has.** Asked about any counter-filed cell it errored, returned false anyway,
+and the assertions around it passed on the correct answer arrived at by
+accident.
+
+Nothing in the assertion vocabulary could have caught that: a PASS line is a
+claim about a value, and the value was right. What caught it is
+`run_harness.sh` counting `SCRIPT ERROR` as its own signal beside PASS and
+FAIL, and exiting non-zero on it — the sweep has three signals, not two, and
+this is the first time in nine horizons the third one has been the only one
+that fired. The check reads the value's TYPE now, which is what the loader
+beside it was already doing.
+
+### The JSON boundary, audited once and given a rule
+
+The same shape then appeared a second time, in `SAVETEST=migrate23`: the berths
+loader (§94) read its array elements through `String(bid_v)`, and that leg's own
+rubbish fixture puts a `7` in the list **precisely so it will be rejected**. The
+loader rejected it correctly and threw on the way, so the leg printed PASS and
+the run logged an error. *A validating reader may not crash on the input it
+exists to validate* — "drop, never crash" means a thrown call is not a drop.
+
+The audit that followed is worth recording because of where it stopped. Thirty
+`String()` calls live inside loaders, and all but two are safe by construction:
+**JSON dictionary keys are always strings, and so are `split()` results.** The
+exposure is only ever on VALUES and ARRAY ELEMENTS, and only at the four places
+this project parses JSON — the save, the prefs, the profile registry, and the
+legacy-name peek. Every one is fixed; the prefs reader was already correct and
+carries a comment about this exact class, written the last time it bit.
+
+**The rule, stated so it can be applied by eye:** at a JSON boundary use
+`str()`, which accepts anything and lets the validation below reject it on its
+merits; `String()` is for keys, for `split()` results, and for values from
+authored in-code tables, where the type is guaranteed.
+
+**And it is deliberately NOT a checker rule.** `String(x.get(...))` appears 132
+times in this codebase and 130 of them read authored tables where the value
+cannot be anything else. A rule that fired on all of them would be the
+28-false-positive shadow rule again — a check nobody runs twice. The bounded
+audit was the right tool, because the boundary is four files long.
+
+### The generator ships before the nodes
+
+`FarMarks` is pure arithmetic — positions, and which legend stands at each — so
+the channel's reply can name a real bearing a full two commits before any buoy
+is built. §84's own shape: `Rival` shipped as arithmetic the world read before
+anything drew it. A generator can also be swept exhaustively by an assertion,
+which is the only way to prove a placement rule at nine thousand units without
+flying there. The singular rule is enforced **by construction** — kinds are
+dealt off a shrinking list — rather than by a rejection test that could fail
+open and place a second serpent.
+
+## 97. The chart is two documents
+
+Horizon 9 commit 1, and no save bump: everything here reads v25's store and
+draws or re-words what it finds.
+
+### The mark
+
+A held cell keeps the faint filled square coverage has always drawn and gains a
+small **open ring** on top of it. Three things separate the two layers, and §30
+asks for exactly this when a colour is shared:
+
+- **Shape.** A ring is not a square.
+- **Behaviour.** The square is world-sized and scales with zoom; the ring is
+  fixed in screen pixels. They separate further the closer you look, instead of
+  merging.
+- **Meaning.** The ring is drawn in the cell's own band colour, so it reads as a
+  property OF that cell rather than a second thing standing in it.
+
+An open ring specifically, because what it means is *a copy of this exists
+somewhere else*. The mark is not fuller than an unheld cell — it is duplicated.
+The chart becomes two documents read at once: what the Authority counted, and
+what the network holds.
+
+`THE CHART IS TWO DOCUMENTS` asserts both directions, `THE CHART REMEMBERS`'
+discipline: a legend that always said HELD would satisfy a one-sided check, and
+so would a chart that marked every surveyed cell.
+
+### The rival, re-read
+
+Two surfaces carry the annotation — the mast's heads-up and the counter's
+verdict — and both now have two registers, switched by
+`GameState.files_with_the_network()`. *"SOMEBODY WAS FIRST"* becomes *"A
+COLLEAGUE WAS FIRST"*; *"ALREADY FILED BY ANOTHER HAND"* becomes *"ALREADY HELD
+BY A COLLEAGUE"*.
+
+**Nothing about the rival changes.** They reach the same cells at the same
+times, they still take nothing the player had, and no number moves. What changes
+is who the reader is: a pilot who has clipped their own returns to these masts
+knows the other cartographer was one of them, and knows that mark went where
+their marks go. **The sting was never in the event — it was in reading it as a
+loss.**
+
+The flag is DERIVED from the store, never stored: a held cell IS the evidence,
+so there is nothing to keep in step and nothing that can disagree with the chart
+the player is looking at. And it is off for a counter filing, which the
+assertion checks — the register is about where returns went, and a cell sold at
+a port went to the Authority.
+
+### What the verified pass returned, including one refutation of my own fix
+
+The adversarial workflow finished after §96 had already shipped, and its
+verdicts are worth recording because of the shape of them. **Fifteen raw
+findings, two confirmed, thirteen refuted** — and most of the refutations read
+*"stale: the fix the finding demands is already in the tree"*, because the
+review ran against a moving target. That is a real cost of reviewing
+uncommitted work in parallel with fixing it, and the answer is not to stop: the
+same pass produced both confirmed findings, and one of them was a design rule
+that had never been true.
+
+**The far-marks finding stood, and my fix was right but my assertions were
+not.** `SINGULAR_PER_RUN` closes it — but the pass pointed out that *neither*
+existing clause could have caught it: with fifteen slots against seven kinds,
+"at most once per run" was trivially true and "all kinds reachable across
+seeds" was trivially true, while the rule they were guarding was false on every
+seed. **Two green assertions over a dead design.** `A SINGULAR LEGEND IS
+SINGULAR` now also requires that no run carries all seven and that the omitted
+set varies.
+
+**And the gauge-label finding stood while my fix for it did not.** One skeptic
+of three dissented, and the dissent was correct: `hold_begin` never resets
+`_progress`, so after a release the residual genuinely *is* progress toward
+reading — which makes "READING THE PAGE" the honest label for the drain, and
+made my captured-label fix a promise the next hold would not keep. It was also
+inert: `_process` calls `_sync_gauge` every frame of the drain and
+`_gauge_label` re-derives from the live stage, overwriting the captured string
+a frame later.
+
+The defect underneath both readings is that **an abandoned filing's progress
+was being spent on the read stage** — abandon at 87% and a re-grab is
+seven-eighths of the way to re-reading a page you already hold. Zeroing
+`_progress` when leaving the filing stage settles it: the bar clears instead of
+draining under a borrowed verb, a re-grab starts a fresh read, and no surface
+has to name a verb the next hold will not perform.
+
+Worth stating plainly: **a majority vote confirmed the finding and a minority
+vote corrected the fix.** Had I taken only the verdict and not read the
+dissent, the commit would carry a change that does nothing, defended by a
+comment claiming it does something.
+
+### The same defect, written again, eight minutes later
+
+`files_with_the_network` was first written as
+`String(survey_filed[k_v]) == HELD` — the identical invalid-constructor defect
+§96 had just recorded a rule about, in the same file, minutes after writing the
+rule down. The rule was remembered and the code was not.
+
+The durable fix is not discipline. **The store holds two types and there is
+exactly ONE function that knows how to ask** — `is_survey_held` — and every
+other reader calls it. A rule that says "remember to check typeof at the JSON
+boundary" survives exactly as long as the person remembering; a single guarded
+accessor survives the person.
+
+---
+
+## 98. The far marks (rides v25)
+
+Horizon 9 commit 2. Fifteen buoys — five per system at 6,500–9,000u, past every
+archive — built from the `FarMarks` generator §96 shipped two commits ahead of
+them. **Everyone sees a mark; only a filer can read one**, and the store that
+remembers which ones you have read is what the channel's reply has been reading
+since the day it was written.
+
+### The generator shipped first, and this is what that bought
+
+§96 shipped `far_marks.gd` with no nodes behind it, on §84's precedent (`Rival`
+was arithmetic the world read before anything drew it). The bill for that
+decision came due here, and it was small: the buoys are five lines of spawner
+over a function that was already swept exhaustively over sixty seeds. Nothing
+about placement had to be discovered at build time, and nothing about the
+bearing the channel quotes had to be renegotiated — commit 0's best line was
+true when it shipped and is still true now that there is something standing at
+the end of it.
+
+### The mark is not the legend
+
+Reading a mark shows the network's **plate** for that volume, verbatim from the
+approved draft, and resolves the mark. The encounters those plates name are
+commits 3–5, and they will stand at these same positions. That is not a
+placeholder: the plate is written in the past tense as a record of a sounding,
+so it is a true sentence the day it ships and the same true sentence the day
+the thing it describes is built. **Nothing in this commit has to be rewritten
+later** — which is the test a commit that ships half of a two-part idea has to
+pass.
+
+**It pays nothing.** Not one unit, not one credit, no cargo guard, no deferral
+branch — because there is no state in which reading a mark can fail. The
+legends are windfalls; a signpost that paid would turn fifteen buoys into a
+milk round, which is the "second salary" the horizon document refuses by name.
+
+### The refusal is the teaching
+
+An unread mark answers a non-filer's tap in its own words, and names the act
+that would change it (§58):
+
+> A SOUNDING MARK — THE NOTATION IS NOT THE AUTHORITY'S, AND YOU CANNOT READ
+> IT. FILE A RETURN AT A FOREIGN MAST AND YOU WILL.
+
+That branch deliberately does **not** fly the ship closer. A tap that moves the
+player twelve units toward something they were just told they cannot read is
+§88's affordance problem inverted — motion instead of an answer. It names the
+act rather than the gate (`heard_the_request`), so the sentence is true for a
+pilot who cannot yet file and becomes actionable the hour they can.
+
+### The value is a state from the first line
+
+`marks_seen` is keyed `"system:index"` — `structures_seen`' shape — and rides
+v25 with no bump. Its value is a **validated string** (`MARK_STATES`, one
+member today), not a boolean, and that is the whole lesson of §96 applied
+forward instead of relearned: `survey_filed` held `true` for two versions, its
+loader wrote the literal back, and the day a second value appeared every
+network filing silently reverted on load. Commits 3–5 need per-mark state — a
+layup deposited into, a nursery held — and they will add a string to a list
+rather than a type to a store.
+
+The loader validates **by type and by membership**, then preserves what it
+read. `if bool(saved[key_v])` is the correct line one function up, where the
+value carries no information; here it would accept `7` and `"nonsense"` as
+marks. And it validates the index against `FarMarks.positions`, the
+`structures_seen` posture: a retune of the depth window must not leave a pilot
+holding a reading of something that is no longer there.
+
+### The nudge, and where it parts company with the archives
+
+Band 6 runs to the end of the world and `STATION_CHANCE[6]` is 0.135, so a deep
+station can stand at eight thousand units. A station's keep-out is 34u across a
+64u cell, which makes "a buoy inside one" a **routine** event rather than a
+curiosity — roughly one mark per run, sitting where the tap ladder resolves to
+the dock ring and the mark cannot be reached at all.
+
+`_unsounded_pos` solved the same problem by rerolling its angle, because it IS
+the generator for its own positions. A mark's position has a **second
+consumer** — the channel quotes a bearing and a range to it — so the builder
+may only nudge: arc offsets at a fixed radius, capped at 204u, which at seven
+thousand units is 1.7 degrees and no change of range. The quoted bearing still
+flies you to the lamp. The check is over the **3×3 cell neighbourhood** rather
+than the containing cell, because `STATION_INSET` (22) is smaller than
+`STATION_SAFE_RADIUS` (34) and a station can therefore sit inside the keep-out
+of a point in the next cell over — a band the archives' narrower check does not
+see, at depths where a station is rarer.
+
+The harness does not assert "every mark is clear", which would be a flake
+waiting for a seed: `_mark_pos` is allowed to give up and stand where it was
+told. It asserts the thing that is actually forbidden — **giving up while a
+clear candidate existed**.
+
+### Both ladders, in the same commit
+
+`"farmark"` joins the hold ladder and the select ladder together, which is §96's
+lesson taken as a construction rule: `Beacon.on_tapped` was written, improved
+once, and unreachable from a finger for two horizons because only one of those
+two lists knew about it. It goes last in both. By the size argument a
+forty-unit spar should outrank a sixty-four-unit monolith — but a mark stands
+6,500u out where nothing else in either ladder can be on screen at all, so
+there is no contest to resolve and the cheapest correct thing is to leave every
+earlier rung untouched.
+
+### What the three new legs are for
+
+`THE MARKS STAND WHERE THE GENERATOR SAYS` — the world agrees with the
+arithmetic leg 6 already proved: five built, kinds off the run plan, drift
+inside the builder's own arc list (read from `SystemBuilder.MARK_ARCS`, not
+retyped), no avoidable station overlap, no leak into any scanned group, and the
+world fingerprint unmoved.
+
+`A MARK IS THE NETWORK'S TO READ` — the read/unread split driven through the
+**real** ladder and the **real** hold in both directions. The gate is not the
+feature; the affordance is.
+
+`THE CHANNEL NAMES A MARK YOU HAVE NOT READ` — `marks_read()` feeds
+`nearest_unseen`, reading the named mark moves the answer on, reading all five
+leaves the empty-case sentence to fire, and the store survives the real
+serializer with its state intact and four kinds of rubbish dropped.
+
+**One reader that knows how to ask**, again (§97). `nearest_unseen` asks
+`bool()` of what it is given and the store holds state strings, so the world
+hands it `marks_read()` rather than the store itself — the day a state should
+not hide a mark from the channel, there is exactly one function to edit.
+
+---
+
+## 99. The proving drift, and the tier above the catalogue (rides v25)
+
+Horizon 9 commit 3a. The first legend that actually stands at a mark, plus the
+machinery every other legend will use to stand at one.
+
+### The piece that is not about the drift at all
+
+*Reading a mark spawns the encounter* is one sentence in the spec and a design
+question none of the nine legends owns: what does it mean across a warp? A
+drift raised at the moment of reading has to still be there after a jump home,
+and a drift already cracked must not come back with its salvage refilled.
+
+`SystemBuilder.build_legend` is the answer, and it has **two callers by
+construction**: the far-marks builder (every rebuild, for marks read in an
+earlier session) and `Main.legend_arrives` (once, at the moment of the reading,
+so the legend does not wait for a warp). That is `build_garrison`'s own rule one
+shelf up — the list that raises a thing and the list that raises it again must
+be the same list, because being two lists is exactly how a headline feature
+shipped invisible for a whole session.
+
+**The state store needed nothing.** `marks_seen` gained one word:
+`MARK_STATES` goes from `["read"]` to `["read", "spent"]`. No shape change, no
+loader change, no migration, no version bump — which is the entire return on
+§98's decision to ship a validated string one commit before anything needed a
+second state. Had it shipped a boolean, this commit would have been a save bump
+and a migration leg.
+
+A spent mark is **still a read mark** — `is_mark_read` asks whether the value is
+a legal state, not whether it is the first one — so the channel keeps skipping
+it and the plate keeps reading. Only the legend stops coming back.
+
+### The prototype tier was already in the catalogue's grammar
+
+The research question was "what is the tier above Mk V". Looking before writing
+found most of the answer already shipped: the **crafted** block (`mod_baffle`
+and its three siblings) is `price: 0`, absent from every port's `stock` array,
+and every entry carries a real negative stat, with `EVERY RECIPE COSTS`
+asserting the no-free-lunch law. A prototype is that same shape with a
+different door — a drop instead of a recipe. **The catalogue needed no new
+grammar and the outfitter needed no new branch.** What is new is only the tier
+and the way in.
+
+`grant_module` is kept separate from `buy` rather than calling `buy(0)`,
+because `buy` would **succeed** at price zero for any module in the catalogue —
+the guarantee that a prototype is not for sale is its absence from every stock
+list, and a zero-price buy path is precisely how that guarantee would be
+reached around. It returns false when the pilot already owns the module, which
+is not a failure but an answer the caller has to have something to say about.
+The drift does.
+
+**The numbers are provisional and they are all in one block**, under their own
+research pass. The laws are what is asserted; the values are not pinned, so the
+research changes one table and nothing else.
+
+### The finding the research needs, which the code found for it
+
+**There can be no weapon prototype without a new mechanism.** `compute_stats`
+routes a weapon's `stats` into the *weapon* block and every other category's
+into the *ship* block, so a weapon module cannot carry a negative ship stat at
+all — it would be read as a weapon parameter and silently ignored. A weapon
+prototype's cost therefore has to be either a new mechanism (heat, a draw the
+reactor cannot hold) or a pure weapon-parameter trade. That is a design
+decision, not a table entry, and it belongs to the research rather than to this
+commit. The three that shipped are one drive and two utility, where the defect
+mechanism already works.
+
+### The drift is a Derelict with two fields set
+
+Not a subclass. This class is already a gradient of hull kinds — the authored
+survey hull, the tutorial's hull, the deep hulks, the grave-field pairs — and
+§17's rule is that the gradient is parameters. `_breach` already carries four
+flag-gated payloads; the workshop is a fifth. `counts_as_survey` is false for
+the deep hulk's exact reason, harder out here: charting the next system by
+cracking something seven thousand units past the chart edge would let the far
+deep skip the game's spine altogether.
+
+**The second workshop says so.** The proving drift is a COMMON kind and may
+repeat in a run, so two benches dealing the same pattern is routine rather than
+exotic. The mark is spent either way — a mark left unspent because the pilot
+already owned the module would rebuild the workshop on the next warp and hand
+out its salvage again, forever — and the hull states its terms (§58) instead of
+handing over nothing in silence.
+
+### What was checked before it was written
+
+**When a table grows, grep for every reader of the old one** — the rule §94's
+amendment had just cost a red leg to learn, applied the same day. Adding three
+modules to `MODULES` means every catalogue-wide assertion is a reader:
+
+- `THE YARDSTICK IS MID-TIER` filters `price > 0` — prototypes excluded, safe.
+- `_pacing_catalog_cost` sums prices — prototypes add zero, safe.
+- `THE FRONTIER'S GEAR IS NOT ON THE CHART` pins `tier == 3` exactly, and a
+  prototype is tier 4 — safe.
+- `CATALOG BUYABLE` counts priced against price-0 and passes on `priced > 0` —
+  safe.
+- `THE CONSOLE DRAWS EVERY MODULE` fits every module and demands it move a
+  visible column — all three do, and this one was the real risk.
+- `ALL-BEST IS STILL OUT OF REACH` builds its greedy maximum from the live
+  catalogue, so prototypes enter it: the bare margin widens from 8 to 12 and the
+  berthed margin from 15 to 22. **Widening is the correct direction** — the
+  horizon document's rule is that if a prototype closed the power margin, the
+  prototype would be wrong.
+
+### What is honestly missing
+
+Eight of the ten kinds still build nothing when read, and the ninth (the vein
+and the layup) is commit 3b. A read mark whose legend has not shipped is
+exactly what its plate says: a record of a sounding, in the past tense — which
+is why the plates were written that way and why none of them needs rewriting.
+But the vein's plate promises a place, and until commit 3b there is no place.
+That gap is stated here rather than left for a playtest to find.
+
+---
+
+## 100. Overdraw — the weapon prototype's cost (rides v25)
+
+The decision §99 deferred to the research pass, taken by the player the same
+day: the weapon prototype's cost is a **new mechanism** — a draw the reactor
+cannot hold. Shipped as **overdraw**: the Overdrawn Lance pulls its difference
+straight off the shield bus, and every shot it fires costs `overdraw` points of
+the firing ship's own shield.
+
+### Why the cost had to be a mechanism
+
+§99 already recorded the structural half: `compute_stats` routes a weapon's
+`stats` into the weapon block, so a weapon module cannot carry a negative ship
+stat — it would be read as a weapon parameter and silently ignored. The choice
+was between a pure weapon-parameter trade (a worse interval for better damage —
+which is just a tier, not a prototype) and a genuinely new cost. The new cost
+won, and it is the right shape for the fiction: somebody desperate built this,
+and what it spends is the one thing keeping its pilot alive.
+
+**Shield, never hull.** The coil browns the bus; it does not breach the deck.
+`maxf(shield - overdraw, 0.0)` — floored, because a mount that could kill its
+own ship by being fired is a trap rather than a trade. The cost self-scales
+with how hard the fight already is: firing from behind a full shield is nearly
+free; firing while something is shooting back is spending armour you needed.
+
+### Where the payment lives, and why exactly there
+
+In `_fire`, at the moment the cooldown is committed — **not** in `_shoot`.
+`_shoot` hands torpedoes off to `_launch_torpedo` before its own body runs, so
+a cost applied in `_shoot` would make a torpedo prototype free the day somebody
+authors one. Paying at the trigger covers every family alike, once per shot,
+with a teal flash on the hull (the shield's own colour) so the drain reads as
+coming from the bus rather than as enemy fire landing.
+
+### The column is the contract
+
+`summary_lines` scans the weapons array for chain and splash and draws
+conditional columns; overdraw joins that scan as **DRAW −N/SHOT**. This is not
+polish: a cost the console cannot draw is the Cutting Head defect the
+function's own header records — a module read as pure upside because its
+downside lived in an undrawn key. `EVERY STAT REACHES A COLUMN` collects every
+stat key in the catalogue, so the new key entered that audit the moment the
+module existed, and the leg's per-weapon branch (chain/splash) gained the third
+member. Without both halves the sweep goes red — which is the audit working.
+
+### What else the new module touched, checked before it shipped
+
+- `MINING COSTS A MOUNT`'s rule again: every catalogue-wide reader re-checked.
+  The Mk II / Mk III `STRICTLY BETTER` sweeps use explicit id lists — a
+  prototype is in none of them, correctly: a prototype is not a tier above
+  `lance_3`, it is off the ladder entirely, defective by design.
+- `ALL-BEST IS STILL OUT OF REACH`: weapon-category max power was already 7
+  (`torp_3`); the lance is also 7, so the greedy maximum and both margins are
+  unmoved.
+- Leg 12 (`A PROTOTYPE IS NOT FOR SALE`) counted minus signs to prove every
+  prototype pays; overdraw is a price spelled as a positive number, so the leg
+  learned that `overdraw > 0` is a cost. Without the amendment the lance reads
+  as only-upside to a loop that can only see minus signs — a red leg on ship
+  day, which is how it was found.
+
+### The harness leg drives the real fire loop
+
+`THE MOUNT DRAWS THROUGH THE BUS` equips the lance **through the real
+`equip`** — which enforces the power budget, and the budget refuses this on the
+starter reactor (13 against Mk I's 12), so the leg raises the tier and asserts
+the equip landed rather than silently measuring the old weapon. One volley must
+cost *exactly* `overdraw` though two mounts fire (the second carries no key — a
+drain that scaled with mounts would read double), and a bus below one draw must
+floor at zero with the ship alive.
+
+---
+
+## 101. The vein and the layup (rides v25)
+
+Horizon 9 commit 3b — the rest of LEGENDS I. With these, three of the ten
+plates have something standing behind them, and the three cover the three
+shapes a legend can take: a windfall that is gone when taken (the vein, the
+drift) and a place that stays (the layup).
+
+### The state ladder became a small lattice
+
+The layup carries two independent facts — withdrawn from (**spent**) and
+deposited into (**given**) — and a pilot can have done either, or both, in
+either order. `MARK_STATES` grew from `["read", "spent"]` to
+`["read", "spent", "given", "closed"]`: four words cover every reachable
+combination, the accessors own the transitions (`note_mark_spent` on a given
+mark closes it rather than erasing the deposit; `note_mark_given` on a spent
+mark likewise), and the loader still validates by membership with **no other
+change**. Third time the store has grown by a word and nothing else — the §98
+decision paying out again.
+
+### The spent check moved into the match, because "spent" is not one thing
+
+`build_legend` used to refuse any spent mark before dispatching on kind. That
+was correct for one kind and wrong the day the second shipped: a spent drift or
+vein is **gone** — windfalls do not rebuild — while a spent layup is an **open
+cache**, built cracked on every rebuild, standing forever for deposits. The
+check is now per kind, and `THE CACHE IS TWO-WAY` asserts the asymmetry in both
+directions rather than trusting the dispatch.
+
+### The vein — the promise is arithmetic before it is fiction
+
+A `MineableSeam` at band-6 parameters, exactly the machinery the spec promised:
+three fields moved, one added (`owns_mark`). Two decisions worth recording:
+
+- **The good is picked by price, not rolled.** The plate promises *richer than
+  anything on the charted side*; a roll over the band-6 table could land on the
+  cheapest entry and make the plate a liar one time in four. The richest entry,
+  deterministically, on every rebuild the seam survives.
+- **The mark is the record.** `seams_cut` validates its keys against the
+  authored asteroid arrays, so a vein key cannot live there; the session store
+  forgets across a warp, which for a one-time windfall at seven thousand units
+  is the deep-hulk farm all over again. `_record_cut` gained a third branch —
+  one function still owns the question "where is this cut remembered", now with
+  three answers.
+
+Sixteen units of the richest band-6 ore is ~2.7× the deepest rolled seam, fits
+a starter hold (a windfall the ship cannot carry is a taunt), and takes the
+longest cut in the game. Provisional numbers, one block, same as the drift's.
+
+### The layup — the only purely expressive verb in the game
+
+A `Derelict` with `takes_deposits`. The crack is the withdrawal, once ever (the
+mark spends, and the breach broadcast teaches the deposit verb at the exact
+moment the cache becomes able to receive — §88 applied to an affordance that
+begins to exist mid-scene). The open cache then accepts the whole hold in one
+hold gesture — the mast's one-gesture generosity, never a picker — for
+nothing: no credit, no counter, no return.
+
+Three rules the node enforces:
+
+- **An opened layup stays in the ladder.** Every other hull leaves
+  `"crackable"` when it opens; the cache outlives its own withdrawal, and
+  deposits reach it through the same gesture as everything else.
+- **An abandoned donation resets whole.** A breach decays through `_process`; a
+  deposit cannot (the cracked early-return owns that path), and a residual
+  would let a donation be assembled in free nibbles. The act is deliberate or
+  it is nothing.
+- **The gauge states the terms while the bar moves** — `LEAVING THE HOLD —
+  EVERYTHING, FOR NOTHING` — and the empty-hold refusal is spoken (§58).
+
+### No books, asserted as byte-equality
+
+S1 said a deposit leaves one clause on the plate and **no tally**. The clause
+is three words (`— AND BY YOU`), fired off `is_mark_given`, once, however much
+is ever left there. The no-tally half is asserted in the strongest form the
+harness can ask: two deposits of *different* cargo must leave **byte-identical
+save images**, because the only thing either may record is the single fact the
+first already wrote. An equality over the whole file catches a tally wherever
+somebody might one day put one — a counter in the ledger, a log line per
+deposit, a goods record — without having to name the places it must not be.
+
+### Where the plates now stand
+
+Three of ten built (drift §99, vein and layup here). The seven singulars are
+commits 4–5, unchanged: STILLNESS, ORDER, SERPENT (commit 4); ORRERY, NURSERY,
+FORGE, PROCESSION (commit 5, its own research pass first). Every unbuilt plate
+remains true as written — a record of a sounding, past tense.
+
+---
+
+## 102. The dangerous three (rides v25)
+
+Horizon 9 commit 4 — LEGENDS II: THE STILLNESS' GROUND, THE STANDING ORDER,
+THE SOUNDING SERPENT. Six of ten plates now have something standing behind
+them, and these three are the ones whose plates are warnings.
+
+### The becalming is not an EMP, and the difference is mechanism
+
+The Stillness stops the drives. `PlayerShip` gained a second quiet —
+`_becalmed`, beside `_emp`, never instead of it — because every property of
+the EMP is wrong here: an EMP is halved by thermal sinks (the mitigation runs
+inside `emp_stun`, so nothing calls it), tumbles the hull, clears the player's
+targets, and announces its own recovery with a teal pulse. The becalming does
+none of that. No mitigation exists or ever will; the hull sits still (the name
+is THE STILLNESS); targets stay, because nothing is attacking; and the drives
+simply return, without ceremony, because the mark already said they would.
+An EMP landing inside a becalming is absorbed by it — a stun must not outlive
+the stillness around it. Both hard-reset sites (`begin_warp_charge`, the
+death path) clear it alongside `_emp`.
+
+The ground is the layup's posture, not the drift's: **the reading pays once
+(the mark spends), the place becalms forever.** A full hold DEFERS the reading
+— the passage is repeatable, so the archives' rule (a reading that paid
+nothing must not burn its stage) holds harder for a reading whose moment the
+pilot cannot choose. The ground is centred ON the buoy, deliberately: read the
+plate, and the first becalming begins where you finished reading — the plate
+keeping its promise immediately, not an ambush, because the promise is that
+they come back. Nothing joins any combat group, and the harness asserts the
+emptiness: the strangest fact in the encounter is that nothing here is
+attacking you.
+
+### The Standing Order flies feral and wears teal
+
+Two deviations from the spec's own table, both argued:
+
+**Not ApexBoss.** The apex fight IS the survey-engine puzzle — plates, seals,
+probes — and its death path charts the next system, calls
+`main.on_apex_defeated` and spawns an `ApexWreck`: three things a station
+asset must never do. Flagging all of that out would have been a subclass
+wearing a const's clothes. The wardens are the honest precedent — the deepest
+guards in the game are parameter-tuned `Hostile`s — and the asset is one more,
+tuned past all of them (difficulty 3.0, hp_scale 6.0, no leash).
+
+**Not faction `"gsa"`.** `Hostile._die` docks standing for killing a
+non-hostile flag and pays loot only for a hostile one — so a GSA-flagged asset
+would make the kill cost standing (the Authority noticing, the one thing this
+horizon must never allow) and pay nothing (a windfall the design promised).
+The asset **wears** Authority teal — tint, designation, the hail's letterhead
+— and **flies** `FactionDB.FERAL`, the raider precedent carrying the arc's
+thesis: mechanically it is what the fiction says it is, a machine nobody ever
+told anything, never in the Authority's books. THE MACHINES DO NOT KNOW,
+enforced by a faction id.
+
+The politeness is structural: before the hails complete there is *nothing in
+the hostiles group to be shot by* — the fighter does not exist until the
+instruction has been given twice — which is the strongest form of "it does not
+fire first" a harness can assert. A pilot who takes the instruction and leaves
+resets it to the top: it holds no grudge, because nobody ever told it anything,
+including that this happened.
+
+### The serpent leaves, and never spends its mark
+
+New movement, no new AI framework — the spec's bounds kept literally. The head
+steers at a bounded turn rate and never hovers; each segment closes up on the
+one ahead along the line between them, which is the whole of the body's
+intelligence and what makes seven nodes read as one animal. Segments answer
+the player's fire through the same duck-typed `take_damage` every combatant
+answers, deal contact damage through the same `take_hit` every hazard uses,
+and join `"hostiles"` so the radar and every targeting surface work
+unmodified. A silenced segment reads as `is_dying` so auto-fire moves on to
+the parts that still answer.
+
+Silencing a majority (4 of 7) breaks it off — S2 adopted: the body turns and
+goes back down where the line found no bottom. **It pays nothing anywhere
+money is kept** — no loot, no salvage, no ledger, no contract kind, no faction
+delta (it has no faction to shift) — asserted as five equalities, because "it
+does not drop salvage" is exactly the kind of sentence that quietly becomes
+false when someone wires a generic death path later. And the serpent is the
+one legend that **never spends its mark**: the place stays dangerous instead
+of becoming a cleared room, the fight rebuilds whole on every visit, and that
+is not a respawn exploit because it has never once paid.
+
+### Three new classes, one import
+
+`StillnessGround`, `StandingOrder`, `SoundingSerpent` are new `class_name`s —
+the sweep handoff must run `"$GODOT" --headless --path . --import` first. The
+serpent's segment is an inner class with an untyped back-reference (an inner
+class naming its owner's `class_name` would be a cycle in a trench coat).
+
+### Harness
+
+Three RETURNTEST legs (17 → 20). `THE GROUND BECALMS AND PAYS ONCE` drives the
+real becalm and asserts the command verb refused, the full-hold deferral, the
+one-time payout, and the forever-becalming. `THE ORDER HAILS BEFORE IT FIRES`
+asserts the pre-arm group emptiness, the paint/flag split, and that silencing
+moves no GSA standing and no delta. `THE SERPENT LEAVES AND THE MARK STANDS`
+asserts the break-off, the board emptying, the five-way pays-nothing, and the
+rebuild. No new run, no new mode, no save bump.
+
+---
+
+## 103. The orrery still running (rides v25)
+
+Horizon 9 commit 5, first of four. The research pass (§64,
+`docs/LEGENDS-III-RESEARCH.md`) recommended a distinct windfall good id
+excluded from the Commission's ledger, and that recommendation was approved —
+**then building it found four reasons the catalogue refuses one, and one
+reason the fiction wants the opposite.** The reversal is recorded here rather
+than quietly taken, because it changes what the horizon says about itself.
+
+### Why there is no `chart_orrery`
+
+1. `NOT SALVAGE` asserts `charts.size() == BAND_EDGES.size()` — exactly one
+   chart good per band edge. A seventh goes **red**, loudly.
+2. `chart_for_band` returns the **first** good matching a band, and both the
+   survey mast and the deep-station first berth mint through it. A second
+   band-6 chart would make what a mast pays depend on dictionary insertion
+   order — silent, seed-independent, and wrong in the one place the game
+   mints its own currency.
+3. `family()` reads `chart_band`. Without one, forty years of survey data
+   draws under the **BULK** glyph, and `family_color` loses the band tint —
+   breaking the one channel §30 says must carry meaning when colour cannot.
+4. Tolls exclude chart goods by `is_chart`. A distinct id would make an
+   orrery hold **the largest toll in the game**, punishing the collection
+   with a mechanic written to spare exactly this cargo.
+
+So the orrery pays in `chart_unsounded`, the real good, and every property —
+family, glyph, band tint, toll exclusion, filability, storability, weight,
+price — is correct by construction with no new key and no assertion edited.
+
+### And the Commission should hear about it
+
+The research's warning was calibrated at a 100-unit windfall, where one press
+of the ALL button clears the Grand Commission's entire chart pillar. At
+**twenty units** the arithmetic is different and so is the reading: selling
+these moves `chart_data_sold` by a fifth of the top stage, and that is **the
+arc's thesis landing rather than a leak.** The instrument logs you as the
+collecting vessel; you carry the Authority's own forty years of uncollected
+work back to an Authority counter; the Authority thanks you for your
+contribution. Every one of those sentences is true and the paperwork is in
+order. `THE ORRERY IS NOT A RAISE` asserts the interaction deliberately — the
+share of the top stage must stay a **minority**, so the legend cannot become
+the pillar, and nobody can "fix" the interaction by accident later.
+
+### The size is the assertion
+
+Twenty units is five standard loops of masting, and the leg computes that
+from `PACING_LOOP["survey"] × SurveyMast.YIELD_UNITS` rather than from a
+number in a comment — so the claim "a scale a pilot cannot earn in a session"
+is measured against the rate the pacing profile itself uses. It also fits a
+**starter** hold with four space to spare, which is the honest shape: a pilot
+who somehow got out there can carry it, but only by carrying nothing else.
+
+All-or-nothing and **deferring**, the mast's and the Stillness' posture, and
+hardest here — twenty units is most of a starter hold, so arriving full is
+the ordinary case rather than the edge one. The mark stays unspent and the
+instrument keeps filing, which is exactly what a machine that has waited
+forty years would do about it.
+
+### One ladder rung for the rest of the horizon
+
+The orrery carries a verb of its own, and so will the forge and the
+procession — three nodes sharing nothing except standing alone at a mark.
+Rather than three group additions to two ladders each, commit 5 opens **one
+shared group, `"legend"`**, added to both ladders now. Getting this rung
+wrong would leave the forge and the procession unreachable by a finger
+without either file changing again, which is §96's lesson stated forward
+instead of paid for twice.
+
+---
+
+## 104. The pattern forge (rides v25)
+
+Horizon 9 commit 5, second of four. A machine that copies: feed it a hull and
+it prints the pattern, and it does not ask whose hull.
+
+### The research's biggest single return
+
+The spec called the escort wing "genuinely new" and the largest unbuilt piece
+of the horizon. **It was already shipped.** `REQUEST ESCORT` — the ALLIED rung
+of the contact menu — has flown a Cordon picket on the player's wing since
+v18: a station off the shoulder, guard reach measured from the *player*,
+firing only at what `hostile_to_player` says fights the player, an ambient HP
+floor, a staged death, and radar paint that reads friendly. Every hazard a
+friendly armed ship raises had already been found and paid for there,
+including the one nobody would guess: `ESCORT_FOLLOW` (8.0) is deliberately
+larger than `OVERCHARGE_RADIUS` (7.0) so an escort does not sit inside the
+player's own free ability blast.
+
+So the forge needed **a different spawner and two policies lifted**, not a
+class. `Hostile.printed` lifts exactly two, and both are policy rather than
+mechanism: the 60-second courtesy clock (a favour asked of a picket, not a
+thing built to fly with you) and the chart-edge release (the promise that
+patrols do not operate past the marker — which a hull printed 7,000u *outside*
+the marker cannot be breaking). Three more touches follow from an empty
+patrol: `begin_escort`'s route gate (which exists to stop station-keepers
+teleporting home, a reason that does not reach a hull with no home),
+`_process`'s station-keeping branch, and a general guard in `_walk_beat` so a
+routeless walker holds position instead of indexing an empty array.
+
+### The unregistered flag does four jobs at once
+
+`faction = "printed"` is in no roster, and every consequence is one the design
+wanted:
+
+- `baseline_attitude` answers 0 → NEUTRAL → `fights_the_player` is false, so
+  **the player's own guns never auto-target their wing**.
+- `is_faction` is false → `shift_faction` no-ops, so **splashing your own
+  escort costs nothing in standing**. This matters more than it sounds: three
+  player weapons (overcharge, arc chain, torpedo splash) sweep the `hostiles`
+  group with **no IFF filter, by documented design**, and a wing of three is
+  far likelier than a single escort to have somebody inside the blast.
+- `enemies_of` never lists it → **nothing opens on a printed hull
+  unprovoked**. They are shot at only once they have fired, which is precisely
+  what "they follow, and when something shoots at you they answer" means when
+  you write it down as code.
+- `marker_color` falls through to the spawner's `tint` — the branch whose own
+  comment reserves it for "a ship that flies no flag at all".
+
+### They cannot land the kill, and that is the design
+
+A printed hull joins `combatants` like every other, so `SKIRMISH_HP_FLOOR`
+clamps what it can take a non-muster target down to: **the player lands every
+killing blow.** The alternative was measured and refused — drop the wing out
+of `combatants` and `_die`'s `player_kill` goes false on anything they finish:
+no loot, no contract tick, and the world depleting itself without paying
+anyone. The floor is what keeps §51 (ONLY THE PLAYER DEPLETES THE WORLD) true
+with three friendly guns in the sky.
+
+### The verb is a journey
+
+"Bring it a hull" is taken literally: the forge takes the pattern of anything
+that **dies within `FEED_RANGE`**, so arming it means leading something out
+there or choosing to fight on that ground. The bed is empty until you put
+something on it and the tap says so; the pattern is **spent with the
+printing**, so a second wing costs a second hull. It does not ask whose hull —
+a printed wing that dies here can be reprinted from its own corpse, which is
+the machine's whole character and costs nothing to allow.
+
+The forge **never spends its mark**: a forge is a place, the serpent's rule.
+That is not a farm — escorts are not currency, they do not survive a warp
+(structural: children of `system_root` are freed wholesale by `_load_system`,
+which is why the spawner parents to `get_parent()` and never to the player),
+and every printing costs a kill.
+
+### The leg tears its own wing down
+
+`THE FORGE COPIES WHAT DIES THERE` asserts the empty bed, its refusal, the
+feeding, the print count, all four IFF properties, the cold bed and the
+standing forge — and then **frees the wing by name**. A printed hull left in
+the `hostiles` group would be picked as `live[0]` by `_pacing_kill_yield` and
+force-attacked for 5400 frames, corrupting the `MIDTIER` bar the whole economy
+rests on. The cleanup is part of the assertion, not housekeeping after it.
+
+---
+
+## 105. The procession's end (rides v25)
+
+Horizon 9 commit 5, third of four. A formation of dead ships in perfect order,
+every one facing the charted side. Nothing to crack, nothing to mine, nothing
+to fight — **and it pays nothing at all**, which is the whole of its job: in a
+set of ten legends where nine of them give, one that only asks is what keeps
+the others from reading as a loot table.
+
+### The names existed nowhere until now
+
+Directive 9's page 6 has shipped since §93 as one clause — *"ATTACHED: vessels
+known to have filed after the effective date"* — and a margin note counting
+nine names the reader has met two of. **The research pass found that those
+nine names had never been written**, in code, in docs, or in history: the
+far-marks draft promised "here are the rest" and stopped. They were drafted
+and approved as `docs/THE-NINE-NAMES-DRAFT.md` before a line of this was
+built, the gate the fragments and Directive 9 both went through.
+
+**Seven of the nine stand here.** The eighth is THE LAST RETURN's evacuation
+tender, which the player has already read past the last band edge. The ninth
+is the rival — *"a hull in a livery nobody registered"* — whose wreck lies in
+PYX-01's band 5, not in this formation.
+
+**N1, and it is the decision that mattered:** the list names **vessels, never
+pilots**, and the rival's hull is **absent rather than named**. Two horizons
+of deliberate anonymity are not spent for a caption. A player who has read the
+wreck's log knows exactly which hull is missing from the line, and nobody
+says it. `READ THEM SLOWLY` asserts the absence against
+`UnsoundedSite.NAMES["wreck"]` rather than a literal, so renaming it there
+cannot quietly un-assert this.
+
+### The interface enforces the copy
+
+The plate has instructed since §98: *"IF YOU READ THE HULLS, READ THEM
+SLOWLY."* The research flagged the obvious hazard — `show_broadcast` holds for
+6.2 seconds and **has no queue**, so three taps in six seconds would erase
+two entries. Rather than routing around it, the hull **asks first**
+(`broadcast_busy`) and refuses with one short line while a plate is up.
+
+The mark told the player to read slowly; now the only surface that could
+enforce that does. The hazard became the mechanic.
+
+**And the prompt line is for refusals only.** It is a single un-wrapped
+`Label` at font 16 on a 720-wide design space, so anything much past eighty
+characters runs off both edges — which is why the attachment entries (up to
+122 characters) go to the plate, and only short terms go to the prompt.
+*(Worth a separate look: `SoundingMark.CANNOT_READ` is 118 characters and
+shipped in §98 through the prompt. It may already be clipping on a phone. Not
+touched here — it is approved copy, and measuring it wants a running build
+rather than a guess.)*
+
+### The hulls are nodes; the rest is scenery
+
+Only the seven readable hulls plus twelve anonymous ones join the ladder
+group, spaced well past `CameraRig.PICK_PX` so choosing which hull to read is
+a decision rather than a coin flip — asserted in world units against the
+builder's own `HULL_SPACING`. The hundreds the mark *counted and stopped
+counting* are a **MultiMesh** on `_build_starfield`'s precedent, because an
+instance that can never be tapped has no business being a node.
+
+Every hull faces the system origin — the charted side, the thing they were all
+trying to reach when they stopped. One angle for the whole formation: they are
+in perfect order, and the perfect order is the frightening part.
+
+### Not a Derelict, deliberately
+
+`Derelict._process` writes the single global prompt label on range
+transitions, and there are fifteen writers of that label already. Nineteen
+Derelict-derived hulls in formation would fight over it every frame the player
+drifts through — the name you just tapped wiped by a neighbour. The hold
+contract is duck-typed and cost about sixty lines to carry directly.
+
+### It never spends its mark
+
+A formation is a place — the serpent's and the forge's rule. `read → given`,
+and `closed` is unreachable because nothing here is ever spent. The deposit is
+the layup's verb (the whole hold, for nothing, one clause and no tally), the
+empty-hold refusal is where the place states what it is — *"NOTHING HERE IS
+SALVAGE — THE HULLS ARE FULL AND NOBODY HAS TOUCHED THEM"* — because a player
+holding on a dead ship means *take something*, and that is the sentence that
+answers it.
+
+**S7 taken, in one line and never explained:** the living nomad fleet is named
+*for* this place. It is stated exactly once, in the deposit's response, and
+nothing mechanical connects them.
+
+---
+
+## 106. The Tally's nursery (v26)
+
+Horizon 9 commit 5, last of four, and the horizon's last commit. The only
+thing in Pyxis you can own and then have to keep — and the only legend that
+costs a save byte.
+
+### Its own store, because the key formats collide
+
+`colony_key(sid, i)` and `mark_key(sid, i)` are the **same string format**,
+`"%s:%d"`. A nursery filed under `colonies` at FarMarks index 3 would claim
+the same key as hyper-structure index 3's colony: claiming one would make the
+other read as claimed, suppress its chart diamond and mislabel its jump row.
+And a prefixed key does not escape it — `_load_colonies` requires a two-part
+key and silently drops anything else. **There is no key shape that both
+survives that loader and avoids the collision**, which is why `nursery` is its
+own store and why this commit is the v26 bump.
+
+### The clock is derived, and that is the whole design
+
+`taken_at` is a persisted `played_seconds` stamp; which assault is due falls
+out of it exactly the way a contract board falls out of the clock, quantised
+to a stride so two world rebuilds seconds apart cannot disagree — the rival's
+rule. Nothing schedules, nothing ticks, nothing can drift out of step with
+itself. It races the player's own clock, so closing the game for a month does
+not return them to a nursery under its hundredth assault.
+
+**Three ordering bugs came out of tracing it**, all found before the sweep:
+
+1. **Taking summoned wave zero.** `_assault_index` starts at −1 so a nursery
+   rebuilt mid-siege forms it on the first tick — but at the moment of taking
+   the due index is 0, and −1 made that "overdue". Pinned to the current index
+   at the taking.
+2. **The siege stopped forever after the first victory.** Turning a wave back
+   restamps `taken_at` (it must, or the next assault arrives already overdue),
+   which sends the derived index back to 0 — leaving `_assault_index` at the
+   wave just fought made the comparison false permanently.
+3. **Every wave would have been the first one.** Wave *size* was read off the
+   clock index, which now resets on every victory. Size comes from the
+   **record** — the persisted count of what the pilot has actually turned back
+   — and the clock says only *when*. The clock says when; the record says how
+   many.
+
+### S4 taken in the open: held, not owned
+
+The nursery's jump anchor reaches FarMarks depth, and `A FOOTHOLD, NOT A FARM`
+derived its bound from `HYPER_DEPTH_MAX` — a **constant**, not the world — so
+it would have gone on printing PASS while the number it prints stopped being
+true. The beacon cap's own comment predicted this exact failure in as many
+words.
+
+So the leg is re-derived in the same commit against
+`max(HYPER_DEPTH_MAX, FarMarks.DEPTH_MAX)`, and the bound moves 3.0 → 5.5 with
+its arithmetic stated: at 5.5 the cooldown cannot fall below ~285s without
+going red, which pins it **tighter** to the authored 300 than the old bound
+pinned it (~245s). The guard got stricter as the reach grew. A new clause
+asserts the derivation reaches past the far marks at all, which is the clause
+that would have caught the silent break had it existed.
+
+What pays for the widened reach is the one thing no beacon or colony offers:
+**the anchor exists only while the ground is held.** A beacon jump is bought
+once for 500 credits and is a door forever; this one is priced in fights,
+forever, and closes the day the Tally take the ground back. That is rent, not
+a farm.
+
+### S5: losing a siege, never a supply run
+
+Assaults form only while the player is in-system — a siege nobody could have
+attended is a loss nobody could have prevented. Leaving with the ground quiet
+keeps it; leaving with them **on** it loses it, checked in `_load_system`
+before the teardown, because every nursery node is a `SystemRoot` child and a
+check made afterwards would be made on nothing. And the count of waves turned
+back **survives the loss**: a pilot who held it through nine assaults and lost
+the tenth has still held it through nine, and retaking does not make them a
+novice.
+
+### What it cost, and the fifth rule that came out of it
+
+`nursery_wave_index` shipped with `var strided := floor(...)`. GDScript's bare
+math globals are Variant-in, Variant-out, so `:=` cannot infer from one — and
+that is a **parse error** in an autoload, which took `game_state.gd` down,
+which took every script depending on it down, which meant the harness could
+not run at all. The typed variants (`floorf`, `absf`, `clampf`, `mini`…) are
+what this codebase uses everywhere; one bare call was enough.
+
+Nothing in the three gates could see it. It is not an indent, not a duplicate,
+not a shadowed loop variable and not an unresolved reference; it reads as
+completely ordinary code, and it survived being written, re-read and statically
+checked before Godot ever saw it. So `check_scripts.py` gains a **fifth rule**
+— `check_infer`, flagging `:=` against an untyped global.
+
+**And the first draft of that rule reported thirteen false positives**, every
+one an `int(ceil(...))` that is legal precisely because the conversion supplies
+the type — the pattern allowed wrapper calls in front of the untyped one,
+contradicting the rule's own docstring. The shadow rule learned this from 28 of
+them. A checker that cries wolf is a checker nobody runs, so the untyped call
+must now be outermost, and the rule is red-verified in both directions: zero on
+the tree, one when the defect is put back.
+
+### The horizon closes
+
+Ten legends, ten plates, all standing. The far deep now answers a pilot who
+files with the network: bearings to marks, marks to legends, and one piece of
+ground that answers back.

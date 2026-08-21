@@ -60,6 +60,409 @@ static func _build_deep_space(def: Dictionary, container: Node3D, system_id: Str
 	deep.name = "DeepSpace"
 	container.add_child(deep)
 	deep.configure(def, system_id)
+	# The unsounded structures live PAST the last band edge, so they belong to
+	# the deep the way the hyper structures do -- always present, never waiting
+	# for the cell streamer, because a thing whose job is to stand at the end of
+	# the world must actually be standing there when the player arrives. Built
+	# here rather than in build() because placement needs this deep instance:
+	# the reject loop below asks plan_cell where the stations are.
+	_build_unsounded(deep, container, system_id)
+	# And the network's buoys past even those, for the identical reason: a thing
+	# the channel quotes a bearing to must be standing at that bearing when the
+	# pilot arrives, whatever the cell streamer has reached.
+	_build_far_marks(deep, container, system_id)
+
+
+# HOW FAR A MARK MAY BE MOVED OFF THE GENERATOR'S ANSWER, in arc length, tried
+# in this order: the nominal point first, then alternating sides at growing
+# distance. A station's keep-out is 34u across, so the first step already clears
+# any single station by construction (68 - 34 = 34), and the rest are for the
+# rare case of a second one. THE HARNESS READS THIS LIST rather than a literal,
+# so the bound it asserts is the bound the builder actually honours.
+const MARK_ARCS := [0.0, 68.0, -68.0, 136.0, -136.0, 204.0, -204.0]
+
+# THE PROVING DRIFT's numbers. Loot is sized against the band-6 deep hulk (70 x
+# 4.6 = 322) and set above it: this is a windfall found at the end of a
+# seven-thousand-unit flight, not a wreck the streamer put in your way. The
+# crack is longer than a hulk's for the same reason a workshop is not a wreck.
+const DRIFT_LOOT := 420
+const DRIFT_CRACK_TIME := 3.6
+# How far a legend stands off its buoy, so a tap near the mark can still reach
+# the mark. Comfortably past Derelict.CRACK_RANGE (6.5) in screen terms without
+# putting the legend out of sight of the lamp that names it. Shared by every
+# kind that stands a node beside the spar.
+const LEGEND_STANDOFF := 26.0
+
+# THE VEIN's numbers (§101), provisional like the drift's and gathered the same
+# way. Sixteen units of the richest band-6 ore is ~2.7x what the deepest rolled
+# seam pays -- "richer than anything on the charted side" made arithmetic --
+# and at space 1 it fits a starter hold, because a windfall the ship cannot
+# carry is a taunt. The cut is the longest in the game for the same reason the
+# archives hold longest: depth is time.
+const VEIN_UNITS := 16
+const VEIN_MINE_TIME := 9.0
+
+# THE LAYUP's numbers (§101). The withdrawal sits between the band-6 deep hulk
+# (322) and the drift (420): a cache is stores, not a workshop.
+const LAYUP_LOOT := 380
+const LAYUP_CRACK_TIME := 3.2
+
+
+static func _build_far_marks(deep: DeepSpace, container: Node3D, system_id: String) -> void:
+	# 98, THE FAR MARKS. Five buoys per system at 6,500-9,000u, where the
+	# FarMarks generator says they stand and carrying the kind it deals them.
+	# No draw of the shared stream moves: positions and kinds come off their own
+	# salted seeds (far_marks.gd), and the keep-out below reads plan_cell, which
+	# is pure.
+	if system_id == "":
+		return
+	var spots := FarMarks.positions(system_id, GameState.run_seed)
+	# THE PLAN ONCE, not per mark. kind_at builds the whole run's assignment on
+	# every call -- it has to, because "at most once in an entire game" cannot be
+	# decided one system at a time -- so asking it five times would rebuild the
+	# same dictionary five times and call positions() fifteen more.
+	var plan := FarMarks.run_plan(GameState.run_seed, SystemDB.ids())
+	for i in range(spots.size()):
+		var kind := String(plan.get("%s:%d" % [system_id, i], ""))
+		if kind == "":
+			# A MARK WITH NO NOTATION MUST NOT STAND. Unreachable while the
+			# generator deals every slot, which is exactly why it is checked
+			# here: a buoy whose plate is blank is a monument to nothing.
+			continue
+		var m := SoundingMark.new()
+		m.system_id = system_id
+		m.index = i
+		m.kind = kind
+		container.add_child(m)
+		m.global_position = _mark_pos(deep, spots[i] as Vector3)
+		# AND WHATEVER THE MARK HAS ALREADY BEEN READ INTO BEING. A legend is
+		# built on the LOAD path and on the READ path, and both go through
+		# build_legend -- the build_garrison rule one shelf down: the list that
+		# raises a thing and the list that raises it again after a warp must be
+		# the same list by construction, because being two lists is how a
+		# headline feature ships invisible for a whole session.
+		build_legend(container, system_id, i, kind, m.global_position)
+
+
+static func build_legend(container: Node3D, system_id: String, index: int,
+		kind: String, at: Vector3) -> Node3D:
+	# §99. WHAT STANDS AT A MARK THE PILOT HAS READ. One function, two callers:
+	# SystemBuilder above (every rebuild, for marks read in an earlier session)
+	# and Main.legend_arrives (once, at the moment of reading, so the legend
+	# does not wait for a warp).
+	#
+	# UNREAD MARKS BUILD NOTHING, and that is the horizon's own rule rather than
+	# an optimisation: reading a mark is what resolves it, so a pilot who has
+	# not read one has not found what stands there. SPENT marks build nothing
+	# either -- a workshop is cracked once.
+	var key := GameState.mark_key(system_id, index)
+	if not GameState.is_mark_read(key):
+		return null
+	# THE SPENT CHECK IS PER KIND (§101), because "spent" does not mean one
+	# thing: a spent drift or vein is GONE -- windfalls do not rebuild -- while
+	# a spent layup is an OPEN CACHE, standing forever for deposits. Hoisting
+	# the check above the match was correct for one kind and wrong the day the
+	# second one shipped.
+	match kind:
+		"drift":
+			if GameState.is_mark_spent(key):
+				return null
+			return _build_proving_drift(container, system_id, index, at)
+		"vein":
+			if GameState.is_mark_spent(key):
+				return null
+			return _build_vein(container, key, at)
+		"layup":
+			return _build_layup(container, key, at)
+		"stillness":
+			# The ground outlives its reading -- the layup's posture. The mark
+			# spends when the reading is finally carried home, but every entry
+			# becalms, forever: the place stays what it is.
+			return _build_stillness(container, key, at)
+		"order":
+			if GameState.is_mark_spent(key):
+				return null
+			return _build_standing_order(container, key, at)
+		"orrery":
+			if GameState.is_mark_spent(key):
+				return null
+			return _build_orrery(container, key, at)
+		"forge":
+			# NEVER SPENDS ITS MARK -- a forge is a place, the serpent's rule.
+			# It pays nothing (escorts are not currency), the wing it prints
+			# cannot survive a warp, and arming it costs a kill, so rebuilding
+			# it whole on every visit is a journey rather than a farm.
+			return _build_forge(container, key, at)
+		"procession":
+			# NEVER SPENDS ITS MARK, and never could: it pays nothing at all,
+			# so there is no windfall to protect. A formation is a place, the
+			# serpent's and the forge's rule — read → given, and `closed` is
+			# unreachable because nothing here is ever spent.
+			return _build_procession(container, key, at)
+		"nursery":
+			# NEVER SPENDS ITS MARK: holding is not consuming, and the day the
+			# Tally take it back the plate has to still read. The nursery's own
+			# store carries whether it is held.
+			return _build_nursery(container, key, at)
+		"serpent":
+			# NEVER spent -- S2's rule enforced by never asking. The serpent
+			# leaves rather than dies, so the mark keeps its warning and the
+			# fight rebuilds whole on every visit. Not a respawn exploit,
+			# because it has never once paid.
+			return _build_serpent(container, key, at)
+		_:
+			# THE ONGOING FOUR ARRIVE IN COMMIT 5, and until they do a read
+			# mark is exactly what its plate says it is: a record of a sounding,
+			# in the past tense, which is why the plates were written that way.
+			# The absence is stated here rather than left as a silent fallthrough
+			# so the next commit has one obvious place to add a line.
+			return null
+
+
+static func _build_proving_drift(container: Node3D, system_id: String,
+		index: int, at: Vector3) -> Node3D:
+	# THE WORKSHOP HULL. A Derelict with two fields set, not a new class: §17's
+	# rule, and this class is already a gradient of hull kinds -- the authored
+	# survey hull, the tutorial's hull, the deep hulks and the grave-field pairs
+	# are all the same node carrying different flags.
+	#
+	# counts_as_survey is FALSE for the deep hulk's exact reason, harder out
+	# here: charting the next system by cracking something seven thousand units
+	# past the chart edge would let the far deep skip the game's spine
+	# altogether. counts_for_contract stays TRUE, also the deep hulk's rule --
+	# you did breach a hull, and a contract that says so should say so.
+	var d := Derelict.new()
+	d.loot_total = DRIFT_LOOT
+	d.crack_time = DRIFT_CRACK_TIME
+	d.counts_as_survey = false
+	# Set BEFORE add_child: _ready is what applies these, the ordering every
+	# spawner in this file keeps.
+	d.owns_mark = GameState.mark_key(system_id, index)
+	d.prototype = FarMarks.drift_prototype(system_id, index, GameState.run_seed,
+		ModuleDB.prototype_ids())
+	container.add_child(d)
+	# Offset off the buoy so the mark stays tappable beside it. The hull is the
+	# thing you fly to; the mark is the thing that told you to.
+	d.global_position = at + Vector3(LEGEND_STANDOFF, 0.0, 0.0)
+	d.rotation_degrees.y = 34.0
+	return d
+
+
+static func _build_vein(container: Node3D, key: String, at: Vector3) -> Node3D:
+	# §101. THE VEIN. A MineableSeam at band-6 parameters -- the machinery the
+	# spec promised it would ride, with three fields moved and one added. The
+	# good is the RICHEST of the band-6 table, picked by price rather than
+	# rolled: the plate promises "richer than anything on the charted side",
+	# and a roll that could land on the cheapest entry would make the plate a
+	# liar one time in four. Deterministic, so the same vein pays the same ore
+	# on every rebuild it survives.
+	var table: Array = CommodityDB.seam_yields(6)
+	if table.is_empty():
+		return null
+	var best := String(table[0])
+	for g_v in table:
+		if CommodityDB.base_price(String(g_v)) > CommodityDB.base_price(best):
+			best = String(g_v)
+	var seam := MineableSeam.new()
+	seam.good = best
+	seam.units = VEIN_UNITS
+	seam.band = 6
+	seam.mine_time = VEIN_MINE_TIME
+	seam.owns_mark = key
+	container.add_child(seam)
+	seam.global_position = at + Vector3(LEGEND_STANDOFF, 0.0, 0.0)
+	return seam
+
+
+static func _build_layup(container: Node3D, key: String, at: Vector3) -> Node3D:
+	# §101. THE LAYUP. A Derelict that takes deposits: the crack is the
+	# withdrawal, once ever (the mark spends), and the open cache then stands
+	# FOREVER -- built cracked on every rebuild after, which is the one legend
+	# whose spent state means "still here" rather than "gone". counts_as_survey
+	# false for the drift's reason; the deposit verb lives on the node.
+	var d := Derelict.new()
+	d.loot_total = LAYUP_LOOT
+	d.crack_time = LAYUP_CRACK_TIME
+	d.counts_as_survey = false
+	d.takes_deposits = true
+	d.owns_mark = key
+	d.cracked = GameState.is_mark_spent(key)
+	container.add_child(d)
+	d.global_position = at + Vector3(LEGEND_STANDOFF, 0.0, 0.0)
+	d.rotation_degrees.y = -28.0
+	return d
+
+
+static func _build_stillness(container: Node3D, key: String, at: Vector3) -> Node3D:
+	# §102. Centred ON the mark, no standoff, and that is the drama working as
+	# designed rather than an ambush: the buoy that warned you stands inside
+	# the ground it warned you about, so the first becalming can begin where
+	# you finished reading -- and the plate's promise ("they will come back")
+	# is kept ninety seconds later, exactly as written.
+	var g := StillnessGround.new()
+	g.owns_mark = key
+	container.add_child(g)
+	g.global_position = at
+	return g
+
+
+static func _build_standing_order(container: Node3D, key: String, at: Vector3) -> Node3D:
+	var o := StandingOrder.new()
+	o.owns_mark = key
+	container.add_child(o)
+	o.global_position = at + Vector3(LEGEND_STANDOFF, 0.0, 0.0)
+	return o
+
+
+static func _build_orrery(container: Node3D, key: String, at: Vector3) -> Node3D:
+	var o := Orrery.new()
+	o.owns_mark = key
+	container.add_child(o)
+	o.global_position = at + Vector3(LEGEND_STANDOFF, 0.0, 0.0)
+	return o
+
+
+static func _build_forge(container: Node3D, key: String, at: Vector3) -> Node3D:
+	var f := PatternForge.new()
+	f.owns_mark = key
+	container.add_child(f)
+	f.global_position = at + Vector3(LEGEND_STANDOFF, 0.0, 0.0)
+	return f
+
+
+static func _build_procession(container: Node3D, key: String, at: Vector3) -> Node3D:
+	# Standing further off than the other legends: the formation is a column
+	# hundreds of units long, and its head must not sit on top of the buoy that
+	# named it -- the mark has to stay tappable beside a thing this large.
+	var pr := Procession.new()
+	pr.owns_mark = key
+	container.add_child(pr)
+	pr.global_position = at + Vector3(LEGEND_STANDOFF * 2.0, 0.0, 0.0)
+	return pr
+
+
+static func _build_nursery(container: Node3D, key: String, at: Vector3) -> Node3D:
+	var n := TallyNursery.new()
+	n.owns_mark = key
+	container.add_child(n)
+	# Standing well off the buoy: the cluster is thirty units across and its
+	# keepers ring it at sixteen more, so a mark any closer would be inside a
+	# fight the player has not chosen yet.
+	n.global_position = at + Vector3(LEGEND_STANDOFF * 2.5, 0.0, 0.0)
+	return n
+
+
+static func _build_serpent(container: Node3D, key: String, at: Vector3) -> Node3D:
+	# Standing off twice the usual distance: the serpent's idle circuit is a
+	# forty-unit orbit of its home point, and a home on the buoy would drag
+	# the fight through the one thing out here the player must stay able to
+	# tap calmly.
+	var sp := SoundingSerpent.new()
+	sp.owns_mark = key
+	container.add_child(sp)
+	sp.global_position = at + Vector3(LEGEND_STANDOFF * 2.0, 0.0, LEGEND_STANDOFF)
+	return sp
+
+
+static func _mark_pos(deep: DeepSpace, nominal: Vector3) -> Vector3:
+	# THE GENERATOR SAYS WHERE; THIS SAYS HOW FAR IT MAY BE NUDGED. Band 6 runs
+	# to the end of the world and STATION_CHANCE[6] is 0.135, so a deep station
+	# can stand at eight thousand units — and a station's keep-out is 34u across
+	# a 64u cell, which makes "a buoy inside one" a routine event rather than a
+	# curiosity. Left alone, roughly one mark per run would sit inside a station
+	# it did not know about, where the tap ladder resolves to the dock ring and
+	# the mark is unreachable.
+	#
+	# WHY IT NUDGES INSTEAD OF REROLLING, which is where this parts company with
+	# _unsounded_pos above: that function IS the generator for its own positions,
+	# so it can throw an angle away and take another. A mark's position has a
+	# second consumer — the channel quotes a bearing and a range to it at filing
+	# time, off FarMarks.positions — so the built buoy has to stay where the
+	# quote said. The offsets are ARC LENGTHS at a fixed radius, capped at 204u,
+	# which at seven thousand units is 1.7 degrees and no change of range at all:
+	# the quoted bearing still flies you to the lamp.
+	#
+	# THE 3x3 NEIGHBOURHOOD, not just the containing cell. STATION_INSET is 22
+	# and STATION_SAFE_RADIUS is 34, so a station can be 22u from its own cell's
+	# edge and therefore inside the keep-out of a point in the NEXT cell. Asking
+	# only the containing cell (which is what _unsounded_pos does, at depths
+	# where a station is rarer) would miss that band entirely.
+	var radius := Vector2(nominal.x, nominal.z).length()
+	if radius <= 0.0:
+		return nominal
+	var base := atan2(nominal.z, nominal.x)
+	for arc in MARK_ARCS:
+		var ang := base + float(arc) / radius
+		var p := Vector3(cos(ang), 0.0, sin(ang)) * radius
+		if _clear_of_stations(deep, p):
+			return p
+	# BOUNDED, and it ends by standing where it was told. Seven tries spanning
+	# 408u of arc against a 68u obstacle cannot all fail unless the volume is
+	# wall to wall with stations, and an unbounded search in a builder is how a
+	# retune becomes a hang instead of a slightly awkward buoy.
+	return nominal
+
+
+static func _clear_of_stations(deep: DeepSpace, p: Vector3) -> bool:
+	var cell := DeepSpace.cell_of(p)
+	for dx in range(-1, 2):
+		for dz in range(-1, 2):
+			var station: Dictionary = deep.plan_cell(cell.x + dx, cell.y + dz)["station"]
+			if station.is_empty():
+				continue
+			if p.distance_to(station.get("pos", Vector3(1e9, 0.0, 1e9))) \
+					< DeepSpace.STATION_SAFE_RADIUS:
+				return false
+	return true
+
+
+static func _build_unsounded(deep: DeepSpace, container: Node3D, system_id: String) -> void:
+	# v23, THE UNSOUNDED. One authored record per system plus, in PYX-01, the
+	# rival's wreck on the way out. Which kind stands where is DATA
+	# (SystemDB.unsounded_kind_of), consumed here and never by the generator:
+	# no draw moves, the world fingerprint stands.
+	if system_id == "":
+		return
+	var kinds: Array = []
+	var main_kind := SystemDB.unsounded_kind_of(system_id)
+	if main_kind != "" and UnsoundedSite.DEPTHS.has(main_kind):
+		kinds.append(main_kind)
+	if SystemDB.rival_wreck_in(system_id):
+		kinds.append("wreck")
+	for kind_v in kinds:
+		var kind := String(kind_v)
+		var site := UnsoundedSite.new()
+		site.kind = kind
+		site.system_id = system_id
+		container.add_child(site)
+		site.global_position = _unsounded_pos(deep, system_id, kind)
+
+
+static func _unsounded_pos(deep: DeepSpace, system_id: String, kind: String) -> Vector3:
+	# A fixed DEPTH and a rolled bearing, on its own salted stream -- the
+	# charted-seam rule: this thing persists a read across sessions, so its
+	# position must be a pure function of (system, kind, run_seed), and it must
+	# not touch the shared cell stream or every later draw in the system moves.
+	#
+	# The reject loop keeps it out of a deep station's keep-out. Sixteen tries
+	# is not hope arithmetic: a station occupies at most STATION_SAFE_RADIUS of
+	# a 64u cell on a circumference of thousands of units, so one rejection is
+	# already rare and sixteen consecutive is beyond the age of the universe --
+	# but the loop is bounded because unbounded loops in a builder are how a
+	# bad retune becomes a hang instead of a bad place.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("%s|unsounded|%s|%d" % [system_id, kind, GameState.run_seed])
+	var radius := SystemDB.bounds_of(system_id) + float(UnsoundedSite.DEPTHS[kind])
+	var pos := Vector3.ZERO
+	for _i in range(16):
+		var ang := rng.randf_range(0.0, TAU)
+		pos = Vector3(cos(ang), 0.0, sin(ang)) * radius
+		var cell := DeepSpace.cell_of(pos)
+		var station: Dictionary = deep.plan_cell(cell.x, cell.y)["station"]
+		if pos.distance_to(station.get("pos", Vector3(1e9, 0.0, 1e9))) \
+				>= DeepSpace.STATION_SAFE_RADIUS:
+			break
+	return pos
 
 
 static func _build_environment(def: Dictionary, container: Node3D) -> void:

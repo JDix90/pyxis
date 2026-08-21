@@ -70,6 +70,13 @@ var return_fire_enabled := true
 
 # Seconds of EMP lockout remaining. Drives and mounts are dead; the hull is not.
 var _emp := 0.0
+# §102. THE BECALMING -- the Stillness' field, and deliberately NOT the EMP
+# var: an EMP is halved by thermal sinks (the mitigation runs inside emp_stun),
+# tumbles the hull, clears the player's targets and announces its own recovery.
+# The becalming is none of those. Nothing shortens it, nothing is attacking, and
+# the drives simply stop and then return -- the ground that imposed it owns
+# every part of the presentation.
+var _becalmed := 0.0
 # What a Thermal Sink in the hold does to an incoming pulse. Half, not immunity:
 # a rigged hulk should still cost you the beat it bought, just not the whole
 # fight — and an item that switches a hazard off entirely stops being a trade.
@@ -621,6 +628,24 @@ func emp_stun(duration: float) -> void:
 		rig.shake(0.26)
 
 
+func becalm(duration: float) -> void:
+	# §102. Longest quiet wins, emp_stun's own rule -- two overlapping passages
+	# must not stack into a lockout. has_move_target clears so the ship does not
+	# resume a stale course the moment the drives return; targets deliberately
+	# do NOT clear, because nothing here is attacking and there is nothing the
+	# ship should be made to forget.
+	_becalmed = maxf(_becalmed, duration)
+	has_move_target = false
+
+
+func is_becalmed() -> bool:
+	return _becalmed > 0.0
+
+
+func clear_becalm() -> void:
+	_becalmed = 0.0
+
+
 func is_emp_stunned() -> bool:
 	return _emp > 0.0
 
@@ -725,7 +750,7 @@ func _nearest_hostile_in_range() -> Node3D:
 
 
 func command_move(pos: Vector3) -> void:
-	if _warping or docked or not input_enabled or _emp > 0.0:
+	if _warping or docked or not input_enabled or _emp > 0.0 or _becalmed > 0.0:
 		return
 	move_target = pos
 	has_move_target = true
@@ -765,7 +790,7 @@ func course_active() -> bool:
 
 
 func command_attack(target: Node3D) -> void:
-	if _warping or docked or not input_enabled or _emp > 0.0:
+	if _warping or docked or not input_enabled or _emp > 0.0 or _becalmed > 0.0:
 		return
 	attack_target = target
 	has_move_target = false
@@ -856,6 +881,36 @@ func _physics_process(delta: float) -> void:
 	if _warping or docked:
 		driving = false  # never leave this stale: the camera reads it to follow
 		clear_tether()   # a tether cannot follow you into a warp or a dock clamp
+		return
+
+	if _becalmed > 0.0:
+		# §102. Drives to zero -- a becalming, not damage, not EMP. No tumble
+		# (the name is THE STILLNESS), no recovery pulse, and an EMP landing
+		# inside it is absorbed rather than stacked: a stun must not outlive the
+		# stillness around it. The obstacle resolve is the EMP branch's,
+		# verbatim and for its reason -- a storm can push an unpowered hull
+		# through registered rock.
+		_becalmed -= delta
+		_emp = maxf(_emp - delta, 0.0)
+		driving = false
+		has_move_target = false
+		velocity = velocity.move_toward(Vector3.ZERO, 30.0 * delta)
+		global_position += (velocity + _tick_tether(delta)) * delta
+		var still_resolved := Obstacles.resolve(global_position, HULL_RADIUS)
+		if not still_resolved.is_equal_approx(global_position):
+			var still_normal := global_position - still_resolved
+			still_normal.y = 0.0
+			if still_normal.length() > 0.0001:
+				still_normal = still_normal.normalized()
+				velocity -= still_normal * minf(velocity.dot(still_normal), 0.0)
+				_tether_vel -= still_normal * minf(_tether_vel.dot(still_normal), 0.0)
+			global_position = still_resolved
+		if _engine_mat:
+			_engine_mat.emission_energy_multiplier = 0.05
+		if _thruster:
+			_thruster.emitting = false
+		if _becalmed <= 0.0:
+			_becalmed = 0.0
 		return
 
 	if _emp > 0.0:
@@ -1167,6 +1222,20 @@ func _fire(delta: float) -> void:
 		if float(w["cooldown"]) > 0.0:
 			continue
 		w["cooldown"] = float(w["interval"]) * rate_mult
+		# §100. THE OVERDRAWN MOUNT PAYS AT THE TRIGGER, in _fire rather than in
+		# _shoot, so every family pays alike -- _shoot hands torpedoes off to
+		# their own path before its own body runs, and a cost applied there
+		# would have made the torpedo variant free the day somebody authors one.
+		# Shield only, floored at zero: the coil browns the bus, it does not
+		# breach the deck, and a mount that could kill its own ship by being
+		# fired would be a trap rather than a trade.
+		var overdraw := float(w.get("overdraw", 0.0))
+		if overdraw > 0.0:
+			shield = maxf(shield - overdraw, 0.0)
+			# The cost is LEGIBLE at the moment it is paid -- a teal flicker on
+			# the hull, the shield's own colour, so the drain reads as coming
+			# from the shield rather than as enemy fire landing.
+			FX.flash(get_parent(), global_position, Palette.TEAL, 0.5, 0.08)
 		_shoot(w, tgt)
 
 
@@ -1322,6 +1391,7 @@ func begin_warp_charge() -> void:
 	auto_target = null
 	_threat = null
 	_emp = 0.0
+	_becalmed = 0.0
 	has_move_target = false
 	velocity = Vector3.ZERO
 	clear_tether()
@@ -1364,6 +1434,7 @@ func _emergency_warp() -> void:
 	auto_target = null
 	_threat = null
 	_emp = 0.0        # a stun must never survive the thing that ends the fight
+	_becalmed = 0.0   # nor may the stillness
 	has_move_target = false
 	velocity = Vector3.ZERO
 	clear_tether()

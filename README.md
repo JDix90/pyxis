@@ -47,10 +47,10 @@ behind a `PYXIS_*` environment variable and run headless:
 PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 ```
 
-Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 50 of them —
-the 50 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
-`TAGS` at all: it is one harness with 20 stateful modes, run as its own
-sequence. So a full sweep is 50 + 20 = **70 runs**.
+Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 54 of them —
+the 54 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
+`TAGS` at all: it is one harness with 23 stateful modes, run as its own
+sequence. So a full sweep is 54 + 24 = **78 runs** (23 modes through v25; `migrate25` arrives with §106).
 
 Those three numbers are derivable from `run_harness.sh` and nothing else, so
 check them there rather than trusting this paragraph — it has been wrong before,
@@ -169,9 +169,9 @@ That cascade is the tell. If a pull leaves you with a screenful of parse errors
 naming one unfamiliar type and then a lot of inference failures, this is it —
 `ManualScreen`, `Hunt` and `HoldScreen` each caused exactly that on the way in.
 
-Current baseline: **707 PASS / 0 FAIL / 0 script errors** across **70 runs**,
-save intact, save format **v22** — measured on Godot 4.6.stable, headless
-(2026-08-18), at STRATEGY §85.
+Current baseline: **721 PASS / 0 FAIL / 0 script errors** across **72 runs**,
+save intact, save format **v23** — measured on Godot 4.6.stable, headless
+(2026-08-19), at STRATEGY §91.
 
 **The move from §81's 692 across 68 reconciles exactly.** §82 added four
 `CARTTEST` legs, one SAVETEST assertion to the read leg, and the `migrate21`
@@ -179,15 +179,78 @@ mode (one new run carrying one); §84 added `RIVALTEST`, one new run carrying
 five; §83 added three `CARTTEST` legs and one `PACINGTEST` leg. So
 692 + 6 + 4 + 5 = 707, and 68 + 2 = 70 — measured, not predicted.
 
-**Two commits ahead of that figure:** §86 moved `PACING_MIDTIER` to
-`rig_strike` and added `THE YARDSTICK IS MID-TIER` (confirmed green on a real
-run); §87 cut `BEACON_STOCK` to 3 and added `A RETUNE NEVER DELETES A BEACON`.
-So the next full sweep should read 709 across 70 before the playtest patch; §88–§90 (the nine-note playtest patch) added one leg each to
-`PLOTTEST`, `COLONYTEST` and `MUSICTEST`. So the next full sweep should read
-**712 across 70**. A
-baseline is a MEASUREMENT and is only written here once somebody has taken it;
-predicting one and typing it in as though it were taken is how the numbers this
-paragraph keeps correcting got wrong in the first place.
+**The move to 721 across 72 reconciles exactly, and was measured.** §86 moved
+`PACING_MIDTIER` to `rig_strike` and added `THE YARDSTICK IS MID-TIER`; §87 cut
+`BEACON_STOCK` to 3 and added `A RETUNE NEVER DELETES A BEACON`; §88–§90 (the
+nine-note playtest patch) added one leg each to `PLOTTEST`, `COLONYTEST` and
+`MUSICTEST` — 707 + 5 = 712 across 70. Then §91 added `UNSOUNDTEST` (one new
+run carrying seven), the `migrate22` mode (one new run carrying one) and one
+assertion to the SAVETEST read leg: 712 + 9 = **721**, and 70 + 2 = **72**.
+
+That sweep came back 720 PASS / 1 FAIL — `THE MONUMENT ANSWERS A TAP`, red on
+its FIRST EVER run, quoting a prompt that was correct (§88's own note records
+the diagnosis: the leg picked a monument by tree order and an earlier leg had
+claimed it). The leg was fixed, not the code, and the re-sweep came back
+**721 across 72, all green**, at save format **v23**.
+
+**Two commits ahead of that figure:** §92 added `DIRECTIVETEST`, one new run
+carrying six, and **no save bump at all** — both of its flags derive from the
+v23 store; that sweep came back green at **727 across 73**. §93 then added
+three legs to the same suite and no new run, and no save bump either — that
+sweep came back green at **730 across 73**. §94 adds `BERTHTEST` (one new run
+carrying six) and the `migrate23` mode (one new run carrying one), at save
+format **v24**; §95 adds four legs to the existing `CONTRACTTEST`, no new run
+and no save bump. §96 then adds `RETURNTEST` (one new run carrying eight) and the `migrate24`
+mode (one new run carrying one), at save format **v25**. §97 then adds two legs to the existing `PLOTTEST`, with no new run and no
+save bump. §98 then adds three legs to `RETURNTEST` and one clause each to
+`SAVETEST=migrate24` and `PROFILETEST` — no new run, no new mode and no save
+bump, since `marks_seen` rides v25 — that sweep came back green at **755 across
+77**, after one red leg it found in §94 (`MINING COSTS A MOUNT` had been
+counting utility slots off the static table since berths grew it, and had
+therefore been checking nothing for three commits).
+
+**§99–§105 were built without a sweep between them** — seven commits, eleven
+new `RETURNTEST` legs and six new `class_name`s, while no machine with Godot
+on it was to hand. The sweep that finally ran them came back **769 across 77,
+all green, at save format v25**, and that is the current hard number. It took
+three rounds to get there, and what it found is the argument for never
+stacking that many unswept commits again:
+
+- **One real defect.** `PatternForge._watch_the_bed` walked the `hostiles`
+  group looking for `is_dying()`, and `Hostile._die` leaves that group on its
+  opening two lines — so the forge could not have armed once, in the harness
+  or in play. The parser, the static checker and every reading of the file
+  took it for correct.
+- **Four defective assertions**, three of them measuring something true but
+  not the thing they claimed: a leg that parked the ship at the mark instead
+  of at the legend and then passed its deferral clause on nothing having
+  happened; a leg that read a stale broadcast plate from three legs earlier as
+  a failure of the code under test; and a pays-nothing clause whose capture
+  sat above a 0.4s await, so it measured four tenths of a second of the whole
+  world rather than the act. That last one is §96's `DIRECTIVETEST` lesson
+  repeating verbatim in the same file.
+
+One earlier revision of this paragraph also called §99 "green" on the strength
+of a passing remark rather than a count. That was a prediction typed as a
+measurement, which is the one thing this paragraph exists to refuse; it is
+recorded here rather than quietly deleted.
+
+**§106 (the nursery) is the next figure and it is a prediction, not a
+measurement.** It bumps the save to **v26**, adds the `migrate25` mode (one
+new run carrying one) and two `RETURNTEST` legs, and introduces one new
+`class_name` (`TallyNursery`) — so run `"$GODOT" --headless --path . --import`
+first. A full sweep should be **54 + 24 = 78 runs** reading **772 across 78**.
+
+(§96's adversarial pass reported after both commits shipped; its two confirmed
+findings were folded back in without changing any count — one strengthened an
+existing `RETURNTEST` clause rather than adding a leg.)
+
+Neither §94 nor §95 has been swept yet — they were built back to back while no
+machine with Godot on it was available, so the 741 is arithmetic, not a
+measurement, and the two of them stack unverified. A baseline is a MEASUREMENT and is only written here once
+somebody has taken it; predicting one and typing it in as though it were taken
+is how the numbers this paragraph keeps correcting got wrong in the first
+place.
 
 **The move from §75's 657 across 65 runs reconciles exactly, and that is why
 both numbers are kept.** §76 added `SIGTEST`, one new run carrying seven, and

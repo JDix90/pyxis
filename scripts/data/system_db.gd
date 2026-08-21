@@ -118,6 +118,12 @@ const SYSTEMS := {
 		# manual's first hour sends you: identity that skipped it was identity
 		# the complaining player met last.
 		"deep": {
+			# v23 (§91). Which datum answers past this system's last band edge,
+			# and -- pyx01 alone -- that the other cartographer's hull lies in
+			# its band 5, on the way out, which is where they died. Consumed by
+			# SystemBuilder, never by the generator: no draw moves, so the world
+			# fingerprint does not know these keys exist.
+			"unsounded_kind": "meridian", "rival_wreck": true,
 			# The GSA charted the near deep here and then stopped. The names are
 			# an authority's names -- survey grid, filing language -- and they
 			# get less official the further out they go, which is the arc.
@@ -330,6 +336,10 @@ const SYSTEMS := {
 		# can exist (band 2+), and the skeleton "frame" landmark — the deep's
 		# unfinished construction — is the monument you meet most.
 		"deep": {
+			# v23 (§91). Which datum answers past this system's last band edge.
+			# Consumed by SystemBuilder, never by the generator: no draw moves,
+			# so the world fingerprint does not know this key exists.
+			"unsounded_kind": "glass",
 			# band -> weights over for_band(band): b1 [relay], b2 [relay, haven,
 			# forge], b3 [+blackwatch], b4 [+last watch], b5 [+breakwater],
 			# b6 [+far lantern]. Widths 1/3/4/5/6/7 — a row of the wrong length is
@@ -520,6 +530,10 @@ const SYSTEMS := {
 		# markers — things that say somebody measured this place and left.
 		# Same authoring rules as pyx02's block above.
 		"deep": {
+			# v23 (§91). Which datum answers past this system's last band edge.
+			# Consumed by SystemBuilder, never by the generator: no draw moves,
+			# so the world fingerprint does not know this key exists.
+			"unsounded_kind": "return",
 			# Widths 4/5/6/7 for bands 3-6, against for_band's output.
 			"station_weights": {
 				3: [1.0, 0.8, 0.8, 2.6],
@@ -741,6 +755,16 @@ static func density_mult_in(deep: Dictionary, kind: String, band: int) -> float:
 	var by_kind: Dictionary = deep.get("density", {})
 	var rows: Dictionary = by_kind.get(kind, {})
 	return clampf(float(rows.get(band, 1.0)), 0.0, 4.0)
+
+
+static func unsounded_kind_of(id: String) -> String:
+	# v23. Which datum stands past this system's last band edge. Empty for a
+	# system that authors none, and SystemBuilder builds nothing for empty.
+	return String(deep_of(id).get("unsounded_kind", ""))
+
+
+static func rival_wreck_in(id: String) -> bool:
+	return bool(deep_of(id).get("rival_wreck", false))
 
 
 static func signature_in(deep: Dictionary) -> Dictionary:

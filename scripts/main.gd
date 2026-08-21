@@ -45,6 +45,7 @@ const HARNESS_VARS := [
 	"PYXIS_APEXTEST",
 	"PYXIS_BALANCE",
 	"PYXIS_BEACONTEST",
+	"PYXIS_BERTHTEST",
 	"PYXIS_BOSSTEST",
 	"PYXIS_CARTTEST",
 	"PYXIS_COLLISIONTEST",
@@ -55,6 +56,7 @@ const HARNESS_VARS := [
 	"PYXIS_DEEPSHOTS",
 	"PYXIS_DEEPTEST",
 	"PYXIS_DEMO",
+	"PYXIS_DIRECTIVETEST",
 	"PYXIS_DOCKTEST",
 	"PYXIS_ECONDEMO",
 	"PYXIS_ENVTEST",
@@ -92,6 +94,7 @@ const HARNESS_VARS := [
 	"PYXIS_PAUSETEST",
 	"PYXIS_PHASE2SHOTS",
 	"PYXIS_RADARTEST",
+	"PYXIS_RETURNTEST",
 	"PYXIS_PROFILETEST",
 	"PYXIS_RAIDTEST",
 	"PYXIS_RIFTTEST",
@@ -111,6 +114,7 @@ const HARNESS_VARS := [
 	"PYXIS_TORPTEST",
 	"PYXIS_TUTORIALTEST",
 	"PYXIS_UITEST",
+	"PYXIS_UNSOUNDTEST",
 	"PYXIS_WORLDTOUR",
 ]
 
@@ -1067,6 +1071,34 @@ func _ready() -> void:
 		_enter_playing()
 		_run_plot_test()
 		return
+	if OS.get_environment("PYXIS_UNSOUNDTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_unsounded_test()
+		return
+	if OS.get_environment("PYXIS_DIRECTIVETEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_directive_test()
+		return
+	if OS.get_environment("PYXIS_BERTHTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_berth_test()
+		return
+	if OS.get_environment("PYXIS_RETURNTEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_return_test()
+		return
 	if OS.get_environment("PYXIS_PROFILETEST") != "":
 		# NOT lock_saving, and this is the second harness after SAVETEST that
 		# cannot use it: the whole subject is the file layer, and a suite that
@@ -1313,16 +1345,205 @@ func file_charts_on_sale(good: String, units: int) -> int:
 	if hud:
 		# One toast, not two: a second show_toast in the same frame overwrites
 		# the first, and the money is the headline.
+		# v25 (§97). The counter's verdict re-reads too, and only the words move:
+		# the cell is swept and the bonus withheld exactly as before. "Another
+		# hand" is what a stranger's mark is; "a colleague" is what the same mark
+		# is to somebody who has clipped their own returns to the same masts.
+		var colleague := GameState.files_with_the_network()
 		if filed > 0 and lost > 0:
-			hud.show_toast("FILED FIRST — %d CELL%s · +%d (%d ALREADY FILED BY ANOTHER HAND)" % [
-				filed, "" if filed == 1 else "S", bonus, lost], Palette.GOLD)
+			hud.show_toast("FILED FIRST — %d CELL%s · +%d (%d %s)" % [
+				filed, "" if filed == 1 else "S", bonus, lost,
+				"ALREADY HELD BY A COLLEAGUE" if colleague
+				else "ALREADY FILED BY ANOTHER HAND"], Palette.GOLD)
 		elif filed > 0:
 			hud.show_toast("FILED FIRST — %d CELL%s ON THE RECORD · +%d" % [
 				filed, "" if filed == 1 else "S", bonus], Palette.GOLD)
 		else:
-			hud.show_toast("%d CELL%s ALREADY FILED — SOMEBODY IS OUT HERE" % [
-				lost, "" if lost == 1 else "S"], Palette.RIVAL)
+			hud.show_toast("%d CELL%s %s" % [lost, "" if lost == 1 else "S",
+				"ALREADY HELD — A COLLEAGUE WAS HERE" if colleague
+				else "ALREADY FILED — SOMEBODY IS OUT HERE"], Palette.RIVAL)
 	return bonus
+
+
+func network_filing_plan() -> Dictionary:
+	# WHAT A FILING AT THIS MAST WOULD DO, computed and never applied. Returned
+	# as {cells, goods, lost} so the beacon can decide whether to offer the verb
+	# at all, and so an assertion can ask the question without performing it.
+	#
+	# THE GOODS ARE THE PRICE, so the goods are also the LIMIT. The counter's
+	# join is "the band must match the good because the good IS the band"; this
+	# is that join read the other way -- for every chart good in the hold, the
+	# whole readings it holds file that many cells of the good's own band. A
+	# pilot with two units of chart_drift files one band-2 cell and nothing
+	# else, however many thousand cells their coverage holds.
+	#
+	# That bound matters twice: unfiled_cells() spans EVERY system and can carry
+	# a thousand keys, while a hold caps near a hundred units -- so "file
+	# everything at once" without the goods join would file cells the pilot has
+	# nothing to pay with, and the two halves would drift apart silently.
+	var plan := {"cells": [], "goods": {}, "lost": []}
+	for good_v in GameState.cargo:
+		var good := String(good_v)
+		var band := CommodityDB.chart_band_of(good)
+		if band < 0:
+			continue
+		@warning_ignore("integer_division")
+		var readings := int(GameState.cargo[good_v]) / SurveyMast.YIELD_UNITS
+		if readings <= 0:
+			continue
+		var taken := 0
+		for key_v in GameState.unfiled_cells():
+			var key := String(key_v)
+			if cell_band_of_key(key) != band:
+				continue
+			# THE RIVAL'S CELLS COME HOME FREE, and this is the counter's sweep
+			# with its meaning inverted. At a counter a rival-filed cell is a
+			# loss: swept out of the ledger, no bonus, somebody was first. Here
+			# the somebody IS the network -- their colleague already clipped
+			# that mark to a mast -- so it is held without costing a reading.
+			# THE RIVAL NEVER TAKES WHAT YOU HAVE still holds: they took the
+			# chance, and out here the chance was never money.
+			if Rival.filed(key, cell_depth_of_key(key), GameState.run_seed,
+					GameState.played_seconds):
+				(plan["lost"] as Array).append(key)
+				continue
+			if taken >= readings:
+				continue
+			(plan["cells"] as Array).append(key)
+			taken += 1
+		if taken > 0:
+			(plan["goods"] as Dictionary)[good] = taken * SurveyMast.YIELD_UNITS
+	return plan
+
+
+func file_charts_with_network() -> int:
+	# THE VERB THE LAST FRAGMENT ASKS FOR. Deliberately NOT a branch inside
+	# file_charts_on_sale: that function is the counter's, it pays a bonus and
+	# moves the ledger, and THE BONUS IS NOT THE PRICE asserts that it touches
+	# no cargo at all. Two verbs, two functions, no flag between them.
+	#
+	# Returns HOW MANY CELLS THE NETWORK NOW HOLDS -- both the cells this hold
+	# paid readings for and the ones a colleague had already filed. Counting only
+	# the paid half would be a lie the store could contradict: a hold where every
+	# matching cell was rival-reached moves N cells from unfiled to held, queues
+	# a save, and would have returned zero -- so the caller would announce
+	# "NOTHING NEW TO FILE" for an irreversible act that had just happened. That
+	# is routine rather than exotic, since the rival takes the shallows inside a
+	# couple of hours of play.
+	var plan := network_filing_plan()
+	var cells: Array = plan["cells"]
+	var lost: Array = plan["lost"]
+	if cells.is_empty() and lost.is_empty():
+		return 0
+	for key_v in cells:
+		GameState.note_survey_held(String(key_v))
+	for key_v in lost:
+		GameState.note_survey_held(String(key_v))
+	# THE GOODS LEAVE LAST, after the marks are safe. No credits, no bonus, no
+	# cells_filed, no chart_data_sold: the Commission cannot hear about this and
+	# the wallet does not move. The whole payment is that somebody reads it.
+	for good_v in (plan["goods"] as Dictionary):
+		GameState.unload_cargo(String(good_v), int(plan["goods"][good_v]))
+	if hud:
+		hud.refresh_cargo()
+	return cells.size() + lost.size()
+
+
+# The channel never gives the same name twice, and never gives a real one.
+# Every name in this arc is what somebody ELSE calls them; this is the one
+# surface where they speak for themselves, so it is the one surface that must
+# not settle into an identity.
+const CHANNEL_SENDERS := [
+	"A CHANNEL, KEPT OPEN — LISTENING",
+	"A CHANNEL, KEPT OPEN — NO CALL SIGN OFFERED",
+	"SOMEBODY'S RELAY — THE HANDSHAKE IS OLD",
+	"A KEPT CHANNEL",
+	"· · · — A CARRIER THAT ANSWERS",
+]
+
+
+# §96. The channel's answer, waiting its turn. The filing hold raises TWO
+# plates four seconds apart -- the page at the read stop, the reply at the
+# filing stop -- and show_broadcast has no queue: the second kills the first.
+# So following the prompt's own instruction ("keep holding") would destroy the
+# page the player had just held three seconds to earn, and page 5 is the one
+# this arc calls its spine. Deferred behind broadcast_busy, _standing_pending's
+# shape and _standing_pending's argument.
+var _network_reply_pending := {}
+
+
+func network_reply(cells: int, at: Vector3) -> void:
+	# THE ANSWER, SPOKEN AT THE MAST. The draft hung this on the next outward
+	# band crossing, riding the after-register's slot -- and that is unreachable
+	# where it matters: _tick_broadcast fires only on band > _broadcast_band,
+	# band tops out at 6, and this verb lives on band-3+ beacons. A pilot who
+	# files in THE UNSOUNDED has already spent every crossing getting there, so
+	# the reply would have been silent in exactly the place a filing is most
+	# likely. Two per-system overrides would have eaten it in two more.
+	#
+	# Answering at the mast is also the better beat: an irreversible act that
+	# costs cargo should be answered where it happens, not fifteen minutes later
+	# somewhere else.
+	if hud == null:
+		return
+	# THE PAGE GETS ITS FULL DWELL. Held rather than dropped: a reply that
+	# simply refused to speak while the plate was busy would lose the bearing
+	# entirely, which is the payload -- Barks' own rule that a once-per-act
+	# payload must not be consumed by being suppressed.
+	if hud.has_method("broadcast_busy") and hud.broadcast_busy():
+		_network_reply_pending = {"cells": cells, "at": at}
+		return
+	_network_reply_pending = {}
+	var sender := String(CHANNEL_SENDERS[
+		absi(hash("%s|%d|%d" % [system_id, cells, int(GameState.played_seconds)]))
+		% CHANNEL_SENDERS.size()])
+	# §98. THE REAL STORE, which is what the empty dictionary here was a
+	# placeholder for. Through marks_read() rather than handing over marks_seen:
+	# the generator asks bool() of what it is given and the store holds state
+	# strings, so the conversion belongs to the one function that knows what a
+	# state means. The channel now names a mark this pilot has NOT read, which
+	# is the whole point of it naming one — repeating a bearing to a buoy they
+	# already stood at would make the reply furniture.
+	var mark := FarMarks.nearest_unseen(system_id, GameState.run_seed, at,
+		GameState.marks_read())
+	var body := ("Your return is read. It is held, and it is true, and somebody "
+		+ "knows it. ")
+	if mark.is_empty():
+		# A SENTENCE FOR THE EMPTY CASE, because the alternative is quoting a
+		# bearing of zero. A pilot who has resolved every mark in this system
+		# has earned a different answer, not a broken one.
+		body += "You have read every mark we keep in this system. There is nothing here we know that you do not."
+	else:
+		# The DIFFERENCE, never the world position (§60): a bearing is where the
+		# player must turn, and at six thousand units an origin-relative number
+		# is one nobody can fly.
+		var player: PlayerShip = get_tree().get_first_node_in_group("player")
+		var from: Vector3 = player.global_position if player else at
+		var deg := DeepSpace.compass_deg((mark["pos"] as Vector3) - from)
+		body += "There is a mark at bearing %03d, %s out — it is ours, and now it is yours to read." % [
+			deg, _comma_int(int(mark["range"]))]
+		# 48 CHARACTERS IS THE WHOLE LINE (note_log truncates at LOG_LINE_MAX
+		# with no warning), and the bearing is the payload -- so the bearing goes
+		# early enough to survive. The draft's version was 63 characters and
+		# would have been cut exactly where the number started.
+		GameState.note_log("NETWORK HOLDS IT — A MARK AT %03d" % deg)
+	hud.show_broadcast(sender, body, Palette.RIVAL)
+
+
+func legend_arrives(mark_system: String, index: int, kind: String, at: Vector3) -> void:
+	# §99. THE OTHER CALLER OF build_legend, and the reason there is only one
+	# function to call. SystemBuilder raises a read mark's legend on every
+	# rebuild; this raises it at the moment of the reading, so a pilot who has
+	# just held three seconds on a buoy does not have to warp out and back to
+	# see what the plate was talking about.
+	#
+	# Main is the one node that holds system_root and already references
+	# SystemBuilder, so the world class asking for this reaches it through a
+	# group lookup and a has_method -- no second class edge, and nothing in
+	# SoundingMark names a builder.
+	if system_root == null or mark_system != system_id:
+		return
+	SystemBuilder.build_legend(system_root, mark_system, index, kind, at)
 
 
 func drop_beacon_here() -> bool:
@@ -1782,6 +2003,16 @@ func _load_system(id: String) -> void:
 	# Storms die with system_root too, and are cleared for the same reason.
 	live_storms.clear()
 	live_rift = null
+	# §106, S5. THE GROUND IS LOST BY WALKING OUT OF A SIEGE, and this is the
+	# only place that can notice: every nursery node is a SystemRoot child and
+	# dies in the free below, so a check made after the teardown would be made
+	# on nothing. Asked of the NODE rather than of the store, because "is an
+	# assault standing right now" is a fact about the world and not about the
+	# save -- and leaving with the ground quiet is a supply run, not a rout.
+	for n_v in get_tree().get_nodes_in_group("legend"):
+		var nurse := n_v as TallyNursery
+		if nurse != null and nurse.abandon_if_besieged():
+			break
 	# The convoy died with it too, same rule. _tick_procession will re-seat it
 	# if this window's system is the one being loaded.
 	_procession = null
@@ -1954,7 +2185,13 @@ func _tick_broadcast(depth: float) -> void:
 	# different voices (the authority on the plate, the ship in the corner).
 	if band >= 3 and band <= 6:
 		Barks.fire("first_band_%d" % band)
-	var msg := DeepSpace.broadcast_for(band, GameState.commissioned, system_id)
+	# §92. Read at fire time like the commissioned flag beside it, and for
+	# the same reason: a pilot who finished the record out at the terminus hears
+	# the difference on their NEXT trip out, at the crossing, rather than on
+	# their next launch. The archive is where you learn it; the deep is where it
+	# answers.
+	var msg := DeepSpace.broadcast_for(band, GameState.commissioned, system_id,
+		GameState.holds_whole_record())
 	if msg.is_empty() or hud == null:
 		return
 	# The glyph rides the sender line, so the band is named twice -- once in
@@ -2079,6 +2316,67 @@ func colony_jump_to(key: String) -> void:
 	GameState.last_outbound_jump = GameState.played_seconds
 	warping = true
 	_colony_jump_sequence(Vector3(float(e["x"]), 0.0, float(e["z"])), key)
+
+
+# §106, S4. THE NURSERY'S ANCHOR — HELD, NOT OWNED. The deep jump the research
+# pass flagged as a real reversal, taken deliberately and re-derived in the
+# open rather than slipped past an assertion that could not see it.
+#
+# A FOOTHOLD, NOT A FARM derives "deepest reachable" from
+# bounds_of("pyx03") + HYPER_DEPTH_MAX and would have gone on printing PASS
+# while a nursery anchor at FarMarks depth made the true figure twice that.
+# The beacon cap's own comment predicted this exact failure. So the leg is
+# re-derived against max(HYPER_DEPTH_MAX, FarMarks.DEPTH_MAX) in the same
+# commit, and what pays for the widened bound is the ONE thing a beacon or a
+# colony cannot offer:
+#
+#   THE ANCHOR EXISTS ONLY WHILE THE GROUND IS HELD. A beacon jump is bought
+#   once with 500 credits and is a door forever. This one is priced in fights,
+#   forever, and the day the Tally take it back the door closes with it. That
+#   is not a farm; it is rent.
+func can_nursery_jump() -> bool:
+	if not GameState.holds_nursery():
+		return false
+	if state != State.PLAYING or warping or boss_active or docked_port != null:
+		return false
+	if GameState.salvage < COLONY_JUMP_FEE:
+		return false
+	return colony_jump_ready_in() <= 0.0
+
+
+func nursery_jump() -> bool:
+	# ONE CLOCK FOR ALL OUTBOUND, the shared stamp's whole rule: founding five
+	# colonies never multiplied how often a pilot can be outbound, and holding
+	# the deepest ground in the game must not either.
+	if not can_nursery_jump():
+		if hud:
+			var why := "NURSERY JUMP UNAVAILABLE"
+			if not GameState.holds_nursery():
+				why = "THE GROUND IS NOT YOURS"
+			elif GameState.salvage < COLONY_JUMP_FEE:
+				why = "JUMP COSTS %d — NOT ENOUGH BANKED" % COLONY_JUMP_FEE
+			elif colony_jump_ready_in() > 0.0:
+				why = "DRIVES STILL COOLING — %ds" % int(ceil(colony_jump_ready_in()))
+			elif boss_active:
+				why = "NOT WITH AN ENGINE AWAKE"
+			hud.prompt(why)
+			Sfx.play("hit", -10.0, 0.7)
+		return false
+	var key := GameState.nursery_key()
+	var bits := key.split(":")
+	if bits.size() != 2 or String(bits[0]) != system_id:
+		# SAME SYSTEM ONLY, structurally: the anchor is a place in this system
+		# and a jump is not a warp.
+		if hud:
+			hud.prompt("THE GROUND IS IN ANOTHER PYX")
+		return false
+	if not GameState.spend_salvage(COLONY_JUMP_FEE):
+		return false
+	GameState.last_outbound_jump = GameState.played_seconds
+	warping = true
+	_colony_jump_sequence(Vector3(float(GameState.nursery.get("x", 0.0)), 0.0,
+		float(GameState.nursery.get("z", 0.0))), key)
+	return true
 
 
 func _colony_jump_sequence(at: Vector3, key: String) -> void:
@@ -2224,6 +2522,14 @@ func _process(delta: float) -> void:
 		air.set_depth(depth)
 		air.set_threat(1.0 if _threat_near_player() else 0.0)
 	_tick_broadcast(depth)
+	# §96. The held reply, flushed the moment the page's plate lets go. Polled
+	# here beside the standing volley rather than timed, so it lands exactly
+	# when the surface is free instead of at a guessed delay.
+	if not _network_reply_pending.is_empty() \
+			and hud != null and not hud.broadcast_busy():
+		var pending := _network_reply_pending
+		_network_reply_pending = {}
+		network_reply(int(pending["cells"]), pending["at"] as Vector3)
 	if not _standing_pending.is_empty():
 		_standing_settle -= delta
 		# WAITS FOR THE SURFACE, not merely for the clock. Three of the movers
@@ -7962,8 +8268,21 @@ func _run_ship_test() -> void:
 	print("[ship] SPECIALISATION hauler %.0f hold / %.1f speed vs strike %.0f hold / %.1f speed -> %s" % [
 		haul_hold, haul_speed, strike_hold, strike_speed,
 		"PASS" if haul_hold > strike_hold and haul_speed < strike_speed else "FAIL"])
-	print("[ship] SECOND SLOT %d fitting slots -> %s" % [ModuleDB.SLOT_NAMES.size(),
-		"PASS" if ModuleDB.SLOT_NAMES.size() == 6 else "FAIL"])
+	# v24 (§94). SIX ON THE HULL, THREE FOR SALE. The literal 6 stays -- it is
+	# the ship every pilot starts with, and that is the fact this leg was
+	# written to pin -- but it is now checked against what a FRESH pilot can
+	# actually fit rather than against the size of the catalog's table, because
+	# those stopped being the same number the day berths shipped. The berth
+	# slots are counted separately, so adding a fourth berth cannot quietly
+	# change what a new pilot begins with.
+	var berth_slots := 0
+	for b_v in ModuleDB.BERTHS:
+		berth_slots += 1
+	var starter_slots := GameState.open_slots().size()
+	print("[ship] SECOND SLOT %d fitting slots on a fresh hull, %d berths for sale, %d in the table -> %s" % [
+		starter_slots, berth_slots, ModuleDB.SLOT_NAMES.size(),
+		"PASS" if starter_slots == 6 and GameState.berths.is_empty()
+			and ModuleDB.SLOT_NAMES.size() == 6 + berth_slots else "FAIL"])
 	GameState.equip(ModuleDB.Slot.UTILITY, "")
 
 	# --- breaking off a boss fight -------------------------------------------
@@ -8074,7 +8393,7 @@ func _run_ship_test() -> void:
 		var probe: Dictionary = base_stats.duplicate(true)
 		if key == "ability":
 			probe["ability"] = {"name": "PROBE", "duration": 9.0, "cooldown": 99.0}
-		elif key == "chain" or key == "splash":
+		elif key == "chain" or key == "splash" or key == "overdraw":
 			# Weapon keys live per-weapon; the starter flies two pulses.
 			for w in probe["weapons"]:
 				(w as Dictionary)[key] = 7.0
@@ -10757,6 +11076,122 @@ func _run_contract_test() -> void:
 	await get_tree().process_frame
 	print("[contract] STAYS EMPTY after dropping both: %d active -> %s" % [
 		emptied.active.size(), "PASS" if emptied.active.is_empty() else "FAIL"])
+
+	# --- commissions (§95) ---------------------------------------------------
+	# A COMMISSION IS NOT A WAY IN. The rule that keeps standing worth having:
+	# work posted by a faction is offered only to a pilot they already trust, so
+	# it is not a ladder to climb from NEUTRAL -- it is what being trusted is
+	# FOR. Asked of the catalog directly, at both standings, over every system,
+	# so a commission leaking onto a stranger's board anywhere goes red.
+	var comm_ids: Array = []
+	for cid_v in ContractDB.CONTRACTS:
+		if ContractDB.faction_of(String(cid_v)) != "":
+			comm_ids.append(String(cid_v))
+	GameState.faction_deltas = {}
+	var stranger_leak := ""
+	for sid_v in SystemDB.ids():
+		for id_v in ContractDB.available_for(String(sid_v), []):
+			if ContractDB.faction_of(String(id_v)) != "":
+				stranger_leak += "%s " % String(id_v)
+	# And with trust, the same catalog offers them. Both halves matter: a filter
+	# that dropped every commission always would pass the first clause alone.
+	var trusted_pool := ContractDB.available_for(system_id,
+		[ContractDB.faction_of(String(comm_ids[0]))])
+	var offered_when_trusted: bool = trusted_pool.has(String(comm_ids[0]))
+	print("[contract] A COMMISSION IS NOT A WAY IN %d commissions in the catalog; offered to a stranger: %s; offered once trusted: %s -> %s" % [
+		comm_ids.size(), "none" if stranger_leak == "" else stranger_leak,
+		str(offered_when_trusted),
+		"PASS" if comm_ids.size() >= 1 and stranger_leak == "" and offered_when_trusted
+			else "FAIL"])
+
+	# THE TRUST LIST IS THE HAIL'S OWN BAND. One definition of "they know you",
+	# shared by the convoy that speaks to you and the board that posts for you --
+	# two thresholds that drifted apart would mean a faction that talks to you
+	# but will not hire you, with nothing on screen explaining the difference.
+	var comm_flag := ContractDB.faction_of(String(comm_ids[0]))
+	GameState.faction_deltas = {}
+	var live := contracts
+	var cold := live.trusted_factions().has(comm_flag)
+	GameState.shift_faction(FactionDB.SURVEYOR, comm_flag,
+		FactionDB.ATTITUDE_MAX, true)
+	var warm := live.trusted_factions().has(comm_flag)
+	var band_now := GameState.faction_band(FactionDB.SURVEYOR, comm_flag)
+	print("[contract] THE TRUST LIST IS THE HAIL'S OWN BAND %s at a cold start=%s, once ALLIED (band %d, hail bar %d)=%s -> %s" % [
+		comm_flag, str(cold), band_now, DeepSpace.CONVOY_HAIL_MIN_BAND, str(warm),
+		"PASS" if not cold and warm and band_now <= DeepSpace.CONVOY_HAIL_MIN_BAND
+			else "FAIL"])
+
+	# FILLING ONE PAYS A NAME, AND WALKING AWAY COSTS DOUBLE. Both driven
+	# through the real verbs -- _complete via the progress feed, drop via drop --
+	# because the asymmetry IS the design and a test that poked the store would
+	# not notice if either path forgot to call shift_faction.
+	var comm_id := String(comm_ids[0])
+	var comm_def := ContractDB.get_contract(comm_id)
+	# HEADROOM FIRST, and this is not incidental setup. faction_attitude CLAMPS
+	# at read time (±6), so a fixture that walked standing to the ceiling to buy
+	# trust would then measure a +1 reward as zero movement and report a working
+	# payout as broken. Trust costs FRIENDLY, not ALLIED, so the fixture buys
+	# exactly that and leaves room in both directions -- +1 to gain and −2 to
+	# lose, from a baseline of 0.
+	GameState.faction_deltas = {}
+	GameState.shift_faction(FactionDB.SURVEYOR, comm_flag, 2, true)
+	var att_start := GameState.faction_attitude(FactionDB.SURVEYOR, comm_flag)
+	live.active = []
+	live.accept(comm_id)
+	var salv_start := GameState.salvage
+	live._advance(String(comm_def["kind"]), int(comm_def["target"]))
+	var att_filled := GameState.faction_attitude(FactionDB.SURVEYOR, comm_flag)
+	var paid_credits := GameState.salvage - salv_start
+	# Now take it again and abandon it.
+	live.active = []
+	live.accept(comm_id)
+	var att_before_drop := GameState.faction_attitude(FactionDB.SURVEYOR, comm_flag)
+	live.drop(comm_id)
+	var att_dropped := GameState.faction_attitude(FactionDB.SURVEYOR, comm_flag)
+	var gained := att_filled - att_start
+	var lost := att_before_drop - att_dropped
+	print("[contract] FILLING ONE PAYS A NAME %s from attitude %d: +%d standing (want %d) and %d credits (want %d); abandoning cost %d (want %d, %dx) -> %s" % [
+		comm_id, att_start, gained, ContractDB.standing_of(comm_id), paid_credits,
+		int(comm_def["reward"]), lost, ContractDB.break_cost(comm_id),
+		ContractDB.COMMISSION_BREAK_MULT,
+		"PASS" if gained == ContractDB.standing_of(comm_id)
+			and paid_credits == int(comm_def["reward"])
+			and lost == ContractDB.break_cost(comm_id)
+			and lost > gained else "FAIL"])
+
+	# AND THE ROW SAYS SO BEFORE THE BUTTON. The affordance half of §88: a cost
+	# a player can only discover by paying it is not a cost they agreed to. The
+	# board's own dict is checked rather than the pixels, but it is the dict the
+	# row renders from, and it carries all three terms.
+	GameState.faction_deltas = {}
+	GameState.shift_faction(FactionDB.SURVEYOR, comm_flag, FactionDB.ATTITUDE_MAX, true)
+	# SWEPT OVER BUCKETS, NOT ASKED ONCE. The board is a seeded five-of-twelve
+	# shuffle, so "is this commission on today's board" is a coin flip and a leg
+	# that asked once would be a flake wearing an assertion's clothes. The
+	# shuffle is deterministic per (port, time bucket), so walking the buckets
+	# is exhaustive rather than lucky: it must turn up at least once, and every
+	# time it turns up it must carry all three terms.
+	var seen_rows := 0
+	var bad_terms := 0
+	var clock := GameState.played_seconds
+	for bucket in 40:
+		GameState.played_seconds = float(bucket) * ContractDB.BOARD_ROTATE_SECONDS + 1.0
+		for offer_v in live.board(port_id):
+			var offer: Dictionary = offer_v
+			if String(offer["id"]) != comm_id:
+				continue
+			seen_rows += 1
+			if String(offer.get("faction", "")) != comm_flag \
+					or int(offer.get("standing", 0)) != ContractDB.standing_of(comm_id):
+				bad_terms += 1
+	GameState.played_seconds = clock
+	print("[contract] THE ROW STATES ITS TERMS %s appeared on %d of 40 boards, rows missing their terms: %d (faction, +%d standing, abandon −%d) -> %s" % [
+		comm_id, seen_rows, bad_terms, ContractDB.standing_of(comm_id),
+		ContractDB.break_cost(comm_id),
+		"PASS" if seen_rows > 0 and bad_terms == 0 else "FAIL"])
+
+	live.active = []
+	GameState.faction_deltas = {}
 	get_tree().quit()
 
 
@@ -12400,6 +12835,13 @@ func _pacing_seam_yield() -> float:
 func _pacing_contract_yield() -> float:
 	# The mean reward of what is actually on offer in the starting system: a
 	# steady-income lever, so the band has to see it move when rewards change.
+	#
+	# THE STRANGER'S BOARD, deliberately (§95): no `trusted` argument, so the
+	# commissions are not in this mean. They are not steady income -- they are
+	# gated on standing a new pilot does not have, they pay BELOW the survey row
+	# beside them, and folding them in would quietly lower the measured band for
+	# every pilot including the ones who cannot see them. Leave the argument
+	# off; the omission is the model.
 	var pool := ContractDB.available_for(SystemDB.START_SYSTEM)
 	if pool.is_empty():
 		return 0.0
@@ -14291,6 +14733,56 @@ func _run_plot_test() -> void:
 		str(dead_words), str(live_words), "PASS" if moved else "FAIL"])
 	GameState.beacons[sid] = []
 
+	# 9b. THE CHART IS TWO DOCUMENTS (v25, §97). A surveyed cell and a held cell
+	#     must be distinguishable ON THE PICTURE, and the legend must follow the
+	#     layer rather than the store: HELD is a subset of SURVEYED, so it may
+	#     never appear without it and must appear with it exactly when this
+	#     system holds one.
+	#
+	#     BOTH DIRECTIONS, THE CHART REMEMBERS' own discipline -- a legend that
+	#     always said HELD would satisfy a one-sided check, and so would a chart
+	#     that marked every surveyed cell as held.
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+	var plain_cell := DeepSpace.cell_key(sid, 5, 0)
+	var held_cell := DeepSpace.cell_key(sid, 6, 0)
+	GameState.note_survey_worked(plain_cell)
+	GameState.note_survey_worked(held_cell)
+	GameState.note_survey_filed(plain_cell)
+	var words_before := cp.legend_words(false, false)
+	GameState.note_survey_held(held_cell)
+	var words_after := cp.legend_words(false, false)
+	var marks_ok: bool = GameState.is_survey_held(held_cell) \
+		and not GameState.is_survey_held(plain_cell) \
+		and GameState.is_survey_filed(plain_cell)
+	var legend_ok: bool = not words_before.has("HELD") \
+		and words_after.has("HELD") and words_after.has("SURVEYED")
+	print("[plot] THE CHART IS TWO DOCUMENTS a counter-filed cell is not held=%s, a network cell is=%s; legend before %s, after %s -> %s" % [
+		str(not GameState.is_survey_held(plain_cell)),
+		str(GameState.is_survey_held(held_cell)),
+		str(words_before), str(words_after),
+		"PASS" if marks_ok and legend_ok else "FAIL"])
+
+	# 9c. AND THE RIVAL READS DIFFERENTLY TO SOMEBODY WHO FILES. Copy, not
+	#     mechanics: nothing about when the rival arrives moves. Driven on the
+	#     derived flag, which is the only thing the two surfaces read.
+	# Cleared to nothing-held first, so the OFF state is measured rather than
+	# inherited from whatever the leg above left behind.
+	GameState.survey_filed = {}
+	var off_when_none := not GameState.files_with_the_network()
+	# A COUNTER filing must not turn it on: the register is about where returns
+	# went, and a cell sold at a port went to the Authority.
+	GameState.note_survey_filed(plain_cell)
+	var off_when_only_counter := not GameState.files_with_the_network()
+	GameState.note_survey_held(held_cell)
+	var on_when_held := GameState.files_with_the_network()
+	print("[plot] A COLLEAGUE, NOT A STRANGER register off with nothing held=%s, still off with a counter filing=%s, on with one held cell=%s -> %s" % [
+		str(off_when_none), str(off_when_only_counter), str(on_when_held),
+		"PASS" if off_when_none and off_when_only_counter and on_when_held
+			else "FAIL"])
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+
 	# 10. THE PLOT IS CONTAINED. Godot does not scissor a CanvasItem's own draw
 	#     calls to its rect; clip_contents defaults to false, and nothing else in
 	#     this project sets it. So the band rings -- the band-4 ring is 183px in a
@@ -14399,6 +14891,2124 @@ func _run_plot_test() -> void:
 
 	get_tree().quit()
 
+# --- the unsounded test ------------------------------------------------------
+
+func _run_unsounded_test() -> void:
+	# THE END OF THE MAP, asserted as the four promises it makes. That it is out
+	# there at all (past the last band edge, one per system, and reachable only
+	# by flying); that it is not a fight (no group a weapon or a scanner reads);
+	# that the record is finite and sequential; and that what it says is what the
+	# world does -- the wreck's "four hundred cells" is the player's own cap, and
+	# a retune of one that left the other alone would make the game's most
+	# load-bearing line of fiction into a lie.
+	var kinds_ok := true
+	for k_v in UnsoundedSite.FRAGMENTS:
+		if not GameState.DEEP_LOG_KINDS.has(String(k_v)):
+			kinds_ok = false
+	for k2_v in GameState.DEEP_LOG_KINDS:
+		if not UnsoundedSite.FRAGMENTS.has(String(k2_v)):
+			kinds_ok = false
+
+	# 1. EVERY FRAGMENT REACHABLE, AND THE RECORD IS FINITE. Walked one stage at
+	#    a time through the real accessor, so an off-by-one in note_deep_log --
+	#    the shape that would strand the last fragment forever, unreadable and
+	#    unfindable in play -- is caught here rather than by a player who flew
+	#    six thousand units for it.
+	var frag_bad := ""
+	for kind_v in UnsoundedSite.FRAGMENTS:
+		var kind := String(kind_v)
+		var frags: Array = UnsoundedSite.FRAGMENTS[kind]
+		var probe := "pyx01:%s" % kind
+		GameState.deep_logs.erase(probe)
+		for want in range(1, frags.size() + 1):
+			var got := GameState.note_deep_log(probe, frags.size())
+			if got != want:
+				frag_bad = "%s stage %d answered %d" % [kind, want, got]
+				break
+			if String(frags[want - 1]).strip_edges() == "":
+				frag_bad = "%s fragment %d is empty" % [kind, want]
+				break
+		if frag_bad != "":
+			break
+		# And one past the end, which must refuse rather than advance: the
+		# record has an end, and a fourteen-second hold at a finished archive
+		# pays nothing (unsounded_site._read's own branch).
+		if GameState.note_deep_log(probe, frags.size()) != frags.size():
+			frag_bad = "%s advanced past its last fragment" % kind
+		GameState.deep_logs.erase(probe)
+		if frag_bad != "":
+			break
+	print("[unsound] EVERY FRAGMENT REACHABLE %d records, kinds match the save's list=%s: %s -> %s" % [
+		UnsoundedSite.FRAGMENTS.size(), str(kinds_ok),
+		"all stages reachable, none past the end" if frag_bad == "" else frag_bad,
+		"PASS" if frag_bad == "" and kinds_ok else "FAIL"])
+
+	# 2. THE WRECK QUOTES THE REAL CAP. The rival's log says four hundred cells
+	#    because SURVEY_CELL_CAP is four hundred. Pinned in BOTH directions --
+	#    the number in the store and the words in the log -- so retuning the cap
+	#    without rewriting the line goes red instead of quietly making the
+	#    game's strongest sentence false.
+	var wreck_log := String((UnsoundedSite.FRAGMENTS["wreck"] as Array)[0])
+	var cap_words := {400: "FOUR HUNDRED", 300: "THREE HUNDRED", 500: "FIVE HUNDRED"}
+	var want_words := String(cap_words.get(GameState.SURVEY_CELL_CAP, "%d" % GameState.SURVEY_CELL_CAP))
+	var quote_ok: bool = wreck_log.contains(want_words) and GameState.SURVEY_CELL_CAP == 400
+	print("[unsound] THE WRECK QUOTES THE REAL CAP log says '%s', SURVEY_CELL_CAP is %d -> %s" % [
+		want_words, GameState.SURVEY_CELL_CAP, "PASS" if quote_ok else "FAIL"])
+
+	# 3. ONLY OUT THERE. Every authored record stands past the last band edge --
+	#    5,200 units, which is past the 4,200 the jump reaches (§79), so the
+	#    only way to one is the fifteen-minute outbound flight. The wreck is the
+	#    single exception BY DESIGN: the rival died on the way out, so their
+	#    hull sits in band 5 where a player who has never seen band 6 can find
+	#    it. Asserted per kind rather than as a minimum, or the exception would
+	#    let a mistake through.
+	var depth_bad := ""
+	for kind3_v in UnsoundedSite.DEPTHS:
+		var kind3 := String(kind3_v)
+		var d3 := float(UnsoundedSite.DEPTHS[kind3])
+		var band3 := DeepSpace.band_of(d3)
+		var want_band := 5 if kind3 == "wreck" else 6
+		if band3 != want_band:
+			depth_bad += "%s at %.0f is band %d (want %d) " % [kind3, d3, band3, want_band]
+	var jump_ceiling := SystemDB.HYPER_DEPTH_MAX
+	var past_the_jump := true
+	for kind4_v in UnsoundedSite.DEPTHS:
+		if String(kind4_v) == "wreck":
+			continue
+		if float(UnsoundedSite.DEPTHS[kind4_v]) <= jump_ceiling:
+			past_the_jump = false
+	print("[unsound] ONLY OUT THERE bands %s, all three archives past the %.0fu jump ceiling=%s -> %s" % [
+		"correct" if depth_bad == "" else depth_bad, jump_ceiling, str(past_the_jump),
+		"PASS" if depth_bad == "" and past_the_jump else "FAIL"])
+
+	# 4. ONE PER SYSTEM, AND THE WRECK IS PYX-01'S ALONE. Read off the DATA, so
+	#    authoring a second kind into a system fails here instead of building
+	#    two archives beside each other.
+	var author_bad := ""
+	var wrecks := 0
+	for sid_v in SystemDB.ids():
+		var sid3 := String(sid_v)
+		var k3 := SystemDB.unsounded_kind_of(sid3)
+		if k3 == "" or not UnsoundedSite.FRAGMENTS.has(k3):
+			author_bad += "%s authors '%s' " % [sid3, k3]
+		if SystemDB.rival_wreck_in(sid3):
+			wrecks += 1
+			if sid3 != "pyx01":
+				author_bad += "%s carries the wreck " % sid3
+	print("[unsound] ONE PER SYSTEM %d systems each author a record: %s; wrecks in the game: %d -> %s" % [
+		SystemDB.ids().size(), "yes" if author_bad == "" else author_bad, wrecks,
+		"PASS" if author_bad == "" and wrecks == 1 else "FAIL"])
+
+	# 5. IT IS NOT A FIGHT, AND NOTHING POINTS AT IT. The emptiness assertion
+	#    the instruments already carry, for the same reason: the archive joins
+	#    "unsounded" and NOTHING else. Not "hyper" (the harness casts that group
+	#    to HyperStructure), not "crackable" (the radar would hang a permanent
+	#    arrow on a thing whose whole design is that you find the depth, not the
+	#    marker), and no combat group at all.
+	_load_system("pyx01")
+	set_deep_generation(false)
+	await get_tree().physics_frame
+	var sites: Array = get_tree().get_nodes_in_group("unsounded")
+	var leak := ""
+	for g in ["apex", "dockable", "crackable", "hostiles", "combatants", "mineable",
+			"beacon", "hyper", "signature", "storm"]:
+		for n_v in get_tree().get_nodes_in_group(g):
+			if n_v is UnsoundedSite:
+				leak += "%s " % g
+	print("[unsound] IT IS NOT A FIGHT %d built in pyx01 (want 2: the archive and the wreck), leaked into: %s -> %s" % [
+		sites.size(), leak if leak != "" else "none",
+		"PASS" if sites.size() == 2 and leak == "" else "FAIL"])
+
+	# 6. CLEAR OF THE STATION, and standing at its authored depth. The placement
+	#    is a rolled bearing at a fixed radius with a reject loop against the
+	#    cell's planned station -- the same keep-out every other deep spawner
+	#    respects, checked here against the real plan rather than against the
+	#    loop's own opinion of itself.
+	var deep_node := deep_space
+	var place_bad := ""
+	for s_v in sites:
+		var site := s_v as UnsoundedSite
+		var want_depth := float(UnsoundedSite.DEPTHS[site.kind])
+		var got_depth := deep_node.depth_at(site.global_position) if deep_node else -1.0
+		if absf(got_depth - want_depth) > 1.0:
+			place_bad += "%s at depth %.0f (want %.0f) " % [site.kind, got_depth, want_depth]
+		if deep_node:
+			var cell := DeepSpace.cell_of(site.global_position)
+			var station: Dictionary = deep_node.plan_cell(cell.x, cell.y)["station"]
+			var sp: Vector3 = station.get("pos", Vector3(1e9, 0.0, 1e9))
+			if site.global_position.distance_to(sp) < DeepSpace.STATION_SAFE_RADIUS:
+				place_bad += "%s stands %.0fu from a station " % [
+					site.kind, site.global_position.distance_to(sp)]
+	print("[unsound] CLEAR OF THE STATION %d sites at their authored depth and outside %.0fu of any planned station: %s -> %s" % [
+		sites.size(), DeepSpace.STATION_SAFE_RADIUS,
+		"yes" if place_bad == "" else place_bad,
+		"PASS" if place_bad == "" and not sites.is_empty() else "FAIL"])
+
+	# 7. THE HOLD PAYS AND THE PLATE SPEAKS. The whole verb end to end, on the
+	#    real node: fly there, hold, and the record advances by one, two units
+	#    of band-6 chart data arrive, and the fragment is on the broadcast plate
+	#    where the bands announce themselves. Then the same hold against a FULL
+	#    hold, which must defer rather than burn the stage -- the mast's guard,
+	#    and the one that costs a player a fragment forever if it is missing.
+	var arch: UnsoundedSite = null
+	for s2_v in sites:
+		var s2 := s2_v as UnsoundedSite
+		if s2.kind != "wreck":
+			arch = s2
+			break
+	var pilot := get_tree().get_first_node_in_group("player")
+	var read_ok := false
+	var plate := ""
+	var defer_ok := false
+	if arch != null and pilot != null:
+		GameState.deep_logs.erase(arch.log_key())
+		GameState.cargo = {}
+		pilot.teleport_to(arch.global_position + Vector3(4.0, 0.0, 0.0))
+		var rig := get_tree().get_first_node_in_group("camera_rig")
+		if rig:
+			rig.global_position = pilot.global_position + Vector3(0, 0, 2)
+		await get_tree().create_timer(0.4).timeout
+		arch.hold_begin()
+		arch.hold_tick(UnsoundedSite.READ_TIME + 1.0)
+		await get_tree().create_timer(0.4).timeout
+		plate = hud.broadcast_text()
+		read_ok = arch.stages_read() == 1 \
+			and int(GameState.cargo.get("chart_unsounded", 0)) == UnsoundedSite.YIELD_UNITS \
+			and plate.contains("YOUR POSITION IS DEFINED")
+		# NOW FILL THE HOLD. Not by editing the store -- by loading real cargo,
+		# so can_load answers the way it will answer in play. A ONE-SPACE good,
+		# deliberately: quiet salvage takes three, so a hold filled with it can
+		# be left with two units of slack that a one-space chart fits into, and
+		# the fixture would be testing nothing.
+		GameState.cargo = {}
+		GameState.load_cargo("volatiles", GameState.cargo_free())
+		var stage_before := arch.stages_read()
+		arch.hold_begin()
+		arch.hold_tick(UnsoundedSite.READ_TIME + 1.0)
+		defer_ok = arch.stages_read() == stage_before \
+			and not GameState.can_load("chart_unsounded", UnsoundedSite.YIELD_UNITS)
+		GameState.cargo = {}
+		GameState.deep_logs.erase(arch.log_key())
+	print("[unsound] THE HOLD PAYS AND THE PLATE SPEAKS one hold -> stage 1, %d units of chart_unsounded, plate says '%s'=%s; on a full hold the stage did not move=%s -> %s" % [
+		UnsoundedSite.YIELD_UNITS, plate.substr(0, 40), str(read_ok), str(defer_ok),
+		"PASS" if read_ok and defer_ok else "FAIL"])
+
+	get_tree().quit()
+# --- directive 9 test --------------------------------------------------------
+
+func _run_directive_test() -> void:
+	# THE REVEAL, asserted as the three things that make it a slow burn rather
+	# than a twist dropped in the player's lap: the authority's recordings never
+	# change their words, the world waits for the WHOLE record before it answers,
+	# and the private beat lands exactly on the order and nowhere else. The
+	# fourth clause is the cheapest to break and the easiest to miss -- this
+	# horizon claims to cost zero bytes, and a claim like that wants a check.
+	var sid := GameState.current_system
+
+	# A pure fixture: the store is the only input either flag reads, so every
+	# state below is built by writing deep_logs directly and then asking the
+	# accessors. Saving is locked (dispatch), so none of it reaches a file.
+	var set_state := func(meridian: int, glass: int, ret: int) -> void:
+		GameState.deep_logs = {}
+		if meridian > 0:
+			GameState.deep_logs["pyx01:meridian"] = meridian
+		if glass > 0:
+			GameState.deep_logs["pyx02:glass"] = glass
+		if ret > 0:
+			GameState.deep_logs["pyx03:return"] = ret
+
+	# 1. THE MACHINES DO NOT KNOW. Bands 1-4 are an automated beacon, a relay, a
+	#    degraded relay and a dead carrier, and THE LAST RETURN's own final entry
+	#    says nobody told the machines. So the authority's text must be identical
+	#    under every combination of the two flags, in every system, commissioned
+	#    or not -- which also means the chart-edge beacon goes on telling a
+	#    commissioned pilot the bearing is theirs and written down forever. That
+	#    line is the horror; a "finished" table would delete it.
+	var machine_bad := ""
+	for band in range(1, 5):
+		for sid_v in SystemDB.ids():
+			for comm in [false, true]:
+				var base: Dictionary = DeepSpace.broadcast_for(band, comm, String(sid_v), false)
+				var after: Dictionary = DeepSpace.broadcast_for(band, comm, String(sid_v), true)
+				if String(base.get("from", "")) != String(after.get("from", "")) \
+						or String(base.get("body", "")) != String(after.get("body", "")):
+					machine_bad += "band %d in %s (commissioned=%s) " % [band, sid_v, str(comm)]
+	print("[directive] THE MACHINES DO NOT KNOW bands 1-4 across %d systems, commissioned and not: %s -> %s" % [
+		SystemDB.ids().size(),
+		"every recording says exactly what it always said" if machine_bad == ""
+			else "CHANGED: " + machine_bad,
+		"PASS" if machine_bad == "" else "FAIL"])
+
+	# 2. THE WORLD WAITS FOR THE WHOLE RECORD. The staged reveal, and the leg
+	#    that would have caught the version of this feature that lands the twist
+	#    in the first hours: two archives finished and the third HALF read -- the
+	#    pilot has the order itself and knows -- must still leave every voice out
+	#    here saying what it always said. Only 3/3/3 changes anything.
+	var early_bad := ""
+	set_state.call(3, 3, 2)
+	var knows_early := GameState.knows_directive_9()
+	var whole_early := GameState.holds_whole_record()
+	for band in [5, 6]:
+		for sid_v in SystemDB.ids():
+			var shipped: Dictionary = DeepSpace.broadcast_for(band, false, String(sid_v), false)
+			var live: Dictionary = DeepSpace.broadcast_for(band, false, String(sid_v),
+				GameState.holds_whole_record())
+			if String(live.get("body", "")) != String(shipped.get("body", "")):
+				early_bad += "band %d in %s " % [band, sid_v]
+	print("[directive] THE WORLD WAITS FOR THE WHOLE RECORD at 3/3/2 the pilot knows=%s but holds the record=%s; bands 5-6 unchanged in every system: %s -> %s" % [
+		str(knows_early), str(whole_early),
+		"yes" if early_bad == "" else "NO: " + early_bad,
+		"PASS" if knows_early and not whole_early and early_bad == "" else "FAIL"])
+
+	# 3. AND THEN IT ANSWERS, IN EVERY SYSTEM. Two of the three systems replace
+	#    one of these two bands with a line of their own -- pyx01 speaks band 6
+	#    as a GSA repeater, pyx03 speaks band 5 as a sounding mark -- and BOTH OF
+	#    THOSE ARE MACHINES, so the override correctly wins and those rows stay
+	#    put. What must hold is that no system is left without a living voice:
+	#    every one of them has at least one band out here that answers a pilot
+	#    holding the whole record. Asserted per system, because a future override
+	#    on the last living band in a system would silently delete the payoff
+	#    there and nothing else would notice.
+	set_state.call(3, 3, 3)
+	var answers_in := {}
+	var empty_after := ""
+	for sid_v in SystemDB.ids():
+		var sid2 := String(sid_v)
+		answers_in[sid2] = 0
+		for band in [5, 6]:
+			var shipped2: Dictionary = DeepSpace.broadcast_for(band, false, sid2, false)
+			var after2: Dictionary = DeepSpace.broadcast_for(band, false, sid2, true)
+			if String(after2.get("body", "")) != String(shipped2.get("body", "")):
+				answers_in[sid2] = int(answers_in[sid2]) + 1
+				if String(after2.get("body", "")).strip_edges() == "" \
+						or String(after2.get("from", "")).strip_edges() == "":
+					empty_after += "band %d in %s " % [band, sid2]
+	var silent_systems := ""
+	for k_v in answers_in:
+		if int(answers_in[k_v]) < 1:
+			silent_systems += String(k_v) + " "
+	print("[directive] EVERY SYSTEM KEEPS ONE LIVING VOICE answering bands per system %s; systems with none: %s; empty after-lines: %s -> %s" % [
+		str(answers_in), "none" if silent_systems == "" else silent_systems,
+		"none" if empty_after == "" else empty_after,
+		"PASS" if silent_systems == "" and empty_after == "" and GameState.holds_whole_record()
+			else "FAIL"])
+
+	# 4. THE GATE IS THE ORDER. knows_directive_9 turns on fragment 2 of the
+	#    bearing-terminus record and on nothing else: not on the first fragment,
+	#    not on the other two archives however completely they are read. Driven
+	#    by walking the real accessor, and the archive lengths are pinned against
+	#    DEEP_LOG_STAGE_MAX in the same line -- an archive that grew a fourth
+	#    fragment would make holds_whole_record permanently unreachable, which is
+	#    a feature that silently stops existing.
+	set_state.call(0, 0, 1)
+	var off_at_one := not GameState.knows_directive_9()
+	set_state.call(3, 3, 0)
+	var off_without_order := not GameState.knows_directive_9()
+	set_state.call(0, 0, 2)
+	var on_at_two := GameState.knows_directive_9()
+	set_state.call(0, 0, 3)
+	var on_at_three := GameState.knows_directive_9()
+	var lengths_ok := true
+	for kind_v in GameState.ARCHIVE_KINDS:
+		if (UnsoundedSite.FRAGMENTS.get(String(kind_v), []) as Array).size() \
+				!= GameState.DEEP_LOG_STAGE_MAX:
+			lengths_ok = false
+	print("[directive] THE GATE IS THE ORDER off at fragment 1=%s, off with both other archives complete=%s, on at 2=%s and 3=%s; every archive is %d fragments=%s -> %s" % [
+		str(off_at_one), str(off_without_order), str(on_at_two), str(on_at_three),
+		GameState.DEEP_LOG_STAGE_MAX, str(lengths_ok),
+		"PASS" if off_at_one and off_without_order and on_at_two and on_at_three
+			and lengths_ok else "FAIL"])
+
+	# 5. THE FIELD ARRIVES WITH THE ORDER. Rendered rather than reasoned about,
+	#    GSATEST's own method: queue_freed rows are skipped, because _refresh
+	#    frees the old body and builds the new one in the same frame and a naive
+	#    child walk would read both. Before the order the page must carry no
+	#    trace of the field -- an unexplained dash from the first dock would be
+	#    the teaser this page refuses to be.
+	var port_node: Port = null
+	for n in get_tree().get_nodes_in_group("dockable"):
+		port_node = n as Port
+		break
+	var before_page := ""
+	var after_page := ""
+	var after_selling := ""
+	if port_node != null:
+		port_node.def = SystemDB.port_def_by_id("anchor").duplicate(true)
+		port_node.def["services"] = PortPanel.TAB_LABELS.keys()
+		port_panel.open_for(port_node)
+		await get_tree().process_frame
+		var render := func() -> String:
+			port_panel._tab = "commission"
+			port_panel._refresh()
+			var out := ""
+			for c in port_panel._body.get_children():
+				if not c.is_queued_for_deletion() and c is Label:
+					out += String((c as Label).text) + "\n"
+			return out
+		set_state.call(0, 0, 1)
+		before_page = await render.call()
+		set_state.call(0, 0, 2)
+		after_page = await render.call()
+		# AND IT IS A STATEMENT, NOT A COUNTER: filing more charts must not move
+		# it. Driven through the real sale path, not by editing the ledger.
+		GameState.cargo = {}
+		GameState.load_cargo("chart_drift", 4)
+		file_charts_on_sale("chart_drift", 4)
+		after_selling = await render.call()
+		port_panel.close_panel()
+	var field_ok: bool = not before_page.contains("RECLASSIFIED VOLUME") \
+		and after_page.contains("RETURNS LOGGED FROM THE RECLASSIFIED VOLUME: —") \
+		and after_page.contains("RESURVEY 44") \
+		and after_selling.contains("RETURNS LOGGED FROM THE RECLASSIFIED VOLUME: —")
+	print("[directive] THE FIELD ARRIVES WITH THE ORDER absent before=%s, present after=%s, unmoved by four charts filed=%s -> %s" % [
+		str(not before_page.contains("RECLASSIFIED VOLUME")),
+		str(after_page.contains("RETURNS LOGGED FROM THE RECLASSIFIED VOLUME: —")),
+		str(after_selling.contains("RETURNS LOGGED FROM THE RECLASSIFIED VOLUME: —")),
+		"PASS" if field_ok else "FAIL"])
+
+	# 6. NOTHING NEW IS STORED. The whole claim of this commit. Both flags are
+	#    derived from the v23 store, so a save written by a pilot who has read
+	#    the order must differ from one written before it in the deep_logs entry
+	#    and NOWHERE ELSE -- not a flag, not a copy of the register, not a
+	#    "seen" set. Compared key by key over the real serializer so a new field
+	#    names itself instead of being guessed at.
+	set_state.call(0, 0, 1)
+	var before_dict := GameState.save_dict()
+	set_state.call(0, 0, 2)
+	var after_dict := GameState.save_dict()
+	var moved: Array = []
+	for k_v in after_dict:
+		var k := String(k_v)
+		if k == "deep_logs":
+			continue
+		if JSON.stringify(after_dict[k_v]) != JSON.stringify(before_dict.get(k_v)):
+			moved.append(k)
+	for k2_v in before_dict:
+		if not after_dict.has(k2_v):
+			moved.append("MISSING " + String(k2_v))
+	print("[directive] NOTHING NEW IS STORED %d save keys, moved by reading the order (deep_logs aside): %s -> %s" % [
+		after_dict.size(), str(moved) if not moved.is_empty() else "none",
+		"PASS" if moved.is_empty() else "FAIL"])
+
+	# 7. EVERY PAGE IS REACHABLE, AND NONE OF IT IS BLANK. The order is six
+	#    pages found in no order across a whole frontier, so the failure that
+	#    matters is a page nobody can ever draw -- an off-by-one in the modulo,
+	#    or a hash that clumps. Swept over two thousand deep cells rather than
+	#    reasoned about, and the spread is checked too: six pages that all came
+	#    back as page 4 would satisfy "no page is unreachable" on a
+	#    technicality.
+	var seen_pages := {}
+	for i in 2000:
+		var pk := DeepSpace.cell_key("pyx02", i % 47 - 23, i / 47 - 21)
+		var pg := Beacon.page_for(pk, 6)
+		seen_pages[pg] = int(seen_pages.get(pg, 0)) + 1
+	var missing := ""
+	var thin := ""
+	for want in range(1, Beacon.DIRECTIVE_PAGES.size() + 1):
+		if not seen_pages.has(want):
+			missing += "%d " % want
+		elif int(seen_pages[want]) < 100:
+			thin += "%d(%d) " % [want, int(seen_pages[want])]
+	var blank := ""
+	for i2 in range(Beacon.DIRECTIVE_PAGES.size()):
+		var row: Dictionary = Beacon.DIRECTIVE_PAGES[i2]
+		if String(row.get("clause", "")).strip_edges() == "" \
+				or String(row.get("margin", "")).strip_edges() == "":
+			blank += "%d " % (i2 + 1)
+	var out_of_range: bool = seen_pages.has(0) \
+		or seen_pages.has(Beacon.DIRECTIVE_PAGES.size() + 1)
+	print("[directive] EVERY PAGE IS REACHABLE %d pages over 2000 deep cells, spread %s; never drawn: %s; thin: %s; blank halves: %s; out of range: %s -> %s" % [
+		Beacon.DIRECTIVE_PAGES.size(), str(seen_pages),
+		"none" if missing == "" else missing, "none" if thin == "" else thin,
+		"none" if blank == "" else blank, str(out_of_range),
+		"PASS" if missing == "" and thin == "" and blank == "" and not out_of_range
+			else "FAIL"])
+
+	# 8. THE PAGES KEEP TO THE DEEP. The pacing gate, and the leg that would
+	#    have caught the first draft of this feature: foreign beacons stand
+	#    wherever the rival has filed, which starts at 24 units out, so an
+	#    ungated page puts the order's own text at the chart edge in a new
+	#    pilot's first hours. Every band swept, not a sample. Red-verify by
+	#    dropping the band clause from Beacon.page_for.
+	var shallow_leak := ""
+	var deep_dry := ""
+	for band in range(0, DeepSpace.BAND_NAMES.size()):
+		for i3 in 300:
+			var k3 := DeepSpace.cell_key("pyx01", i3 - 150, i3 * 3 % 91 - 45)
+			var got3 := Beacon.page_for(k3, band)
+			if band < Beacon.PAGE_MIN_BAND and got3 != 0:
+				shallow_leak += "band %d " % band
+				break
+			if band >= Beacon.PAGE_MIN_BAND and got3 == 0:
+				deep_dry += "band %d " % band
+				break
+	print("[directive] THE PAGES KEEP TO THE DEEP nothing at bands 0-%d: %s; a page at every band %d and deeper: %s -> %s" % [
+		Beacon.PAGE_MIN_BAND - 1, "confirmed" if shallow_leak == "" else shallow_leak,
+		Beacon.PAGE_MIN_BAND, "confirmed" if deep_dry == "" else deep_dry,
+		"PASS" if shallow_leak == "" and deep_dry == "" else "FAIL"])
+
+	# 9. THE PAGE LEAVES NOTHING BEHIND, AND IS STILL NOT YOURS. The covenant,
+	#    end to end on a real node: reading pays nothing, stores nothing, and
+	#    does not quietly become the recovery it sits beside. The mast must
+	#    still be standing afterwards -- a page that vanished on reading would
+	#    be a collectible rather than something somebody left for whoever came
+	#    through next.
+	var pb := Beacon.new()
+	pb.foreign = true
+	pb.system_id = system_id
+	pb.page = 2
+	add_child(pb)
+	var pilot2 := get_tree().get_first_node_in_group("player")
+	if pilot2:
+		pb.global_position = pilot2.global_position + Vector3(2.0, 0.0, 0.0)
+	await get_tree().process_frame
+	var save_before := JSON.stringify(GameState.save_dict())
+	var stock_before := GameState.beacon_stock_left()
+	var cargo_before := GameState.cargo_used()
+	var salvage_before := GameState.salvage
+	pb.hold_begin()
+	pb.hold_tick(Beacon.READ_TIME + 1.0)
+	# THE AFTER-IMAGE IS TAKEN IN THE SAME FRAME AS THE READ, and the first
+	# version of this leg was not -- it waited 0.4s for the plate to fade in
+	# first, and came back red because `played_seconds += delta` is in the save
+	# dict and four hundred milliseconds of it had gone by. The save had moved;
+	# reading had not moved it. What this leg means is that the ACT stored
+	# nothing, so the two images have to bracket the act and nothing else. The
+	# plate wait belongs after them.
+	var save_after := JSON.stringify(GameState.save_dict())
+	await get_tree().create_timer(0.4).timeout
+	var plate := hud.broadcast_text()
+	var read_ok: bool = plate.contains("RETURNS WENT IN THE BIN") \
+		and save_after == save_before \
+		and GameState.beacon_stock_left() == stock_before \
+		and GameState.cargo_used() == cargo_before \
+		and GameState.salvage == salvage_before \
+		and GameState.beacons.is_empty() \
+		and is_instance_valid(pb)
+	print("[directive] THE PAGE LEAVES NOTHING BEHIND plate carries page 2=%s; save/stock/cargo/salvage unmoved=%s/%s/%s/%s; store empty=%s; the mast still stands=%s -> %s" % [
+		str(plate.contains("RETURNS WENT IN THE BIN")),
+		str(save_after == save_before),
+		str(GameState.beacon_stock_left() == stock_before),
+		str(GameState.cargo_used() == cargo_before),
+		str(GameState.salvage == salvage_before),
+		str(GameState.beacons.is_empty()), str(is_instance_valid(pb)),
+		"PASS" if read_ok else "FAIL"])
+	pb.queue_free()
+
+	GameState.deep_logs = {}
+	get_tree().quit()
+
+# --- berth test --------------------------------------------------------------
+
+func _run_berth_test() -> void:
+	# THE BERTHS, asserted as the four promises that make them a trade rather
+	# than a strict upgrade: a locked slot holds nothing by any route, every
+	# slot the enum knows about actually reaches the stats, the mass is real and
+	# permanent, and the power arrives with the slot rather than after it.
+	# 1. A LOCKED SLOT HOLDS NOTHING, BY EITHER DOOR. can_equip is the door the
+	#    console uses; the LOADER is the other one, and a hand-edited save is
+	#    exactly the sort of thing that walks through it. Both are checked,
+	#    because a berth refused in the UI and granted by a file is not refused.
+	GameState.berths = []
+	GameState.owned.append("util_assay")
+	var refused_ui := not GameState.can_equip(ModuleDB.Slot.UTILITY_C, "util_assay")
+	GameState.fit[ModuleDB.Slot.UTILITY_C] = "util_assay"
+	var forced := GameState.save_dict()
+	GameState.fit.erase(ModuleDB.Slot.UTILITY_C)
+	# Through the real loader, which is the thing under test.
+	var probe_path := "user://berthtest_probe.json"
+	var real_path := GameState.save_path
+	var fp := FileAccess.open(probe_path, FileAccess.WRITE)
+	fp.store_string(JSON.stringify(forced))
+	fp.close()
+	GameState.save_path = probe_path
+	GameState.load_game()
+	GameState.save_path = real_path
+	var refused_file := String(GameState.fit.get(ModuleDB.Slot.UTILITY_C, "")) == ""
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(probe_path))
+	print("[berth] A LOCKED SLOT HOLDS NOTHING refused by can_equip=%s, and a save that names it anyway loads empty=%s -> %s" % [
+		str(refused_ui), str(refused_file),
+		"PASS" if refused_ui and refused_file else "FAIL"])
+
+	# 2. EVERY SLOT REACHES THE STATS. The trap this commit was written around:
+	#    compute_stats carried two hand-written slot lists, so a slot added to
+	#    the enum and forgotten there would be purchasable, equippable, POWERED
+	#    -- and would contribute nothing at all, silently. Now derived from
+	#    SLOT_CATEGORY, and proved by fitting the same module in every slot of
+	#    its category and requiring the stats to move each time. Red-verify by
+	#    dropping a category from slots_of.
+	GameState.berths = ModuleDB.BERTHS.keys()
+	GameState.owned.append("util_shield_2")
+	var dead_slots := ""
+	for slot_v in ModuleDB.SLOT_CATEGORY:
+		var cat := String(ModuleDB.SLOT_CATEGORY[slot_v])
+		if cat != "utility":
+			continue
+		var bare := ModuleDB.compute_stats(ModuleDB.STARTER_FIT)
+		var probe := ModuleDB.STARTER_FIT.duplicate()
+		probe[int(slot_v)] = "util_shield_2"
+		var with_it := ModuleDB.compute_stats(probe)
+		if float(with_it.get("shield_max", 0.0)) <= float(bare.get("shield_max", 0.0)):
+			dead_slots += "%s " % String(ModuleDB.SLOT_NAMES[slot_v])
+	print("[berth] EVERY SLOT REACHES THE STATS %d utility slots, silent ones: %s -> %s" % [
+		ModuleDB.slots_of("utility").size(), dead_slots if dead_slots != "" else "none",
+		"PASS" if dead_slots == "" and ModuleDB.slots_of("utility").size() >= 3 else "FAIL"])
+
+	# 3. THE MASS IS REAL, AND IT IS NOT A MODULE. A berth is welded on: the
+	#    speed it costs cannot be recovered by unfitting anything, which is the
+	#    whole reason it is a trade. Measured on the same fit, berthed and not.
+	var bare_speed := float(ModuleDB.compute_stats(ModuleDB.STARTER_FIT).get("max_speed", 0.0))
+	var berthed_speed := float(ModuleDB.compute_stats(ModuleDB.STARTER_FIT,
+		ModuleDB.BERTHS.keys()).get("max_speed", 0.0))
+	var empty_fit := {}
+	var stripped := float(ModuleDB.compute_stats(empty_fit,
+		ModuleDB.BERTHS.keys()).get("max_speed", 0.0))
+	var bare_stripped := float(ModuleDB.compute_stats(empty_fit).get("max_speed", 0.0))
+	var mass_ok: bool = berthed_speed < bare_speed \
+		and is_equal_approx(bare_speed - berthed_speed, ModuleDB.berth_mass(ModuleDB.BERTHS.keys())) \
+		and stripped < bare_stripped
+	print("[berth] THE MASS IS REAL %.2f speed bare, %.2f fully berthed (cost %.2f); still down with every module pulled=%s -> %s" % [
+		bare_speed, berthed_speed, ModuleDB.berth_mass(ModuleDB.BERTHS.keys()),
+		str(stripped < bare_stripped), "PASS" if mass_ok else "FAIL"])
+
+	# 4. THE POWER ARRIVES WITH THE SLOT. The research finding this whole commit
+	#    exists because of: a slot sold without power is a bay the reactor
+	#    cannot feed. So each berth must bring enough to run something -- more
+	#    than the cheapest module of its own category -- while still adding less
+	#    than the BEST one, which is what keeps all-best out of reach (asserted
+	#    in full by FRONTIERTEST).
+	var cheapest := {}
+	for id_v in ModuleDB.MODULES:
+		var m: Dictionary = ModuleDB.get_module(String(id_v))
+		var c := String(m.get("category", ""))
+		var pw := int(m.get("power", 0))
+		if not cheapest.has(c) or pw < int(cheapest[c]):
+			cheapest[c] = pw
+	var starved := ""
+	var generous := ""
+	for bid_v in ModuleDB.BERTHS:
+		var berth: Dictionary = ModuleDB.BERTHS[bid_v]
+		var cat2 := String(ModuleDB.SLOT_CATEGORY[int(berth["slot"])])
+		var best := 0
+		for id2_v in ModuleDB.MODULES:
+			var m2: Dictionary = ModuleDB.get_module(String(id2_v))
+			if String(m2.get("category", "")) == cat2:
+				best = maxi(best, int(m2.get("power", 0)))
+		if int(berth["power"]) < int(cheapest.get(cat2, 0)):
+			starved += "%s " % String(bid_v)
+		if int(berth["power"]) >= best:
+			generous += "%s " % String(bid_v)
+	print("[berth] THE POWER ARRIVES WITH THE SLOT %d berths, none too starved to run anything: %s; none rich enough to pay for the best in its class: %s -> %s" % [
+		ModuleDB.BERTHS.size(), "confirmed" if starved == "" else starved,
+		"confirmed" if generous == "" else generous,
+		"PASS" if starved == "" and generous == "" else "FAIL"])
+
+	# 5. BOUGHT ONCE, AND THE CAP MOVES WITH IT. Driven through the real verb:
+	#    a pilot who cannot afford it is refused, one who can is charged exactly
+	#    once, and a second purchase of the same berth is refused rather than
+	#    charged again.
+	GameState.berths = []
+	GameState.salvage = 0
+	var broke_refused := not GameState.can_buy_berth("berth_utility")
+	GameState.salvage = 1000000
+	var cap_before := GameState.power_cap()
+	var slots_before := GameState.open_slots().size()
+	var bought := GameState.buy_berth("berth_utility")
+	var paid := 1000000 - GameState.salvage
+	var twice := GameState.buy_berth("berth_utility")
+	var cap_after := GameState.power_cap()
+	print("[berth] BOUGHT ONCE broke=%s refused; bought=%s for %d (want %d); a second purchase refused=%s; slots %d -> %d, power cap %d -> %d -> %s" % [
+		str(broke_refused), str(bought), paid, GameState.berth_price("berth_utility"),
+		str(not twice), slots_before, GameState.open_slots().size(),
+		cap_before, cap_after,
+		"PASS" if broke_refused and bought and not twice
+			and paid == GameState.berth_price("berth_utility")
+			and GameState.open_slots().size() == slots_before + 1
+			and cap_after == cap_before + int(ModuleDB.BERTHS["berth_utility"]["power"])
+			else "FAIL"])
+
+	# 6. AND THE YARD IS AT THE FAR END. A berth is bought where the Mk V is
+	#    bought and nowhere else -- the deep counters that name a reactor cap --
+	#    so a first windfall at the Waypoint Anchor cannot buy a third hardpoint.
+	var chart_sells := ""
+	for pid_v in SystemDB.port_ids():
+		var pdef := SystemDB.port_def_by_id(String(pid_v))
+		if int(pdef.get("reactor_cap", ModuleDB.REACTOR_CAP_DEFAULT)) >= ModuleDB.BERTH_YARD_TIER:
+			chart_sells += "%s " % String(pid_v)
+	var deep_sells := 0
+	for i in range(DeepPortDB.count()):
+		var adef: Dictionary = DeepPortDB.ARCHETYPES[i]
+		if int(adef.get("reactor_cap", ModuleDB.REACTOR_CAP_DEFAULT)) >= ModuleDB.BERTH_YARD_TIER:
+			deep_sells += 1
+	print("[berth] THE YARD IS AT THE FAR END charted counters selling berths: %s; deep archetypes that do: %d -> %s" % [
+		chart_sells if chart_sells != "" else "none", deep_sells,
+		"PASS" if chart_sells == "" and deep_sells >= 1 else "FAIL"])
+
+	GameState.berths = []
+	GameState.fit = ModuleDB.STARTER_FIT.duplicate()
+	get_tree().quit()
+
+
+# --- the filed return test ---------------------------------------------------
+
+func _run_return_test() -> void:
+	# THE VERB THE LAST FRAGMENT ASKS FOR, asserted as the five promises it
+	# makes: it is gated on hearing the ask, it pays nothing at all, the goods
+	# are its limit, held survives a save, and the rival's cells come home free.
+	var sid := GameState.current_system
+
+	var arm := func(stage: int) -> void:
+		GameState.deep_logs = {}
+		if stage > 0:
+			GameState.deep_logs["pyx03:return"] = stage
+
+	# 1. THE ASK IS THE GATE. heard_the_request turns on the LAST fragment of
+	#    the bearing-terminus record and nothing earlier -- knowing the order
+	#    was given (stage 2, §92's gate) is not being asked to answer it.
+	arm.call(1)
+	var off_1 := not GameState.heard_the_request()
+	arm.call(2)
+	var off_2 := not GameState.heard_the_request() and GameState.knows_directive_9()
+	arm.call(3)
+	var on_3 := GameState.heard_the_request()
+	# AND THE VERB IS ACTUALLY GATED ON IT. The flag's truth table is not the
+	# feature: the only enforcement point is Beacon._can_file, so a leg that
+	# checked the accessor alone would stay green with the gate deleted from the
+	# beacon entirely. Driven on a real node.
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+	GameState.cargo = {}
+	var gate_cell := DeepSpace.cell_key(sid, 3, 0)
+	GameState.note_survey_worked(gate_cell)
+	GameState.load_cargo("chart_drift", SurveyMast.YIELD_UNITS)
+	var gb := Beacon.new()
+	gb.foreign = true
+	gb.system_id = sid
+	gb.page = 1
+	add_child(gb)
+	await get_tree().process_frame
+	arm.call(2)
+	var node_off := not gb._can_file()
+	arm.call(3)
+	var node_on := gb._can_file()
+	gb.queue_free()
+	print("[return] THE ASK IS THE GATE off at fragment 1=%s, still off at 2 while the order IS known=%s, on at 3=%s; and the mast itself refuses the verb until the ask=%s then offers it=%s -> %s" % [
+		str(off_1), str(off_2), str(on_3), str(node_off), str(node_on),
+		"PASS" if off_1 and off_2 and on_3 and node_off and node_on else "FAIL"])
+
+	# 2. THE GOODS ARE THE LIMIT. A hold of two units of one band files exactly
+	#    one cell of that band and nothing else, however much coverage the pilot
+	#    is carrying -- unfiled_cells() spans every system and can hold a
+	#    thousand keys, so without the join the two halves drift apart silently.
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+	GameState.cargo = {}
+	var band2 := ""
+	var band3 := ""
+	for cx in range(1, 400):
+		var k := DeepSpace.cell_key(sid, cx, 0)
+		var b := cell_band_of_key(k)
+		if b == 2 and band2 == "":
+			band2 = k
+		elif b == 3 and band3 == "":
+			band3 = k
+		if band2 != "" and band3 != "":
+			break
+	# FOUR band-2 cells against ONE reading, so the budget is BINDING. With a
+	# single candidate the `taken >= readings` guard is never reached and the leg
+	# measures only the band join -- it would stay green with the whole reading
+	# budget deleted, which is half the rule it is named for.
+	var band2_all: Array = []
+	for cx in range(1, 400):
+		var k := DeepSpace.cell_key(sid, cx, 0)
+		if cell_band_of_key(k) == 2:
+			band2_all.append(k)
+		if band2_all.size() >= 4:
+			break
+	for k_v in band2_all:
+		GameState.note_survey_worked(String(k_v))
+	GameState.note_survey_worked(band3)
+	# Two units is exactly one reading, and the good IS the band.
+	GameState.load_cargo("chart_drift", SurveyMast.YIELD_UNITS)
+	var plan := network_filing_plan()
+	var only_matching: bool = (plan["cells"] as Array).size() == 1 \
+		and cell_band_of_key(String((plan["cells"] as Array)[0])) == 2
+	band2 = String((plan["cells"] as Array)[0]) if only_matching else band2
+	print("[return] THE GOODS ARE THE LIMIT %d band-2 cells surveyed and 1 band-3, one reading held: plan files %d (band-2 only=%s) -> %s" % [
+		band2_all.size(), (plan["cells"] as Array).size(), str(only_matching),
+		"PASS" if only_matching and band2_all.size() >= 4 else "FAIL"])
+
+	# 3. IT PAYS NOTHING. The whole design in one leg, driven through the real
+	#    verb: the wallet, the ledger, the Commission's own counter and GSA
+	#    standing must all be byte-identical across a filing, and the goods must
+	#    be gone. A single number moving here would make the network a worse
+	#    counter instead of a different act.
+	var salv_before := GameState.salvage
+	var ledger_before := JSON.stringify(GameState.ledger)
+	var gsa_before := GameState.faction_attitude(FactionDB.SURVEYOR, "gsa")
+	var cargo_before := GameState.cargo_used()
+	var filed := file_charts_with_network()
+	var paid_nothing: bool = GameState.salvage == salv_before \
+		and JSON.stringify(GameState.ledger) == ledger_before \
+		and GameState.faction_attitude(FactionDB.SURVEYOR, "gsa") == gsa_before \
+		and GameState.cargo_used() == cargo_before - SurveyMast.YIELD_UNITS \
+		and GameState.is_survey_held(band2) \
+		and not GameState.is_survey_held(band3)
+	print("[return] IT PAYS NOTHING filed %d cell; salvage %d->%d, ledger unmoved=%s, GSA standing unmoved=%s, goods gone=%s; the band-3 cell is untouched=%s -> %s" % [
+		filed, salv_before, GameState.salvage,
+		str(JSON.stringify(GameState.ledger) == ledger_before),
+		str(GameState.faction_attitude(FactionDB.SURVEYOR, "gsa") == gsa_before),
+		str(GameState.cargo_used() == cargo_before - SurveyMast.YIELD_UNITS),
+		str(not GameState.is_survey_held(band3)),
+		"PASS" if filed == 1 and paid_nothing else "FAIL"])
+
+	# 4. HELD SURVIVES THE FILE, and this is the one the loader would have
+	#    eaten. _load_survey_filed wrote the literal `true` for two versions and
+	#    discarded whatever the file held -- harmless while true was the only
+	#    value that existed, and silently fatal the moment a cell can be HELD:
+	#    right all session, wrong forever after, with nothing dropped and no
+	#    error. Driven through the real serializer and the real loader.
+	var probe := "user://returntest_probe.json"
+	var real_path := GameState.save_path
+	var dict := GameState.save_dict()
+	var f := FileAccess.open(probe, FileAccess.WRITE)
+	f.store_string(JSON.stringify(dict))
+	f.close()
+	GameState.save_path = probe
+	GameState.load_game()
+	GameState.save_path = real_path
+	var survived: bool = GameState.is_survey_held(band2) \
+		and GameState.is_survey_filed(band2)
+	# AND A COUNTER FILING IS STILL A COUNTER FILING after the round trip: a
+	# loader that promoted everything would pass the clause above.
+	GameState.note_survey_filed(band3)
+	var dict2 := GameState.save_dict()
+	var f2 := FileAccess.open(probe, FileAccess.WRITE)
+	f2.store_string(JSON.stringify(dict2))
+	f2.close()
+	GameState.save_path = probe
+	GameState.load_game()
+	GameState.save_path = real_path
+	var not_promoted: bool = GameState.is_survey_filed(band3) \
+		and not GameState.is_survey_held(band3)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(probe))
+	print("[return] HELD SURVIVES THE FILE a network cell reloads held=%s; a counter cell reloads filed and NOT held=%s -> %s" % [
+		str(survived), str(not_promoted),
+		"PASS" if survived and not_promoted else "FAIL"])
+
+	# 5. HELD IS STILL A SUBSET, AND THE CAP STILL TAKES IT. §17's bound is not
+	#    suspended for a cell the network holds -- an exemption would be exactly
+	#    the second unbounded store the cap exists to refuse, and it would make
+	#    the wreck's four-hundred-cell log false.
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+	for i in range(GameState.SURVEY_CELL_CAP + 12):
+		var k2 := DeepSpace.cell_key(sid, 900 + i, 7)
+		GameState.note_survey_worked(k2)
+		GameState.note_survey_held(k2)
+	var capped: bool = GameState.survey_coverage.size() == GameState.SURVEY_CELL_CAP
+	var subset := true
+	for k_v in GameState.survey_filed:
+		if not GameState.survey_coverage.has(String(k_v)):
+			subset = false
+	# AND THE SURVIVORS ARE STILL HELD. Both original clauses were satisfied by
+	# an EMPTY filed store -- the subset loop is vacuously true over nothing and
+	# a size check only bounds from above -- so a cap that wiped every held mark
+	# on the four-hundred-and-first cell would have printed PASS. The equality
+	# is what makes the leg refuse that: every surviving coverage key was held,
+	# so filed must have exactly as many entries as coverage does.
+	var still_held := GameState.held_cells().size()
+	print("[return] THE CAP TAKES HELD CELLS TOO %d worked and held, coverage settled at %d (cap %d)=%s, filed still a subset=%s, and %d of them are STILL HELD=%s -> %s" % [
+		GameState.SURVEY_CELL_CAP + 12, GameState.survey_coverage.size(),
+		GameState.SURVEY_CELL_CAP, str(capped), str(subset), still_held,
+		str(still_held == GameState.SURVEY_CELL_CAP),
+		"PASS" if capped and subset and still_held == GameState.SURVEY_CELL_CAP
+			and GameState.survey_filed.size() == GameState.SURVEY_CELL_CAP
+			else "FAIL"])
+
+	# 6. THE MARKS ARE OUT THERE AND THEY ARE BOUNDED. The generator commit 2
+	#    builds buoys from, swept here because a placement rule at nine thousand
+	#    units cannot be checked by flying to it. Deterministic, capped, past
+	#    every archive, and separated.
+	var det := true
+	var too_close := ""
+	var out_of_window := ""
+	var total := 0
+	for sid_v in SystemDB.ids():
+		var s2 := String(sid_v)
+		var a := FarMarks.positions(s2, GameState.run_seed)
+		var b2 := FarMarks.positions(s2, GameState.run_seed)
+		if str(a) != str(b2):
+			det = false
+		total += a.size()
+		var bounds := SystemDB.bounds_of(s2)
+		for i in range(a.size()):
+			var d := (a[i] as Vector3).length() - bounds
+			if d < FarMarks.DEPTH_MIN - 1.0 or d > FarMarks.DEPTH_MAX + 1.0:
+				out_of_window += "%s:%d " % [s2, i]
+			for j in range(i + 1, a.size()):
+				if (a[i] as Vector3).distance_to(a[j] as Vector3) < FarMarks.MIN_SEPARATION:
+					too_close += "%s:%d/%d " % [s2, i, j]
+	var deepest_archive := 0.0
+	for k3_v in UnsoundedSite.DEPTHS:
+		deepest_archive = maxf(deepest_archive, float(UnsoundedSite.DEPTHS[k3_v]))
+	print("[return] THE MARKS ARE BOUNDED %d marks over %d systems (cap %d each), deterministic=%s, all inside [%.0f,%.0f]: %s, separated: %s; past the deepest archive (%.0f)=%s -> %s" % [
+		total, SystemDB.ids().size(), FarMarks.PER_SYSTEM, str(det),
+		FarMarks.DEPTH_MIN, FarMarks.DEPTH_MAX,
+		"yes" if out_of_window == "" else out_of_window,
+		"yes" if too_close == "" else too_close, deepest_archive,
+		str(FarMarks.DEPTH_MIN > deepest_archive),
+		"PASS" if det and out_of_window == "" and too_close == ""
+			and total == FarMarks.PER_SYSTEM * SystemDB.ids().size()
+			and FarMarks.DEPTH_MIN > deepest_archive else "FAIL"])
+
+	# 7. A SINGULAR LEGEND IS SINGULAR. The rule that makes a legend worth
+	#    telling somebody about, and the one a rejection-test implementation
+	#    would fail open on. Swept over many seeds rather than one, because
+	#    "at most once" is a claim about every run, not about this one.
+	var dupes := ""
+	var seen_kinds := {}
+	for seed_i in 60:
+		var plan_r := FarMarks.run_plan(seed_i * 7919 + 13, SystemDB.ids())
+		var count := {}
+		for k4_v in plan_r:
+			var kind := String(plan_r[k4_v])
+			count[kind] = int(count.get(kind, 0)) + 1
+			seen_kinds[kind] = true
+		for kind_v in FarMarks.SINGULAR:
+			if int(count.get(String(kind_v), 0)) > 1:
+				dupes += "%s x%d " % [String(kind_v), int(count[kind_v])]
+	var every_kind_reachable := true
+	for kind2_v in FarMarks.kinds():
+		if not seen_kinds.has(String(kind2_v)):
+			every_kind_reachable = false
+	# AND A RUN MUST MISS SOME. This clause is the one the adversarial pass was
+	# filed about, and neither of the two above could have caught what it found:
+	# with fifteen slots against seven singular kinds the deal handed EVERY run
+	# all seven, so "at most once per run" was trivially true and "all kinds
+	# reachable" was trivially true, while the pacing rule the whole class
+	# exists for -- a run that has no serpent in it is a normal run -- was false
+	# on every seed. Two green assertions over a dead design.
+	var carried_all := 0
+	var omissions := {}
+	for seed_j in 60:
+		var plan_o := FarMarks.run_plan(seed_j * 7919 + 13, SystemDB.ids())
+		var here := {}
+		for k5_v in plan_o:
+			here[String(plan_o[k5_v])] = true
+		var missing := 0
+		for kind3_v in FarMarks.SINGULAR:
+			if not here.has(String(kind3_v)):
+				missing += 1
+				omissions[String(kind3_v)] = true
+		if missing == 0:
+			carried_all += 1
+	var varies: bool = carried_all == 0 \
+		and omissions.size() >= FarMarks.SINGULAR.size() - FarMarks.SINGULAR_PER_RUN
+	print("[return] A SINGULAR LEGEND IS SINGULAR 60 seeds: appearing twice in one run: %s; all %d kinds reachable across seeds=%s; runs carrying ALL %d singulars: %d (want 0), distinct kinds a run can miss: %d -> %s" % [
+		"none" if dupes == "" else dupes, FarMarks.kinds().size(),
+		str(every_kind_reachable), FarMarks.SINGULAR.size(), carried_all,
+		omissions.size(),
+		"PASS" if dupes == "" and every_kind_reachable and varies else "FAIL"])
+
+	# 8. THE RIVAL'S CELLS COME HOME FREE, and this path was DEAD to the harness
+	#    until this leg: reset_to_starter leaves played_seconds at 0, the suite
+	#    runs synchronously so no frame advances it, and Rival.filed is false for
+	#    every cell at t=0 (arrival is never below BASE_S). So the sweep branch
+	#    ran in play and never once under test -- which is exactly where the
+	#    counting bug lived: a filing made up ENTIRELY of rival-reached cells
+	#    moves them all to held, queues a save, and used to report zero, so the
+	#    mast announced "NOTHING NEW TO FILE" for an irreversible act that had
+	#    just happened. Routine, not exotic: the rival takes the shallows inside
+	#    a couple of hours of play.
+	var t_save := GameState.played_seconds
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+	GameState.cargo = {}
+	GameState.played_seconds = 400000.0
+	var rival_cells: Array = []
+	for cx in range(1, 400):
+		var k5 := DeepSpace.cell_key(sid, cx, 0)
+		if cell_band_of_key(k5) != 2:
+			continue
+		if not Rival.filed(k5, cell_depth_of_key(k5), GameState.run_seed,
+				GameState.played_seconds):
+			continue
+		rival_cells.append(k5)
+		if rival_cells.size() >= 3:
+			break
+	for k6_v in rival_cells:
+		GameState.note_survey_worked(String(k6_v))
+	GameState.load_cargo("chart_drift", SurveyMast.YIELD_UNITS)
+	var cargo_r := GameState.cargo_used()
+	var salv_r := GameState.salvage
+	var reported := file_charts_with_network()
+	var all_held := true
+	for k7_v in rival_cells:
+		if not GameState.is_survey_held(String(k7_v)):
+			all_held = false
+	var free_ok: bool = not rival_cells.is_empty() \
+		and all_held and reported == rival_cells.size() \
+		and GameState.cargo_used() == cargo_r \
+		and GameState.salvage == salv_r
+	GameState.played_seconds = t_save
+	print("[return] THE RIVAL'S CELLS COME HOME FREE %d cells the rival reached first: all held=%s, the verb reported %d (not 0), no reading spent (cargo %d->%d) and no pay -> %s" % [
+		rival_cells.size(), str(all_held), reported, cargo_r,
+		GameState.cargo_used(), "PASS" if free_ok else "FAIL"])
+
+	# 9. THE MARKS STAND WHERE THE GENERATOR SAYS. Leg 6 proves the arithmetic;
+	#    this proves the WORLD agrees with it. Driven on pyx01 by name rather
+	#    than on current_system, because the fingerprint clause below is compared
+	#    against a constant recorded over pyx01's cells.
+	_load_system("pyx01")
+	set_deep_generation(false)
+	await get_tree().physics_frame
+	var msid := "pyx01"
+	var nominal := FarMarks.positions(msid, GameState.run_seed)
+	var plan_m := FarMarks.run_plan(GameState.run_seed, SystemDB.ids())
+	var max_arc := 0.0
+	for a_v in SystemBuilder.MARK_ARCS:
+		max_arc = maxf(max_arc, absf(float(a_v)))
+	var seen_idx := {}
+	var kind_bad := ""
+	var drift_bad := ""
+	var station_bad := ""
+	for n_v in get_tree().get_nodes_in_group("farmark"):
+		var m := n_v as SoundingMark
+		if m == null or m.system_id != msid:
+			continue
+		seen_idx[m.index] = true
+		if m.index < 0 or m.index >= nominal.size():
+			drift_bad += "%d(no such mark) " % m.index
+			continue
+		if m.kind != String(plan_m.get("%s:%d" % [msid, m.index], "")):
+			kind_bad += "%d " % m.index
+		# THE NUDGE IS BOUNDED BY THE LIST THE BUILDER READS, not by a literal
+		# repeated here. The offset is an arc and this is a chord, so the chord
+		# can only be shorter -- an over-budget drift means the buoy is not the
+		# mark the channel quotes.
+		var nom: Vector3 = nominal[m.index]
+		var drift := m.global_position.distance_to(nom)
+		if drift > max_arc + 1.0:
+			drift_bad += "%d(%.0fu) " % [m.index, drift]
+		if not SystemBuilder._clear_of_stations(deep_space, m.global_position):
+			# NOT AUTOMATICALLY A DEFECT, and asserting otherwise would be a
+			# flake waiting for a seed: _mark_pos is allowed to give up and stand
+			# where it was told when every candidate is blocked. What must never
+			# happen is giving up while a clear candidate existed, so that is
+			# what this asks.
+			var radius := Vector2(nom.x, nom.z).length()
+			var base := atan2(nom.z, nom.x)
+			var could := false
+			for a2_v in SystemBuilder.MARK_ARCS:
+				var ang := base + float(a2_v) / radius
+				if SystemBuilder._clear_of_stations(deep_space,
+						Vector3(cos(ang), 0.0, sin(ang)) * radius):
+					could = true
+			if could:
+				station_bad += "%d " % m.index
+	# NOTHING POINTS AT THEM, COLONYTEST's own clause: no radar tier and no
+	# scanned group, which this far out is the difference between an expedition
+	# and an arrow.
+	var mark_leak := ""
+	for g in ["apex", "dockable", "crackable", "hostiles", "mineable", "beacon",
+			"signature", "hyper", "unsounded"]:
+		for l_v in get_tree().get_nodes_in_group(g):
+			if l_v is SoundingMark:
+				mark_leak += "%s " % g
+	# AND THE BUILD MOVED NO DRAW. _mark_pos reads plan_cell, which is pure --
+	# but "pure" is a claim about a function, and this is the measurement.
+	var fp_marks := _world_fingerprint()
+	print("[return] THE MARKS STAND WHERE THE GENERATOR SAYS %d/%d built in %s, kinds off plan: %s, drift over %.0fu: %s, avoidably inside a station keep-out: %s, leaked into scanned groups: %s; world fingerprint %s vs %s -> %s" % [
+		seen_idx.size(), FarMarks.PER_SYSTEM, msid,
+		"none" if kind_bad == "" else kind_bad, max_arc,
+		"none" if drift_bad == "" else drift_bad,
+		"none" if station_bad == "" else station_bad,
+		"none" if mark_leak == "" else mark_leak,
+		fp_marks, WORLD_FINGERPRINT_BEFORE_SEAMS,
+		"PASS" if seen_idx.size() == FarMarks.PER_SYSTEM and kind_bad == ""
+			and drift_bad == "" and station_bad == "" and mark_leak == ""
+			and fp_marks == WORLD_FINGERPRINT_BEFORE_SEAMS else "FAIL"])
+
+	# 10. A MARK IS THE NETWORK'S TO READ. The read/unread split, driven through
+	#     the REAL ladder and the REAL hold in both directions -- because the
+	#     gate is not the feature, the affordance is, and 96 spent two horizons
+	#     with a fully wired Beacon.on_tapped that no finger could reach.
+	#
+	#     On a probe rather than on one of the five built above, for PICK
+	#     PRECEDENCE's own reason: _pick is screen-space with no raycast, and a
+	#     camera parked six thousand units out unprojects everything behind it
+	#     onto the same half of the screen. The probe is the same class running
+	#     the same code, and leg 9 is what proves the real ones are in the group.
+	var probe_at := Vector3(300.0, 0.0, 300.0)
+	var mark_probe := SoundingMark.new()
+	mark_probe.system_id = msid
+	mark_probe.index = 0
+	mark_probe.kind = "vein"
+	system_root.add_child(mark_probe)
+	mark_probe.global_position = probe_at
+	var pilot_m: PlayerShip = get_tree().get_first_node_in_group("player")
+	var rig_m := get_tree().get_first_node_in_group("camera_rig") as CameraRig
+	var ladder_ok := false
+	var refused := false
+	var offered := false
+	var read_ok := false
+	var stayed_shut := false
+	if pilot_m != null and rig_m != null:
+		pilot_m.teleport_to(probe_at)
+		rig_m.leash_enabled = false
+		rig_m.global_position = probe_at + Vector3(0.0, 0.0, 2.0)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var cam_m := get_viewport().get_camera_3d()
+		var at_px := cam_m.unproject_position(mark_probe.pick_anchor())
+		ladder_ok = rig_m._pick(at_px, "farmark") == mark_probe
+		# --- a pilot who has never filed ---
+		GameState.survey_coverage = {}
+		GameState.survey_filed = {}
+		GameState.marks_seen = {}
+		hud.clear_prompt()
+		var tapped_a := rig_m._select(at_px)
+		# THE PROMPT FADES IN OVER 0.2s and prompt_text() is gated on alpha, so
+		# reading it on the same frame reads an empty string -- the trap
+		# COLONYTEST documents.
+		await get_tree().create_timer(0.4).timeout
+		refused = tapped_a and hud.prompt_text() == SoundingMark.CANNOT_READ
+		# PARKED AGAIN BEFORE EACH HOLD. Four tenths of a second of physics
+		# passed while the prompt faded in, and READ_RANGE is twelve units --
+		# a hold that failed because the ship drifted would read exactly like a
+		# hold that was refused, which is the wrong thing for this leg to be
+		# measuring.
+		pilot_m.teleport_to(probe_at)
+		mark_probe.hold_begin()
+		mark_probe.hold_tick(SoundingMark.READ_TIME * 2.0)
+		stayed_shut = not mark_probe.is_read()
+		# --- and the same pilot one filing later ---
+		var held_cell := DeepSpace.cell_key(msid, 4, 0)
+		GameState.note_survey_worked(held_cell)
+		GameState.note_survey_held(held_cell)
+		hud.clear_prompt()
+		var tapped_b := rig_m._select(at_px)
+		await get_tree().create_timer(0.4).timeout
+		offered = tapped_b and hud.prompt_text().contains("HOLD TO READ")
+		pilot_m.teleport_to(probe_at)
+		mark_probe.hold_begin()
+		mark_probe.hold_tick(SoundingMark.READ_TIME + 0.1)
+		read_ok = mark_probe.is_read() \
+			and String(GameState.marks_seen.get(mark_probe.mark_key(), "")) == GameState.MARK_READ
+		rig_m.leash_enabled = true
+	mark_probe.queue_free()
+	print("[return] A MARK IS THE NETWORK'S TO READ the tap ladder reaches it=%s; unfiled: refused in its own words=%s and the hold left it unread=%s; filed: the tap offers the verb=%s and the hold resolved it=%s -> %s" % [
+		str(ladder_ok), str(refused), str(stayed_shut), str(offered), str(read_ok),
+		"PASS" if ladder_ok and refused and stayed_shut and offered and read_ok
+			else "FAIL"])
+
+	# 11. THE CHANNEL NAMES A MARK YOU HAVE NOT READ. The store's whole job at
+	#     the far end: commit 0 shipped nearest_unseen taking an empty dictionary
+	#     because nothing could be seen yet, and a wiring that passed {} forever
+	#     would keep quoting the same buoy after the pilot had stood on it.
+	GameState.marks_seen = {}
+	var from_m := Vector3.ZERO
+	var first_m := FarMarks.nearest_unseen(msid, GameState.run_seed, from_m,
+		GameState.marks_read())
+	var named_one := not first_m.is_empty()
+	GameState.note_mark_read(GameState.mark_key(msid, int(first_m.get("index", -1))))
+	var second_m := FarMarks.nearest_unseen(msid, GameState.run_seed, from_m,
+		GameState.marks_read())
+	var moved_on: bool = not second_m.is_empty() \
+		and int(second_m["index"]) != int(first_m.get("index", -1))
+	for i in range(nominal.size()):
+		GameState.note_mark_read(GameState.mark_key(msid, i))
+	var exhausted: bool = FarMarks.nearest_unseen(msid, GameState.run_seed, from_m,
+		GameState.marks_read()).is_empty()
+	# AND THE STORE SURVIVES THE FILE, with its VALUE. The rubbish pass is the
+	# half that matters: this store's value is a STATE, so a loader that coerced
+	# with bool() -- the correct line for its sibling one function up -- would
+	# write 7 and "nonsense" back as marks in a vocabulary that has one word.
+	var dirty_marks := {}
+	dirty_marks[GameState.mark_key(msid, 0)] = GameState.MARK_READ    # good
+	dirty_marks[GameState.mark_key(msid, 999)] = GameState.MARK_READ  # no such mark
+	dirty_marks["nowhere:0"] = GameState.MARK_READ                    # no such system
+	dirty_marks[GameState.mark_key(msid, 1)] = true                   # not a state
+	dirty_marks[GameState.mark_key(msid, 2)] = "nonsense"             # nor is this
+	GameState.marks_seen = dirty_marks
+	var probe_path := "user://returntest_marks.json"
+	var real_path_m := GameState.save_path
+	var fm := FileAccess.open(probe_path, FileAccess.WRITE)
+	fm.store_string(JSON.stringify(GameState.save_dict()))
+	fm.close()
+	GameState.save_path = probe_path
+	GameState.load_game()
+	GameState.save_path = real_path_m
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(probe_path))
+	var kept_m: bool = GameState.marks_seen.size() == 1 \
+		and GameState.is_mark_read(GameState.mark_key(msid, 0)) \
+		and String(GameState.marks_seen.get(GameState.mark_key(msid, 0), "")) == GameState.MARK_READ
+	print("[return] THE CHANNEL NAMES A MARK YOU HAVE NOT READ it names one=%s, reading it moves the answer on=%s, reading all %d leaves nothing to name=%s; the store reloads 1 of 5 (an index past the generator, an unknown system and two impostor values dropped, the state preserved)=%s -> %s" % [
+		str(named_one), str(moved_on), nominal.size(), str(exhausted), str(kept_m),
+		"PASS" if named_one and moved_on and exhausted and kept_m else "FAIL"])
+
+	# 12. A PROTOTYPE IS NOT FOR SALE. The prototype line is the crafted block's
+	#     mechanism with a different door, so it inherits the crafted block's
+	#     guarantee: absence from every stock list, asserted rather than priced.
+	#     A zero price is not the protection -- GameState.buy() would SUCCEED at
+	#     price 0 -- which is why the racks are what this walks.
+	var protos := ModuleDB.prototype_ids()
+	var top_shipped := 0
+	for id_v in ModuleDB.MODULES:
+		var mm: Dictionary = ModuleDB.MODULES[id_v]
+		if bool(mm.get("prototype", false)):
+			continue
+		top_shipped = maxi(top_shipped, int(mm.get("tier", 0)))
+	var priced := ""
+	var not_above := ""
+	var free_lunch := ""
+	for pid_v in protos:
+		var pid := String(pid_v)
+		var pm := ModuleDB.get_module(pid)
+		if int(pm.get("price", 0)) != 0:
+			priced += pid + " "
+		if int(pm.get("tier", 0)) != ModuleDB.PROTOTYPE_TIER \
+				or int(pm.get("tier", 0)) <= top_shipped:
+			not_above += pid + " "
+		# THE LAW, NOT THE NUMBERS. "Nothing in the catalogue is a straight
+		# upgrade" is a rule the horizon document says a legendary does not get
+		# an exemption from, and this is the forge's EVERY RECIPE COSTS applied
+		# one tier up. The values in the table are provisional and this clause
+		# does not care what they are -- only that each entry pays somewhere.
+		var downs := 0
+		for k_v in (pm.get("stats", {}) as Dictionary):
+			if float((pm["stats"] as Dictionary)[k_v]) < 0.0:
+				downs += 1
+		# §100. OVERDRAW IS A COST, spelled as a positive number because it is a
+		# price paid per shot rather than a stat made worse -- the weapon
+		# prototype's whole mechanism. Without this clause the Overdrawn Lance
+		# reads as only-upside to a loop that can only see minus signs.
+		if float((pm.get("stats", {}) as Dictionary).get("overdraw", 0.0)) > 0.0:
+			downs += 1
+		if downs == 0:
+			free_lunch += pid + " "
+	var racks := 0
+	var for_sale := ""
+	for port_v in SystemDB.port_ids():
+		racks += 1
+		for sid2_v in SystemDB.port_def_by_id(String(port_v)).get("stock", []):
+			if protos.has(String(sid2_v)):
+				for_sale += "%s@%s " % [String(sid2_v), String(port_v)]
+	for dp_v in DeepPortDB.ids():
+		racks += 1
+		for sid3_v in DeepPortDB.by_id(String(dp_v)).get("stock", []):
+			if protos.has(String(sid3_v)):
+				for_sale += "%s@%s " % [String(sid3_v), String(dp_v)]
+	# AND §94'S LAW RE-DERIVED WITH THE NEW TIER IN THE CATALOGUE, which the
+	# horizon document asks for by name: if a prototype closed the power margin,
+	# the prototype would be wrong. Greedy best-per-slot over the shipped hull's
+	# slots, measured from the live catalog exactly as FRONTIERTEST does it --
+	# that leg is the enforcement, this clause is the horizon checking its own
+	# work before handing it over.
+	var best_by_cat := {}
+	for id2_v in ModuleDB.MODULES:
+		var m2: Dictionary = ModuleDB.get_module(String(id2_v))
+		var cat := String(m2.get("category", ""))
+		best_by_cat[cat] = maxi(int(best_by_cat.get(cat, 0)), int(m2.get("power", 0)))
+	var berth_slot_ids := {}
+	for b2_v in ModuleDB.BERTHS:
+		berth_slot_ids[int((ModuleDB.BERTHS[b2_v] as Dictionary)["slot"])] = true
+	var greedy_all := 0
+	for slot2_v in ModuleDB.SLOT_CATEGORY:
+		if berth_slot_ids.has(int(slot2_v)):
+			continue
+		greedy_all += int(best_by_cat.get(String(ModuleDB.SLOT_CATEGORY[slot2_v]), 0))
+	var top_reactor := ModuleDB.reactor_power(ModuleDB.REACTOR_TIERS.size() - 1)
+	print("[return] A PROTOTYPE IS NOT FOR SALE %d prototypes at tier %d (top shipped tier %d); on a rack: %s (%d racks walked), priced: %s, only-upside: %s, wrong tier: %s; all-best with the new tier draws %d against the top reactor's %d -> %s" % [
+		protos.size(), ModuleDB.PROTOTYPE_TIER, top_shipped,
+		"none" if for_sale == "" else for_sale, racks,
+		"none" if priced == "" else priced,
+		"none" if free_lunch == "" else free_lunch,
+		"none" if not_above == "" else not_above,
+		greedy_all, top_reactor,
+		"PASS" if not protos.is_empty() and for_sale == "" and priced == ""
+			and free_lunch == "" and not_above == "" and greedy_all > top_reactor
+			else "FAIL"])
+
+	# 13. THE DRIFT STANDS WHERE THE MARK IS READ. The encounter machinery all
+	#     nine legends share, proved on the one that exists: reading resolves the
+	#     mark AND raises what the plate describes, without waiting for a warp.
+	#     Driven through the real hold on a real node, so it covers _read ->
+	#     legend_arrives -> build_legend rather than the builder alone.
+	GameState.marks_seen = {}
+	GameState.owned.clear()
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+	var cell_d := DeepSpace.cell_key(msid, 5, 0)
+	GameState.note_survey_worked(cell_d)
+	GameState.note_survey_held(cell_d)
+	var drift_key := GameState.mark_key(msid, 0)
+	var drift_at := Vector3(600.0, 0.0, 600.0)
+	var dprobe := SoundingMark.new()
+	dprobe.system_id = msid
+	dprobe.index = 0
+	dprobe.kind = "drift"
+	system_root.add_child(dprobe)
+	dprobe.global_position = drift_at
+	await get_tree().process_frame
+	# NOTHING STANDS THERE BEFORE THE READING, and this half matters as much as
+	# the other: a legend that built for every mark on load would make reading
+	# decorative.
+	var before_read := SystemBuilder.build_legend(system_root, msid, 0, "drift", drift_at)
+	if pilot_m != null:
+		pilot_m.teleport_to(drift_at)
+	dprobe.hold_begin()
+	dprobe.hold_tick(SoundingMark.READ_TIME + 0.1)
+	var workshop: Derelict = null
+	for c_v in system_root.get_children():
+		var dd := c_v as Derelict
+		if dd != null and dd.owns_mark == drift_key:
+			workshop = dd
+	var stood := workshop != null
+	var carried := false
+	var determined := false
+	if stood:
+		carried = ModuleDB.exists(workshop.prototype)
+		determined = workshop.prototype == FarMarks.drift_prototype(msid, 0,
+			GameState.run_seed, ModuleDB.prototype_ids())
+	print("[return] THE DRIFT STANDS WHERE THE MARK IS READ nothing before the reading=%s; the hold raised a workshop=%s carrying a real module=%s (%s), the same one the generator names=%s -> %s" % [
+		str(before_read == null), str(stood), str(carried),
+		workshop.prototype if stood else "-", str(determined),
+		"PASS" if before_read == null and stood and carried and determined
+			else "FAIL"])
+
+	# 14. THE WORKSHOP PAYS ONCE. What a breach hands over, and what the SECOND
+	#     drift says -- the proving drift is a COMMON kind and may repeat in a
+	#     run, so two benches dealing the same pattern is routine. A hull that
+	#     quietly handed over nothing would read as a bug in the one place the
+	#     fiction is most specific.
+	var paid := false
+	var spent := false
+	var still_read := false
+	var stayed_down := false
+	var second_refused := false
+	var second_spent := false
+	if stood:
+		var proto_id := workshop.prototype
+		workshop.force_breach()
+		paid = GameState.owns(proto_id)
+		spent = GameState.is_mark_spent(drift_key)
+		# STILL READ, and this is the clause the state design was for: a spent
+		# mark is still a mark this pilot has read, so the channel keeps skipping
+		# it and the plate keeps reading.
+		still_read = GameState.is_mark_read(drift_key)
+		stayed_down = SystemBuilder.build_legend(system_root, msid, 0, "drift",
+			drift_at) == null
+		# The second bench, forced onto the same pattern rather than waited for.
+		var key2 := GameState.mark_key(msid, 1)
+		GameState.marks_seen[key2] = GameState.MARK_READ
+		var drift2 := SystemBuilder.build_legend(system_root, msid, 1, "drift",
+			drift_at + Vector3(0.0, 0.0, 120.0)) as Derelict
+		if drift2 != null:
+			drift2.prototype = proto_id
+			drift2.force_breach()
+			second_refused = GameState.owned.count(proto_id) == 1
+			second_spent = GameState.is_mark_spent(key2)
+			drift2.queue_free()
+	dprobe.queue_free()
+	if workshop != null:
+		workshop.queue_free()
+	print("[return] THE WORKSHOP PAYS ONCE the breach handed over the prototype=%s, the mark is spent=%s and still reads as read=%s, and it does not come back on a rebuild=%s; a second bench on the same pattern grants no duplicate=%s and still spends its own mark=%s -> %s" % [
+		str(paid), str(spent), str(still_read), str(stayed_down),
+		str(second_refused), str(second_spent),
+		"PASS" if paid and spent and still_read and stayed_down
+			and second_refused and second_spent else "FAIL"])
+
+	# 15. THE MOUNT DRAWS THROUGH THE BUS. §100's mechanism, driven through the
+	#     REAL fire loop rather than by calling a cost function -- the cost is
+	#     paid in _fire at the moment the shot is committed, and a leg that
+	#     invoked it directly would stay green with the payment unwired. Both
+	#     halves: the shot costs exactly `overdraw`, and the floor holds -- the
+	#     coil can strip the bus to zero and never past it.
+	var od_stats: Dictionary = ModuleDB.get_module("proto_lance").get("stats", {})
+	var od := float(od_stats.get("overdraw", 0.0))
+	GameState.owned.append("proto_lance")
+	var fit_was := GameState.fit.duplicate()
+	# THROUGH THE REAL EQUIP, which enforces the power budget -- and the budget
+	# would refuse this on the starter reactor (8 - 2 + 7 = 13 against Mk I's
+	# 12), leaving the old weapon firing and the drain reading zero. The tier is
+	# raised for the leg and restored after; `worn` is asserted so a future
+	# budget change reads as a named failure here rather than as a zero.
+	var tier_was := GameState.reactor_tier
+	GameState.reactor_tier = ModuleDB.REACTOR_TIERS.size() - 1
+	var worn := GameState.equip(ModuleDB.Slot.WEAPON_A, "proto_lance")
+	var od_target := Hostile.new()
+	od_target.difficulty = 0.5
+	system_root.add_child(od_target)
+	var shot_cost := 0.0
+	var floored := false
+	var alive_after := false
+	if pilot_m != null:
+		od_target.global_position = pilot_m.global_position + Vector3(6.0, 0.0, 0.0)
+		pilot_m.attack_target = od_target
+		for w_v in pilot_m._weapons:
+			(w_v as Dictionary)["cooldown"] = 0.0
+		pilot_m.shield = pilot_m.shield_max
+		var shield_before: float = pilot_m.shield
+		pilot_m._fire(0.016)
+		# EXACTLY the overdraw, though two mounts fired: WEAPON_B carries no
+		# overdraw key, so a drain that scaled with mounts rather than with the
+		# key would come out double and go red here.
+		shot_cost = shield_before - pilot_m.shield
+		# The floor. A bus already below one shot's draw empties and stops:
+		# maxf, not a subtraction the next regen tick has to rescue.
+		pilot_m.shield = od * 0.4
+		for w2_v in pilot_m._weapons:
+			(w2_v as Dictionary)["cooldown"] = 0.0
+		pilot_m._fire(0.016)
+		floored = pilot_m.shield == 0.0
+		alive_after = not pilot_m.is_dying() if pilot_m.has_method("is_dying") else true
+		pilot_m.attack_target = null
+	od_target.queue_free()
+	GameState.fit = fit_was
+	GameState.reactor_tier = tier_was
+	GameState._recompute()
+	print("[return] THE MOUNT DRAWS THROUGH THE BUS equipped through the real budget=%s; one volley through the real fire loop cost %.1f shield (want exactly %.1f, though two mounts fired); a bus below one draw floors at 0.0=%s with the ship alive=%s -> %s" % [
+		str(worn), shot_cost, od, str(floored), str(alive_after),
+		"PASS" if worn and od > 0.0 and absf(shot_cost - od) < 0.01 and floored
+			and alive_after else "FAIL"])
+
+	# 16. THE VEIN KEEPS ITS PROMISE. The plate says richer than anything on the
+	#     charted side, and the promise is arithmetic before it is fiction: the
+	#     seam must beat the deepest ROLLED seam on units, carry the RICHEST
+	#     band-6 good (deterministically -- a roll that could land on the cheap
+	#     entry makes the plate a liar one time in four), pay through the real
+	#     cut, and then be GONE forever: a windfall that rebuilds is an income.
+	var vein_key := GameState.mark_key(msid, 2)
+	GameState.marks_seen = {}
+	GameState.marks_seen[vein_key] = GameState.MARK_READ
+	GameState.cargo = {}
+	var vein_at := Vector3(700.0, 0.0, 700.0)
+	var seam := SystemBuilder.build_legend(system_root, msid, 2, "vein", vein_at) as MineableSeam
+	var vein_stood := seam != null
+	var vein_rich := false
+	var vein_good_best := false
+	var vein_paid := false
+	var vein_spent := false
+	var vein_gone := false
+	if vein_stood:
+		var richest := String(CommodityDB.seam_yields(6)[0])
+		for vg_v in CommodityDB.seam_yields(6):
+			if CommodityDB.base_price(String(vg_v)) > CommodityDB.base_price(richest):
+				richest = String(vg_v)
+		vein_rich = seam.band == 6 and seam.units > int(DeepSpace.SEAM_UNITS[6])
+		vein_good_best = seam.good == richest
+		seam._complete()
+		vein_paid = GameState.cargo_count(seam.good) == SystemBuilder.VEIN_UNITS \
+			and seam.mined
+		vein_spent = GameState.is_mark_spent(vein_key)
+		vein_gone = SystemBuilder.build_legend(system_root, msid, 2, "vein",
+			vein_at) == null
+		seam.queue_free()
+	print("[return] THE VEIN KEEPS ITS PROMISE stands when read=%s, band 6 and richer than any rolled seam=%s, carries the richest band-6 good=%s; the cut paid %d units=%s, spent the mark=%s, and the vein is GONE on rebuild=%s -> %s" % [
+		str(vein_stood), str(vein_rich), str(vein_good_best),
+		SystemBuilder.VEIN_UNITS, str(vein_paid), str(vein_spent), str(vein_gone),
+		"PASS" if vein_stood and vein_rich and vein_good_best and vein_paid
+			and vein_spent and vein_gone else "FAIL"])
+
+	# 17. THE CACHE IS TWO-WAY. The layup against the drift is the asymmetry
+	#     that proves the per-kind spent check: a spent drift is GONE, a spent
+	#     layup is an OPEN CACHE, standing on every rebuild for the only purely
+	#     expressive verb in the game. Both directions of the arrangement are
+	#     driven on the real node -- the withdrawal through force_breach, the
+	#     deposit through the real hold -- and the no-books rule is asserted as
+	#     an equality of save images, not assumed: two deposits of different
+	#     cargo must leave BYTE-IDENTICAL saves, because the only thing either
+	#     one may record is the single fact the first one already wrote.
+	var lay_key := GameState.mark_key(msid, 3)
+	GameState.marks_seen[lay_key] = GameState.MARK_READ
+	GameState.cargo = {}
+	var lay_at := Vector3(800.0, 0.0, 800.0)
+	var cache := SystemBuilder.build_legend(system_root, msid, 3, "layup", lay_at) as Derelict
+	var lay_stood: bool = cache != null and not cache.is_cracked()
+	var lay_spent := false
+	var lay_stands_open := false
+	var refused_empty := false
+	var deposit_took := false
+	var plate_clause := false
+	var no_tally := false
+	if cache != null:
+		await get_tree().process_frame
+		cache.force_breach()
+		lay_spent = GameState.is_mark_spent(lay_key) \
+			and GameState.is_mark_read(lay_key)
+		_clear_loot_cubes()
+		cache.queue_free()
+		# THE ASYMMETRY: rebuilt spent, the layup still stands -- open.
+		var cache2 := SystemBuilder.build_legend(system_root, msid, 3, "layup",
+			lay_at) as Derelict
+		if cache2 != null:
+			await get_tree().process_frame
+			lay_stands_open = cache2.is_cracked()
+			# An empty hold is refused with words, not silence.
+			cache2.hold_begin()
+			refused_empty = not cache2._holding
+			# The deposit, through the real hold.
+			GameState.load_cargo("alloys", 5)
+			if pilot_m != null:
+				pilot_m.teleport_to(cache2.breach_point)
+			cache2.hold_begin()
+			cache2.hold_tick(Derelict.DEPOSIT_TIME + 0.1)
+			deposit_took = GameState.cargo_used() == 0 \
+				and GameState.is_mark_given(lay_key) \
+				and String(GameState.marks_seen.get(lay_key, "")) == GameState.MARK_CLOSED
+			# S1: the plate carries one clause now, and only the layup's does.
+			var mark_probe2 := SoundingMark.new()
+			mark_probe2.system_id = msid
+			mark_probe2.index = 3
+			mark_probe2.kind = "layup"
+			plate_clause = mark_probe2.plate().contains("AND BY YOU")
+			mark_probe2.free()
+			# NO BOOKS. A second, different deposit must change NOTHING in the
+			# file: same state word, same everything. Byte-equality over the
+			# whole save is the strongest form of "the arrangement keeps no
+			# records" this harness can ask for.
+			var img_one := JSON.stringify(GameState.save_dict())
+			GameState.load_cargo("chart_drift", 2)
+			cache2.hold_begin()
+			cache2.hold_tick(Derelict.DEPOSIT_TIME + 0.1)
+			var img_two := JSON.stringify(GameState.save_dict())
+			no_tally = GameState.cargo_used() == 0 and img_one == img_two
+			cache2.queue_free()
+	print("[return] THE CACHE IS TWO-WAY stands unopened when read=%s; the withdrawal spends the mark (still read)=%s; rebuilt SPENT it still stands, open=%s; an empty hold is refused=%s; the deposit empties the hold and closes the mark=%s; the plate gains its clause=%s; a second deposit leaves a byte-identical save (no books)=%s -> %s" % [
+		str(lay_stood), str(lay_spent), str(lay_stands_open), str(refused_empty),
+		str(deposit_took), str(plate_clause), str(no_tally),
+		"PASS" if lay_stood and lay_spent and lay_stands_open and refused_empty
+			and deposit_took and plate_clause and no_tally else "FAIL"])
+
+	# 18. THE GROUND BECALMS, AND PAYS ONCE. The no-combat legend, all four
+	#     promises: entering stops the drives (through the real becalm, with the
+	#     command verb asserted refused, not just a flag read), the reading pays
+	#     ONCE and defers on a full hold rather than burning, the place keeps
+	#     becalming forever after it has paid, and NOTHING here is hostile --
+	#     the strangest fact in the encounter, asserted as a group emptiness.
+	var still_key := GameState.mark_key(msid, 4)
+	GameState.marks_seen = {}
+	GameState.marks_seen[still_key] = GameState.MARK_READ
+	var hostiles_pre_g := get_tree().get_nodes_in_group("hostiles").size()
+	var ground := SystemBuilder.build_legend(system_root, msid, 4, "stillness",
+		Vector3(1200.0, 0.0, 1200.0)) as StillnessGround
+	var ground_stood := ground != null
+	var ground_neutral: bool = 		get_tree().get_nodes_in_group("hostiles").size() == hostiles_pre_g
+	var becalmed_held := false
+	var move_refused := false
+	var deferred_full := false
+	var released := false
+	var paid_once := false
+	var still_becalms := false
+	var pays_never_again := false
+	var ground_outlives := false
+	if ground_stood and pilot_m != null:
+		# Full hold first: the reading must DEFER, not burn.
+		GameState.cargo = {}
+		GameState.load_cargo("alloys", 9999)
+		ground._begin_passage()
+		becalmed_held = pilot_m.is_becalmed()
+		pilot_m.command_move(Vector3(999.0, 0.0, 999.0))
+		move_refused = not pilot_m.has_move_target
+		ground._finish_passage()
+		deferred_full = not GameState.is_mark_spent(still_key) \
+			and GameState.cargo_count(StillnessGround.READING_GOOD) == 0
+		released = not pilot_m.is_becalmed()
+		# Room made: the next passage pays, once.
+		GameState.cargo = {}
+		ground._begin_passage()
+		ground._finish_passage()
+		paid_once = GameState.cargo_count(StillnessGround.READING_GOOD) \
+			== StillnessGround.READING_UNITS and GameState.is_mark_spent(still_key)
+		# And the place stays what it is: a third passage still becalms and
+		# pays nothing more.
+		ground._begin_passage()
+		still_becalms = pilot_m.is_becalmed()
+		ground._finish_passage()
+		pays_never_again = GameState.cargo_count(StillnessGround.READING_GOOD) \
+			== StillnessGround.READING_UNITS
+		# Spent, the ground still BUILDS -- the layup's posture, not the
+		# drift's: the reading is once, the becalming is forever.
+		var ground2 := SystemBuilder.build_legend(system_root, msid, 4,
+			"stillness", Vector3(1200.0, 0.0, 1200.0))
+		ground_outlives = ground2 != null
+		if ground2 != null:
+			ground2.queue_free()
+		pilot_m.clear_becalm()
+		ground.queue_free()
+	print("[return] THE GROUND BECALMS AND PAYS ONCE stands when read=%s, spawns nothing hostile=%s; the passage stops the drives=%s and refuses the move verb=%s; a full hold DEFERS the reading=%s and the drives return=%s; with room it pays %d once=%s; the third passage still becalms=%s and pays nothing=%s; spent, the ground still stands=%s -> %s" % [
+		str(ground_stood), str(ground_neutral), str(becalmed_held),
+		str(move_refused), str(deferred_full), str(released),
+		StillnessGround.READING_UNITS, str(paid_once), str(still_becalms),
+		str(pays_never_again), str(ground_outlives),
+		"PASS" if ground_stood and ground_neutral and becalmed_held
+			and move_refused and deferred_full and released and paid_once
+			and still_becalms and pays_never_again and ground_outlives
+			else "FAIL"])
+
+	# 19. THE ORDER HAILS BEFORE IT FIRES. R4's politeness as a structural
+	#     fact -- before the hails complete there is NOTHING IN THE HOSTILES
+	#     GROUP to be shot by, which is the strongest form of "it does not fire
+	#     first" a harness can ask -- and the arc's thesis as a faction id: the
+	#     asset WEARS Authority teal and FLIES FactionDB.FERAL, so the kill
+	#     pays like the windfall it is and the Authority's standing does not
+	#     move one point. Nobody reports this fight.
+	var ord_key := GameState.mark_key(msid, 0)
+	GameState.marks_seen = {}
+	GameState.marks_seen[ord_key] = GameState.MARK_READ
+	var hostiles_pre_o := get_tree().get_nodes_in_group("hostiles").size()
+	var order_node := SystemBuilder.build_legend(system_root, msid, 0, "order",
+		Vector3(1400.0, 0.0, 1400.0)) as StandingOrder
+	var order_stood := order_node != null
+	var polite: bool = 		get_tree().get_nodes_in_group("hostiles").size() == hostiles_pre_o
+	var armed_one := false
+	var wears_paint := false
+	var flies_feral := false
+	var kill_would_pay := false
+	var order_spent := false
+	var authority_blind := false
+	var order_gone := false
+	if order_stood:
+		var gsa_before_o := GameState.faction_attitude(FactionDB.SURVEYOR, "gsa")
+		var deltas_before_o := JSON.stringify(GameState.faction_deltas)
+		order_node._arm()
+		var asset: Hostile = null
+		for h_v in get_tree().get_nodes_in_group("hostiles"):
+			if (h_v as Node).has_meta("standing_order"):
+				asset = h_v as Hostile
+		armed_one = asset != null \
+			and get_tree().get_nodes_in_group("hostiles").size() == hostiles_pre_o + 1
+		if asset != null:
+			wears_paint = asset.tint == FactionDB.tint_of("gsa")
+			flies_feral = String(asset.faction) == FactionDB.FERAL
+			# The pays-gate is the faction BAND, so the windfall claim is the
+			# band claim: feral is HOSTILE to the surveyor, always.
+			kill_would_pay = GameState.faction_band(FactionDB.FERAL,
+				FactionDB.SURVEYOR) == FactionDB.Band.HOSTILE
+			asset.take_damage(9.9e9, pilot_m)
+			order_node._check_silenced()
+			order_spent = GameState.is_mark_spent(ord_key)
+			authority_blind = GameState.faction_attitude(FactionDB.SURVEYOR, "gsa") \
+				== gsa_before_o \
+				and JSON.stringify(GameState.faction_deltas) == deltas_before_o
+		order_gone = SystemBuilder.build_legend(system_root, msid, 0, "order",
+			Vector3(1400.0, 0.0, 1400.0)) == null
+		# THE SPILL LANDS ON A TIMER (DEATH_STAGE_3, 0.38s), so an immediate
+		# sweep here cleaned up nothing and left the asset's crates to appear
+		# inside a LATER leg's cube count. Nothing has gone red on it yet --
+		# the suite happened to be slow enough between these two legs -- which
+		# is precisely the kind of pass that stops being one on a faster
+		# machine.
+		await get_tree().create_timer(0.6).timeout
+		_clear_loot_cubes()
+		order_node.queue_free()
+	print("[return] THE ORDER HAILS BEFORE IT FIRES the station stands=%s with nothing in the hostiles group=%s; arming launches exactly one asset=%s wearing Authority teal=%s while flying feral=%s (so the kill pays: band HOSTILE=%s); silencing it spends the mark=%s, moves no GSA standing and no delta=%s, and the asset does not re-post=%s -> %s" % [
+		str(order_stood), str(polite), str(armed_one), str(wears_paint),
+		str(flies_feral), str(kill_would_pay), str(order_spent),
+		str(authority_blind), str(order_gone),
+		"PASS" if order_stood and polite and armed_one and wears_paint
+			and flies_feral and kill_would_pay and order_spent
+			and authority_blind and order_gone else "FAIL"])
+
+	# 20. THE SERPENT LEAVES, AND THE MARK STANDS. S2 as mechanics: silencing a
+	#     majority of the body drives it off rather than killing it, the
+	#     departure pays NOTHING anywhere money is kept (no loot, no salvage,
+	#     no ledger, no faction delta -- it has no faction to shift), and the
+	#     mark is never spent, so the fight rebuilds whole. Not a respawn
+	#     exploit, because it has never once paid.
+	var serp_key := GameState.mark_key(msid, 1)
+	GameState.marks_seen = {}
+	GameState.marks_seen[serp_key] = GameState.MARK_READ
+	var hostiles_pre_s := get_tree().get_nodes_in_group("hostiles").size()
+	var loot_pre_s := _count_loot_cubes()
+	var salv_pre_s := GameState.salvage
+	var ledger_pre_s := JSON.stringify(GameState.ledger)
+	var deltas_pre_s := JSON.stringify(GameState.faction_deltas)
+	var serp := SystemBuilder.build_legend(system_root, msid, 1, "serpent",
+		Vector3(1600.0, 0.0, 1600.0)) as SoundingSerpent
+	var serp_stood := serp != null
+	var body_armed := false
+	var broke_off := false
+	var board_clear := false
+	var paid_nothing_s := false
+	var mark_stands := false
+	var comes_back := false
+	if serp_stood:
+		body_armed = get_tree().get_nodes_in_group("hostiles").size() \
+			== hostiles_pre_s + SoundingSerpent.SEGMENTS \
+			and serp.answering_count() == SoundingSerpent.SEGMENTS
+		for i in range(SoundingSerpent.BREAK_AT):
+			var sgm := serp.segments()[i] as Node3D
+			sgm.take_damage(SoundingSerpent.SEGMENT_HP + 1.0, pilot_m)
+		broke_off = serp.is_leaving()
+		board_clear = get_tree().get_nodes_in_group("hostiles").size() \
+			== hostiles_pre_s
+		paid_nothing_s = _count_loot_cubes() == loot_pre_s \
+			and GameState.salvage == salv_pre_s \
+			and JSON.stringify(GameState.ledger) == ledger_pre_s \
+			and JSON.stringify(GameState.faction_deltas) == deltas_pre_s
+		mark_stands = GameState.is_mark_read(serp_key) \
+			and not GameState.is_mark_spent(serp_key)
+		var serp2 := SystemBuilder.build_legend(system_root, msid, 1, "serpent",
+			Vector3(1600.0, 0.0, 1600.0))
+		comes_back = serp2 != null
+		if serp2 != null:
+			serp2.queue_free()
+		serp.queue_free()
+	print("[return] THE SERPENT LEAVES AND THE MARK STANDS %d segments answer=%s; silencing %d breaks it off=%s, empties the board=%s, and pays nothing anywhere money is kept=%s; the mark is read and NEVER spent=%s, so it comes back whole=%s -> %s" % [
+		SoundingSerpent.SEGMENTS, str(body_armed), SoundingSerpent.BREAK_AT,
+		str(broke_off), str(board_clear), str(paid_nothing_s),
+		str(mark_stands), str(comes_back),
+		"PASS" if serp_stood and body_armed and broke_off and board_clear
+			and paid_nothing_s and mark_stands and comes_back else "FAIL"])
+
+	# 21. THE ORRERY IS A WINDFALL. The one-time payout, its SIZE pinned where a
+	#     retune has to argue with it, and the two properties that keep a
+	#     windfall from becoming an income: it defers rather than spilling when
+	#     the hold is full, and it never comes back.
+	#
+	#     THE SIZE IS THE ASSERTION. Twenty units of band-6 chart data is five
+	#     standard loops of masting (PACING_LOOP takes two readings a loop at
+	#     SurveyMast.YIELD_UNITS each), which is the whole claim -- "a scale a
+	#     pilot cannot earn in a session" -- expressed against the rate the
+	#     pacing profile itself uses rather than against a number in a comment.
+	var orr_key := GameState.mark_key(msid, 2)
+	GameState.marks_seen = {}
+	GameState.marks_seen[orr_key] = GameState.MARK_READ
+	GameState.cargo = {}
+	var orr_at := Vector3(1800.0, 0.0, 1800.0)
+	var orrery := SystemBuilder.build_legend(system_root, msid, 2, "orrery",
+		orr_at) as Orrery
+	var orr_stood := orrery != null
+	var loops_worth := 0.0
+	var deferred_orr := false
+	var collected := false
+	var orr_spent := false
+	var orr_gone := false
+	var band6_good := false
+	if orr_stood:
+		band6_good = Orrery.COLLECT_GOOD == CommodityDB.chart_for_band(
+			DeepSpace.BAND_NAMES.size() - 1)
+		loops_worth = float(Orrery.COLLECT_UNITS) \
+			/ (float(SurveyMast.YIELD_UNITS) * float(PACING_LOOP["survey"]))
+		# PARKED AT THE LEGEND, NOT AT THE MARK. build_legend stands every
+		# legend LEGEND_STANDOFF off its buoy, so teleporting to `orr_at` left
+		# the ship 26u from a 14u collect range and the hold never engaged --
+		# and the deferral clause below then passed on NOTHING HAPPENING,
+		# which is the vacuous-assertion shape this file keeps catching.
+		if pilot_m != null:
+			pilot_m.teleport_to(orrery.global_position)
+		# FULL HOLD FIRST: an instrument that has waited forty years does not
+		# spill its file on the deck because the pilot arrived full.
+		GameState.load_cargo("alloys", 9999)
+		orrery.hold_begin()
+		# THE HOLD ACTUALLY ENGAGED, asserted before anything is concluded from
+		# its outcome. Without this the deferral reads the same whether the
+		# instrument refused politely or the harness never reached it.
+		var began_full: bool = orrery._holding
+		orrery.hold_tick(Orrery.COLLECT_TIME + 0.1)
+		deferred_orr = began_full and not GameState.is_mark_spent(orr_key) \
+			and GameState.cargo_count(Orrery.COLLECT_GOOD) == 0
+		# With room, it pays exactly once.
+		GameState.cargo = {}
+		orrery.hold_begin()
+		orrery.hold_tick(Orrery.COLLECT_TIME + 0.1)
+		collected = GameState.cargo_count(Orrery.COLLECT_GOOD) == Orrery.COLLECT_UNITS
+		orr_spent = GameState.is_mark_spent(orr_key)
+		orr_gone = SystemBuilder.build_legend(system_root, msid, 2, "orrery",
+			orr_at) == null
+		orrery.queue_free()
+	print("[return] THE ORRERY IS A WINDFALL stands when read=%s paying the band-6 chart good=%s; %d units is %.1f standard loops of masting; a full hold DEFERS it=%s; with room it pays once=%s, spends the mark=%s and never comes back=%s -> %s" % [
+		str(orr_stood), str(band6_good), Orrery.COLLECT_UNITS, loops_worth,
+		str(deferred_orr), str(collected), str(orr_spent), str(orr_gone),
+		"PASS" if orr_stood and band6_good and loops_worth >= 4.0
+			and loops_worth <= 8.0 and deferred_orr and collected and orr_spent
+			and orr_gone else "FAIL"])
+
+	# 22. THE ORRERY IS NOT A RAISE. The fourth sibling of FILING / MINING /
+	#     JUMP IS NOT A RAISE: no pacing profile may ever name a legend, so a
+	#     windfall cannot be smuggled into the recurring term where it would
+	#     re-tune the whole economy while every leg stayed green.
+	#
+	#     AND THE COMMISSION HEARS ABOUT IT, DELIBERATELY. Selling these moves
+	#     chart_data_sold, which is what the Grand Commission counts -- that is
+	#     the arc's thesis landing, not a leak, and it is asserted so it cannot
+	#     be "fixed" by accident later. What the leg polices is the RATIO: the
+	#     windfall must stay a minority of the Commission's top stage, or the
+	#     legend stops being a legend and becomes the pillar.
+	var raise_named := ""
+	for prof_v in [PACING_LOOP, PACING_PROSPECT]:
+		for k6_v in (prof_v as Dictionary):
+			var kk := String(k6_v)
+			if kk == "orrery" or kk == "legend" or kk == "nursery" or kk == "forge":
+				raise_named += kk + " "
+	# READ OFF THE FLAT KEY, which is the schema STAGES actually uses -- the
+	# requirement sits directly on the stage dict, not under a "requires"
+	# sub-dictionary. Written the other way first, this leg read 0 from every
+	# stage and would have measured a share of nothing.
+	var top_stage := 0
+	for st_v in CommissionDB.STAGES:
+		top_stage = maxi(top_stage,
+			int((st_v as Dictionary).get("chart_data_sold", 0)))
+	var stage_share := float(Orrery.COLLECT_UNITS) / maxf(float(top_stage), 1.0)
+	print("[return] THE ORRERY IS NOT A RAISE pacing profiles name no legend (%s); the windfall moves the Commission by %d of %d units on file (%.0f%% of the top stage, must stay a minority) -> %s" % [
+		"clean" if raise_named == "" else raise_named, Orrery.COLLECT_UNITS,
+		top_stage, stage_share * 100.0,
+		"PASS" if raise_named == "" and top_stage > 0 and stage_share < 0.5
+			else "FAIL"])
+
+	# 23. THE FORGE COPIES WHAT DIES THERE. The verb is a journey: the bed is
+	#     empty until something dies in range, and the refusal says so. Then the
+	#     wing, and the four IFF properties that are the whole reason a friendly
+	#     armed ship is safe to put in the sky -- each one a defect this
+	#     codebase has already paid for once, asserted rather than trusted.
+	var forge_key := GameState.mark_key(msid, 3)
+	GameState.marks_seen = {}
+	GameState.marks_seen[forge_key] = GameState.MARK_READ
+	var forge_at := Vector3(2000.0, 0.0, 2000.0)
+	var forge := SystemBuilder.build_legend(system_root, msid, 3, "forge",
+		forge_at) as PatternForge
+	var forge_stood := forge != null
+	var bed_empty := false
+	var refused_empty_bed := false
+	var took_pattern := false
+	var printed_n := 0
+	var not_my_enemy := true
+	var costs_no_standing := true
+	var nobody_opens := true
+	var can_never_finish := true
+	var bed_cold := false
+	var forge_stays := false
+	if forge_stood:
+		bed_empty = not forge.has_pattern()
+		forge.hold_begin()
+		refused_empty_bed = not forge._holding
+		# FEED IT: a hull dies in range, and the forge takes the pattern.
+		var donor := Hostile.new()
+		donor.faction = FactionDB.FERAL
+		system_root.add_child(donor)
+		donor.global_position = forge.global_position + Vector3(10.0, 0.0, 0.0)
+		await get_tree().process_frame
+		# SEEN ALIVE, THEN KILLED. The forge copies from a snapshot it took
+		# while the hull was flying, because a dying hull is out of the
+		# `hostiles` group before any frame can see it -- so the watch has to
+		# run once with the donor alive, exactly as _process would.
+		forge._watch_the_bed()
+		donor.take_damage(9.9e9, pilot_m)
+		forge._watch_the_bed()
+		took_pattern = forge.has_pattern()
+		# PRINT, from the legend's own position rather than the mark's.
+		if pilot_m != null:
+			pilot_m.teleport_to(forge.global_position)
+		# DUPLICATED, NOT JSON-ROUND-TRIPPED. faction_deltas holds ints, and
+		# JSON.parse_string would hand every one of them back as a float --
+		# restoring a store with the right numbers in the wrong type, which is
+		# the sort of thing that goes wrong three suites later.
+		var deltas_before_f: Dictionary = GameState.faction_deltas.duplicate(true)
+		forge.hold_begin()
+		forge.hold_tick(PatternForge.PRINT_TIME + 0.1)
+		await get_tree().process_frame
+		var wing: Array = []
+		for h_v in get_tree().get_nodes_in_group("hostiles"):
+			var hh := h_v as Hostile
+			if hh != null and hh.printed:
+				wing.append(hh)
+		printed_n = wing.size()
+		for w_v in wing:
+			var w := w_v as Hostile
+			# 1. The player's own guns must never pick their wing.
+			if GameState.hostile_to_player(w):
+				not_my_enemy = false
+			# 2. Splashing it must cost nothing: an unregistered flag is in no
+			#    roster, so shift_faction has no pair to move.
+			if FactionDB.is_faction(w.faction):
+				costs_no_standing = false
+			# 3. Nothing in the world opens on it unprovoked -- it is in no
+			#    faction's enemy list, because it is in no faction.
+			for other_v in FactionDB.ids():
+				if GameState.enemies_of(String(other_v)).has(w.faction):
+					nobody_opens = false
+			# 4. And it can never land a kill: in `combatants`, so the ambient
+			#    floor clamps what it can take a target down to and the player
+			#    keeps every attribution, every crate and every contract tick.
+			if not w.is_in_group("combatants"):
+				can_never_finish = false
+		GameState.faction_deltas = deltas_before_f
+		bed_cold = not forge.has_pattern()
+		# A forge is a PLACE: it never spends its mark, so it stands again.
+		var forge2 := SystemBuilder.build_legend(system_root, msid, 3, "forge",
+			forge_at)
+		forge_stays = forge2 != null and not GameState.is_mark_spent(forge_key)
+		if forge2 != null:
+			forge2.queue_free()
+		# THE SUITE LEAVES NO FRIENDLY IN THE SKY. A printed hull left in the
+		# `hostiles` group would be picked as live[0] by _pacing_kill_yield and
+		# force-attacked for 5400 frames, corrupting the bar the whole economy
+		# rests on -- so the wing is torn down here, deliberately and by name.
+		for w2_v in wing:
+			(w2_v as Node).free()
+		donor.free()
+		# THE SPILL LANDS ON A TIMER, and clearing before it fires cleans up
+		# nothing. Hostile._die spawns its crates at DEATH_STAGE_3 (0.38s), so
+		# an immediate sweep left the donor's loot to materialise inside the
+		# NEXT leg -- where a cube count captured before and after moved for a
+		# reason that leg had nothing to do with.
+		await get_tree().create_timer(0.6).timeout
+		_clear_loot_cubes()
+		forge.queue_free()
+	print("[return] THE FORGE COPIES WHAT DIES THERE the bed starts empty=%s and refuses the hold=%s; a hull dying in range arms it=%s; the hold printed %d of %d; the wing is not the player's enemy=%s, costs no standing to splash=%s, is nobody's enemy unprovoked=%s, and can never land a kill=%s; the bed goes cold=%s and the forge itself stands again=%s -> %s" % [
+		str(bed_empty), str(refused_empty_bed), str(took_pattern), printed_n,
+		PatternForge.PRINT_COUNT, str(not_my_enemy), str(costs_no_standing),
+		str(nobody_opens), str(can_never_finish), str(bed_cold), str(forge_stays),
+		"PASS" if forge_stood and bed_empty and refused_empty_bed and took_pattern
+			and printed_n == PatternForge.PRINT_COUNT and not_my_enemy
+			and costs_no_standing and nobody_opens and can_never_finish
+			and bed_cold and forge_stays else "FAIL"])
+
+	# 24. READ THEM SLOWLY. The formation, the attachment, and the one rule the
+	#     plate states in its own copy — enforced by the interface rather than
+	#     asked of the player. Also the fiction's own constraint: the rival
+	#     stays anonymous, which is a claim about what is NOT in the table and
+	#     therefore has to be asserted rather than assumed.
+	var proc_key := GameState.mark_key(msid, 4)
+	GameState.marks_seen = {}
+	GameState.marks_seen[proc_key] = GameState.MARK_READ
+	var proc_at := Vector3(2400.0, 0.0, 2400.0)
+	var proc := SystemBuilder.build_legend(system_root, msid, 4, "procession",
+		proc_at) as Procession
+	var proc_stood := proc != null
+	var named_n := 0
+	var lines_whole := true
+	var names_unique := true
+	var rival_unnamed := true
+	var spaced := true
+	var read_one := false
+	var refused_fast := false
+	if proc_stood:
+		await get_tree().process_frame
+		var named := proc.named_hulls()
+		named_n = named.size()
+		var seen_names := {}
+		for h_v in named:
+			var nm := String((h_v as Node).get("hull_name"))
+			var ln := String((h_v as Node).get("hull_line"))
+			if ln.strip_edges() == "":
+				lines_whole = false
+			if seen_names.has(nm):
+				names_unique = false
+			seen_names[nm] = true
+			# THE RIVAL IS NOT ON THE LIST, and this is the clause the fiction
+			# needs: two horizons kept that hull anonymous, and a caption would
+			# spend it. Checked against the archive's own name for the wreck
+			# rather than a literal, so renaming it there cannot un-assert this.
+			if nm == String(UnsoundedSite.NAMES.get("wreck", "")):
+				rival_unnamed = false
+		# NO TWO HULLS ON TOP OF EACH OTHER. CameraRig._pick is screen-space
+		# with no raycast, so hulls closer than a tap apart would make choosing
+		# which one to read a coin flip. Asserted in world units against the
+		# spacing the builder claims to use.
+		for i in range(named.size()):
+			for j in range(i + 1, named.size()):
+				var da: Node3D = named[i]
+				var db: Node3D = named[j]
+				if da.global_position.distance_to(db.global_position) \
+						< Procession.HULL_SPACING * 0.9:
+					spaced = false
+		# THROUGH THE REAL TAP, twice: the first raises the plate, the second
+		# is refused while it is up. That refusal IS the mark's instruction.
+		if named_n > 0:
+			hud.clear_prompt()
+			# THE PLATE OUTLIVES ITS LEG. show_broadcast holds for 6.2s and the
+			# suite runs in milliseconds, so the serpent's break-off line from
+			# leg 20 was still up when this leg tapped its first hull -- the
+			# hull then correctly took its READ THEM SLOWLY branch, and the leg
+			# read that correct behaviour as a failure. Cleared here, because a
+			# leg about what a plate says must start from an empty plate.
+			hud._broadcast_box.visible = false
+			(named[0] as Node).call("on_tapped")
+			read_one = hud.broadcast_busy() \
+				and hud.broadcast_text() == String((named[0] as Node).get("hull_line"))
+			(named[named_n - 1] as Node).call("on_tapped")
+			await get_tree().create_timer(0.4).timeout
+			refused_fast = hud.prompt_text() == Procession.SLOWLY \
+				and hud.broadcast_text() == String((named[0] as Node).get("hull_line"))
+	print("[return] READ THEM SLOWLY the formation stands=%s with %d named hulls (attachment holds %d), every entry whole=%s, names unique=%s, the rival still unnamed=%s, no two hulls inside a tap=%s; a tap raises the entry=%s and a second tap while it is up is refused in the plate's own words=%s -> %s" % [
+		str(proc_stood), named_n, Procession.ATTACHMENT.size(), str(lines_whole),
+		str(names_unique), str(rival_unnamed), str(spaced), str(read_one),
+		str(refused_fast),
+		"PASS" if proc_stood and named_n == Procession.ATTACHMENT.size()
+			and lines_whole and names_unique and rival_unnamed and spaced
+			and read_one and refused_fast else "FAIL"])
+
+	# 25. THE PROCESSION ONLY ASKS. The legend that pays nothing, asserted as
+	#     nothing — in a set where nine of ten give, the one that only asks is
+	#     what keeps the others from reading as a loot table. And the mark is
+	#     never spent, so the formation is a place rather than a prize.
+	var refused_empty_p := false
+	var left_it := false
+	var never_spent := false
+	var stands_again := false
+	var paid_nothing_p := false
+	var moved_what := ""
+	if proc_stood and pilot_m != null:
+		var first_hull := proc.hulls()[0] as Node3D
+		pilot_m.teleport_to(first_hull.global_position)
+		GameState.cargo = {}
+		hud.clear_prompt()
+		first_hull.call("hold_begin")
+		await get_tree().create_timer(0.4).timeout
+		# An empty hold is told the truth about the place, not just refused.
+		refused_empty_p = hud.prompt_text() == Procession.NOT_SALVAGE
+		GameState.load_cargo("alloys", 6)
+		# BRACKET THE ACT, NOT THE LEG -- §96's DIRECTIVETEST lesson, and the
+		# second time this file has paid for it. The capture used to sit at the
+		# top of the leg, which put the 0.4s await above INSIDE the window this
+		# clause calls "the deposit": four tenths of a second of the whole world
+		# ticking, with loot still arriving in waves from breaches two legs back
+		# (Derelict._spill_waves runs for VORTEX_TIME, 2.6s) and anything in
+		# magnet range being collected. A pays-nothing claim measures the ACT or
+		# it measures the weather.
+		var salv_p := GameState.salvage
+		var ledger_p := JSON.stringify(GameState.ledger)
+		var loot_p := _count_loot_cubes()
+		first_hull.call("hold_begin")
+		first_hull.call("hold_tick", Procession.DEPOSIT_TIME + 0.1)
+		left_it = GameState.cargo_used() == 0 \
+			and GameState.is_mark_given(proc_key)
+		never_spent = not GameState.is_mark_spent(proc_key)
+		# AND IT NAMES WHAT MOVED. Three claims collapsed into one boolean
+		# cannot say which of them broke, which is a round trip of the sweep
+		# spent on a question the print could have answered the first time.
+		if GameState.salvage != salv_p:
+			moved_what += "salvage "
+		if JSON.stringify(GameState.ledger) != ledger_p:
+			moved_what += "ledger "
+		if _count_loot_cubes() != loot_p:
+			moved_what += "loot "
+		paid_nothing_p = moved_what == ""
+		var proc2 := SystemBuilder.build_legend(system_root, msid, 4,
+			"procession", proc_at)
+		stands_again = proc2 != null
+		if proc2 != null:
+			proc2.queue_free()
+		proc.queue_free()
+	print("[return] THE PROCESSION ONLY ASKS an empty hold is told what the place is=%s; leaving the hold empties it and records the one fact=%s; the mark is never spent=%s so the formation stands again=%s; and across the act itself nothing moved (%s) -> %s" % [
+		str(refused_empty_p), str(left_it), str(never_spent), str(stands_again),
+		"nothing" if moved_what == "" else moved_what,
+		"PASS" if proc_stood and refused_empty_p and left_it and never_spent
+			and stands_again and paid_nothing_p else "FAIL"])
+
+	# 26. THE GROUND IS TAKEN, AND THEN IT IS KEPT. The nursery's own store, the
+	#     keepers that gate the taking, and the clock — asserted as a DERIVATION
+	#     rather than as a stored countdown, because that is the whole reason it
+	#     costs one save field instead of a scheduler.
+	var nur_key := GameState.mark_key(msid, 0)
+	GameState.marks_seen = {}
+	GameState.marks_seen[nur_key] = GameState.MARK_READ
+	GameState.nursery = {}
+	var nur_at := Vector3(3000.0, 0.0, 3000.0)
+	var nursery := SystemBuilder.build_legend(system_root, msid, 0, "nursery",
+		nur_at) as TallyNursery
+	var nur_stood := nursery != null
+	var keepers_up := 0
+	var locked_refused := false
+	var took := false
+	var no_instant_wave := false
+	var wave_due := false
+	var wave_grows := false
+	var clock_derived := false
+	if nur_stood:
+		await get_tree().process_frame
+		nursery._wake_keepers()
+		keepers_up = nursery.keepers_standing()
+		# THE KEEPERS GATE THE TAKING, and the refusal names the count.
+		if pilot_m != null:
+			pilot_m.teleport_to(nursery.global_position)
+		nursery.hold_begin()
+		locked_refused = not nursery._holding
+		for k_v in get_tree().get_nodes_in_group("hostiles"):
+			var kk := k_v as Node3D
+			if kk != null and kk.has_meta("nursery_keeper"):
+				kk.free()
+		nursery.hold_begin()
+		nursery.hold_tick(TallyNursery.TAKE_TIME + 0.1)
+		took = GameState.holds_nursery() and GameState.nursery_key() == nur_key \
+			and nursery.is_held()
+		# TAKING IS NOT THE FIRST ASSAULT: the ground changing hands must not
+		# summon a wave on the same frame.
+		nursery._tick_assault(0.016, 0.0)
+		no_instant_wave = nursery._assault.is_empty()
+		# THE CLOCK IS DERIVED. Winding played_seconds forward is the only input
+		# the wave index has -- no timer, no stored countdown, nothing ticking.
+		var t_keep := GameState.played_seconds
+		GameState.played_seconds = t_keep + GameState.NURSERY_PERIOD * 2.0
+		clock_derived = GameState.nursery_wave_index() == 2
+		nursery._tick_assault(0.016, 0.0)
+		wave_due = not nursery._assault.is_empty()
+		# AND THEY COME IN INCREASING NUMBERS, sized off the RECORD rather than
+		# the clock -- the clock restarts on every victory, so a size derived
+		# from it would make every wave forever the first one.
+		wave_grows = GameState.nursery_wave_size(4) > GameState.nursery_wave_size(0)
+		GameState.played_seconds = t_keep
+	print("[return] THE GROUND IS TAKEN AND THEN KEPT %d keepers stand and refuse the hold=%s; cleared, the hold takes the ground=%s; taking summons no wave on the same frame=%s; two periods on the clock alone makes the index 2=%s and forms the assault=%s; and the waves grow with what the pilot has survived=%s -> %s" % [
+		keepers_up, str(locked_refused), str(took), str(no_instant_wave),
+		str(clock_derived), str(wave_due), str(wave_grows),
+		"PASS" if nur_stood and keepers_up == TallyNursery.KEEPER_COUNT
+			and locked_refused and took and no_instant_wave and clock_derived
+			and wave_due and wave_grows else "FAIL"])
+
+	# 27. HELD, NOT OWNED. The jump anchor exists only while the ground does —
+	#     which is what pays for A FOOTHOLD, NOT A FARM's widened bound. And
+	#     losing it is losing a SIEGE, never a supply run: walking out with the
+	#     ground quiet keeps it, walking out with them on it does not.
+	var anchor_open := false
+	var quiet_exit_keeps := false
+	var siege_exit_loses := false
+	var record_survives := false
+	var anchor_closed := false
+	if nur_stood and GameState.holds_nursery():
+		GameState.salvage = maxi(GameState.salvage, COLONY_JUMP_FEE * 2)
+		anchor_open = can_nursery_jump()
+		# A quiet departure is a supply run.
+		nursery._assault.clear()
+		quiet_exit_keeps = not nursery.abandon_if_besieged() \
+			and GameState.holds_nursery()
+		# A departure mid-assault is a rout. Driven through the same entry point
+		# _load_system calls, so the leg cannot pass on a path the world does
+		# not take.
+		GameState.note_nursery_wave_turned()
+		GameState.note_nursery_wave_turned()
+		nursery._form_assault(1)
+		siege_exit_loses = nursery.abandon_if_besieged() \
+			and not GameState.holds_nursery()
+		# THE RECORD OUTLIVES THE LOSS (S5): retaking does not make a pilot who
+		# held it through two assaults a novice.
+		GameState.take_nursery(nur_key, nur_at.x, nur_at.z)
+		record_survives = GameState.nursery_waves_turned() == 2
+		GameState.release_nursery()
+		anchor_closed = not can_nursery_jump()
+		for a_v in get_tree().get_nodes_in_group("hostiles"):
+			var aa := a_v as Node3D
+			if aa != null and aa.has_meta("nursery_keeper"):
+				aa.free()
+		nursery.queue_free()
+	print("[return] HELD, NOT OWNED the anchor opens while the ground is held=%s; leaving with it quiet keeps it=%s; leaving mid-assault loses it=%s; the count of what was turned back survives the loss=%s; and with the ground gone the anchor is gone=%s -> %s" % [
+		str(anchor_open), str(quiet_exit_keeps), str(siege_exit_loses),
+		str(record_survives), str(anchor_closed),
+		"PASS" if anchor_open and quiet_exit_keeps and siege_exit_loses
+			and record_survives and anchor_closed else "FAIL"])
+
+	GameState.survey_coverage = {}
+	GameState.survey_filed = {}
+	GameState.deep_logs = {}
+	GameState.marks_seen = {}
+	GameState.nursery = {}
+	GameState.owned.clear()
+	GameState.cargo = {}
+	get_tree().quit()
+
 
 # --- pilot profiles test ----------------------------------------------------
 
@@ -14495,6 +17105,15 @@ func _run_profile_test() -> void:
 	# newest field is exactly when a leak ships.
 	GameState.note_survey_filed("pyx01:31:-7")
 	GameState.note_structure_seen(GameState.colony_key("pyx01", 0))
+	# v23: same argument a third time. A deep log is the longest-lived thing a
+	# pilot can own -- it is a fact about the world they learned -- which makes
+	# it exactly the field a reader would expect to be shared, and it is not.
+	GameState.note_deep_log("pyx01:meridian", 3)
+	# 98: and a fourth time. A sounding mark read six thousand units out is the
+	# single most expensive fact a pilot can own, so it is the one a shared
+	# store would be most obviously wrong about.
+	GameState.note_mark_read(GameState.mark_key("pyx01", 0))
+	GameState.take_nursery(GameState.mark_key("pyx01", 1), 6800.0, -120.0)
 	GameState.save_game()
 	var b_id := Profiles.create("PILOT B", 3000.0)
 	GameState.switch_profile(b_id)
@@ -14518,6 +17137,13 @@ func _run_profile_test() -> void:
 		leaks.append("survey_filed")
 	if GameState.is_structure_seen(GameState.colony_key("pyx01", 0)):
 		leaks.append("structures_seen")
+	if GameState.deep_log_stage("pyx01:meridian") > 0:
+		leaks.append("deep_logs")
+	if GameState.is_mark_read(GameState.mark_key("pyx01", 0)):
+		leaks.append("marks_seen")
+	# v26: and a fifth time. Ground one pilot took is not ground another holds.
+	if GameState.holds_nursery():
+		leaks.append("nursery")
 	var bled := ", ".join(leaks)
 	print("[profile] NO BLEED BETWEEN PILOTS B sees salvage=%d name='%s' commissioned=%s accent=%d; leaked=%s -> %s" % [
 		GameState.salvage, GameState.ship_name, str(GameState.commissioned),
@@ -14733,6 +17359,13 @@ func _run_save_test() -> void:
 		# from the coverage sentinels for the six-distinct-sentinels reason.
 		GameState.note_survey_filed("pyx01:12:5")
 		GameState.note_structure_seen(GameState.colony_key("pyx01", 0))
+		# v23 DEEP LOGS. TWO records at DIFFERENT stages, in different systems:
+		# the six-distinct-sentinels rule again. One record at one stage would
+		# round-trip through a loader that clamped every entry to 1, or that
+		# crossed the key with its value.
+		GameState.note_deep_log("pyx01:meridian", 3)
+		GameState.note_deep_log("pyx01:meridian", 3)
+		GameState.note_deep_log("pyx02:glass", 3)
 		GameState.owned.append("mod_survey_array")
 		GameState.ledger = {
 			"deepest_depth": 611, "distance_flown": 4207, "hulks_cracked": 13,
@@ -15631,6 +18264,263 @@ func _run_save_test() -> void:
 			GameState.structures_seen.size(), str(cleaned22), str(subset22),
 			"PASS" if ok21 and carried and all_unfiled and no_sightings
 				and cleaned22 and subset22 else "FAIL"])
+	elif mode == "migrate22":
+		# v23 adds deep_logs. No migration branch, this file's standing rule: an
+		# absent key is an empty store, and "has read none of the unsounded" is
+		# exactly true of every v22 pilot -- the structures did not exist in the
+		# build that wrote their file.
+		var v22 := {
+			"version": 22,
+			"salvage": 7700,
+			"current_system": "pyx02",
+			"run_seed": 222222,
+			"tutorial_step": -1,
+			"survey_coverage": {"pyx02:3:3": true},
+			"survey_filed": {"pyx02:3:3": true},
+		}
+		var f22 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f22.store_string(JSON.stringify(v22))
+		f22.close()
+		var ok22 := GameState.load_game()
+		var fresh23: bool = GameState.deep_logs.is_empty() \
+			and GameState.deep_log_stage("pyx01:meridian") == 0
+		var kept22: bool = GameState.salvage == 7700 \
+			and GameState.is_survey_filed("pyx02:3:3")
+
+		# The rubbish pass. Every filter the loader owns, each on its own key,
+		# because a loader that dropped the whole dictionary on one bad entry
+		# would pass a test that only checked the survivors' count.
+		var dirty23 := {
+			"version": 23,
+			"salvage": 7700,
+			"run_seed": 222222,
+			"tutorial_step": -1,
+			"deep_logs": {
+				"pyx01:meridian": 2,      # good
+				"pyx01:wreck": 1,         # good -- the wreck is one fragment
+				"pyx99:glass": 1,         # unknown system
+				"pyx01:harbour": 2,       # not a kind the generator places
+				"pyx01:glass": 99,        # past DEEP_LOG_STAGE_MAX
+				"pyx01:return": 0,        # zero is absence, never a stored state
+				"pyx02:glass": -1,        # negative
+				"nocolon": 1,             # shape
+				"pyx03:return": {"stage": 2},  # value is not a number at all
+			},
+		}
+		var fd23 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fd23.store_string(JSON.stringify(dirty23))
+		fd23.close()
+		GameState.load_game()
+		var cleaned23: bool = GameState.deep_logs.size() == 2 \
+			and GameState.deep_log_stage("pyx01:meridian") == 2 \
+			and GameState.deep_log_stage("pyx01:wreck") == 1 \
+			and GameState.deep_log_stage("pyx99:glass") == 0 \
+			and GameState.deep_log_stage("pyx01:harbour") == 0 \
+			and GameState.deep_log_stage("pyx01:glass") == 0 \
+			and GameState.deep_log_stage("pyx01:return") == 0 \
+			and GameState.deep_log_stage("pyx02:glass") == 0 \
+			and GameState.deep_log_stage("pyx03:return") == 0
+		print("[savetest] v22->v23 A V22 SAVE HAS READ NOTHING empty=%s, state kept=%s; rubbish pass kept %d of 9 (unknown system, bad kind, stage 99, stage 0, negative, bad shape and a non-numeric value all dropped)=%s -> %s" % [
+			str(fresh23), str(kept22), GameState.deep_logs.size(), str(cleaned23),
+			"PASS" if ok22 and fresh23 and kept22 and cleaned23 else "FAIL"])
+	elif mode == "migrate23":
+		# v24 adds berths. No migration branch, the standing rule: an absent key
+		# is an empty array, and "has bought no hull work" is exactly true of
+		# every v23 pilot -- the yards did not cut berths in the build that
+		# wrote their file.
+		#
+		# AND THE FIT IS THE INTERESTING HALF. A v23 file cannot name a berth
+		# slot, but a hand-edited one can, and can_equip is not the door it came
+		# through. The loader drops it.
+		var v23 := {
+			"version": 23,
+			"salvage": 6400,
+			"current_system": "pyx01",
+			"run_seed": 232323,
+			"tutorial_step": -1,
+			"owned": ["pulse_1", "drive_cruise", "core_overcharge", "util_assay"],
+			"fit": {
+				str(ModuleDB.Slot.WEAPON_A): "pulse_1",
+				str(ModuleDB.Slot.UTILITY): "util_assay",
+				str(ModuleDB.Slot.UTILITY_C): "util_assay",
+			},
+		}
+		var f23 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f23.store_string(JSON.stringify(v23))
+		f23.close()
+		var ok23 := GameState.load_game()
+		var no_berths: bool = GameState.berths.is_empty() \
+			and GameState.open_slots().size() == 6
+		var kept23: bool = GameState.salvage == 6400 \
+			and String(GameState.fit.get(ModuleDB.Slot.UTILITY, "")) == "util_assay"
+		var free_slot_refused: bool = String(GameState.fit.get(ModuleDB.Slot.UTILITY_C, "")) == ""
+		# The rubbish pass: unknown ids and duplicates dropped, and the power cap
+		# must follow what SURVIVED rather than what the file claimed.
+		var dirty24 := {
+			"version": 24,
+			"salvage": 6400,
+			"run_seed": 232323,
+			"tutorial_step": -1,
+			"berths": ["berth_utility", "berth_utility", "berth_nonsense", 7],
+		}
+		var fd24 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fd24.store_string(JSON.stringify(dirty24))
+		fd24.close()
+		GameState.load_game()
+		var want_cap := ModuleDB.reactor_power(GameState.reactor_tier) \
+			+ int(ModuleDB.BERTHS["berth_utility"]["power"])
+		var cleaned24: bool = GameState.berths.size() == 1 \
+			and GameState.berths.has("berth_utility") \
+			and GameState.power_cap() == want_cap
+		print("[savetest] v23->v24 A V23 SAVE HAS NO HULL WORK none bought=%s, state kept=%s, a fit naming an unbought berth slot loads empty=%s; rubbish pass kept 1 of 4 and the cap followed=%s -> %s" % [
+			str(no_berths), str(kept23), str(free_slot_refused), str(cleaned24),
+			"PASS" if ok23 and no_berths and kept23 and free_slot_refused
+				and cleaned24 else "FAIL"])
+	elif mode == "migrate24":
+		# v25 gives survey_filed a VALUE. No migration branch, the standing rule:
+		# every v24 entry is the literal `true`, which is exactly what a cell
+		# filed at a counter still means -- so a v24 pilot loads with every cell
+		# filed and none held, which is true of them.
+		#
+		# THE RUBBISH PASS IS THE POINT HERE. The value used to be checked with
+		# bool() and then thrown away; now it is checked by TYPE, and this leg
+		# holds both halves: the two legal values survive, and a hand-edited
+		# third state is dropped rather than becoming a new kind of filing.
+		var v24 := {
+			"version": 24,
+			"salvage": 5200,
+			"current_system": "pyx01",
+			"run_seed": 242424,
+			"tutorial_step": -1,
+			"survey_coverage": {"pyx01:8:8": true, "pyx01:9:9": true},
+			"survey_filed": {"pyx01:8:8": true},
+		}
+		var f24 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f24.store_string(JSON.stringify(v24))
+		f24.close()
+		var ok24 := GameState.load_game()
+		var kept24: bool = GameState.salvage == 5200 \
+			and GameState.is_survey_filed("pyx01:8:8") \
+			and GameState.survey_coverage.size() == 2
+		var none_held: bool = GameState.held_cells().is_empty() \
+			and not GameState.is_survey_held("pyx01:8:8")
+		# 98 rides v25 with no bump, so the same fixture answers for the marks:
+		# no key, no branch, a pilot who has read nothing -- which is every
+		# pilot who ever loaded a file written before buoys existed.
+		var no_marks24: bool = GameState.marks_seen.is_empty()
+
+		var dirty25 := {
+			"version": 25,
+			"salvage": 5200,
+			"run_seed": 242424,
+			"tutorial_step": -1,
+			"survey_coverage": {
+				"pyx01:8:8": true, "pyx01:9:9": true, "pyx01:10:10": true,
+				"pyx01:11:11": true, "pyx01:12:12": true,
+			},
+			"survey_filed": {
+				"pyx01:8:8": "held",      # good -- the network holds it
+				"pyx01:9:9": true,        # good -- a counter filed it
+				"pyx01:10:10": false,     # falsey: dropped, as it always was
+				"pyx01:11:11": "nonsense",  # not a state this store has
+				"pyx01:12:12": 3,         # not a state either
+				"pyx01:99:99": "held",    # held, but never surveyed: not a subset
+			},
+		}
+		var fd25 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fd25.store_string(JSON.stringify(dirty25))
+		fd25.close()
+		GameState.load_game()
+		var cleaned25: bool = GameState.survey_filed.size() == 2 \
+			and GameState.is_survey_held("pyx01:8:8") \
+			and GameState.is_survey_filed("pyx01:9:9") \
+			and not GameState.is_survey_held("pyx01:9:9") \
+			and not GameState.is_survey_filed("pyx01:10:10") \
+			and not GameState.is_survey_filed("pyx01:11:11") \
+			and not GameState.is_survey_filed("pyx01:12:12") \
+			and not GameState.is_survey_filed("pyx01:99:99")
+		print("[savetest] v24->v25 A V24 SAVE HAS FILED, NEVER HELD state kept=%s, nothing held=%s, no marks read=%s; rubbish pass kept 2 of 6 (falsey, two impostor values and a non-subset key dropped, held preserved as held)=%s -> %s" % [
+			str(kept24), str(none_held), str(no_marks24), str(cleaned25),
+			"PASS" if ok24 and kept24 and none_held and no_marks24 and cleaned25
+				else "FAIL"])
+	elif mode == "migrate25":
+		# v26 adds the NURSERY, its own store. No migration branch, the standing
+		# rule: a v25 file has no key, gets {}, and loads as a pilot who never
+		# took the ground -- true of every pilot before it existed.
+		#
+		# THE RUBBISH PASS IS THE POINT. This store's value is a dictionary with
+		# a key that must name a mark the GENERATOR still deals, and a stamp
+		# that must be a real point on the player's own clock. A hand-edited
+		# file must not be able to hand out ground that is not there, nor a
+		# clock that runs backwards.
+		var v25 := {
+			"version": 25,
+			"salvage": 7100,
+			"current_system": "pyx01",
+			"run_seed": 252525,
+			"tutorial_step": -1,
+			"played_seconds": 5000.0,
+		}
+		var f25 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f25.store_string(JSON.stringify(v25))
+		f25.close()
+		var ok25 := GameState.load_game()
+		var kept25: bool = GameState.salvage == 7100 and not GameState.holds_nursery()
+
+		# A GOOD ONE SURVIVES, with its clock intact.
+		var good26 := {
+			"version": 26,
+			"salvage": 7100,
+			"current_system": "pyx01",
+			"run_seed": 252525,
+			"tutorial_step": -1,
+			"played_seconds": 5000.0,
+			"nursery": {"key": "pyx01:1", "x": 6800.0, "z": -120.0,
+				"taken_at": 1400.0, "waves": 3},
+		}
+		var fg := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fg.store_string(JSON.stringify(good26))
+		fg.close()
+		GameState.load_game()
+		var held26: bool = GameState.holds_nursery() \
+			and GameState.nursery_key() == "pyx01:1" \
+			and GameState.nursery_waves_turned() == 3 \
+			and is_equal_approx(float(GameState.nursery.get("taken_at", 0.0)), 1400.0)
+		# AND THE CLOCK DERIVES RATHER THAN BEING STORED: 3600s at a 900s period
+		# is the fourth wave, computed from the stamp and nothing else.
+		var derived26: bool = GameState.nursery_wave_index() == 4
+
+		# THE RUBBISH: an index past what the generator deals, and a stamp from
+		# the future. Both must drop the store rather than be tolerated.
+		var far_idx := GameState.nursery_key()
+		var bad_idx := good26.duplicate(true)
+		bad_idx["nursery"] = {"key": "pyx01:99", "x": 1.0, "z": 1.0,
+			"taken_at": 100.0, "waves": 0}
+		var fb := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fb.store_string(JSON.stringify(bad_idx))
+		fb.close()
+		GameState.load_game()
+		var dropped_idx: bool = not GameState.holds_nursery()
+
+		var bad_clock := good26.duplicate(true)
+		bad_clock["nursery"] = {"key": "pyx01:1", "x": 1.0, "z": 1.0,
+			"taken_at": 9.9e9, "waves": 0}
+		var fc := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fc.store_string(JSON.stringify(bad_clock))
+		fc.close()
+		GameState.load_game()
+		# CLAMPED, NOT DROPPED. A stamp in the future is the one rubbish value
+		# that must not cost the pilot their ground -- it is corrupt bookkeeping
+		# about a fact that is still true. Clamped to now, the clock reads zero
+		# and the next wave is a period away, which is the safe direction.
+		var clamped: bool = GameState.holds_nursery() \
+			and GameState.nursery_wave_index() == 0
+		GameState.nursery = {}
+		print("[savetest] v25->v26 A V25 SAVE HOLDS NO GROUND kept=%s; a good entry reloads held (%s, %d waves)=%s with the wave index DERIVED from the stamp=%s; an index past the generator drops the store=%s; a stamp from the future is clamped rather than dropped=%s -> %s" % [
+			str(kept25), far_idx, 3, str(held26), str(derived26),
+			str(dropped_idx), str(clamped),
+			"PASS" if ok25 and kept25 and held26 and derived26 and dropped_idx
+				and clamped else "FAIL"])
 	elif mode == "future":
 		# A SAVE FROM A NEWER BUILD. Refusing to load it was never the hard
 		# part — that clause has always been there. What it did NOT do was stop
@@ -15796,6 +18686,18 @@ func _run_save_test() -> void:
 			GameState.unfiled_cells().size(),
 			str(GameState.is_structure_seen(GameState.colony_key("pyx01", 0))),
 			"PASS" if filed_ok else "FAIL"])
+		# v23: two records at DIFFERENT stages, plus a record never read. The
+		# negative is what catches a loader that invents entries, and the two
+		# distinct stages catch one that clamps or crosses key with value.
+		var logs_ok: bool = GameState.deep_log_stage("pyx01:meridian") == 2 \
+			and GameState.deep_log_stage("pyx02:glass") == 1 \
+			and GameState.deep_log_stage("pyx03:return") == 0 \
+			and GameState.deep_logs.size() == 2
+		print("[savetest] v23 DEEP LOGS meridian at %d, glass at %d, unread record at %d, %d entries -> %s" % [
+			GameState.deep_log_stage("pyx01:meridian"),
+			GameState.deep_log_stage("pyx02:glass"),
+			GameState.deep_log_stage("pyx03:return"), GameState.deep_logs.size(),
+			"PASS" if logs_ok else "FAIL"])
 		print("[savetest] v10 LOGBOOK ledger %s, name '%s' (%d chars, cap %d) -> %s" % [
 			str(GameState.ledger), GameState.ship_name, GameState.ship_name.length(),
 			GameState.SHIP_NAME_MAX, "PASS" if led_ok and name_ok else "FAIL"])
@@ -17118,7 +20020,10 @@ func _run_manual_test() -> void:
 	var before_text := _manual_text(manual)
 	var real_power := ModuleDB.reactor_power(0)
 	var mentions_power: bool = before_text.contains(str(real_power))
-	var mentions_slots: bool = before_text.contains(str(ModuleDB.SLOT_NAMES.size()))
+	# v24: the SHIP'S slot count, not the catalog's. The manual prints what this
+	# pilot has, and a berthed pilot has more -- so a check against SLOT_NAMES
+	# would demand the manual promise nine slots to a pilot who owns six.
+	var mentions_slots: bool = before_text.contains(str(GameState.open_slots().size()))
 	manual._page = "deep"
 	manual._refresh()
 	await get_tree().process_frame
@@ -17133,7 +20038,7 @@ func _run_manual_test() -> void:
 	var living_text := _manual_text(manual)
 	var mentions_ore: bool = living_text.contains(str(CommodityDB.ore_ids().size()))
 	print("[manual] THE NUMBERS ARE DERIVED reactor %d=%s, %d slots=%s, all %d bands named=%s, %d ores=%s -> %s" % [
-		real_power, str(mentions_power), ModuleDB.SLOT_NAMES.size(), str(mentions_slots),
+		real_power, str(mentions_power), GameState.open_slots().size(), str(mentions_slots),
 		DeepSpace.BAND_NAMES.size(), str(names_all_bands),
 		CommodityDB.ore_ids().size(), str(mentions_ore),
 		"PASS" if mentions_power and mentions_slots and names_all_bands and mentions_ore else "FAIL"])
@@ -21696,9 +24601,31 @@ func _run_colony_test() -> void:
 	# The rate that matters is saved-seconds per cooldown-second — above 1.0 the
 	# player is gaining more travel time than the clock costs them.
 	var speed := float(ModuleDB.BASE.get("max_speed", 5.75))
-	var deepest := SystemDB.bounds_of("pyx03") + SystemDB.HYPER_DEPTH_MAX
+	# §106, S4. RE-DERIVED AGAINST THE DEEPEST THING A JUMP CAN NOW REACH, and
+	# this is the reversal taken in the open rather than slipped past. The line
+	# read `HYPER_DEPTH_MAX` alone, which computes the deepest reachable point
+	# from a CONSTANT rather than from the world -- so the day the nursery's
+	# anchor put a jumpable destination at FarMarks depth, this leg would have
+	# gone on printing PASS while the number it prints stopped being true. The
+	# beacon cap's own comment (main.gd, BEACON_JUMP_MAX_DEPTH) predicted this
+	# exact failure in as many words.
+	#
+	# The bound MOVES with it, and the argument for moving it is the thing that
+	# makes the nursery's anchor different in kind from every other jump: it is
+	# HELD, NOT OWNED. A beacon jump is bought once and is a door forever; this
+	# one is priced in fights, forever, and closes the day the Tally take the
+	# ground back. That is rent, not a farm -- so the guard the bound has to
+	# keep is unchanged in spirit (a cooldown that stops mattering) while the
+	# distance it is measured over has honestly doubled.
+	var deepest := SystemDB.bounds_of("pyx03") \
+		+ maxf(SystemDB.HYPER_DEPTH_MAX, FarMarks.DEPTH_MAX)
 	var saved := deepest / speed
 	var ratio := saved / COLONY_JUMP_COOLDOWN
+	# 5.5 rather than 3.0, and the arithmetic is stated so a retune argues with
+	# a number instead of a feeling: at 5.5 the clock cannot fall below ~285s
+	# without this going red, which pins it TIGHTER to the authored 300 than the
+	# old bound pinned it (~245s). The guard got stricter as the reach grew.
+	var bound := 5.5
 	# THE BOUND IS A GUARD ON THE COOLDOWN, and it is worth saying what it is
 	# not. A ratio above 1.0 means the jump saves more flying than it costs in
 	# waiting — which is the POINT of an earned foothold, not a defect, and the
@@ -21707,11 +24634,16 @@ func _run_colony_test() -> void:
 	# catches is a cooldown that stops mattering: at 3.0 the clock cannot fall
 	# below ~245s without this going red, which pins it to within ~20% of the
 	# authored 300 and makes "someone tuned it to 30s" impossible to ship.
-	var floor_cooldown := saved / 3.0
-	print("[colony] A FOOTHOLD, NOT A FARM deepest %.0fu = %.0fs flown at %.2f u/s, against a %.0fs shared cooldown = %.2f saved-seconds per cooldown-second (bound 3.0, i.e. the cooldown may not fall below %.0fs; the %d fee is %.0f cr/min, a rounding error — the clock is the mechanism) -> %s" % [
-		deepest, saved, speed, COLONY_JUMP_COOLDOWN, ratio, floor_cooldown,
+	var floor_cooldown := saved / bound
+	# AND THE DEEPEST REACHABLE POINT IS MEASURED, NOT ASSUMED. The clause that
+	# would have caught the silent break if it had existed: whatever the deepest
+	# jumpable destination in the game is, this leg must be deriving from it.
+	var reach_ok: bool = deepest >= SystemDB.bounds_of("pyx03") + FarMarks.DEPTH_MAX
+	print("[colony] A FOOTHOLD, NOT A FARM deepest %.0fu (past the far marks=%s) = %.0fs flown at %.2f u/s, against a %.0fs shared cooldown = %.2f saved-seconds per cooldown-second (bound %.1f, i.e. the cooldown may not fall below %.0fs; the %d fee is %.0f cr/min, a rounding error — the clock is the mechanism) -> %s" % [
+		deepest, str(reach_ok), saved, speed, COLONY_JUMP_COOLDOWN, ratio, bound,
+		floor_cooldown,
 		COLONY_JUMP_FEE, float(COLONY_JUMP_FEE) * 60.0 / COLONY_JUMP_COOLDOWN,
-		"PASS" if ratio <= 3.0 else "FAIL"])
+		"PASS" if ratio <= bound and reach_ok else "FAIL"])
 
 	# --- J. and it names no pacing term --------------------------------------
 	var named := PACING_LOOP.has("colony") or PACING_LOOP.has("hyper")
@@ -21725,21 +24657,44 @@ func _run_colony_test() -> void:
 	# states the terms through the real prompt, and the alpha-zero trap from
 	# BEACONTEST applies: the prompt fades in, so it cannot be read on the
 	# frame it is set.
-	var monument: HyperStructure = null
+	#
+	# ITS FIRST MEASUREMENT WAS RED, AND THE TEST WAS THE WRONG HALF. It took
+	# whatever `get_nodes_in_group("hyper")` handed back first and demanded the
+	# unclaimed wording -- but leg H four screens up claims pyx01:0 and pyx01:1
+	# by hand, so "first in the group" is a CLAIMED monument answering the
+	# claimed branch perfectly. The code was doing exactly what 88 asked of it.
+	# Picking by STATE rather than by tree order fixes it and asserts the real
+	# promise, which was always the stronger one: EVERY branch answers, so both
+	# are tapped here and both must name themselves and their verb.
+	var claimed_mon: HyperStructure = null
+	var open_mon: HyperStructure = null
 	for h_v2 in get_tree().get_nodes_in_group("hyper"):
-		monument = h_v2 as HyperStructure
-		break
+		var h3 := h_v2 as HyperStructure
+		if h3 == null:
+			continue
+		if h3.is_claimed():
+			if claimed_mon == null:
+				claimed_mon = h3
+		elif open_mon == null:
+			open_mon = h3
 	var tap_ok := false
 	var tap_text := ""
-	if monument != null and hud != null:
+	var claimed_text := ""
+	if open_mon != null and claimed_mon != null and hud != null:
 		hud.clear_prompt()
-		monument.on_tapped()
+		open_mon.on_tapped()
 		await get_tree().create_timer(0.4).timeout
 		tap_text = hud.prompt_text()
-		tap_ok = tap_text.contains(monument.designation()) \
-			and (tap_text.contains("HOLD AT THE BASE") or tap_text.contains("WARDEN"))
-	print("[colony] THE MONUMENT ANSWERS A TAP prompt '%s' names it and the verb -> %s" % [
-		tap_text, "PASS" if tap_ok else "FAIL"])
+		hud.clear_prompt()
+		claimed_mon.on_tapped()
+		await get_tree().create_timer(0.4).timeout
+		claimed_text = hud.prompt_text()
+		tap_ok = tap_text.contains(open_mon.designation()) \
+			and (tap_text.contains("HOLD AT THE BASE") or tap_text.contains("WARDEN")) \
+			and claimed_text.contains(claimed_mon.designation()) \
+			and claimed_text.contains("JUMP")
+	print("[colony] THE MONUMENT ANSWERS A TAP unclaimed says '%s'; claimed says '%s'; both name themselves and their verb -> %s" % [
+		tap_text, claimed_text, "PASS" if tap_ok else "FAIL"])
 
 	GameState.colonies = {}
 	get_tree().quit()
@@ -22627,14 +25582,43 @@ func _run_mine_test() -> void:
 	# --- 17. mining costs a mount --------------------------------------------
 	# The fitting contract says there is always a call to make; mining's call is
 	# this one. Three mining modules into two utility slots, so the rig and both
-	# tools can never fly together -- and the heaviest pair that CAN, over the
-	# best drive and the best core, leaves a Mk III without room for the weapon
-	# the pacing band is denominated in. A prospector gives up the Lance to be a
-	# prospector, and that is the price of the route rather than an oversight.
-	var util_slots := 0
-	for slot_v in ModuleDB.SLOT_CATEGORY:
-		if String(ModuleDB.SLOT_CATEGORY[slot_v]) == "utility":
-			util_slots += 1
+	# tools can never fly together on the hull as shipped -- and the heaviest
+	# pair that CAN, over the best drive and the best core, leaves a Mk III
+	# without room for the weapon the pacing band is denominated in. A
+	# prospector gives up the Lance to be a prospector, and that is the price of
+	# the route rather than an oversight.
+	#
+	# COUNTED OFF open_slots(), NOT OFF THE STATIC TABLE, and that distinction
+	# is what this leg went red about. §94 cut three berth slots into
+	# SLOT_CATEGORY -- one of them a third utility bay -- so a line counting the
+	# TABLE started answering 3, and the claim it was written to guard stopped
+	# being checked at all. open_slots() is the accessor whose own comment says
+	# "and the assertions that count them"; §94 moved every other one and left
+	# this one behind. It is the sibling of ALL-BEST IS STILL OUT OF REACH,
+	# which the same commit DID teach to measure both ships.
+	#
+	# THE BERTH IS THE ESCAPE HATCH, AND IT IS ASSERTED RATHER THAN DISSOLVED.
+	# A berthed pilot can mount all three tools: that is what 60,000 credits and
+	# a permanent quarter-unit of top speed buy, and §94's whole argument is
+	# that a berth is a deliberate build rather than a strict upgrade. So the
+	# leg keeps the shipped-hull claim, adds the clause that the third bay is
+	# BOUGHT (red the day it becomes free, or the day the berth stops costing
+	# mass), and then asks the real question the name promises: even berthed, a
+	# Mk III carrying all three tools STILL cannot feed the strike frame. The
+	# mount is bought back by the reactor (17b), never by the bay.
+	var util_count := func() -> int:
+		var n := 0
+		for slot_v in GameState.open_slots():
+			if String(ModuleDB.SLOT_CATEGORY.get(int(slot_v), "")) == "utility":
+				n += 1
+		return n
+	var berths_before: Array = GameState.berths.duplicate()
+	GameState.berths = []
+	var util_slots: int = util_count.call()
+	GameState.berths = ["berth_utility"]
+	var berthed_slots: int = util_count.call()
+	GameState.berths = berths_before
+	var berth_speed := ModuleDB.berth_mass(["berth_utility"])
 	var commit := {
 		ModuleDB.Slot.UTILITY: "rig_prospector",
 		ModuleDB.Slot.UTILITY_B: "util_assay",
@@ -22656,9 +25640,18 @@ func _run_mine_test() -> void:
 	var drawn := ModuleDB.power_draw(commit)
 	var spare := mk3_power - drawn
 	var lance_power := int(ModuleDB.get_module(PACING_MIDTIER)["power"])
-	print("[mine] MINING COSTS A MOUNT 3 mining utilities into %d slots; the commit draws %d of Mk III's %d, leaving %d vs %s's %d -> %s" % [
-		util_slots, drawn, mk3_power, spare, PACING_MIDTIER, lance_power,
-		"PASS" if util_slots == 2 and spare < lance_power else "FAIL"])
+	# THE THIRD TOOL, and the whole point of naming it here: the berthed pilot
+	# fits all three, so the question stops being about slots and becomes about
+	# power -- which is where the claim was always meant to live.
+	var three_tools := drawn + int(ModuleDB.get_module("util_cutter")["power"])
+	var berthed_cap := mk3_power + ModuleDB.berth_power(["berth_utility"])
+	var berthed_spare := berthed_cap - three_tools
+	print("[mine] MINING COSTS A MOUNT 3 mining utilities into %d slots on the hull as shipped (a berth opens a %d-th, for %.2f of top speed, permanently); the commit draws %d of Mk III's %d, leaving %d vs %s's %d; berthed, all three draw %d of %d, leaving %d -> %s" % [
+		util_slots, berthed_slots, berth_speed, drawn, mk3_power, spare,
+		PACING_MIDTIER, lance_power, three_tools, berthed_cap, berthed_spare,
+		"PASS" if util_slots == 2 and berthed_slots == util_slots + 1
+			and berth_speed > 0.0 and spare < lance_power
+			and berthed_spare < lance_power else "FAIL"])
 
 	# --- 17b. and Mk IV is what buys the mount back --------------------------
 	# The other half of the same trade, and the only reason the tier exists. A
@@ -23455,18 +26448,42 @@ func _run_frontier_test() -> void:
 		var m: Dictionary = ModuleDB.get_module(String(id_v))
 		var cat := String(m.get("category", ""))
 		by_slot[cat] = maxi(int(by_slot.get(cat, 0)), int(m.get("power", 0)))
-	var all_best: int = int(by_slot.get("weapon", 0)) * 2 \
-		+ int(by_slot.get("drive", 0)) + int(by_slot.get("utility", 0)) * 2 \
-		+ int(by_slot.get("core", 0))
+	# v24 (§94). THE MULTIPLICITIES ARE DERIVED, and both ships are measured.
+	# This used to read `weapon * 2 ... utility * 2`, hand-written multipliers
+	# that were the shipped hull's slot counts spelled out -- correct until the
+	# day a slot was added, at which point the invariant would have kept
+	# reporting green about a ship nobody flies. It now counts SLOT_CATEGORY.
+	var berth_slots := {}
+	for b_v in ModuleDB.BERTHS:
+		berth_slots[int((ModuleDB.BERTHS[b_v] as Dictionary)["slot"])] = true
+	var greedy := func(include_berths: bool) -> int:
+		var total := 0
+		for slot_v in ModuleDB.SLOT_CATEGORY:
+			if berth_slots.has(int(slot_v)) and not include_berths:
+				continue
+			total += int(by_slot.get(String(ModuleDB.SLOT_CATEGORY[slot_v]), 0))
+		return total
+	var all_best: int = greedy.call(false)
 	var top_power: int = int(ModuleDB.REACTOR_TIERS[ModuleDB.REACTOR_TIERS.size() - 1]["power"])
+	# AND THE BERTHED SHIP, which is the promise berths were sold on: every
+	# berth adds LESS power than the best module that could stand in its slot,
+	# so the gap widens with every one bought and all-best gets further away
+	# rather than closer. Measured as a margin comparison rather than restated
+	# as two numbers, so a generous berth cannot creep the cap up to meet the
+	# catalog.
+	var berthed_best: int = greedy.call(true)
+	var berthed_cap: int = top_power + ModuleDB.berth_power(ModuleDB.BERTHS.keys())
+	var margin_bare := all_best - top_power
+	var margin_full := berthed_best - berthed_cap
 	# And the step IS the product: the named fit Mk V exists to make possible must
 	# fit it exactly, or the number is arbitrary.
 	var named := 0
 	for id_v in ["lance_3", "torp_3", "drive_vector_2", "core_aegis", "util_torch"]:
 		named += int(ModuleDB.get_module(String(id_v))["power"])
-	print("[frontier] ALL-BEST IS STILL OUT OF REACH greedy best-per-slot draws %d against the top reactor's %d (margin %d); the named Mk V fit draws exactly %d -> %s" % [
-		all_best, top_power, all_best - top_power, named,
-		"PASS" if all_best > top_power and named == top_power else "FAIL"])
+	print("[frontier] ALL-BEST IS STILL OUT OF REACH bare hull draws %d against the top reactor's %d (margin %d); fully berthed draws %d against %d (margin %d, must not shrink); the named Mk V fit draws exactly %d -> %s" % [
+		all_best, top_power, margin_bare, berthed_best, berthed_cap, margin_full, named,
+		"PASS" if all_best > top_power and margin_full >= margin_bare
+			and named == top_power else "FAIL"])
 
 	# --- 14. the frontier's gear is not on the chart -------------------------
 	# The inverse of the shipped STOCKED sweep, and the point of the whole stage:

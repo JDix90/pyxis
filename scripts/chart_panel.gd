@@ -13,6 +13,12 @@ signal beacon_jump_requested(x: float, z: float, depth: float, label: String)
 const SHEET_RATIO := 0.55
 const SLIDE_TIME := 0.28
 const NODE_RADIUS := 17.0
+# v25 (§97). The ring that means "the network holds a copy of this cell". In
+# SCREEN pixels, deliberately: the coverage square under it is world-sized and
+# scales with zoom, so a fixed ring separates from it further the closer you
+# look instead of merging into it -- shape and behaviour both, which is what
+# §30 asks for when two layers share a colour.
+const HELD_RING_PX := 3.0
 
 # v21. THE PLOT'S OWN GEOMETRY. 180 rather than 150 because the plot now carries
 # band rings, a legend and a scale bar under the picture; the arithmetic that
@@ -398,6 +404,11 @@ func legend_words(live: bool, has_ship: bool) -> PackedStringArray:
 		if String(cov_v).begins_with(pref):
 			out.append("SURVEYED")
 			break
+	# v25 (§97). Conditioned on the layer being drawn, like every entry above
+	# it: held cells are a subset of coverage, so HELD can only follow SURVEYED
+	# and only when this system actually holds one.
+	if not GameState.held_cells(_selected).is_empty():
+		out.append("HELD")
 	return out
 
 
@@ -605,6 +616,22 @@ func _draw_plot() -> void:
 		var cc := Palette.band_color(cband)
 		_plot.draw_rect(Rect2(centre - Vector2(cell_px, cell_px) * 0.5,
 			Vector2(cell_px, cell_px)), Color(cc.r, cc.g, cc.b, 0.10), true)
+		# 0b. AND WHICH OF THEM THE NETWORK HOLDS (v25, §97). A small OPEN RING
+		#     on the cell, and every part of that is §30's rule doing work: the
+		#     ring is a different SHAPE from the filled square under it, it is
+		#     fixed in SCREEN space where the square is world-sized (so the two
+		#     separate further as you zoom rather than merging), and it is drawn
+		#     in the same band colour so it reads as a property OF that cell
+		#     rather than a second thing standing in it.
+		#
+		#     An open ring, specifically, because the thing it means is "a copy
+		#     of this exists somewhere else" -- the mark is not fuller than an
+		#     unheld cell, it is duplicated. The chart becomes two documents
+		#     read at once: what the Authority counted, and what the network
+		#     holds.
+		if GameState.is_survey_held(cov):
+			_plot.draw_arc(centre, HELD_RING_PX, 0.0, TAU, 14,
+				Color(cc.r, cc.g, cc.b, 0.85), 1.0, true)
 
 	# 1. The charted volume you started from, for scale.
 	_plot.draw_arc(mid, bounds * scale, 0.0, TAU, 48,
@@ -816,6 +843,13 @@ func _draw_plot() -> void:
 				c = Palette.band_color(2)
 				_plot.draw_rect(Rect2(Vector2(lx, ly - 3.5), Vector2(7.0, 7.0)),
 					Color(c.r, c.g, c.b, 0.35), true)
+			elif word == "HELD":
+				# The same mark the layer draws, at the same size: a legend
+				# swatch that is not the thing it explains is a second thing to
+				# learn.
+				c = Palette.band_color(2)
+				_plot.draw_arc(Vector2(lx + 3.5, ly), HELD_RING_PX, 0.0, TAU, 14,
+					Color(c.r, c.g, c.b, 0.85), 1.0, true)
 			else:
 				c = Palette.TEAL
 				_plot.draw_arc(Vector2(lx + 3.5, ly), 3.5, 0.0, TAU, 12, c, 1.0, true)

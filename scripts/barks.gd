@@ -23,7 +23,24 @@ const LINES := {
 	"first_band_4": "THE QUIET — NESTS ARM AHEAD OF US NOW. A STRAIGHT LINE IS A CHOICE",
 	"first_band_5": "THE FATHOMS — PAST THE COLONY NETWORK. FROM HERE, EVERY RETURN IS FLOWN",
 	"first_band_6": "THE UNSOUNDED — NO INSTRUMENT SPAN, NO PATROLS, WEATHER. WE ARE THE RECORD NOW",
+	# §92. The one line the ship says about the order, fired the moment
+	# the pilot reads Directive 9 and never again. It answers the band-6 line
+	# above -- "WE ARE THE RECORD NOW" was a boast about being past the
+	# instruments; this is the same sentence after finding out why there are no
+	# instruments. Nothing else in the world reacts, which is the point.
+	"read_directive": "WE ARE STILL FILING. SOMEBODY SHOULD KNOW THAT WE ARE STILL FILING",
+	# §95. Fired the first time a convoy speaks to us, which is the first proof
+	# a faction knows who we are. It names the surface, not the gesture — the
+	# work is on the ordinary contract board, and the point of the line is that
+	# the player has no reason to look for it there otherwise.
+	"first_convoy_hail": "THEY TALK TO US NOW. FACTIONS POST WORK FOR PEOPLE THEY TRUST — READ A CONTRACT BOARD",
 	"chart_unlocked": "NEW BEARING CHARTED — OPEN THE CHART",
+	# §102. The ship's voice, once, from inside the becalming. The register rule
+	# at its strictest: three plain sentences, and the eeriness is entirely that
+	# the second and third are TRUE and the mark is the reason we know it.
+	"stillness_passage": "DRIVES QUIET. THE MARK SAID THIS HAPPENS. THE MARK SAID THEY COME BACK",
+	# §102. First close sight of the serpent. What it drops is that you saw it.
+	"serpent_seen": "IT IS LONG. IT IS NOT A MACHINE. THE MARK SAID BOTH",
 	"first_warp": "TRANSIT COMPLETE — UNFAMILIAR SPACE",
 	"apex_out_of_range": "SHOTS BREAKING ON THE SURVEY FIELD — CLOSE IN",
 	"first_dock_range": "DOCKING CLAMPS AVAILABLE — TAP THE PORT",

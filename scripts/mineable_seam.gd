@@ -46,6 +46,10 @@ var mined := false
 # remembered in the save. Empty for every expanse seam, which are remembered only
 # for the session. See _record_cut().
 var charted_key := ""
+# §101. Non-empty for THE VEIN, the legend seam standing at a far mark: cutting
+# it spends the mark, which is the third kind of memory a seam can have. See
+# _record_cut(), which owns all three.
+var owns_mark := ""
 
 var _face: MeshInstance3D
 var _face_mat: StandardMaterial3D
@@ -328,6 +332,14 @@ func _record_cut() -> void:
 	# EXPANSE seam is one of thousands and is remembered only for the session,
 	# which is safe precisely because the band gradient makes shallow farming pay
 	# badly (see WARP FARM). Eleven fixed rocks have no gradient to hide behind.
+	if owns_mark != "":
+		# §101. THE VEIN. The mark is the record: seams_cut validates its keys
+		# against the authored asteroid arrays, so a vein key cannot live there,
+		# and the session store would forget across a warp -- which for a
+		# one-time windfall at seven thousand units is the deep-hulk farm all
+		# over again. Spending the mark is what keeps the vein from rebuilding.
+		GameState.note_mark_spent(owns_mark)
+		return
 	if charted_key != "":
 		GameState.note_seam_cut(charted_key)
 		return

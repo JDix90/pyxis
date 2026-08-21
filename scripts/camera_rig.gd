@@ -488,6 +488,30 @@ func _try_begin_hold(screen_pos: Vector2) -> void:
 		# claim range, so ANY contested tap near one should resolve to the
 		# smaller, more specific thing the player was aiming at.
 		target = _pick(screen_pos, "hyper")
+	if target == null:
+		# v23. The unsounded records, dead last for the same size argument --
+		# a seven-by-sixty-four monolith owns the whole screen at read range.
+		# Their own group, not "hyper": the harness cast-iterates hyper as
+		# HyperStructure, and not "crackable": the radar would hang a permanent
+		# band-6 arrow on a thing whose entire design is that you find the
+		# depth, not the marker.
+		target = _pick(screen_pos, "unsounded")
+	if target == null:
+		# 98. The network's buoys, after even those. A mark is SMALL -- a
+		# forty-unit spar against the archive's sixty-four-unit monolith -- so
+		# by the size argument it should outrank them; it goes last anyway,
+		# because a mark stands 6,500u out where nothing else in this ladder can
+		# be on screen at all. There is no contest to resolve, so the cheapest
+		# correct thing is to leave every earlier rung untouched.
+		target = _pick(screen_pos, "farmark")
+	if target == null:
+		# §103. THE LEGENDS' OWN GROUP, and it is one rung for all of them
+		# rather than one each. The orrery carries a verb of its own, and so
+		# will the forge and the procession -- three nodes that share nothing
+		# except standing alone at a mark, which is exactly the case a shared
+		# ladder group is for. Dead last, the far-marks argument: at 6,500u
+		# nothing else in this ladder can be on screen to contest a tap.
+		target = _pick(screen_pos, "legend")
 	if target and target.has_method("hold_begin"):
 		_hold_target = target
 		target.hold_begin()
@@ -584,6 +608,21 @@ func _select(screen_pos: Vector2) -> bool:
 	if port and port.has_method("on_tapped"):
 		port.on_tapped()
 		return true
+	# §96. BEACONS, AND THIS BRANCH WAS MISSING. The hold ladder above has
+	# picked "beacon" since v20, but this ladder never has -- so Beacon.on_tapped
+	# existed, was improved in §93 to answer all three of its cases, and was
+	# never once reachable from a finger or a mouse. That is §88's exact lesson
+	# repeating on the file §88 was written about: a wired verb with no
+	# affordance is an unbuilt feature, and the only reliable way to catch it is
+	# to check the LADDER rather than the function.
+	#
+	# Placed here to mirror the hold ladder's own order (crackable, mineable,
+	# beacon, hyper, unsounded), so the two ladders resolve a contested tap the
+	# same way.
+	var beacon := _pick(screen_pos, "beacon")
+	if beacon and beacon.has_method("on_tapped"):
+		beacon.on_tapped()
+		return true
 	# v22 (88). The instruments, last for the hold ladder's own reason: they are
 	# the biggest thing on screen when they are on it, so any contested tap
 	# should resolve to the smaller thing first. Before this line, CLICKING the
@@ -592,6 +631,29 @@ func _select(screen_pos: Vector2) -> bool:
 	var hyper := _pick(screen_pos, "hyper")
 	if hyper and hyper.has_method("on_tapped"):
 		hyper.on_tapped()
+		return true
+	# v23. And the unsounded records after even those, mirroring the hold
+	# ladder above -- both ladders gain the group in the same commit, per §88's
+	# lesson: a wired verb without an affordance is an unbuilt feature.
+	var unsounded := _pick(screen_pos, "unsounded")
+	if unsounded and unsounded.has_method("on_tapped"):
+		unsounded.on_tapped()
+		return true
+	# 98. And the marks last, mirroring the hold ladder above. BOTH LADDERS IN
+	# THE SAME COMMIT, which is the rule 96 paid for: Beacon.on_tapped was
+	# written, improved once, and never reachable from a finger for two
+	# horizons because only one of these two lists knew about it.
+	var mark := _pick(screen_pos, "farmark")
+	if mark and mark.has_method("on_tapped"):
+		mark.on_tapped()
+		return true
+	# §103. And the legends themselves, last. BOTH LADDERS IN THE SAME COMMIT,
+	# the rule §96 paid two horizons for -- and this is the rung the rest of
+	# commit 5 hangs on, so getting it wrong would leave the forge and the
+	# procession unreachable by a finger without either file changing again.
+	var legend := _pick(screen_pos, "legend")
+	if legend and legend.has_method("on_tapped"):
+		legend.on_tapped()
 		return true
 	return false
 

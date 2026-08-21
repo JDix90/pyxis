@@ -139,6 +139,15 @@ const ESCORT_EDGE_INSET := 3.0
 
 var _escort: Node3D = null
 var _escort_t := 0.0
+# §104. PRINTED BY THE PATTERN FORGE, and the flag lifts exactly two policies
+# without touching one mechanism. The escort machinery below is the shipped
+# REQUEST ESCORT feature -- station, guard reach, what it fires at, how it
+# dies -- and a printed wing wants all of it. What it does not want is the
+# 60-second courtesy clock (a favour asked of a Cordon picket, not a thing
+# built to fly with you) and the chart-edge release (the promise that patrols
+# do not operate past the marker, which a hull printed 7,000u OUTSIDE the
+# marker cannot be breaking). Both are policy; neither is how escorting works.
+var printed := false
 
 # --- the beat a STANDING machine walks (v18, playtest round 4) ----------------
 # How far a station-keeping sentry orbits its post. 0 means "hold exactly", which
@@ -378,7 +387,7 @@ func _process(delta: float) -> void:
 	rotation.y += delta * 0.8
 	var t := Time.get_ticks_msec() / 1000.0
 	var wander := Vector3(sin(t * 0.5 + _drift_phase), 0, cos(t * 0.4 + _drift_phase)) * 0.4
-	if patrol.is_empty():
+	if patrol.is_empty() and not printed:
 		# Station-keeping. A POST IS A PLACE YOU STAND, NOT A PLACE YOU FREEZE
 		# (v18, playtest round 4): an authored sentry walks a slow ring around
 		# its post so a held lane reads as crewed rather than as scenery.
@@ -489,7 +498,15 @@ func begin_escort(who: Node3D) -> void:
 	# Main.request_escort is the only caller, and it holds the gates: ALLIED band,
 	# a route picket, off cooldown, no muster or boss running. This is the state
 	# change alone.
-	if _dying or who == null or not is_instance_valid(who) or patrol.is_empty():
+	# THE PATROL GATE IS ABOUT TELEPORTING, NOT ABOUT ROUTES. A station-keeper
+	# is refused here because _process ASSIGNS its position from _home every
+	# frame, so it would snap back the instant it was released -- which is why
+	# Main.request_escort only offers the verb to route pickets. A printed hull
+	# has no home to snap to and takes the _walk_beat branch below, so the
+	# reason the gate exists does not reach it.
+	if _dying or who == null or not is_instance_valid(who):
+		return
+	if patrol.is_empty() and not printed:
 		return
 	_escort = who
 	_escort_t = ESCORT_TIME
@@ -525,6 +542,12 @@ func _tick_escort(delta: float) -> void:
 	# how you say goodbye to your escort, not a loophole around the line.
 	if not is_instance_valid(_escort) or bool(_escort.get("docked")):
 		end_escort()
+		return
+	if printed:
+		# A printed wing keeps no clock and knows no marker. It ends when it
+		# dies, when the player docks, or when the warp frees it with the rest
+		# of the system -- which is S3's "they are printed for this ground"
+		# enforced by the scene tree rather than by a countdown.
 		return
 	_escort_t -= delta
 	if _escort_t <= 0.0:
@@ -642,6 +665,13 @@ func _walk_beat(delta: float) -> void:
 		# is fighting, or walking to where it is meant to be -- and for the length
 		# of an escort where it is meant to be is beside the player.
 		goal = _escort_station()
+	elif patrol.is_empty():
+		# NOTHING TO WALK BACK TO. Reachable only for a printed hull whose
+		# escort has ended (the player docked, or died) -- it holds where it is
+		# rather than indexing an empty route, which is the crash this branch
+		# would otherwise be. Written as a general guard rather than a printed
+		# one: any future routeless walker wants the same answer.
+		goal = global_position
 	else:
 		goal = patrol[_patrol_i]
 		if global_position.distance_to(goal) <= PATROL_ARRIVE:

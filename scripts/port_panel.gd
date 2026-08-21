@@ -542,6 +542,18 @@ func _refresh() -> void:
 			_build_commission()
 		_:
 			_body.add_child(_reactor_row())
+			# v24 (§94). THE BERTHS SIT WITH THE REACTOR, not in the module
+			# stock, because that is what they are: hull work, priced against
+			# the power budget, bought once and never sold back. Putting them in
+			# `stock` would have made them modules -- ownable, fittable,
+			# swappable -- which is the one thing a welded hardpoint is not.
+			#
+			# Gated on the counter's reactor cap, the same key that decides
+			# whether the Mk V is on the rack: a yard that cannot sell you the
+			# reactor to run a berth has no business selling the berth.
+			if _reactor_cap() >= ModuleDB.BERTH_YARD_TIER:
+				for bid_v in ModuleDB.BERTHS:
+					_body.add_child(_berth_row(String(bid_v)))
 			for id in _port_def.get("stock", []):
 				_body.add_child(_module_row(String(id)))
 
@@ -1103,6 +1115,35 @@ func _build_commission() -> void:
 
 	_body.add_child(_spacer_row(6))
 
+	# §92. THE FIELD THAT WAS SWITCHED OFF. Absent until the pilot has
+	# read Directive 9, and that placement is the decision rather than an
+	# accident: an unexplained dash sitting here from the first dock would be a
+	# teaser, and this page does not tease -- it states. After the order it is
+	# corroboration, in the registry's own plain voice, of something the player
+	# has already been told out at the terminus.
+	#
+	# ABOVE the complete/claim branch below, which returns early: the field
+	# belongs to the file, not to whether the file is finished.
+	#
+	# Resurvey 44 is THE FIRST MERIDIAN's own fragment -- the resurvey that found
+	# the datum had moved. The two records agree about the date without either
+	# one explaining the other.
+	if GameState.knows_directive_9():
+		var retired := Label.new()
+		retired.text = "RETURNS LOGGED FROM THE RECLASSIFIED VOLUME: —"
+		retired.add_theme_font_size_override("font_size", 12)
+		retired.add_theme_color_override("font_color", Palette.AMBER)
+		_body.add_child(retired)
+		var retired_why := Label.new()
+		retired_why.text = ("FIELD RETIRED AT RESURVEY 44. FILINGS FROM THE VOLUME "
+			+ "ARE ACCEPTED AND COUNTED ABOVE.")
+		retired_why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		retired_why.custom_minimum_size = Vector2(280, 0)
+		retired_why.add_theme_font_size_override("font_size", 10)
+		retired_why.add_theme_color_override("font_color", Palette.AMBER_DIM)
+		_body.add_child(retired_why)
+		_body.add_child(_spacer_row(6))
+
 	if GameState.commission_complete():
 		var closed := Label.new()
 		closed.text = "THE FILE IS CLOSED. THE REGISTRY CARRIES YOUR NAME."
@@ -1623,6 +1664,23 @@ func _contract_row(offer: Dictionary, slots_free: int) -> Control:
 	pay.add_theme_color_override("font_color", Palette.AMBER)
 	left.add_child(pay)
 
+	# §95. WHO POSTED IT, WHAT IT IS WORTH, AND WHAT WALKING AWAY COSTS — all
+	# three before the button, because the third is the one a player can only
+	# learn the expensive way otherwise. A commission's credit reward is
+	# deliberately below the survey row beside it, so this line is also the
+	# answer to "why would I take the worse-paying one".
+	var flag := String(offer.get("faction", ""))
+	if flag != "":
+		var terms := Label.new()
+		terms.text = "%s COMMISSION  ·  +%d STANDING  ·  ABANDON: −%d" % [
+			FactionDB.display_name(flag), int(offer.get("standing", 0)),
+			ContractDB.break_cost(String(offer["id"]))]
+		terms.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		terms.custom_minimum_size = Vector2(180, 0)
+		terms.add_theme_font_size_override("font_size", 10)
+		terms.add_theme_color_override("font_color", FactionDB.tint_of(flag))
+		left.add_child(terms)
+
 	var id := String(offer["id"])
 	if accepted:
 		box.add_child(_mini_button("DROP", func() -> void: _drop_contract(id)))
@@ -1934,6 +1992,77 @@ func _reactor_row() -> Control:
 		b.pressed.connect(_upgrade_reactor)
 		box.add_child(b)
 	return row
+
+
+func _berth_row(id: String) -> Control:
+	# One hull berth: what it opens, what it costs in mass, and the price. The
+	# mass is stated ON THE BUTTON'S OWN ROW rather than in a tooltip, because
+	# it is permanent and cannot be sold back -- 58's rule, applied to a
+	# purchase instead of to a refusal.
+	var berth: Dictionary = ModuleDB.BERTHS.get(id, {})
+	if berth.is_empty():
+		return Control.new()
+	var row := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(Palette.GOLD.r, Palette.GOLD.g, Palette.GOLD.b, 0.05)
+	style.set_corner_radius_all(6)
+	style.content_margin_left = 10
+	style.content_margin_right = 10
+	style.content_margin_top = 7
+	style.content_margin_bottom = 7
+	row.add_theme_stylebox_override("panel", style)
+
+	var box := HBoxContainer.new()
+	row.add_child(box)
+	var left := VBoxContainer.new()
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left.add_theme_constant_override("separation", -1)
+	box.add_child(left)
+
+	var name_line := Label.new()
+	name_line.text = "%s — %s" % [String(berth["name"]),
+		String(ModuleDB.SLOT_NAMES.get(int(berth["slot"]), "?"))]
+	name_line.add_theme_font_size_override("font_size", 13)
+	name_line.add_theme_color_override("font_color", Palette.GOLD)
+	left.add_child(name_line)
+
+	var terms := Label.new()
+	terms.text = "+%d POWER, −%.2f TOP SPEED, PERMANENT" % [
+		int(berth["power"]), float(berth["speed_cost"])]
+	terms.add_theme_font_size_override("font_size", 10)
+	terms.add_theme_color_override("font_color", Palette.AMBER_DIM)
+	left.add_child(terms)
+
+	var desc := Label.new()
+	desc.text = String(berth.get("desc", ""))
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc.custom_minimum_size = Vector2(190, 0)
+	desc.add_theme_font_size_override("font_size", 10)
+	desc.add_theme_color_override("font_color", Color(0.6, 0.6, 0.66))
+	left.add_child(desc)
+
+	if GameState.berths.has(id):
+		var fitted := Label.new()
+		fitted.text = "WELDED ON"
+		fitted.add_theme_font_size_override("font_size", 11)
+		fitted.add_theme_color_override("font_color", Palette.AMBER_DIM)
+		box.add_child(fitted)
+		return row
+	var b := Button.new()
+	b.text = "CUT IT IN %s" % _comma(GameState.berth_price(id))
+	b.custom_minimum_size = Vector2(120, 30)
+	b.add_theme_font_size_override("font_size", 11)
+	b.disabled = not GameState.can_buy_berth(id)
+	b.pressed.connect(func() -> void: _buy_berth(id))
+	box.add_child(b)
+	return row
+
+
+func _buy_berth(id: String) -> void:
+	if not GameState.buy_berth(id):
+		return
+	Sfx.play("equip", -6.0, 0.9)
+	_refresh()
 
 
 func _comma(n: int) -> String:

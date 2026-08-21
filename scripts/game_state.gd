@@ -33,7 +33,7 @@ signal lane_opened(id: String)
 signal standing_shifted(other: String, delta: int, band: int)
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 22
+const SAVE_VERSION := 26
 const SAVE_DEBOUNCE := 1.0
 
 # v6 defaults. Kept as one dictionary each so a migration only has to merge
@@ -106,6 +106,15 @@ var salvage := 0
 var owned: Array[String] = []
 var fit := {}
 var reactor_tier := 0
+# v24 (§94). WHICH BERTHS ARE BOUGHT — ids into ModuleDB.BERTHS. An Array
+# rather than a dictionary because a berth is owned or it is not, and because
+# `owned` next door has taught the loader's shape already: validate against the
+# catalog, drop what is not in it. Bounded by the table at three entries.
+#
+# One way only, and the loader enforces the consequence rather than trusting
+# it: a fit naming a slot no berth has opened is dropped on load, so a
+# hand-edited save cannot hand a pilot a free hardpoint.
+var berths: Array = []
 var stats := {}
 
 # Live power diversions: burned-out section id -> the section carrying its power.
@@ -292,6 +301,68 @@ var survey_filed := {}
 # hyper_positions returns at most HYPER_MAX per system, so this is bounded at
 # 15 entries across the whole game. Asserted against the generator.
 var structures_seen := {}
+# v23. DEEP LOGS READ, keyed "system:kind" -> highest fragment stage reached
+# (1..3). The unsounded structures out past band 6 each carry a short written
+# record; this remembers how much of each the pilot has stood still long enough
+# to pull. An int rather than the structures_seen booleans because the record
+# is SEQUENTIAL -- fragment two only makes sense after fragment one, and the
+# structure refuses to skip ahead.
+#
+# NEEDS NO CAP, generator-bounded like structures_seen: SystemDB authors one
+# unsounded kind per system plus a single wreck, so this tops out at four
+# entries across the whole game. The kind list is duplicated here as a const
+# rather than read off UnsoundedSite -- this autoload references no world
+# class, deep_space.gd's rule (§39), and four strings are a cheaper price
+# than a class-list edge.
+var deep_logs := {}
+# v25 (§98). SOUNDING MARKS THIS PILOT HAS RESOLVED, keyed "system:index" --
+# structures_seen's shape one shelf further out, because it is the same kind of
+# fact: a place you found, remembered because finding it was the work.
+#
+# RIDES v25 WITH NO BUMP. Defaults-not-branches: a file from either earlier v25
+# commit has no key, gets {}, and loads as a pilot who has read no marks --
+# true of every pilot before buoys existed.
+#
+# THE VALUE IS A STATE, NOT A BOOLEAN, and it is one from the first line rather
+# than a bool that grows a vocabulary later. That growth is precisely what cost
+# a version bump and a silent loader defect in 96: survey_filed held `true` for
+# two versions, the loader wrote the literal back, and the day a second value
+# appeared every network filing quietly reverted on load. The legends (commits
+# 3-5) need per-mark state -- a layup that has been deposited into, a nursery
+# that is held -- so the store carries a validated string today and gains a
+# member of MARK_STATES then, with no shape change and nothing to migrate.
+#
+# NEEDS NO CAP, generator-bounded like structures_seen: FarMarks returns at
+# most PER_SYSTEM per system, so this is bounded at fifteen entries across the
+# whole game. Asserted against the generator rather than hoped.
+var marks_seen := {}
+# v26 (§106). THE NURSERY, HELD. Keyed by MARK key ("system:index") and kept in
+# its OWN store rather than in `colonies`, which the research pass found is not
+# a choice but a requirement:
+#
+#   colony_key(sid, i) and mark_key(sid, i) are the SAME FORMAT -- "%s:%d" --
+#   so a nursery filed under `colonies` at FarMarks index 3 would collide with
+#   hyper-structure index 3's colony. Claiming one would make the other read as
+#   claimed, suppress its chart diamond and mislabel its jump row. And a
+#   prefixed key does not escape it: _load_colonies REQUIRES a two-part key and
+#   silently drops anything else. There is no key shape that both survives that
+#   loader and avoids the collision.
+#
+# Value: {"x": float, "z": float, "taken_at": float, "waves": int}. `taken_at`
+# is the recapture clock's anchor and `waves` is what the pilot has actually
+# turned back -- the ONE thing the derivation cannot reconstruct, because it is
+# a fact about them rather than about the clock. Everything else (which wave is
+# due, how many hulls it brings) is DERIVED from taken_at against
+# played_seconds, the rival's rule: nothing to keep in step, nothing that can
+# disagree with itself.
+#
+# NEEDS NO CAP, generator-bounded like its neighbours: FarMarks deals at most
+# one nursery in an entire run, so this store holds at most one entry, ever.
+var nursery := {}
+# What each nursery key has survived, kept across a LOSS so retaking does not
+# reset the record (S5). Session-only and deliberately so: it is a courtesy to
+# a pilot inside one sitting, not a fact the save owes anyone.
+var _nursery_waves_memory := {}
 
 # v16. THE INTEL DOSSIER. Keyed by system id; each value is an Array of hint
 # dictionaries the player has PAID FOR or EARNED, and together they are the only
@@ -1107,6 +1178,7 @@ func reset_to_starter() -> void:
 		owned.append(id)
 	fit = ModuleDB.STARTER_FIT.duplicate()
 	reactor_tier = 0
+	berths = []
 	current_system = SystemDB.START_SYSTEM
 	breached = []
 	lanes_open = []
@@ -1138,6 +1210,9 @@ func reset_to_starter() -> void:
 	survey_coverage = {}
 	survey_filed = {}
 	structures_seen = {}
+	deep_logs = {}
+	marks_seen = {}
+	nursery = {}
 	apex_intel = {}
 	beacons = {}
 	colonies = {}
@@ -1422,7 +1497,55 @@ func spend_salvage(amount: int) -> bool:
 # --- fitting ---------------------------------------------------------------
 
 func power_cap() -> int:
-	return ModuleDB.reactor_power(reactor_tier)
+	# v24 (§94). The reactor, plus whatever the bought berths brought with them.
+	# A berth is a slot AND the power to use it -- see ModuleDB.BERTHS for why
+	# the slot alone was not a product worth selling.
+	return ModuleDB.reactor_power(reactor_tier) + ModuleDB.berth_power(berths)
+
+
+func slot_unlocked(slot: int) -> bool:
+	# Every shipped slot is always open; a berth slot opens when it is bought.
+	# Asked of the BERTH TABLE rather than of a list of unlocked slots, so the
+	# two can never disagree about which slot a berth opens.
+	for id_v in ModuleDB.BERTHS:
+		if int((ModuleDB.BERTHS[id_v] as Dictionary).get("slot", -1)) == slot:
+			return berths.has(String(id_v))
+	return true
+
+
+func open_slots() -> Array:
+	# The slots this pilot actually has, in enum order. Every surface that draws
+	# or counts slots reads this rather than SLOT_NAMES -- the refit chips, the
+	# manual's fitting page, and the assertions that count them.
+	var out: Array = []
+	for slot_v in ModuleDB.SLOT_NAMES:
+		if slot_unlocked(int(slot_v)):
+			out.append(slot_v)
+	return out
+
+
+func berth_price(id: String) -> int:
+	return int((ModuleDB.BERTHS.get(id, {}) as Dictionary).get("price", 0))
+
+
+func can_buy_berth(id: String) -> bool:
+	return ModuleDB.BERTHS.has(id) and not berths.has(id) \
+		and salvage >= berth_price(id)
+
+
+func buy_berth(id: String) -> bool:
+	# ONE WAY, and that is the design rather than a missing feature. The mass is
+	# what makes a berth a trade instead of a strict upgrade, and a berth that
+	# could be sold back would make it a rental -- buy it for the fight, refund
+	# it for the flight home.
+	if not can_buy_berth(id):
+		return false
+	salvage -= berth_price(id)
+	berths.append(id)
+	salvage_changed.emit(salvage)
+	_recompute()
+	_queue_save()
+	return true
 
 
 func power_draw() -> int:
@@ -1453,6 +1576,8 @@ func can_equip(slot: int, id: String) -> bool:
 		# other system then had to tolerate as a silently invalid state. The
 		# refit console offers to jettison down to the threshold instead.
 		return cargo_overflow(slot, id) == 0
+	if not slot_unlocked(slot):
+		return false
 	if not ModuleDB.exists(id) or not owns(id):
 		return false
 	if ModuleDB.SLOT_CATEGORY.get(slot, "") != ModuleDB.get_module(id)["category"]:
@@ -1558,6 +1683,88 @@ func is_survey_filed(key: String) -> bool:
 	return survey_filed.has(key)
 
 
+# v25 (§96). THE VALUE OF A FILED CELL, and until this horizon there was not
+# one -- every write was the literal `true`. A cell filed with the refusers'
+# network instead of an Authority counter carries HELD instead, so the store
+# says WHERE the return went rather than only that it went.
+#
+# A VALUE, NOT A SECOND SET. A parallel `survey_held` dictionary would be a
+# second store needing its own bound, its own loader and its own eviction, and
+# §17 refuses exactly that; as a value it inherits the subset invariant and the
+# cap for free -- a held cell is evicted with its coverage key like any other,
+# and the wreck's four-hundred-cell log stays true.
+const HELD := "held"
+
+
+func is_survey_held(key: String) -> bool:
+	# The accessor that did not exist before this horizon: every reader of this
+	# store asked `.has()` and nothing anywhere looked at a value.
+	#
+	# TYPE FIRST, and this is not defensive style -- it is required. The store
+	# now holds TWO types: `true` for a counter filing and HELD for a network
+	# one, and `String(true)` is not a constructor GDScript has. Written as a
+	# bare String() this errored on every counter-filed cell it was asked about
+	# and then returned false anyway, so the assertions around it PASSED while
+	# the run logged a script error: a green leg standing on a broken call.
+	var v = survey_filed.get(key, false)
+	return typeof(v) == TYPE_STRING and String(v) == HELD
+
+
+func note_survey_held(key: String) -> bool:
+	# THE SIBLING MUTATOR, and it exists because note_survey_filed CANNOT do
+	# this. That function's first line refuses a key already in the store --
+	# correctly, for its own job, since filing twice at a counter must not pay
+	# twice -- so promoting a cell the pilot already sold at a port is a no-op
+	# through it. This one upgrades.
+	#
+	# Still refuses a cell that is not in coverage, which is where the subset
+	# invariant is actually enforced, and still queues the save: a held mark
+	# that only reached disk on the next ambient write would be lost to a crash
+	# in exactly the session the player flew six thousand units for it.
+	if not survey_coverage.has(key) or is_survey_held(key):
+		return false
+	survey_filed[key] = HELD
+	_queue_save()
+	return true
+
+
+func files_with_the_network() -> bool:
+	# v25 (§97). Whether this pilot has ever clipped a return to somebody else's
+	# mast. DERIVED from the store rather than flagged, the horizon's own rule:
+	# a held cell IS the evidence, so there is nothing to keep in step and
+	# nothing that can disagree with the chart the player is looking at.
+	#
+	# What it gates is a REGISTER, never a mechanic: the rival's annotations stop
+	# reading as a loss and start reading as a colleague's mark. Nothing about
+	# the rival changes -- they still get there first exactly as often, and they
+	# still take nothing the player had.
+	# THROUGH is_survey_held, NOT by re-reading the value. The first draft of
+	# this function was `String(survey_filed[k_v]) == HELD` -- the identical
+	# invalid-constructor defect fixed two commits ago, written again in the same
+	# file minutes after the rule was recorded. The store holds two types and
+	# there is exactly ONE function that knows how to ask; every other reader
+	# calls it. That is the durable fix, where "remember to use typeof" is not.
+	for k_v in survey_filed:
+		if is_survey_held(String(k_v)):
+			return true
+	return false
+
+
+func held_cells(system_id := "") -> Array:
+	# Coverage that went to the network, optionally for one system. unfiled_cells'
+	# shape and unfiled_cells' reason: a UI that wants to say "eleven held"
+	# should not be walking the store itself.
+	var prefix := system_id + ":"
+	var out: Array = []
+	for k_v in survey_coverage:
+		var k := String(k_v)
+		if system_id != "" and not k.begins_with(prefix):
+			continue
+		if is_survey_held(k):
+			out.append(k)
+	return out
+
+
 func unfiled_cells(system_id := "") -> Array:
 	# Coverage minus filed, optionally for one system. The pricing half of this
 	# lands in the next commit; the accessor is here because the store is here,
@@ -1609,6 +1816,109 @@ func structures_seen_in(system_id: String) -> Array:
 	return out
 
 
+# THE ONLY STATE A MARK CAN BE IN TODAY, and the list is the validator: the
+# loader accepts a value only if it is in here, so a hand-edited save cannot
+# invent a fourth kind of mark and the legends can add theirs by appending one
+# string. HELD's neighbour in every respect except that this one was written
+# knowing what it was for.
+const MARK_READ := "read"
+# v25 (§99). AND THE STATE THE STORE WAS SHAPED FOR. A drift whose workshop has
+# been cracked is still a read mark -- is_mark_read asks whether the value is a
+# legal STATE, not whether it is the first one -- so the channel still skips it
+# and the plate still reads. What changes is that the legend does not come back.
+#
+# This is the whole argument for shipping a validated string one commit early
+# rather than a boolean: the store did not change shape, the loader did not
+# change, and nothing had to be migrated. One word was added to one list.
+const MARK_SPENT := "spent"
+# v25 (§101). THE LAYUP'S TWO FACTS, and the ladder becomes a small lattice:
+# a cache can be withdrawn from (spent) and deposited into (given), and a pilot
+# can have done either, or both (closed), in either order. Four words cover
+# every reachable combination, the accessors below own the transitions, and the
+# loader still validates by membership with no other change -- the third time
+# this store has grown by a word and nothing else.
+const MARK_GIVEN := "given"
+const MARK_CLOSED := "closed"
+const MARK_STATES := ["read", "spent", "given", "closed"]
+
+
+func mark_key(system_id: String, index: int) -> String:
+	return "%s:%d" % [system_id, index]
+
+
+func is_mark_read(key: String) -> bool:
+	# TYPE FIRST, for the reason is_survey_held carries the same guard: the store
+	# holds strings, `String(true)` is not a constructor GDScript has, and a bare
+	# String() over a rubbish value is a script error inside a call whose
+	# assertions would still print PASS. ANY recorded state means resolved --
+	# a mark that has been claimed has necessarily been read.
+	var v = marks_seen.get(key, "")
+	return typeof(v) == TYPE_STRING and MARK_STATES.has(String(v))
+
+
+func note_mark_read(key: String) -> bool:
+	# Returns whether this is the FIRST reading, so the caller can write the log
+	# line once rather than on every re-read. Queues the save immediately: a mark
+	# read six thousand units out and lost to a crash is a lost expedition.
+	if is_mark_read(key):
+		return false
+	marks_seen[key] = MARK_READ
+	_queue_save()
+	return true
+
+
+func note_mark_spent(key: String) -> bool:
+	# The legend at this mark has been taken. Refuses a mark that was never read
+	# -- you cannot spend what you could not find -- so the two states stay
+	# ordered by construction rather than by the caller remembering. A mark
+	# already GIVEN closes instead, preserving the deposit fact (§101): spending
+	# must never erase that the pilot once left something here.
+	if not is_mark_read(key) or is_mark_spent(key):
+		return false
+	marks_seen[key] = MARK_CLOSED if is_mark_given(key) else MARK_SPENT
+	_queue_save()
+	return true
+
+
+func is_mark_spent(key: String) -> bool:
+	var v = marks_seen.get(key, "")
+	return typeof(v) == TYPE_STRING \
+		and (String(v) == MARK_SPENT or String(v) == MARK_CLOSED)
+
+
+func note_mark_given(key: String) -> bool:
+	# §101. Something was left at this mark's cache. Returns whether it is the
+	# FIRST deposit -- the plate's clause and the log line fire once -- while
+	# the act itself stays repeatable at the node: the arrangement keeps no
+	# books, so there is nothing here to count, only the one fact.
+	if not is_mark_read(key) or is_mark_given(key):
+		return false
+	marks_seen[key] = MARK_CLOSED if is_mark_spent(key) else MARK_GIVEN
+	_queue_save()
+	return true
+
+
+func is_mark_given(key: String) -> bool:
+	var v = marks_seen.get(key, "")
+	return typeof(v) == TYPE_STRING \
+		and (String(v) == MARK_GIVEN or String(v) == MARK_CLOSED)
+
+
+func marks_read() -> Dictionary:
+	# key -> true for every resolved mark, which is exactly the shape
+	# FarMarks.nearest_unseen reads. Built rather than handing the store over
+	# directly: the generator asks bool() of what it is given, the store holds
+	# STATE STRINGS, and the day a state is added that should not hide a mark
+	# from the channel this is the one place that decides. One reader that knows
+	# how to ask, per 97's own lesson.
+	var out := {}
+	for k_v in marks_seen:
+		var k := String(k_v)
+		if is_mark_read(k):
+			out[k] = true
+	return out
+
+
 func _load_survey_filed(saved: Dictionary) -> void:
 	# Filtered against COVERAGE rather than against a shape, which is the
 	# stronger test and the one the invariant actually needs: a filed key naming
@@ -1617,10 +1927,26 @@ func _load_survey_filed(saved: Dictionary) -> void:
 	# same reason.
 	survey_filed = {}
 	for key_v in saved:
-		if not bool(saved[key_v]):
-			continue
 		var key := String(key_v)
-		if survey_coverage.has(key):
+		if not survey_coverage.has(key):
+			continue
+		# v25 (§96). THE VALUE IS PRESERVED, and it was not before -- this line
+		# wrote the literal `true` and dropped whatever the file held, which was
+		# harmless for two versions because the only value that ever existed WAS
+		# true. The moment a cell can be HELD, that same line silently converts
+		# every network filing back into a counter filing on the next load: the
+		# store would be right all session and wrong forever after, with nothing
+		# dropped and no error anywhere.
+		#
+		# Validated by TYPE rather than by bool() coercion, _load_deep_logs'
+		# posture for a store whose value means something. Exactly two values are
+		# legal; anything else -- a number, a dictionary, "nonsense" -- is not a
+		# third state to be tolerated, it is a corrupt entry to drop. `false`
+		# drops here as it always did, which keeps migrate21's rubbish pass true.
+		var raw = saved[key_v]
+		if typeof(raw) == TYPE_STRING and String(raw) == HELD:
+			survey_filed[key] = HELD
+		elif typeof(raw) == TYPE_BOOL and bool(raw):
 			survey_filed[key] = true
 
 
@@ -1648,6 +1974,166 @@ func _load_structures_seen(saved: Dictionary) -> void:
 		structures_seen[key] = true
 
 
+# §106. THE RECAPTURE CLOCK, and it costs zero new mechanism. The wave index is
+# DERIVED from a persisted anchor exactly the way ContractDB.board_bucket
+# derives a board from played_seconds, and quantised the way Rival quantises
+# its strides -- so two world rebuilds seconds apart can never disagree about
+# which wave is due, and closing the game for a month does not return the pilot
+# to a nursery under its hundredth assault. It races the player's own clock.
+const NURSERY_PERIOD := 900.0
+# The stride the anchor is rounded to before any comparison. Rival's rule: a
+# clock read twice inside one stride answers the same both times.
+const NURSERY_STRIDE := 60.0
+# What the first wave brings, and what each one after it adds. "In increasing
+# numbers, forever" is the index feeding this, capped so forever stays playable
+# -- the muster releases six at a time and that is the pacing precedent.
+const NURSERY_WAVE_BASE := 3
+const NURSERY_WAVE_STEP := 1
+const NURSERY_WAVE_MAX := 8
+
+
+func nursery_key() -> String:
+	return String(nursery.get("key", ""))
+
+
+func holds_nursery() -> bool:
+	return not nursery.is_empty()
+
+
+func take_nursery(key: String, x: float, z: float) -> bool:
+	# Taking the ground. Refuses a second claim outright -- there is at most one
+	# nursery in a run, and a re-take must go through release_nursery first so
+	# the clock restarts from the moment it was actually retaken.
+	if holds_nursery():
+		return false
+	nursery = {"key": key, "x": x, "z": z, "taken_at": played_seconds,
+		"waves": int(_nursery_waves_memory.get(key, 0))}
+	note_log("TOOK THE TALLY'S GROUND")
+	_queue_save()
+	return true
+
+
+func release_nursery() -> void:
+	# THEY TOOK IT BACK. The count of waves turned back is remembered against
+	# the key rather than reset -- S5: the clock restarts, the record does not.
+	# A pilot who held it through nine assaults and lost the tenth has still
+	# held it through nine, and retaking it does not make them a novice.
+	if not holds_nursery():
+		return
+	_nursery_waves_memory[String(nursery.get("key", ""))] = int(nursery.get("waves", 0))
+	nursery = {}
+	note_log("THE TALLY TOOK IT BACK")
+	_queue_save()
+
+
+func nursery_wave_index() -> int:
+	# Which assault is due, derived. Quantised to the stride BEFORE the divide,
+	# so a rebuild mid-stride cannot advance it.
+	if not holds_nursery():
+		return 0
+	var since := played_seconds - float(nursery.get("taken_at", played_seconds))
+	if since <= 0.0:
+		return 0
+	# floorf, NOT floor: the bare global is untyped, so `:=` cannot infer from
+	# it and the whole autoload fails to compile -- which takes every script
+	# that depends on it down with it. The typed float variants (floorf, absf,
+	# maxf, clampf...) are what this codebase uses everywhere else for exactly
+	# this reason.
+	var strided := floorf(since / NURSERY_STRIDE) * NURSERY_STRIDE
+	return int(floorf(strided / NURSERY_PERIOD))
+
+
+func nursery_wave_size(index: int) -> int:
+	return clampi(NURSERY_WAVE_BASE + NURSERY_WAVE_STEP * maxi(index, 0),
+		NURSERY_WAVE_BASE, NURSERY_WAVE_MAX)
+
+
+func nursery_waves_turned() -> int:
+	return int(nursery.get("waves", 0))
+
+
+func note_nursery_wave_turned() -> void:
+	if not holds_nursery():
+		return
+	nursery["waves"] = int(nursery.get("waves", 0)) + 1
+	# THE CLOCK RESTARTS FROM THE VICTORY, not from the founding. Without this
+	# the derived index would run away while the pilot was busy winning, and the
+	# next assault would arrive already overdue -- several at once, forever.
+	nursery["taken_at"] = played_seconds
+	_queue_save()
+
+
+func _load_nursery(saved: Dictionary) -> void:
+	# _load_colonies' posture with the generator check its sibling deliberately
+	# omits: a colony's stored position IS the colony, but a nursery is pinned
+	# to a MARK, so an index FarMarks no longer deals is a nursery standing at
+	# nothing. Validated the way marks_seen is.
+	nursery = {}
+	if saved.is_empty():
+		return
+	var key := String(saved.get("key", ""))
+	var bits := key.split(":")
+	if bits.size() != 2:
+		return
+	var sid := String(bits[0])
+	if not SystemDB.exists(sid) or not String(bits[1]).is_valid_int():
+		return
+	var idx := int(bits[1])
+	if idx < 0 or idx >= FarMarks.positions(sid, run_seed).size():
+		return
+	var x = saved.get("x", null)
+	var z = saved.get("z", null)
+	if typeof(x) not in [TYPE_FLOAT, TYPE_INT] or typeof(z) not in [TYPE_FLOAT, TYPE_INT]:
+		return
+	if not is_finite(float(x)) or not is_finite(float(z)):
+		return
+	# taken_at is clamped to NOW at the top: a hand-edited stamp in the future
+	# would make `since` negative forever and freeze the clock, and one absurdly
+	# far in the past would land the pilot mid-siege on load.
+	var stamp := clampf(float(saved.get("taken_at", played_seconds)),
+		0.0, played_seconds)
+	nursery = {"key": key, "x": float(x), "z": float(z), "taken_at": stamp,
+		"waves": maxi(int(saved.get("waves", 0)), 0)}
+
+
+func _load_marks_seen(saved: Dictionary) -> void:
+	# _load_structures_seen's posture, against the mark generator instead of the
+	# instrument one: the index must still name a buoy FarMarks actually returns,
+	# so a retune of the depth window or the per-system count cannot leave this
+	# pointing at a reading of something that is no longer there.
+	#
+	# AND THE VALUE IS VALIDATED, NEVER COERCED. `if bool(saved[key_v])` -- the
+	# line its sibling above uses correctly, because that store's value carries
+	# no information -- would accept 7, "nonsense" and {} here and write them
+	# straight back into a store whose value is read as a state. Checked by type
+	# and by membership, then PRESERVED: writing the literal MARK_READ instead
+	# would throw away exactly what 96 learned the hard way.
+	#
+	# FarMarks IS A LEAF, so calling it from the autoload closes no class-list
+	# cycle: it is a RefCounted of static functions that references SystemDB and
+	# nothing else, which is the same edge _load_structures_seen already has one
+	# line up. 39's rule is about WORLD classes -- this file still references no
+	# node, and SoundingMark is not named anywhere in it.
+	marks_seen = {}
+	for key_v in saved:
+		var raw = saved[key_v]
+		if typeof(raw) != TYPE_STRING or not MARK_STATES.has(String(raw)):
+			continue
+		var key := String(key_v)
+		var bits := key.split(":")
+		if bits.size() != 2:
+			continue
+		var sid := String(bits[0])
+		if not SystemDB.exists(sid):
+			continue
+		if not String(bits[1]).is_valid_int():
+			continue
+		var idx := int(bits[1])
+		if idx < 0 or idx >= FarMarks.positions(sid, run_seed).size():
+			continue
+		marks_seen[key] = String(raw)
+
+
 func _load_survey(saved: Dictionary) -> void:
 	# _load_seams_cut's posture: reset, then filter, dropping rather than
 	# crashing. Entries are INSERTED THROUGH THE SAME CAP the write path uses,
@@ -1673,6 +2159,133 @@ func _load_survey(saved: Dictionary) -> void:
 			                                #    would span 8.6e9 units
 		survey_coverage[key] = true
 		_enforce_survey_cap(String(bits[0]))
+
+
+# --- deep logs (v23, THE UNSOUNDED) ------------------------------------------
+
+# The four records the generator can place. Mirrors UnsoundedSite's kind set by
+# hand -- see the deep_logs declaration for why this file will not read it off
+# the class -- and the harness pins the two lists against each other so they
+# cannot drift apart silently.
+const DEEP_LOG_KINDS := ["meridian", "glass", "return", "wreck"]
+# The longest record is three fragments; the wreck is one. The loader clamps
+# against this rather than trusting the file.
+const DEEP_LOG_STAGE_MAX := 3
+
+
+func deep_log_stage(key: String) -> int:
+	# 0 means "never read", which is not a stored state -- absence is the
+	# default, the same rule as every other store here.
+	return int(deep_logs.get(key, 0))
+
+
+func note_deep_log(key: String, stages_total: int) -> int:
+	# Advance the record by ONE fragment, never further. The fourteen-second
+	# hold in unsounded_site.gd is what makes each advance cost standing still
+	# in band-6 weather; this function's own contract is narrower -- no single
+	# call grants more than one stage, and none past the record's total.
+	# Returns the stage now held, unchanged when the record is already complete
+	# -- the caller reads "no advance" off equality, not off a second flag.
+	var cur := deep_log_stage(key)
+	var cap := clampi(stages_total, 1, DEEP_LOG_STAGE_MAX)
+	if cur >= cap:
+		return cur
+	deep_logs[key] = cur + 1
+	_queue_save()
+	return cur + 1
+
+
+# §92. WHICH FRAGMENT IS THE ORDER. Directive 9 is fragment 2 of the
+# bearing-terminus record, and the two flags below are the whole reveal's
+# gating — derived from the store above, so this horizon costs zero bytes and a
+# pilot who read the fragments last week is already carrying both.
+const DIRECTIVE_STAGE := 2
+# The three ARCHIVES, which is DEEP_LOG_KINDS minus the wreck: the wreck is the
+# other cartographer's own log, not one of the authority's datums, and holding
+# it says nothing about how much of the record the pilot has.
+const ARCHIVE_KINDS := ["meridian", "glass", "return"]
+
+
+func knows_directive_9() -> bool:
+	# The PRIVATE beat: the pilot has read the order itself. Gates the ship's
+	# line, the log entry and the Commission field — things that belong to the
+	# player. The world does not react to this, deliberately (§92): you know,
+	# and nothing else does.
+	#
+	# Derived by SCANNING for any bearing-terminus record rather than asking
+	# pyx03 by name, so a future system authoring the `return` datum is covered
+	# without a second place to edit — the same reason unsounded_kind_of is data.
+	for key_v in deep_logs:
+		if String(key_v).ends_with(":return") \
+				and int(deep_logs[key_v]) >= DIRECTIVE_STAGE:
+			return true
+	return false
+
+
+func heard_the_request() -> bool:
+	# v25 (§96). THE THIRD RUNG, and the last one the record has. Fragment 3 of
+	# the bearing-terminus archive is the ASK -- "file a return for us" -- and
+	# this gates the verb that answers it. One step past knows_directive_9,
+	# which gates only knowing the order was given.
+	#
+	# Scanned for a suffix rather than asked of pyx03 by name, its two siblings'
+	# rule: a future system authoring the `return` datum is covered with no
+	# second place to edit.
+	for key_v in deep_logs:
+		if String(key_v).ends_with(":return") \
+				and int(deep_logs[key_v]) >= DEEP_LOG_STAGE_MAX:
+			return true
+	return false
+
+
+func holds_whole_record() -> bool:
+	# The AFTERMATH beat: every archive read to its end. Gates the two voices
+	# out past the Quiet that were never the authority's — the deep speaks
+	# differently to somebody who knows all of it, and to nobody else.
+	#
+	# Stage-max rather than a per-kind length, because this file must not reach
+	# for UnsoundedSite (§39: the autoload never references a world class). The
+	# harness pins the two against each other so an archive that grew a fourth
+	# fragment cannot make this flag silently unreachable.
+	for kind_v in ARCHIVE_KINDS:
+		var suffix := ":" + String(kind_v)
+		var held := false
+		for key_v in deep_logs:
+			if String(key_v).ends_with(suffix) \
+					and int(deep_logs[key_v]) >= DEEP_LOG_STAGE_MAX:
+				held = true
+				break
+		if not held:
+			return false
+	return true
+
+
+func _load_deep_logs(saved: Dictionary) -> void:
+	# _load_structures_seen's posture, validated against what CAN exist: the
+	# system must still be authored, the kind must be one the generator places,
+	# and the stage must be a real fragment number. Anything else is dropped,
+	# not kept and not crashed on.
+	deep_logs = {}
+	for key_v in saved:
+		var key := String(key_v)
+		var bits := key.split(":")
+		if bits.size() != 2:
+			continue
+		if not SystemDB.exists(String(bits[0])):
+			continue
+		if not DEEP_LOG_KINDS.has(String(bits[1])):
+			continue
+		# THE VALUE'S TYPE, BEFORE ITS RANGE. JSON hands back whatever was in
+		# the file, and int() on a dictionary or an array is a conversion this
+		# loader should never be asked to make -- a hand-edited save must be
+		# dropped here, not turned into a plausible-looking stage number.
+		var raw_v = saved[key_v]
+		if typeof(raw_v) != TYPE_INT and typeof(raw_v) != TYPE_FLOAT:
+			continue
+		var stage := int(raw_v)
+		if stage < 1 or stage > DEEP_LOG_STAGE_MAX:
+			continue
+		deep_logs[key] = stage
 
 
 # --- waypoint beacons (v20, Hunt stage 5) ------------------------------------
@@ -1911,17 +2524,22 @@ func _load_apex_intel(saved: Dictionary) -> void:
 			if not (h_v is Dictionary):
 				continue                   # 3. every entry is a hint dict
 			var h: Dictionary = h_v
-			var kind := String(h.get("kind", ""))
+			# Values, not keys: JSON can hand back a number here, and String()
+			# has no constructor for one. Normalised through str(), which
+			# accepts anything and lets the checks below reject it on its
+			# merits -- the same outcome, without a thrown call. No shipped
+			# fixture reaches this today; the berths loader's did.
+			var kind := str(h.get("kind", ""))
 			if kind == "":
 				continue                   # 4. an unattributed hint is unplottable
 			if kind == "ring":
 				var band := int(h.get("band", -1))
 				if band < 0 or band >= DeepSpace.BAND_NAMES.size():
 					continue               # 5. must name a band that exists
-				if not DeepSpace.QUADRANTS.has(String(h.get("quadrant", ""))):
+				if not DeepSpace.QUADRANTS.has(str(h.get("quadrant", ""))):
 					continue               # 6. and a real compass sector
 				kept.append({"kind": "ring", "band": band,
-					"quadrant": String(h.get("quadrant", ""))})
+					"quadrant": str(h.get("quadrant", ""))})
 				continue
 			# Bearing hints: every number finite, the error a sane half-angle.
 			var ox := float(h.get("ox", 0.0))
@@ -2856,6 +3474,26 @@ func craft(id: String) -> bool:
 	return true
 
 
+func grant_module(id: String) -> bool:
+	# v25 (§99). A MODULE THAT ARRIVES WITHOUT A COUNTER. craft() is the same
+	# verb with a recipe in front of it and buy() is the same verb with a price;
+	# this is the one for a thing that was found. Kept separate rather than
+	# calling buy(0), which would SUCCEED at price zero for any module in the
+	# catalogue -- the guarantee that a prototype is not for sale is its absence
+	# from every stock list, and a zero-price buy path is exactly how that
+	# guarantee would be reached around.
+	#
+	# Returns false when the pilot already owns it, which is not a failure but
+	# an ANSWER: the caller has to have something to say about a second copy,
+	# and the drift does.
+	if not ModuleDB.exists(id) or owns(id):
+		return false
+	owned.append(id)
+	_queue_save()
+	fit_changed.emit(stats)
+	return true
+
+
 func buy(id: String) -> bool:
 	if not ModuleDB.exists(id) or owns(id):
 		return false
@@ -2914,8 +3552,13 @@ func preview_stats(slot: int, id: String) -> Dictionary:
 	# meaningful between two comparable worlds.
 	var probe := fit.duplicate()
 	probe[slot] = id
+	# AND THE BERTHS RIDE THE PROBE (v24), by the same argument the paragraph
+	# above makes about diversions: a delta is only meaningful between two
+	# comparable worlds. GameState.stats is computed with the hull's mass in it,
+	# so an AFTER computed without it would advertise a speed gain on every swap
+	# a berthed pilot previewed -- the identical defect, from the other side.
 	return ModuleDB.enforce_floors(
-		SectionDB.apply(ModuleDB.compute_stats(probe), diverts))
+		SectionDB.apply(ModuleDB.compute_stats(probe, berths), diverts))
 
 
 func can_divert(source: String, target: String, integrity: float) -> bool:
@@ -2979,7 +3622,7 @@ func clear_diverts() -> bool:
 
 
 func _recompute() -> void:
-	stats = ModuleDB.compute_stats(fit)
+	stats = ModuleDB.compute_stats(fit, berths)
 	# AFTER the catalog, never inside it. compute_stats is pure over a fit and is
 	# probed speculatively by the refit sheet and by cargo_after(); folding a
 	# live diversion into it would make those previews describe a ship that only
@@ -3005,18 +3648,25 @@ func _queue_save() -> void:
 	)
 
 
-func save_game() -> void:
-	if not save_enabled:
-		return
+func save_dict() -> Dictionary:
+	# EXACTLY WHAT GETS WRITTEN, and nothing about writing it. Extracted from
+	# save_game (§92) so a harness can ask "did this feature add a field?"
+	# by comparing two of these -- the claim that a horizon costs zero bytes is
+	# only worth as much as the check behind it, and every previous version of
+	# that check had to write a file to the disk to make it.
+	#
+	# Pure: it reads state and returns a dictionary. save_game keeps every
+	# decision about WHETHER and WHERE to write.
 	var fit_out := {}
 	for slot in fit:
 		fit_out[str(slot)] = fit[slot]
-	var data := {
+	return {
 		"version": SAVE_VERSION,
 		"salvage": salvage,
 		"owned": owned,
 		"fit": fit_out,
 		"reactor_tier": reactor_tier,
+		"berths": berths,
 		"current_system": current_system,
 		"breached": breached,
 		"contract_state": contract_state,
@@ -3054,6 +3704,9 @@ func save_game() -> void:
 		"survey_coverage": survey_coverage,
 		"survey_filed": survey_filed,
 		"structures_seen": structures_seen,
+		"deep_logs": deep_logs,
+		"marks_seen": marks_seen,
+		"nursery": nursery,
 		"apex_intel": apex_intel,
 		"beacons": beacons,
 		"colonies": colonies,
@@ -3066,6 +3719,12 @@ func save_game() -> void:
 		"commissioned": commissioned,
 		"faction_deltas": faction_deltas,
 	}
+
+
+func save_game() -> void:
+	if not save_enabled:
+		return
+	var data := save_dict()
 	var f := FileAccess.open(save_path, FileAccess.WRITE)
 	if f == null:
 		push_warning("Pyxis: could not open save for writing")
@@ -3205,14 +3864,40 @@ func load_game() -> bool:
 		if not owned.has(id):
 			owned.append(id)
 
+	# v24 BERTHS, and this must load BEFORE the fit below: the fit loop asks
+	# slot_unlocked, and a berth read afterwards would drop every module standing
+	# in a berth slot on every load. Validated against the catalog, deduplicated,
+	# dropping what it does not recognise -- `owned`'s posture one block up.
+	berths = []
+	for bid_v in (data.get("berths", []) as Array):
+		# TYPE FIRST. This is an ARRAY out of JSON, not a dictionary key, so its
+		# elements can be anything a file holds -- and `String(7)` is not a
+		# constructor GDScript has. Written bare, migrate23's own rubbish
+		# fixture (which puts a 7 in this list precisely to be rejected) threw a
+		# script error on the way to rejecting it: the leg passed, the loader
+		# was right, and the run logged an error. A loader's contract is DROP,
+		# NEVER CRASH, and a thrown call is not a drop.
+		if typeof(bid_v) != TYPE_STRING:
+			continue
+		var bid := String(bid_v)
+		if ModuleDB.BERTHS.has(bid) and not berths.has(bid):
+			berths.append(bid)
+
 	# v7 adds Slot.UTILITY_B. Starting from STARTER_FIT means any slot a saved fit
 	# does not mention simply keeps its default — so a v6 fit loads with the new
-	# slot empty and needs no migration branch of its own.
+	# slot empty and needs no migration branch of its own. v24's berth slots are
+	# absent from STARTER_FIT for the same reason and arrive the same way.
 	fit = ModuleDB.STARTER_FIT.duplicate()
 	var saved_fit: Dictionary = data.get("fit", {})
 	for key in saved_fit:
 		var slot := int(key)
 		var id := str(saved_fit[key])
+		# v24. AND THE SLOT MUST EXIST ON THIS HULL. can_equip is not the only
+		# door into `fit` -- a hand-edited file is the other one -- so a module
+		# standing in a berth this pilot never bought is dropped here rather
+		# than being flown for free.
+		if not slot_unlocked(slot):
+			continue
 		if id == "" or (ModuleDB.exists(id) and owned.has(id)):
 			fit[slot] = id
 
@@ -3339,6 +4024,17 @@ func load_game() -> bool:
 	# run once coverage is populated or every filed key is dropped as unknown.
 	_load_survey_filed(data.get("survey_filed", {}))
 	_load_structures_seen(data.get("structures_seen", {}))
+	# v23. Defaults-not-branches again: a v22 file has no key, gets {}, and
+	# loads as a pilot who has read nothing -- true of every pilot before the
+	# unsounded existed.
+	_load_deep_logs(data.get("deep_logs", {}))
+	# 98. Rides v25 with no bump: a file from either earlier v25 commit has no
+	# key, gets {}, and loads as a pilot who has read no marks.
+	_load_marks_seen(data.get("marks_seen", {}))
+	# v26. Defaults-not-branches, the standing rule: a v25 file has no key, gets
+	# {}, and loads as a pilot who never took the ground -- true of every pilot
+	# before the nursery existed.
+	_load_nursery(data.get("nursery", {}))
 	_load_apex_intel(data.get("apex_intel", {}))
 	# v20. Beacons: no migration branch, per this file's standing rule — an
 	# absent key is an empty store and a full stock, which is exactly what a

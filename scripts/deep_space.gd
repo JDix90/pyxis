@@ -283,17 +283,23 @@ const BROADCASTS := [
 	{
 		"from": "A KEPT LIGHT",
 		"body": "There is a light ahead of you. It is kept. It has been kept a long time, and by somebody. If you need it, it is there.",
+		# §92. WHAT IT SAYS TO SOMEBODY WHO HAS READ THE WHOLE RECORD.
+		# The sender does not change -- this is the same voice saying more,
+		# which is why there is no `from_after` key and no need for one.
+		"body_after": "You have read the order, so you know whose light this is. The crews who came home and were not counted stopped going home. They kept the light instead. It is lit for whoever is still out here, which by the authority's own ledger now includes you.",
 	},
 	# Band 6, and it inverts band 4's closing line one word at a time. "Nothing
 	# is transmitting" stays true; "nothing is listening" stops being.
 	{
 		"from": "· · ·",
 		"body": "Nothing is transmitting. Something is listening.",
+		"body_after": "Nothing is transmitting. Something is listening: a recorder, left running, taking down returns for a file that was closed a long time ago. It has your bearing. It will keep it. Nobody will read it.",
 	},
 ]
 
 
-static func broadcast_for(band: int, commissioned := false, system_id := "") -> Dictionary:
+static func broadcast_for(band: int, commissioned := false, system_id := "",
+		after := false) -> Dictionary:
 	# Optional keys with a fallback rather than a parallel three-entry array: a
 	# second array would be a second bounds contract that could disagree with the
 	# first, and "band 4 is unchanged" would become a size mismatch instead of a
@@ -319,6 +325,25 @@ static func broadcast_for(band: int, commissioned := false, system_id := "") -> 
 		var own := SystemDB.broadcast_override(system_id, band)
 		if not own.is_empty():
 			return {"from": String(own.get("from", "")), "body": String(own.get("body", ""))}
+	# §92. THE AFTER-REGISTER, and it is the LAST clause on purpose: a
+	# system that authored its own line for this band has already replaced the
+	# voice, and the two rows this can reach are replaced in exactly that way in
+	# two of the three systems -- pyx01 speaks band 6 as a GSA repeater, pyx03
+	# speaks band 5 as a sounding mark. BOTH OF THOSE ARE MACHINES, and the rule
+	# this whole pass is held to is that machines were never told, so an
+	# after-line jumping the override there would break the rule to deliver the
+	# payoff. It does not need to: every system still carries one voice out here
+	# that is alive (pyx01 band 5, pyx02 both, pyx03 band 6), and the harness
+	# asserts that rather than trusting it.
+	#
+	# Below the commissioned branch for the same reason it is below the
+	# override: bands 5 and 6 carry no commissioned variant at all (§28's arc
+	# ends at the Quiet), so the two can never contend.
+	if after and entry.has("body_after"):
+		return {
+			"from": String(entry.get("from", "")),
+			"body": String(entry["body_after"]),
+		}
 	if not commissioned:
 		return entry
 	return {
@@ -1723,6 +1748,12 @@ func _populate_cell(cx: int, cz: int, node: Node3D) -> void:
 				var rb := Beacon.new()
 				rb.foreign = true
 				rb.system_id = _id
+				# §93. Whether this mast carries a page of Directive 9, and
+				# which. Beacon.page_for owns the whole rule -- including the
+				# band gate that keeps the order out of the shallows -- so this
+				# call site cannot re-decide the pacing, and neither can the
+				# next one. Set before add_child, every spawner's contract.
+				rb.page = Beacon.page_for(cell_key(_id, cx, cz), band_of(rb_depth))
 				node.add_child(rb)
 				rb.global_position = rb_pos
 
@@ -2168,6 +2199,13 @@ func _check_convoy_hails(at: Vector3) -> void:
 		# next: a hail retried every frame for the rest of the session is a
 		# worse failure than a hail that had nothing to say.
 		_convoy_hailed[key] = true
+		# §95. THE ONE LINE THAT POINTS AT THE COMMISSIONS. A faction talking to
+		# you at all is the proof they know who you are, and being known is what
+		# commissions are FOR -- but they appear on the ordinary contract board,
+		# where a player has no reason to go looking for something new. Fired
+		# here, once ever (the bark contract), rather than being announced by
+		# the board itself: a board that advertises is a quest log.
+		Barks.fire("first_convoy_hail")
 		var main := get_tree().get_first_node_in_group("main")
 		if main == null or not main.has_method("file_apex_intel"):
 			return

@@ -31,10 +31,30 @@ func on_system_changed(id: String) -> void:
 
 # --- the board --------------------------------------------------------------
 
+func trusted_factions() -> Array:
+	# Who would post work for this pilot: FRIENDLY or better, the same band a
+	# convoy will speak to them at (DeepSpace.CONVOY_HAIL_MIN_BAND). One
+	# definition of "they know you", used by the board and by the assertions.
+	#
+	# Public because the board is not the only thing that wants the question --
+	# and because a harness asking "what would this pilot be offered" should ask
+	# the game rather than re-derive the rule.
+	var out: Array = []
+	for id_v in FactionDB.ids():
+		var id := String(id_v)
+		if id == FactionDB.SURVEYOR or id == FactionDB.FERAL:
+			continue
+		if GameState.faction_band(FactionDB.SURVEYOR, id) <= FactionDB.Band.FRIENDLY:
+			out.append(id)
+	return out
+
+
 func board(port_id: String) -> Array:
-	# [{id, title, reward, desc, accepted, kind}] for the port panel.
+	# [{id, title, reward, desc, accepted, kind, faction, standing}] for the
+	# port panel.
 	var out := []
-	for id_v in ContractDB.board_for(port_id, _system, GameState.played_seconds):
+	for id_v in ContractDB.board_for(port_id, _system, GameState.played_seconds,
+			trusted_factions()):
 		var id := String(id_v)
 		var def := ContractDB.get_contract(id)
 		out.append({
@@ -44,6 +64,8 @@ func board(port_id: String) -> Array:
 			"desc": ContractDB.describe(id),
 			"kind": String(def.get("kind", "")),
 			"accepted": has_active(id),
+			"faction": ContractDB.faction_of(id),
+			"standing": ContractDB.standing_of(id),
 		})
 	return out
 
@@ -71,9 +93,24 @@ func accept(id: String) -> bool:
 func drop(id: String) -> bool:
 	# Free, and deliberately so: a contract you cannot abandon is a contract that
 	# can strand you, and nothing here is worth a soft-lock.
+	#
+	# A COMMISSION IS STILL DROPPABLE, and still costs standing (§95). Those are
+	# not in tension: the rule above is about never trapping a player, and
+	# nothing here traps them — the row said what walking away would cost before
+	# they took it, and they can take the cost. A commission that could be
+	# dropped for free would make standing a thing you accumulate rather than a
+	# thing you keep.
 	for entry in active.duplicate():
 		if String(entry["id"]) == id:
 			active.erase(entry)
+			var flag := ContractDB.faction_of(id)
+			if flag != "":
+				GameState.shift_faction(FactionDB.SURVEYOR, flag,
+					-ContractDB.break_cost(id))
+				var hud := get_tree().get_first_node_in_group("hud")
+				if hud and hud.has_method("show_toast"):
+					hud.show_toast("COMMISSION ABANDONED — %s WILL HEAR OF IT"
+						% FactionDB.display_name(flag), Palette.THREAT)
 			_persist()
 			changed.emit()
 			return true
@@ -142,9 +179,21 @@ func _complete(entry: Dictionary) -> void:
 	Sfx.play_streak("pickup", -4.0)
 	completed.emit(String(def.get("title", "CONTRACT")), reward)
 
+	# §95. AND THE NAME, WHERE ONE WAS PROMISED. shift_faction is the only
+	# mutator and it logs the shift itself, so the toast below only has to say
+	# what the player just bought — the ledger line is already written.
+	var flag := ContractDB.faction_of(String(entry["id"]))
+	if flag != "":
+		GameState.shift_faction(FactionDB.SURVEYOR, flag,
+			ContractDB.standing_of(String(entry["id"])))
+
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud and hud.has_method("show_toast"):
-		hud.show_toast("CONTRACT COMPLETE  +%d" % reward, Palette.GOLD)
+		if flag != "":
+			hud.show_toast("COMMISSION FILLED  +%d  ·  %s REMEMBERS IT" % [
+				reward, FactionDB.display_name(flag)], Palette.GOLD)
+		else:
+			hud.show_toast("CONTRACT COMPLETE  +%d" % reward, Palette.GOLD)
 		hud.prompt("CONTRACT SLOT FREE — PICK UP ANOTHER AT ANY PORT")
 	# Deliberately no refill. A finished contract frees a slot; what goes in it
 	# is the player's call at the next board.

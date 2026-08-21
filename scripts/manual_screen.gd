@@ -301,18 +301,21 @@ func _build_ship() -> void:
 	_body.add_child(_heading("YOUR SHIP"))
 	# Derived: the slot count and the starting reactor are facts about the data,
 	# and a manual is the last place they should be retyped by hand.
+	# v24: the count is the SHIP'S, not the catalog's. A berth adds a slot and
+	# the power to use it, so a manual that kept printing SLOT_NAMES.size()
+	# would promise a berthed pilot's slots to a pilot who has none.
 	_body.add_child(_para("%d slots against one power budget. The first reactor gives you %d power, and the starter fit already draws %d of it." % [
-		ModuleDB.SLOT_NAMES.size(), ModuleDB.reactor_power(0),
+		GameState.open_slots().size(), ModuleDB.reactor_power(0),
 		ModuleDB.power_draw(ModuleDB.STARTER_FIT)]))
 	_body.add_child(_spacer(4))
-	for slot_v in ModuleDB.SLOT_NAMES:
+	for slot_v in GameState.open_slots():
 		var fitted := String(ModuleDB.STARTER_FIT.get(slot_v, ""))
 		var label := "empty"
 		if fitted != "":
 			label = String(ModuleDB.get_module(fitted).get("name", fitted))
 		_body.add_child(_row(String(ModuleDB.SLOT_NAMES[slot_v]), label))
 	_body.add_child(_spacer(6))
-	_body.add_child(_para("Nothing in the catalogue is a straight upgrade. Every module trades one thing for another, and the two utility slots are where a ship stops being general and starts being FOR something."))
+	_body.add_child(_para("Nothing in the catalogue is a straight upgrade. Every module trades one thing for another, and the utility slots are where a ship stops being general and starts being FOR something."))
 	_body.add_child(_back())
 
 

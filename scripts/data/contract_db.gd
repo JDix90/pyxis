@@ -101,7 +101,70 @@ const CONTRACTS := {
 		"reward": 1750,
 		"systems": [],
 	},
+
+	# --- commissions (§95) ---------------------------------------------------
+	# WORK POSTED BY A FACTION, and the first contract in this file that pays in
+	# something other than credits. Two keys make a contract a commission:
+	#
+	#   "faction"  who posted it. It is offered ONLY to a pilot the faction
+	#              already trusts (FRIENDLY or better), which is the same band
+	#              their convoys will speak to you at -- so a commission is not
+	#              a way IN, it is what being in is FOR.
+	#   "standing" what finishing it is worth, and abandoning it costs DOUBLE.
+	#              Keeping a promise is ordinary; breaking one is news.
+	#
+	# The credit rewards are deliberately BELOW the equivalent survey contract:
+	# a commission trades money for a name, and a pilot who only wants money
+	# should take the other row on the same board. The kinds are all shipped
+	# kinds -- no new progress plumbing, so a commission cannot advance in a way
+	# an ordinary contract cannot.
+	#
+	# Four of the seven convoy factions post work. The other three are data
+	# away, deliberately left: a board where every faction always has something
+	# is a board where the faction is decoration.
+	"commission_league": {
+		"title": "KEEP THE LANE OPEN",
+		"kind": "kill_swarm",
+		"target": 10,
+		"reward": 900,
+		"faction": "league",
+		"standing": 1,
+		"systems": [],
+	},
+	"commission_combine": {
+		"title": "FEED THE FORGELINE",
+		"kind": "earn_salvage",
+		"target": 9000,
+		"reward": 1200,
+		"faction": "combine",
+		"standing": 1,
+		"systems": [],
+	},
+	"commission_bastion": {
+		"title": "THIN THE ANCHORAGE WATCH",
+		"kind": "kill_sentry",
+		"target": 4,
+		"reward": 1800,
+		"faction": "bastion",
+		"standing": 1,
+		"systems": [],
+	},
+	"commission_grin": {
+		"title": "OPEN SOMETHING THAT WAS SHUT",
+		"kind": "breach",
+		"target": 2,
+		"reward": 1400,
+		"faction": "grin",
+		"standing": 1,
+		"systems": [],
+	},
 }
+
+# What abandoning a commission costs, as a multiple of what finishing it pays.
+# TWO, and the asymmetry is the design: a pilot who takes a faction's work and
+# walks away has told them something about themselves, and the board says so
+# before the row is accepted.
+const COMMISSION_BREAK_MULT := 2
 
 const ACTIVE_SLOTS := 2
 
@@ -131,12 +194,36 @@ static func exists(id: String) -> bool:
 	return CONTRACTS.has(id)
 
 
-static func available_for(system_id: String) -> Array:
+static func faction_of(id: String) -> String:
+	# Empty for an ordinary survey contract. One accessor so nothing else has to
+	# know that a commission is "a contract with an extra key".
+	return String(get_contract(id).get("faction", ""))
+
+
+static func standing_of(id: String) -> int:
+	return int(get_contract(id).get("standing", 0))
+
+
+static func break_cost(id: String) -> int:
+	return standing_of(id) * COMMISSION_BREAK_MULT
+
+
+static func available_for(system_id: String, trusted := []) -> Array:
+	# `trusted` is the list of faction ids this pilot is FRIENDLY or better
+	# with, PASSED IN rather than read: this file is data and reaches for
+	# nothing (0 references to GameState, and that is worth keeping -- the
+	# contract catalog being pure is what lets a harness ask what a board would
+	# hold for a standing the player does not have). Contracts.board is the one
+	# caller that knows the player, and it is the one caller that fills this in.
 	var out := []
 	for id in CONTRACTS:
 		var systems: Array = CONTRACTS[id].get("systems", [])
-		if systems.is_empty() or systems.has(system_id):
-			out.append(id)
+		if not (systems.is_empty() or systems.has(system_id)):
+			continue
+		var flag := faction_of(String(id))
+		if flag != "" and not trusted.has(flag):
+			continue
+		out.append(id)
 	return out
 
 
@@ -144,10 +231,11 @@ static func board_bucket(played_seconds: float) -> int:
 	return int(played_seconds / BOARD_ROTATE_SECONDS)
 
 
-static func board_for(port_id: String, system_id: String, played_seconds: float) -> Array:
+static func board_for(port_id: String, system_id: String, played_seconds: float,
+		trusted := []) -> Array:
 	# Deterministic shuffle seeded by the port and the time bucket. Same port,
 	# same bucket, same board — however many times you dock.
-	var pool := available_for(system_id)
+	var pool := available_for(system_id, trusted)
 	if pool.is_empty():
 		return []
 	pool.sort()   # a stable base order, so the seed is the only thing that varies

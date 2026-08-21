@@ -14,7 +14,13 @@ extends Object
 # a SECOND utility rather than a new category: the interesting question was never
 # "what kind of thing can I bolt on", it was "which two of these four do I want",
 # and one more utility slot turns a single pick into a real pairing decision.
-enum Slot { WEAPON_A, WEAPON_B, DRIVE, UTILITY, CORE, UTILITY_B }
+enum Slot { WEAPON_A, WEAPON_B, DRIVE, UTILITY, CORE, UTILITY_B,
+	# v24 (§94). THE BERTHS. Three slots no ship has until it is paid for, and
+	# they are appended rather than inserted: the enum's integer values are
+	# what `fit` is keyed by and what every save on disk holds, so putting a
+	# new name in the middle would silently re-slot every fitted module in
+	# every existing pilot's file.
+	UTILITY_C, DRIVE_B, WEAPON_C }
 
 const SLOT_NAMES := {
 	Slot.WEAPON_A: "WEAPON I",
@@ -23,6 +29,9 @@ const SLOT_NAMES := {
 	Slot.UTILITY: "UTILITY",
 	Slot.CORE: "CORE",
 	Slot.UTILITY_B: "UTILITY II",
+	Slot.UTILITY_C: "UTILITY III",
+	Slot.DRIVE_B: "DRIVE II",
+	Slot.WEAPON_C: "WEAPON III",
 }
 
 # Which catalog category may be equipped in which slot.
@@ -33,6 +42,47 @@ const SLOT_CATEGORY := {
 	Slot.UTILITY: "utility",
 	Slot.CORE: "core",
 	Slot.UTILITY_B: "utility",
+	Slot.UTILITY_C: "utility",
+	Slot.DRIVE_B: "drive",
+	Slot.WEAPON_C: "weapon",
+}
+
+# v24 (§94). THE BERTHS, AND WHY THEY CARRY POWER.
+#
+# The playtest asked for purchasable slots. Research (the horizon doc's commit-2
+# pass) found the obvious version is a bad product: greedy best-per-slot already
+# draws 32 against the Mk V reactor's 24, and this file's own reactor note ends
+# "and the second utility bay still empty". A pilot at the top of the game
+# ALREADY owns a slot the reactor cannot feed, so selling them another would be
+# ninety thousand credits for a bay that stays empty.
+#
+# So a berth is a slot AND the power to use it, and it is paid for in MASS --
+# permanently, in the one axis the deep punishes hardest. That is what makes a
+# fully berthed ship a deliberate build rather than a strict upgrade, and it
+# cannot be bought back.
+#
+# EVERY BERTH ADDS LESS POWER THAN THE BEST MODULE THAT COULD OCCUPY IT
+# (weapon 7, drive 4, utility 5), so the margin in ALL-BEST IS STILL OUT OF
+# REACH narrows and never closes: with all three bought, greedy is 48 against a
+# cap of 33. The assertion re-derives that from the live catalog rather than
+# being re-pinned to a new constant, so a cheap new module still cannot close
+# it and neither can a generous berth.
+const BERTHS := {
+	"berth_utility": {
+		"name": "UTILITY BERTH", "slot": Slot.UTILITY_C,
+		"price": 60000, "power": 3, "speed_cost": 0.25,
+		"desc": "A third tool bay cut into the spine, with the bus to feed it. The hull was not designed around it.",
+	},
+	"berth_drive": {
+		"name": "DRIVE BERTH", "slot": Slot.DRIVE_B,
+		"price": 80000, "power": 2, "speed_cost": 0.30,
+		"desc": "A second coil mount. Heavier bare — and the only berth whose own slot can pay the mass back.",
+	},
+	"berth_weapon": {
+		"name": "WEAPON BERTH", "slot": Slot.WEAPON_C,
+		"price": 120000, "power": 4, "speed_cost": 0.45,
+		"desc": "A third hardpoint and the capacitors under it. The heaviest thing you can bolt to this hull.",
+	},
 }
 
 # Budget curve. Starter fit draws 8, so Mk I leaves room to add a utility and
@@ -91,6 +141,13 @@ const REACTOR_TIERS := [
 # nothing but the price, so the deepest purchase in the game would have been for
 # sale at the Waypoint Anchor to anyone holding ninety thousand.
 const REACTOR_CAP_DEFAULT := 3
+
+# v24 (§94). WHICH COUNTERS CUT BERTHS IN. The same key that decides whether the
+# Mk V is on the rack, read as a floor: a yard that cannot sell the reactor to
+# run a berth has no business selling the berth. So berths appear exactly where
+# the Mk V does — the deep yards — and the Waypoint Anchor does not become the
+# place a new pilot buys a third hardpoint with their first windfall.
+const BERTH_YARD_TIER := 4
 
 # --- base hull stats, before modules ---------------------------------------
 const BASE := {
@@ -602,6 +659,91 @@ const MODULES := {
 		"stats": {"turn_rate": -1.2},
 	},
 
+	# v25 (§99). THE PROTOTYPE LINE — the tier above the catalogue, and the only
+	# way to own one is to crack a PROVING DRIFT out past the archives. A
+	# refuser expedition's workshop hull: "they were building past the catalogue
+	# because nobody out here is selling them anything. Some of it works."
+	#
+	# THE MECHANISM IS THE CRAFTED BLOCK'S, ONE SHELF UP, and finding that was
+	# the point of looking before writing: `price: 0`, absent from every port's
+	# `stock` array, each carrying a real negative stat. A prototype is that
+	# same shape with a different acquisition channel — a drop instead of a
+	# recipe — so the catalogue needed no new grammar and the outfitter needed
+	# no new branch. What is new is only the tier and the door.
+	#
+	# NOTHING IN THE CATALOGUE IS A STRAIGHT UPGRADE, and a legendary is not an
+	# exemption from it (the horizon document says so by name). Every entry here
+	# sits ABOVE the tier-3 line on its headline stat and pays for it somewhere
+	# a pilot will feel, and `A PROTOTYPE IS NOT FOR SALE` asserts both halves
+	# from the live catalogue rather than from this paragraph.
+	#
+	# THE NUMBERS BELOW ARE PROVISIONAL, and they are all in one place on
+	# purpose. The tier is under its own research pass; when it lands, this
+	# block is what changes, and nothing else has to — the laws are asserted,
+	# the values are not pinned.
+	#
+	# THE WEAPON PROTOTYPE'S COST IS OVERDRAW (§100), and the mechanism is new
+	# because it had to be. compute_stats routes a weapon's `stats` into the
+	# WEAPON block and every other category's into the ship block, so a weapon
+	# module cannot carry a negative ship stat at all — it would be read as a
+	# weapon parameter and silently ignored. The decision (taken 2026-08-20, in
+	# the player's words: a draw the reactor cannot hold) is that the mount
+	# draws through the SHIELD BUS: every shot it fires costs `overdraw` points
+	# of shield, paid by the ship that fired it. The key rides inside the weapon
+	# stats — the one block that reaches _fire — and PlayerShip pays it at the
+	# moment the shot is committed, every family alike.
+	#
+	# Shield, never hull: the coil browns the bus, it does not breach the deck.
+	# The cost therefore scales with how hard a fight already is — firing from
+	# behind a full shield is nearly free, firing while something is shooting
+	# back is spending the only thing keeping you alive — which is the correct
+	# shape for a weapon whose whole pitch is that somebody desperate built it.
+	"proto_lance": {
+		"name": "Overdrawn Lance",
+		"category": "weapon",
+		"family": "lance",
+		"tier": 4,
+		"power": 7,
+		"price": 0,
+		"prototype": true,
+		"desc": "Hits harder than anything the Authority ratified, and pulls the difference straight off the shield bus. Every shot is a withdrawal.",
+		"stats": {"damage": 205.0, "interval": 0.92, "range": 13.5, "chain": 0,
+			"overdraw": 6.0},
+	},
+	"proto_coil": {
+		"name": "Overwound Coil",
+		"category": "drive",
+		"tier": 4,
+		"power": 6,
+		"price": 0,
+		"prototype": true,
+		"desc": "Faster than anything on the rack, and it takes the shield bus to do it. They knew. They flew it anyway.",
+		"stats": {"max_speed": 2.4, "accel": 21.0, "turn_rate": 9.0,
+			"shield_regen": -4.0},
+	},
+	"proto_envelope": {
+		"name": "Braced Envelope",
+		"category": "utility",
+		"tier": 4,
+		"power": 6,
+		"price": 0,
+		"prototype": true,
+		"desc": "A field that holds where the catalogue's gives. The bracing is welded through the spine and the hull flies like it.",
+		"stats": {"shield_max": 230.0, "shield_regen": 6.0,
+			"max_speed": -1.2, "turn_rate": -2.0},
+	},
+	"proto_sounder": {
+		"name": "Long Sounder",
+		"category": "utility",
+		"tier": 4,
+		"power": 6,
+		"price": 0,
+		"prototype": true,
+		"desc": "Reads further than the Authority's best and leaves the shield thin to do it. Built by people who needed to see more than they needed to survive being seen.",
+		"stats": {"weapon_range_bonus": 5.5, "crit_chance": 0.50,
+			"survey_speed": 1.15, "shield_max": -45.0},
+	},
+
 	"rig_hauler": {
 		"name": "Hauler Frame",
 		"category": "utility",
@@ -792,6 +934,25 @@ static func craftable_ids() -> Array:
 	return out
 
 
+# The tier a prototype sits at, one above the catalogue's top. Named rather than
+# written as a literal in three places, because the harness asks "is every
+# prototype above every shipped module" and that question needs one number to
+# be about.
+const PROTOTYPE_TIER := 4
+
+
+static func prototype_ids() -> Array:
+	# craftable_ids' shape and craftable_ids' reason: DERIVED from the entry
+	# rather than kept as a second list that could drift from the table it
+	# describes. A prototype is a module that says it is one.
+	var out: Array = []
+	for id in MODULES:
+		if bool((MODULES[id] as Dictionary).get("prototype", false)):
+			out.append(String(id))
+	out.sort()
+	return out
+
+
 static func enforce_floors(s: Dictionary) -> Dictionary:
 	# THE FLOORS, IN ONE PLACE, so anything that scales a fitted stat can put
 	# them back afterwards. They used to be inline at the end of compute_stats,
@@ -810,13 +971,51 @@ static func enforce_floors(s: Dictionary) -> Dictionary:
 	return s
 
 
-static func compute_stats(fit: Dictionary) -> Dictionary:
+static func berth_power(berths) -> int:
+	# What the bought berths add to the reactor's cap. Summed here rather than
+	# in GameState so the number and the table that defines it cannot drift.
+	var total := 0
+	for id_v in berths:
+		total += int((BERTHS.get(String(id_v), {}) as Dictionary).get("power", 0))
+	return total
+
+
+static func berth_mass(berths) -> float:
+	# And what they cost in speed, permanently. Same argument as berth_power:
+	# one table, one reader.
+	var total := 0.0
+	for id_v in berths:
+		total += float((BERTHS.get(String(id_v), {}) as Dictionary).get("speed_cost", 0.0))
+	return total
+
+
+static func slots_of(category: String) -> Array:
+	# EVERY SLOT OF A KIND, DERIVED. compute_stats used to carry two hand-written
+	# slot lists, which is a trap with a name: a slot added to the enum and
+	# forgotten in those lists would be purchasable, equippable and POWERED, and
+	# would contribute nothing at all to the ship -- silently, with no error
+	# anywhere. Reading SLOT_CATEGORY instead means the lists cannot go stale,
+	# and EVERY SLOT REACHES THE STATS asserts it from the same table.
+	var out: Array = []
+	for slot_v in SLOT_CATEGORY:
+		if String(SLOT_CATEGORY[slot_v]) == category:
+			out.append(slot_v)
+	return out
+
+
+static func compute_stats(fit: Dictionary, berths := []) -> Dictionary:
 	# Single source of truth for derived stats. Additive by design: it stays
 	# legible in the console, and nothing needs stacking-penalty rules yet.
+	#
+	# `berths` is an OPTIONAL trailing argument (v24, §94) carrying the mass a
+	# berthed hull is permanently down. Optional because this function is probed
+	# speculatively all over -- cargo_after, the refit sheet's delta rows -- and
+	# every one of those probes asks about cargo or DPS, where the berth mass is
+	# irrelevant; the callers that describe the ship's SPEED pass it.
 	var s := BASE.duplicate(true)
 	s["weapons"] = []
 
-	for slot in [Slot.WEAPON_A, Slot.WEAPON_B]:
+	for slot in slots_of("weapon"):
 		var id: String = fit.get(slot, "")
 		if not exists(id):
 			continue
@@ -827,12 +1026,19 @@ static func compute_stats(fit: Dictionary) -> Dictionary:
 		w["slot"] = slot
 		(s["weapons"] as Array).append(w)
 
-	for slot in [Slot.DRIVE, Slot.UTILITY, Slot.UTILITY_B, Slot.CORE]:
+	for slot in slots_of("drive") + slots_of("utility") + slots_of("core"):
 		var id: String = fit.get(slot, "")
 		if not exists(id):
 			continue
 		for key in (MODULES[id]["stats"] as Dictionary):
 			s[key] = s.get(key, 0.0) + MODULES[id]["stats"][key]
+
+	# THE MASS, AFTER THE MODULES AND BEFORE THE FLOORS. A berth is welded to
+	# the hull, so it is not a module that can be unfitted to get the speed
+	# back -- and it goes through enforce_floors like everything else, so three
+	# berths on a hauler cannot reverse the ship.
+	if not berths.is_empty():
+		s["max_speed"] = float(s.get("max_speed", 0.0)) - berth_mass(berths)
 
 	var core_id: String = fit.get(Slot.CORE, "")
 	s["ability"] = MODULES[core_id].get("ability", {}) if exists(core_id) else {}
@@ -918,14 +1124,23 @@ static func summary_lines(stats: Dictionary) -> Array:
 	# how the Arc and Torpedo families shipped with their defining trait unsaid.
 	var chain := 0
 	var splash := 0.0
+	var overdraw := 0.0
 	for w_v in stats.get("weapons", []):
 		var w: Dictionary = w_v
 		chain = maxi(chain, int(w.get("chain", 0)))
 		splash = maxf(splash, float(w.get("splash", 0.0)))
+		overdraw = maxf(overdraw, float(w.get("overdraw", 0.0)))
 	if chain > 0:
 		out.append(["CHAIN", "+%d" % chain])
 	if splash > 0.0:
 		out.append(["SPLASH", "%.1f" % splash])
+	# §100. The Overdrawn Lance's price, and the column IS the contract: a cost
+	# the console cannot draw is the Cutting Head defect this function's header
+	# records — a module read as pure upside because its downside lived in an
+	# undrawn key. Negative-signed, because it is the one column here that is a
+	# price rather than a property.
+	if overdraw > 0.0:
+		out.append(["DRAW", "-%.0f/SHOT" % overdraw])
 
 	# Cores carry an empty `stats` and all three therefore moved nothing at all.
 	# The description says what the ability feels like; these are the two numbers
