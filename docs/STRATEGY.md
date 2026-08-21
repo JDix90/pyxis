@@ -1285,6 +1285,16 @@ contraband trade §17 rests on. And **nothing spills inside the charted system**
 so the tutorial's promise — *you lose position and tempo, never salvage* — stays
 literally true everywhere it was taught.
 
+> **Amended v27 (§109): the promise holds, and the deep now has a clock and a
+> bill.** Two of this section's clauses were quietly load-bearing in a way that
+> made deep death nearly free. "Recoverable this session" meant a spill was
+> *immortal* — the whole penalty was the flight back, with nothing counting
+> down — and the free emergency warp made dying **cheaper than a beacon jump**,
+> which turned the fail state into the game's best fast travel. §109 adds a
+> depth-scaled tug's fee and a depth-scaled claim window on what you dropped.
+> **The sentence above is untouched and is now asserted twice**: nothing spills
+> inside the charted system, and nothing is billed there either.
+
 **Three stock loot-cube behaviours had to be switched off, and every one of them
 would have silently deleted the mechanic rather than erroring:**
 
@@ -6278,7 +6288,7 @@ corrections are what set the commit order:
 |---|---|---|---|
 | 1 | THE SHELF: a finite, replenishing, per-counter stock derived from the port's own bias table; events as masks; MARKETTEST given assertions | **v27** | **BUILT** — §107 |
 | 2 | the word on the shelf: stock outranks arbitrage at the rumour desk, a FRIENDLY+ reserve as a GATE, and the deep-station events §107 deferred | rides v27 | **BUILT** — §108; the deferred debt is discharged, and two live defects at the rumour desk fell out of reading it |
-| 3 | the tug and the claim: a depth-scaled rescue fee, and a claim clock on deep spills | none | not built |
+| 3 | the tug and the claim: a depth-scaled rescue fee, and a claim clock on deep spills | rides v27 | **BUILT** — §109; dying was cheaper than a beacon jump, and the code's own comment claiming otherwise was aspirational |
 | 4 | the order book: the forge hint that lied, three widened read windows, and requisitions as the first real credit sink | rides v27 | not built |
 | 5 | the ladder: seven new skills, four deepened, one shared ledger page | rides v27 | not built |
 | 6 | the sounded ground: teach the filing chain, held cells as jump anchors, colony works | rides v27 | not built |
@@ -11191,3 +11201,91 @@ posture `A CONSUMER SELLS NOTHING` uses and `A COMMISSION IS NOT A WAY IN`
 states outright. The sweep already probes `deep_haven`, whose owner is one of
 the two factions it shifts, so the deep third of it is a live test rather than a
 control — worth checking before trusting, and it held.
+
+## 109. The tug and the claim (rides v27)
+
+Horizon 10, commit 3. The playtest said the economy felt trivial and that dying
+was inconsequential, and the second half of that was more true than the report
+knew.
+
+### Dying was the best fast travel in the game
+
+`PlayerShip._emergency_warp` teleports a shield-zero ship from **any** depth
+back to the spawn point, for free. A beacon jump over the same distance costs
+120–500 credits and is refused entirely past `HYPER_DEPTH_MAX`. So the cheapest
+way home from 9,000 units out was to stop dodging.
+
+`main.gd` carried a comment claiming *"dying still warps you out, which is what
+keeps dying the expensive exit rather than the convenient one"*. That sentence
+was **aspirational rather than true**, and it had been for as long as beacon
+jumps have had a fee. This section makes it true.
+
+**The tug bills, and the bill walks the jump's own ramp at twice the price.**
+~240 at the chart edge, 1,000 where a jump stops being offered, ~1,870 at the
+far marks. It deliberately does **not** call `beacon_jump_fee(depth) * 2`: that
+function clamps at `BEACON_JUMP_MAX_DEPTH` because past there a jump is refused
+outright, and borrowing the clamp would make the rescue flat across the entire
+far deep — cheapest exactly where it should cost the most. `THE RESCUE COSTS
+MORE THAN THE JUMP` sweeps seven depths rather than spot-checking one, because
+the two curves stay apart only while that clamp is *not* inherited.
+
+**It takes what you have and never refuses.** There is no other way out of a
+shield-zero ship, so a rescue that could fail for want of credits is a soft-lock
+with a story attached; and a debt would be a second currency this game does not
+have. It bills the account and writes off the rest. Asserted in all three
+directions — a full wallet pays the fee, a thin one pays exactly what it had and
+lands on zero, a broke one pays nothing and lands on zero, never below.
+
+**The numbers are provisional and they are all in one block** — §99's posture.
+The laws are what is asserted (deeper costs more, always more than a jump,
+nothing at all inside the chart); a retune changes three constants and no
+assertion.
+
+### A spill was immortal, and that was the whole penalty
+
+`spill` cubes skip the 25-second reaper, deliberately and correctly: the round
+trip from spawn to a deep death site is longer than that before the player has
+even turned around. But nothing replaced it, so cargo dropped at a deep death
+sat there for the rest of the visit and the entire cost of dying in the expanse
+was the flight back — untimed.
+
+It now has a deadline, **scaled by depth, because the flight back is what the
+deadline is measuring**: three minutes plus a further second and a half per
+hundred units, so ~390s at 1,400u and ~25 minutes out at the marks. Generous,
+because the flight is real. Finite, because otherwise there is no reason to
+hurry. A warning fires at thirty seconds; at zero the pile is claimed and says
+so in words.
+
+**No AI and no new class.** What a claimant *is*, mechanically, is a deadline on
+cargo you are not standing next to — the same reasoning `spill` itself used when
+it chose a flag over a subclass (§17: parameters, not new kinds). A rival hull
+that actually flies in is a bigger feature and is not this one.
+
+The rule lives in Main rather than on the cube: Main owns world glue, the cube
+owns its own motion, which is `drop_beacon_here`'s split said again. One clock
+for one pile — a second death before the first spill is recovered *restarts* it
+rather than stacking a second deadline. And it is cleared in `_load_system`,
+because the cubes are `system_root` children that a warp abandons (`WARP CLEARS`
+has asserted that since §22) and a clock must not outlive the pile it counts.
+
+### The assertion that had to be rewritten rather than deleted
+
+`NO EXPIRY` was a true and useful leg, and half of it still is. It became
+`A SPILL OUTLIVES THE REAPER AND DIES ON ITS OWN CLOCK`, asserting all three
+facts at once: past the 25-second reaper, longer when deeper, gone at zero. This
+is §24's discipline — an assertion whose premise a feature reverses gets
+**rewritten to state the new rule**, never quietly dropped, so the change has to
+be argued in the same commit that makes it.
+
+`CHART DEATH INTACT` grew a clause for the same reason. §109 puts a price on the
+rescue, and that leg is what keeps the price off the promise: at depth 0 the
+spill is zero **and the bill is zero**, on a wallet the leg checks is untouched
+to the credit.
+
+### What this does not do
+
+It does not touch what is lost. Unread salvage only, components stowed, the
+whole hold never — §22's scope survives intact, and the contraband trade the
+expanse rests on is as safe as it was. What changed is that the deep now costs
+something on the way out and counts down on what you left behind, while the
+charted system remains exactly what the tutorial taught it was.

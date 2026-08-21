@@ -1422,9 +1422,11 @@ func warp_streak_in() -> void:
 
 func _emergency_warp() -> void:
 	# Gentle fail state: you lose position and tempo, and — only out past the
-	# chart edge — whatever you had not yet learned to read. See Main.spill_unread
-	# for why that scope is exactly right. Inside the charted system this is still
-	# what the tutorial promised: you never lose salvage.
+	# chart edge — whatever you had not yet learned to read, a tug's fee scaled
+	# by how far out you were, and a clock on getting back to what you dropped.
+	# See Main.spill_unread and Main.charge_rescue for why that scope is exactly
+	# right. Inside the charted system this is still exactly what the tutorial
+	# promised: you never lose salvage, and nobody bills you.
 	if _warping:
 		return
 	_warping = true
@@ -1447,6 +1449,11 @@ func _emergency_warp() -> void:
 	var main_node := get_tree().get_first_node_in_group("main")
 	if main_node and main_node.has_method("spill_unread"):
 		main_node.spill_unread(death_pos)
+	# §109. THE TUG'S BILL, after the spill toast so the two read in the order
+	# they happened: you lost the deck cargo, then somebody came and got you and
+	# charged for it. Depth 0 bills nothing, which is the tutorial's promise.
+	if main_node and main_node.has_method("charge_rescue"):
+		main_node.charge_rescue(death_pos)
 	# A hold does not survive the thing that ended it. hold_tick would otherwise
 	# find the ship out of range of the wreck it was cracking and issue a fresh
 	# move order, flying the respawned player back toward what killed them.

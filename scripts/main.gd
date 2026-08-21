@@ -1605,6 +1605,109 @@ const BEACON_JUMP_MAX_DEPTH := SystemDB.HYPER_DEPTH_MAX
 # way to reach a colony you founded -- that verb is the earned one.
 const BEACON_JUMP_MIN_FEE := 120
 
+# §109. THE TUG. Dying deep used to be FREE, and the comment two screens down
+# claiming it "keeps dying the expensive exit rather than the convenient one"
+# was aspirational rather than true: an emergency warp teleports you home from
+# any depth at no charge, which made it strictly cheaper than the 120-500 credit
+# beacon jump and therefore the best fast travel in the game.
+#
+# The fee walks beacon_jump_fee's own ramp at twice the price and WITHOUT its
+# clamp, so it keeps climbing past the depth a jump will reach: ~240 at the
+# chart edge, 1,000 where a jump stops being offered at all, ~1,870 at the far
+# marks. THE RESCUE COSTS MORE THAN THE JUMP sweeps it.
+#
+# The numbers are provisional and they are all in this block, §99's posture --
+# the LAWS are what is asserted (deeper costs more, always more than a jump,
+# nothing at all inside the chart), so a retune changes three lines and no
+# assertion.
+const RESCUE_FEE_MULT := 2.0
+
+# THE CLAIM. A spill used to be immortal: `spill` cubes skip the 25s reaper, so
+# cargo dropped at a deep death sat there for the rest of the visit and the whole
+# penalty was the flight back. It now has a clock, and the clock is generous
+# because the flight back is real -- three minutes plus a further second and a
+# half per hundred units of depth, so ~390s at 1,400u and ~25 minutes out at the
+# marks. Long enough to be fair, short enough to be a reason to hurry.
+const SPILL_CLAIM_BASE := 180.0
+const SPILL_CLAIM_PER_DEPTH := 0.15
+const SPILL_CLAIM_WARN := 30.0
+
+
+# Seconds left before somebody else takes what you dropped. 0 = nothing adrift.
+var _spill_claim_left := 0.0
+var _spill_warned := false
+
+
+func rescue_fee(depth: float) -> int:
+	# DEPTH 0 IS FREE, and that is the tutorial's promise kept literally: inside
+	# the charted system you lose position and tempo and nothing else, which is
+	# what it was taught with and what CHART DEATH INTACT asserts.
+	if depth <= 0.0:
+		return 0
+	# Deliberately NOT beacon_jump_fee(depth) * 2: that function clamps its ramp
+	# at BEACON_JUMP_MAX_DEPTH because past there a jump is refused outright, and
+	# borrowing the clamp would make the rescue flat across the entire far deep --
+	# cheapest exactly where it should cost the most.
+	var t := depth / float(BEACON_JUMP_MAX_DEPTH)
+	var one_way := lerpf(float(BEACON_JUMP_MIN_FEE), float(COLONY_JUMP_FEE), t)
+	return int(round(one_way * RESCUE_FEE_MULT))
+
+
+func spill_claim_seconds(depth: float) -> float:
+	return SPILL_CLAIM_BASE + maxf(depth, 0.0) * SPILL_CLAIM_PER_DEPTH
+
+
+func charge_rescue(at: Vector3) -> int:
+	# Billed by whoever came and got you. Called from PlayerShip._emergency_warp
+	# beside spill_unread, and living here for the same reason that one does: the
+	# ship owns the tween, Main owns the rule (drop_beacon_here's split).
+	if deep_space == null:
+		return 0
+	var fee := rescue_fee(deep_space.depth_at(at))
+	if fee <= 0:
+		return 0
+	# THE TUG TAKES WHAT YOU HAVE AND NEVER REFUSES. A rescue that could fail for
+	# want of credits is a soft-lock with a story attached -- there is no other
+	# way out of a shield-zero ship -- and a debt is a second currency the game
+	# does not have. So it bills what is in the account and writes the rest off.
+	var paid := mini(fee, GameState.salvage)
+	if paid > 0:
+		GameState.spend_salvage(paid)
+	if hud:
+		hud.show_toast("TUG'S FEE — %s SALVAGE%s" % [_comma_int(paid),
+			"" if paid >= fee else " (ALL YOU HAD)"], Palette.THREAT)
+		hud.set_value(GameState.salvage)
+	return paid
+
+
+func _tick_spill_claim(delta: float) -> void:
+	# Somebody else out here works the same wrecks you do. No AI and no class:
+	# what a claimant IS, mechanically, is a deadline on cargo you are not
+	# standing next to.
+	if _spill_claim_left <= 0.0:
+		return
+	var adrift := _spill_cubes()
+	if adrift.is_empty():
+		# Recovered, or abandoned by a warp. Either way the clock is not running.
+		_spill_claim_left = 0.0
+		_spill_warned = false
+		return
+	_spill_claim_left -= delta
+	if not _spill_warned and _spill_claim_left <= SPILL_CLAIM_WARN:
+		_spill_warned = true
+		if hud:
+			hud.show_toast("SOMEBODY IS WORKING YOUR SPILL", Palette.THREAT)
+	if _spill_claim_left > 0.0:
+		return
+	var where: Vector3 = (adrift[0] as Node3D).global_position
+	for c in adrift:
+		c.queue_free()
+	_spill_claim_left = 0.0
+	_spill_warned = false
+	FX.flash(system_root, where, Palette.THREAT, 3.0, 0.4)
+	if hud:
+		hud.show_toast("CLAIMED — SOMEBODY ELSE GOT THERE FIRST", Palette.THREAT)
+
 
 func beacon_jump_fee(depth: float) -> int:
 	var t := clampf(depth / BEACON_JUMP_MAX_DEPTH, 0.0, 1.0)
@@ -1990,6 +2093,12 @@ func _load_system(id: String) -> void:
 	# this the deferred call would fire a second, redundant world rebuild one
 	# frame later. See rebuild_visuals.
 	_vision_rebuild_pending = false
+	# §109. Whatever was adrift is gone with the system that held it -- spill
+	# cubes are system_root children and leaving abandons them, which WARP CLEARS
+	# has asserted since §22. The clock must not survive the pile it was counting
+	# down, or the next spill inherits a deadline that already half expired.
+	_spill_claim_left = 0.0
+	_spill_warned = false
 
 	# Boss state never survives a system change: a DAMAGED engine resets to full on
 	# warp or reload, because retreating costs tempo and never salvage. Clearing
@@ -2243,10 +2352,18 @@ func _recall_sequence() -> void:
 	# toward the player and reroll every deep sector — all for a move that never
 	# leaves the system. The world is untouched; only the ship moves.
 	#
-	# And it is FREE. PlayerShip._emergency_warp already puts a dying player back
-	# at the spawn point, so the game does this for you involuntarily already;
-	# charging for the voluntary version would only tax doing deliberately what
-	# you get for nothing by being careless.
+	# And it is FREE -- but NOT for the reason this comment used to give. It read
+	# "the game does this for you involuntarily already; charging for the
+	# voluntary version would only tax doing deliberately what you get for
+	# nothing by being careless," and §109 made the second half false: dying past
+	# the chart now bills a tug's fee scaled by depth.
+	#
+	# It stays free on a better argument. Recall is the DELIBERATE exit -- it has
+	# a charge time, it cannot be taken mid-fight, and it costs the player the
+	# position they flew out to reach. The fail state is what got priced, and
+	# pricing the safe, slow, chosen version as well would be taxing the act of
+	# going home rather than the act of losing. The ordering that matters is the
+	# one that now holds: failing costs more than leaving.
 	var player: PlayerShip = get_tree().get_first_node_in_group("player")
 	var rig := get_tree().get_first_node_in_group("camera_rig")
 
@@ -4288,6 +4405,7 @@ func _tick_market(delta: float) -> void:
 	GameState.advance_clock(delta)
 	Market.recover_pressure(delta)
 	Market.recover_stock()
+	_tick_spill_claim(delta)
 
 	for ev in Market.tick_events(delta):
 		if hud:
@@ -4815,8 +4933,16 @@ func spill_unread(at: Vector3) -> int:
 			spilled += 1
 
 	if spilled > 0:
+		# §109. The clock starts the moment it hits the vacuum, and it is scaled
+		# by the depth it was dropped at because that is what the flight back
+		# costs. A second death before the first spill is recovered RESTARTS it
+		# rather than stacking a second deadline -- there is only ever one pile.
+		_spill_claim_left = spill_claim_seconds(deep_space.depth_at(at))
+		_spill_warned = false
 		if hud:
-			hud.show_toast("HOLD BREACHED — %d UNREAD ADRIFT" % spilled, Palette.THREAT)
+			hud.show_toast("HOLD BREACHED — %d UNREAD ADRIFT, %d MIN" % [
+				spilled, maxi(1, int(round(_spill_claim_left / 60.0)))],
+				Palette.THREAT)
 		FX.burst(system_root, at, Palette.AMBER, 40, 6.0, 0.3, 1.0)
 	return spilled
 
@@ -7529,8 +7655,17 @@ func _run_spill_test() -> void:
 		gap_before, gap_before - gap_after,
 		"PASS" if gap_before - gap_after < 6.0 else "FAIL"])
 
-	# 4. NO EXPIRY. Stock cubes reap at 25s; the round trip from spawn to a deep
-	#    death site is longer than that before the player has even turned around.
+	# 4. A SPILL OUTLIVES THE REAPER AND DIES ON ITS OWN CLOCK. This was NO
+	#    EXPIRY, and half of it still is: stock cubes reap at 25s, and the round
+	#    trip from spawn to a deep death site is longer than that before the
+	#    player has even turned around, so the spill must ignore that reaper.
+	#
+	# What changed in §109 is the other half. "Never expires" made the whole deep
+	# death penalty a flight back with no clock on it, and the code's own claim
+	# that dying is "the expensive exit" was aspirational. It now has a deadline,
+	# scaled by depth because the flight back is what it is measuring, and this
+	# leg asserts all three: past the reaper, longer when deeper, gone at zero.
+	#
 	# Age is driven past the reaper rather than waited out: 25s of harness time to
 	# prove a branch is off is 25s nobody will spend, and a test nobody runs is a
 	# test that is not there.
@@ -7543,8 +7678,19 @@ func _run_spill_test() -> void:
 	for c in _spill_cubes():
 		if is_instance_valid(c):
 			alive += 1
-	print("[spill] NO EXPIRY %d of %d alive at age 40s (the stock reaper is 25s) -> %s" % [
-		alive, spilled_n, "PASS" if alive == spilled_n and spilled_n > 0 else "FAIL"])
+	var ttl_shallow := spill_claim_seconds(200.0)
+	var ttl_deep := spill_claim_seconds(2000.0)
+	# Driven to the wire rather than ticked down 390 times, same reasoning.
+	_spill_claim_left = 1.0
+	_spill_warned = true
+	_tick_spill_claim(2.0)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var after_claim := _spill_cubes().size()
+	print("[spill] A SPILL OUTLIVES THE REAPER AND DIES ON ITS OWN CLOCK %d of %d alive at age 40s (reaper is 25s); the claim runs %.0fs at 200u and %.0fs at 2000u; run out, %d of %d left -> %s" % [
+		alive, spilled_n, ttl_shallow, ttl_deep, after_claim, spilled_n,
+		"PASS" if alive == spilled_n and spilled_n > 0 and ttl_deep > ttl_shallow
+			and after_claim == 0 else "FAIL"])
 
 	# 5. IDENTIFIED STAYS. Reading a thing is also stowing it — the line that
 	#    gives ARCHEOLOGY a third job and makes field-reading a survival act.
@@ -7572,9 +7718,16 @@ func _run_spill_test() -> void:
 	player.global_position = Vector3(0, 0, 6)
 	await get_tree().physics_frame
 	var home_spill := spill_unread(Vector3(0, 0, 6))
-	print("[spill] CHART DEATH INTACT depth 0 spilled %d, hold still %d -> %s" % [
-		home_spill, GameState.cargo_count("salvage_charted"),
-		"PASS" if home_spill == 0 and GameState.cargo_count("salvage_charted") == 6 else "FAIL"])
+	# §109 put a price on the rescue, and this is the leg that keeps the price
+	# off the promise. The tutorial teaches "you lose position and tempo, never
+	# salvage" INSIDE the charted system, so the tug must not bill there either.
+	GameState.salvage = 5000
+	var home_fee := charge_rescue(Vector3(0, 0, 6))
+	print("[spill] CHART DEATH INTACT depth 0 spilled %d, hold still %d, tug billed %d of a %d balance -> %s" % [
+		home_spill, GameState.cargo_count("salvage_charted"), home_fee,
+		GameState.salvage,
+		"PASS" if home_spill == 0 and GameState.cargo_count("salvage_charted") == 6
+			and home_fee == 0 and GameState.salvage == 5000 else "FAIL"])
 
 	# 7. NO DOUBLE SPILL. The hold is emptied BEFORE the cubes exist, so a second
 	#    death inside WARP_GRACE finds nothing left to duplicate.
@@ -7614,6 +7767,75 @@ func _run_spill_test() -> void:
 			"null" if rig.get("_hold_target") == null else "HELD",
 			str(player.has_move_target),
 			"PASS" if rig.get("_hold_target") == null and not player.has_move_target else "FAIL"])
+	# --- §109. THE TUG ------------------------------------------------------------
+
+	# 10. THE RESCUE COSTS MORE THAN THE JUMP. The assertion this whole feature
+	#     exists for. _emergency_warp teleports a shield-zero ship home from ANY
+	#     depth, and until now it did it for free -- which made dying strictly
+	#     cheaper than the 120-500 credit beacon jump, and therefore the best
+	#     fast travel in the game. main.gd's own comment claimed dying was "the
+	#     expensive exit rather than the convenient one"; it was not.
+	#
+	# Swept rather than spot-checked, because the two curves are only guaranteed
+	# to stay apart if the rescue does NOT borrow beacon_jump_fee's clamp -- and
+	# the far deep, past where a jump is refused at all, is exactly where an
+	# inherited clamp would have made the rescue flattest.
+	var fee_bad := ""
+	var fee_last := 0
+	var fee_rises := true
+	for d in [1.0, 200.0, 900.0, 2600.0, 4200.0, 6500.0, 9000.0]:
+		var rf := rescue_fee(d)
+		var jf := beacon_jump_fee(d)
+		if rf <= jf and fee_bad == "":
+			fee_bad = "at %du rescue %d <= jump %d" % [int(d), rf, jf]
+		if rf <= fee_last:
+			fee_rises = false
+		fee_last = rf
+	print("[spill] THE RESCUE COSTS MORE THAN THE JUMP 7 depths swept, %du costs %d, deeper always dearer=%s, first cheaper-than-a-jump: %s -> %s" % [
+		9000, rescue_fee(9000.0), str(fee_rises),
+		fee_bad if fee_bad != "" else "none",
+		"PASS" if fee_bad == "" and fee_rises else "FAIL"])
+
+	# 11. THE TUG TAKES WHAT YOU HAVE. A rescue that could fail for want of
+	#     credits is a soft-lock with a story attached -- there is no other way
+	#     out of a shield-zero ship -- and a debt is a second currency this game
+	#     does not have. So it bills what is in the account and writes off the
+	#     rest. Both directions: a full wallet pays the whole fee, a thin one
+	#     pays exactly what it had and lands on zero, never below.
+	player.global_position = deep_pos
+	await get_tree().physics_frame
+	var owed := rescue_fee(deep_space.depth_at(deep_pos))
+	GameState.salvage = owed + 250
+	var paid_full := charge_rescue(deep_pos)
+	var left_full := GameState.salvage
+	GameState.salvage = 40
+	var paid_thin := charge_rescue(deep_pos)
+	var left_thin := GameState.salvage
+	GameState.salvage = 0
+	var paid_broke := charge_rescue(deep_pos)
+	var left_broke := GameState.salvage
+	print("[spill] THE TUG TAKES WHAT YOU HAVE fee %d at %du: a %d balance pays %d and keeps %d; a 40 balance pays %d and keeps %d; a broke one pays %d and keeps %d -> %s" % [
+		owed, int(deep_space.depth_at(deep_pos)), owed + 250, paid_full, left_full,
+		paid_thin, left_thin, paid_broke, left_broke,
+		"PASS" if owed > 0 and paid_full == owed and left_full == 250
+			and paid_thin == 40 and left_thin == 0
+			and paid_broke == 0 and left_broke == 0 else "FAIL"])
+
+	# 12. THE CLOCK IS THE FLIGHT BACK. The claim window is not a flat number: it
+	#     is scaled by the depth the cargo was dropped at, because what it is
+	#     really measuring is how far the player has to come. A flat window would
+	#     be generous at the chart edge and impossible at the marks.
+	var near_ttl := spill_claim_seconds(0.0)
+	var mid_ttl := spill_claim_seconds(1400.0)
+	var far_ttl := spill_claim_seconds(9000.0)
+	print("[spill] THE CLOCK IS THE FLIGHT BACK %.0fs at the edge, %.0fs at 1,400u, %.0fs at the marks -> %s" % [
+		near_ttl, mid_ttl, far_ttl,
+		"PASS" if near_ttl >= SPILL_CLAIM_BASE and mid_ttl > near_ttl
+			and far_ttl > mid_ttl else "FAIL"])
+
+	GameState.salvage = 5000
+	_spill_claim_left = 0.0
+	_spill_warned = false
 	get_tree().quit()
 
 
