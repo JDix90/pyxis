@@ -6384,7 +6384,7 @@ below:
 | 1 | the runner's teeth: kill on the first SCRIPT ERROR, `--parse`, `--legs`, the checker's stale docstring | none | **BUILT** — and `--legs` found TITLETEST on its first run |
 | 2 | `docs/DEFECTS.md` — ten recurring defect classes, each with the rule or leg that covers it | none | **BUILT** — five of the ten are covered only by a habit, and that is the column that matters |
 | 3 | the colleague's cell: a third validated word in `survey_filed`, captured at the act because it CANNOT be derived | **v28** | **BUILT** — §115; the bump is spent on the DOWNGRADE path, and the README had gone stale a third time |
-| 4 | the trip is the cost: a fourth colony work taking a DELIVERED good, raised at the structure | rides v28 | **PLANNED** |
+| 4 | the trip is the cost: a fourth colony work taking a DELIVERED good, raised at the structure | rides v28 | **BUILT** — §116; the DEEP REPEATER granted nothing until a §112 defect was fixed (the relay never filtered deep weather out of a list headed CHARTED MARKETS) |
 | 5 | a kept light: the procession and a player colony, one broadcast, once per run | rides v28 | **PLANNED** |
 | 6 | what the claimant left: a claimed spill enters the captain's log and the ledger | rides v28 | **PLANNED** |
 | 7 | the prompt holds its refusals: `prompt(text, hold_s := 0.0)` appended-optional, and the label wraps | rides v28 | **PLANNED** |
@@ -11913,6 +11913,11 @@ constants read:
 |---|---|---|
 | the module catalogue | ~919,000 | ~27 |
 | every colony work on one colony | 18,000 | 0.53 |
+
+*(§116 adds a fourth work and moves that row to 28,000 / ~0.82 loops. The leg
+derives it from `COLONY_WORKS` and needs no edit; this table is the reading
+taken the day the block shipped, and it is corrected here rather than left to
+disagree with the sweep.)*
 | the wager, a full streak | 5,250 | 0.15 |
 | a requisition, dearest part | 4,500 | 0.13 |
 | **the tug, at the far marks** | 1,869 | **0.055** |
@@ -12102,3 +12107,108 @@ worked (the subset invariant, which is what that loader actually enforces).
 §77, and now). §113 built `--counts` precisely so it would not have to be
 retyped, and the paragraph retyped it anyway. **The numbers are gone from the
 README**, replaced by the two commands that derive them.
+
+## 116. The trip is the cost (Horizon 11, commit 4 — rides v28)
+
+The fourth colony work, and the first one that takes a **delivery**. §5 wrote
+its shape on 2026-08-04, in the amendment that lifted base building's
+exclusion:
+
+> If a structure takes time to become something, the time is *spent flying to
+> it with what it needs* — **the trip is the cost**, which is the trade the
+> whole game already rests on.
+
+That sentence sat unbuilt for a year while three works shipped that a pilot
+could raise from a menu.
+
+### The defect the naive version carries, and it is the whole feature
+
+Colony works are bought from the **chart panel** — a sheet openable from
+anywhere in the game, including while docked at the counter the alloys were
+just bought from. **No work has ever had a position gate.** A `cargo_count`
+check on that button would have let twelve alloys teleport four thousand units,
+and the word "delivered" would have been a fiction with no mechanism under it:
+§110's forge hint in a new costume, copy the data does not support.
+
+So the gate is a **journey**, and it lives in `Main.work_delivery_met` — the
+world half of the question, beside `colony_ground_sounded`, which is already
+the only thing that asks the world on the store's behalf. In this system,
+within `DOCK_AURA_RANGE` (the DRY DOCK already decides what "alongside this
+colony" means and there is no second opinion), with the manifest aboard.
+`THE TRIP IS THE COST` drives all three refusals separately, and the third is
+the one the feature exists for: **the goods aboard, the chart open, and the
+pilot in another system.**
+
+### The annex could not have carried it, and the refusal is a §11 closure
+
+The tempting alternative was to route the goods through the BONDED ANNEX, which
+already requires flying there. It cannot: `can_store == no_retail`, and alloys
+are retail. The comment at `can_store` says why in full — an open bay on a
+retail good is a timed-arbitrage printer (buy under a 0.55× glut, put it down,
+sell at the same counter for 1.61× when the event lapses) that
+`NO ROUND-TRIP PROFIT` structurally cannot see, because that leg prices both
+legs in one instant under one `market_events` array. The bonded rule refuses
+alloys by design, and it was right to.
+
+### The goods are a GATE, not a price
+
+Twelve alloys is about 480 credits of base value — **under ten seconds of
+standard-loop income** by §114's own table. The goods cost nothing in money and
+everything in **hold**: alloys are `space: 2`, so twelve of them is 24 space,
+which is a starter hold exactly. That is the same yardstick §107 sized
+`STOCK_BASE` against, and it is chosen for the same reason — it is the one unit
+of *"a dedicated run carrying nothing else"* this game already has.
+
+GATES, NEVER PRICES (§72), applied to a work. The credit half stays a credit
+price, and it is **priced to its siblings deliberately** (10,000 against
+4,000/6,000/8,000) rather than to §114's new rule. §114's decision was
+*measure first, re-price next horizon*; pricing one new row to the new rule
+would be making that decision on one work, invisibly.
+
+### It does NOT feed BROKERAGE
+
+Tempting and refused. §111 pinned that ladder to deliveries only because *"any
+contract would rise alongside three other ladders' work"*, and a colony haul is
+colony play, which already feeds COLONIAL. Two ladders rising off one afternoon
+is §19's clock arriving through a feed — and `FEEDS COMPETE, SIX WAYS` would
+**not** catch it, because that leg fires one feed and checks one ladder moved.
+This is a fact about where the call lives, not about what it does, which is the
+same honesty that leg states in its own comment.
+
+### And the work it enables was dead until a defect was fixed
+
+The service chosen was a **deep repeater**: the chart carries the deep
+stations' weather the way the RELAY MAST carries the chart's. Information,
+§26's currency, no stat and no income term.
+
+**It granted nothing, and finding that out is what this section is really
+about.** `market_events` carries chart and deep weather in one array under a
+`deep` flag (§108). The relay's row loop **never filtered it**. So since §112
+shipped, a RELAY MAST has been reporting deep-station weather under a heading
+that reads `THE CHARTED MARKETS TONIGHT` — while the work's own blurb, in the
+same file, promises *"THE CHARTED MARKETS' WEATHER"*. The data said charted and
+the code said everything.
+
+That is two defects at once: §110's class (copy the table contradicts) and, had
+the repeater shipped on top of it, §111's (a rung that grants what everybody
+already has — the exact test RIFT-WORK's `THE SHEAR HEARD` candidate failed and
+was cut for).
+
+It is **fixed rather than reworded**, because the blurb is the promise the
+player bought and the word in it is "charted". `_build_weather_rows` now
+partitions the one array into two sections that cannot print the same line
+twice, each with its own quiet line — the rumour desk's `NOTHING NEW TONIGHT`
+courtesy (§108), and it matters more here because the player *paid* for the
+surface. `EACH WORK CARRIES ITS OWN WEATHER` asserts the partition rather than
+the rendering, with both halves non-empty so a filter that dropped everything
+could not pass by printing nothing.
+
+### The leg whose premise moved
+
+`WORKS ARE A SINK, NOT A STAT` loops **every** work and buys it, so a work with
+a manifest broke it. §24's discipline rather than a quiet patch: the leg now
+places the ship at the colony and loads the manifest before it buys anything,
+counts works from `COLONY_WORKS.size()` instead of saying "three", and gained a
+clause — **the delivered goods left the hold.** Without that last one a work
+that took the credits and not the goods would have satisfied every other
+clause while the delivery was a fiction.

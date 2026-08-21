@@ -1292,13 +1292,72 @@ func colony_ground_sounded(colony_key: String) -> bool:
 	return GameState.is_survey_worked(DeepSpace.cell_key(String(sys), cell.x, cell.y))
 
 
+func work_delivery_met(colony_key: String, work: String) -> bool:
+	# §116. THE TRIP IS THE COST, and this is the half of it the STORE cannot
+	# ask: a work with a `goods` manifest wants the ship standing at the colony
+	# with the goods aboard, not a hold four thousand units away.
+	#
+	# THIS GATE IS THE WHOLE FEATURE. Colony works are bought from the CHART --
+	# a menu openable from anywhere in the game, including while docked at the
+	# counter the alloys were just bought from -- and no work has ever had a
+	# position gate. Without this, "delivered" would be a word with no mechanism
+	# under it, which is §110's forge hint in a new costume: copy the data does
+	# not support.
+	#
+	# Pure and exposed so the chart row can state its own terms (§58) and an
+	# assertion can ask the question without performing the purchase, which is
+	# network_filing_plan's split said again.
+	var want: Dictionary = (GameState.COLONY_WORKS.get(work, {}) as Dictionary) \
+		.get("goods", {})
+	if want.is_empty():
+		return true
+	var c: Dictionary = GameState.colonies.get(colony_key, {})
+	if c.is_empty():
+		return false
+	# IN THIS SYSTEM, standing at it. dock_aura_at's walk and its range: the
+	# DRY DOCK already decides "alongside this colony" and there is no second
+	# opinion about what that means.
+	if not colony_key.begins_with(GameState.current_system + ":"):
+		return false
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	if player == null:
+		return false
+	var dx := float(c.get("x", 0.0)) - player.global_position.x
+	var dz := float(c.get("z", 0.0)) - player.global_position.z
+	if sqrt(dx * dx + dz * dz) > GameState.DOCK_AURA_RANGE:
+		return false
+	for g_v in want:
+		if GameState.cargo_count(String(g_v)) < int(want[g_v]):
+			return false
+	return true
+
+
+func work_manifest(work: String) -> String:
+	# The manifest as one short phrase, for a refusal that names the act.
+	var want: Dictionary = (GameState.COLONY_WORKS.get(work, {}) as Dictionary) \
+		.get("goods", {})
+	var parts := PackedStringArray()
+	for g_v in want:
+		parts.append("%d %s" % [int(want[g_v]),
+			CommodityDB.short_name(String(g_v))])
+	return ", ".join(parts)
+
+
 func buy_colony_work(colony_key: String, work: String) -> bool:
-	# The gate AND the purchase, in that order, with the refusal free -- nothing
-	# is spent before the ground check. The store enforces its own four rules;
-	# this adds the one it cannot ask.
+	# The gates AND the purchase, in that order, with every refusal free --
+	# nothing is spent before either check. The store enforces its own rules;
+	# this adds the two it cannot ask.
 	if not colony_ground_sounded(colony_key):
 		if hud:
 			hud.show_toast("SOUND THE GROUND FIRST — WORK A MAST IN ITS CELL",
+				Palette.THREAT)
+		return false
+	if not work_delivery_met(colony_key, work):
+		if hud:
+			# §58: the refusal names the act and the manifest, because a pilot
+			# who cannot tell whether they are missing goods or missing the
+			# journey has been told nothing.
+			hud.show_toast("BRING %s TO THE COLONY ITSELF" % work_manifest(work),
 				Palette.THREAT)
 		return false
 	if not GameState.buy_colony_work(colony_key, work):
@@ -26273,6 +26332,21 @@ func _run_colony_test() -> void:
 	GameState.claim_colony("pyx01:7", 2000.0, 0.0)
 	var wcell := DeepSpace.cell_of(Vector3(2000.0, 0.0, 0.0))
 	GameState.note_survey_worked(DeepSpace.cell_key("pyx01", wcell.x, wcell.y))
+	# §116. THE SHIP HAS TO BE THERE NOW, and this leg's premise moved rather
+	# than its rule -- §24's discipline: the delivery gate is stated here, in
+	# the commit that added it, instead of the loop being quietly patched until
+	# it passed again. Every work still costs exactly its price and still moves
+	# no stat; one of them now also wants a hold at the colony, so the leg puts
+	# the ship there and loads the manifest before it can buy anything.
+	var wplayer: PlayerShip = get_tree().get_first_node_in_group("player")
+	if wplayer != null:
+		wplayer.global_position = Vector3(2000.0, 0.0, 0.0)
+	GameState.cargo = {}
+	for wneed_v in GameState.COLONY_WORKS:
+		var wneed: Dictionary = (GameState.COLONY_WORKS[wneed_v]
+			as Dictionary).get("goods", {})
+		for g3_v in wneed:
+			GameState.cargo[String(g3_v)] = int(wneed[g3_v])
 	var stats_before := GameState.stats.duplicate(true)
 	var spent_total := 0
 	var works_ok := true
@@ -26289,10 +26363,89 @@ func _run_colony_test() -> void:
 		want_total += int((GameState.COLONY_WORKS[w2_v] as Dictionary)["price"])
 	var stats_same := str(stats_before) == str(GameState.stats)
 	var re_buy := buy_colony_work("pyx01:7", "relay")
-	print("[colony] WORKS ARE A SINK, NOT A STAT three works cost %d (want %d), stats byte-identical=%s, a re-buy refuses=%s -> %s" % [
-		spent_total, want_total, str(stats_same), str(not re_buy),
+	# AND THE MANIFEST LEFT THE HOLD. A work that took the credits and not the
+	# goods would pass every clause above it while the delivery was a fiction.
+	var hold_emptied := GameState.cargo.is_empty()
+	print("[colony] WORKS ARE A SINK, NOT A STAT %d works cost %d (want %d), the delivered goods left the hold=%s, stats byte-identical=%s, a re-buy refuses=%s -> %s" % [
+		GameState.COLONY_WORKS.size(), spent_total, want_total,
+		str(hold_emptied), str(stats_same), str(not re_buy),
 		"PASS" if works_ok and spent_total == want_total and stats_same
-			and not re_buy else "FAIL"])
+			and hold_emptied and not re_buy else "FAIL"])
+
+	# §116. THE TRIP IS THE COST, and this is the leg that says the gate is a
+	# JOURNEY and not just a manifest. Three refusals, each isolated: the goods
+	# aboard but the ship four hundred units off; the ship alongside with an
+	# empty hold; and -- the one the whole feature exists for -- the goods
+	# aboard while the chart is open from ANOTHER SYSTEM, which is exactly what
+	# a menu with no position gate would have allowed.
+	#
+	# Every refusal is free, this function's own posture, and the wallet is
+	# checked to the credit across all three.
+	GameState.colony_works = {}
+	GameState.salvage = 30000
+	var deliver_id := ""
+	for wd_v in GameState.COLONY_WORKS:
+		if not (GameState.COLONY_WORKS[wd_v] as Dictionary).get("goods", {}).is_empty():
+			deliver_id = String(wd_v)
+			break
+	var manifest: Dictionary = (GameState.COLONY_WORKS.get(deliver_id, {})
+		as Dictionary).get("goods", {})
+	GameState.cargo = {}
+	for g4_v in manifest:
+		GameState.cargo[String(g4_v)] = int(manifest[g4_v])
+	var wallet_d := GameState.salvage
+	if wplayer != null:
+		wplayer.global_position = Vector3(2400.0, 0.0, 0.0)
+	var far_refused := not buy_colony_work("pyx01:7", deliver_id)
+	if wplayer != null:
+		wplayer.global_position = Vector3(2000.0, 0.0, 0.0)
+	GameState.cargo = {}
+	var empty_refused := not buy_colony_work("pyx01:7", deliver_id)
+	for g5_v in manifest:
+		GameState.cargo[String(g5_v)] = int(manifest[g5_v])
+	var sys_was := GameState.current_system
+	GameState.current_system = "pyx02"
+	var elsewhere_refused := not buy_colony_work("pyx01:7", deliver_id)
+	GameState.current_system = sys_was
+	var met := bool(work_delivery_met("pyx01:7", deliver_id))
+	var bought := buy_colony_work("pyx01:7", deliver_id)
+	print("[colony] THE TRIP IS THE COST %s wants %s: refused 400u off=%s, refused with an empty hold=%s, refused from another system with the goods aboard=%s (all free, wallet %d->%d), and lands standing there=%s -> %s" % [
+		deliver_id, work_manifest(deliver_id), str(far_refused),
+		str(empty_refused), str(elsewhere_refused), wallet_d,
+		wallet_d - int((GameState.COLONY_WORKS[deliver_id] as Dictionary)["price"]),
+		str(met and bought),
+		"PASS" if far_refused and empty_refused and elsewhere_refused and met
+			and bought and GameState.salvage == wallet_d - int(
+				(GameState.COLONY_WORKS[deliver_id] as Dictionary)["price"])
+			else "FAIL"])
+
+	# §116. AND THE TWO LISTS DO NOT OVERLAP. The relay carries the CHARTED
+	# markets (its blurb's own word) and the repeater carries the deep's; the
+	# defect this commit fixed was one unfiltered loop printing both under the
+	# charted heading since §112. Asserted on the partition rather than on the
+	# rendering: every event is in exactly one half, and each half is non-empty
+	# under a fixture that has both, so a filter that dropped everything would
+	# not pass by printing nothing.
+	var events_was: Array = GameState.market_events.duplicate(true)
+	GameState.market_events = [
+		{"kind": "shortage", "port": "anchor", "good": "alloys",
+			"name": "THE ANCHOR", "mult": 2.0, "remaining": 200.0},
+		{"kind": "glut", "port": "pyx01:9:9", "good": "cores", "deep": true,
+			"name": "A SHOAL RELAY", "mult": 0.6, "remaining": 150.0},
+	]
+	var chart_half := 0
+	var deep_half := 0
+	for evp_v in GameState.market_events:
+		if bool((evp_v as Dictionary).get("deep", false)):
+			deep_half += 1
+		else:
+			chart_half += 1
+	var partitioned: bool = chart_half + deep_half == GameState.market_events.size() \
+		and chart_half > 0 and deep_half > 0
+	GameState.market_events = events_was
+	print("[colony] EACH WORK CARRIES ITS OWN WEATHER %d charted + %d deep = %d, neither half empty -> %s" % [
+		chart_half, deep_half, chart_half + deep_half,
+		"PASS" if partitioned else "FAIL"])
 
 	# SURVEYED GROUND ONLY, and the refusal is free. A colony whose cell no
 	# mast ever worked refuses every work, and refuses them for nothing.

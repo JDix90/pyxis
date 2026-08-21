@@ -372,6 +372,26 @@ const COLONY_WORKS := {
 		"blurb": "YOUR SHIELD MENDS AT TWICE THE PACE ALONGSIDE THIS COLONY"},
 	"annex": {"name": "BONDED ANNEX", "price": 8000,
 		"blurb": "A BONDED BAY OF ITS OWN — HOLD AT THE COLONY TO USE IT"},
+	# v28 (§116). THE FIRST WORK THAT TAKES A DELIVERY, and §5 wrote the shape
+	# of it on 2026-08-04: "if a structure takes time to become something, the
+	# time is spent flying to it with what it needs -- THE TRIP IS THE COST."
+	#
+	# THE GOODS ARE A GATE, NOT A PRICE (§72's rule, applied to a work). Twelve
+	# alloys is about 480 credits of base value, which §114's table puts at
+	# under ten seconds of standard-loop income -- the goods cost nothing and
+	# everything in HOLD: alloys are space 2, so twelve of them is 24 space,
+	# which is a starter hold exactly. That is the same yardstick §107 sized
+	# STOCK_BASE against, and it is chosen for the same reason: it is the one
+	# unit of "a dedicated run carrying nothing else" this game already has.
+	#
+	# PRICED TO ITS SIBLINGS, DELIBERATELY. §114 has just measured that every
+	# sink in this game is small, and the decision about what to do is next
+	# horizon's, taken in the open with that table in hand. Pricing this one
+	# work to the new rule would be making that decision on one row, invisibly.
+	# So it sits at the top of the family it belongs to and moves when they do.
+	"repeater": {"name": "DEEP REPEATER", "price": 10000,
+		"goods": {"alloys": 12},
+		"blurb": "THE CHART CARRIES THE DEEP STATIONS' WEATHER, THE WAY THE RELAY CARRIES THE CHART'S"},
 }
 const DOCK_AURA_RANGE := 30.0
 const DOCK_AURA_MULT := 2.0
@@ -3645,9 +3665,23 @@ func buy_colony_work(key: String, work: String) -> bool:
 		return false
 	if has_work(key, work):
 		return false
+	# v28. THE GOODS ARE CHECKED BEFORE ANYTHING IS SPENT, which is this
+	# function's existing posture (the refusal is free) and §110's rule for
+	# credits said in the other direction: nothing may vanish. Checking every
+	# line of the manifest first means the spend below cannot land on a hold
+	# that turns out to be one unit short.
+	var want: Dictionary = (COLONY_WORKS[work] as Dictionary).get("goods", {})
+	for g_v in want:
+		if cargo_count(String(g_v)) < int(want[g_v]):
+			return false
 	var price := int((COLONY_WORKS[work] as Dictionary).get("price", 0))
 	if not spend_salvage(price):
 		return false
+	# AND ONLY THEN THE HOLD. Every count was proven above and cargo cannot
+	# change between these two lines -- there is no await here and no signal
+	# handler that could reach it.
+	for g2_v in want:
+		unload_cargo(String(g2_v), int(want[g2_v]))
 	var lst: Array = colony_works.get(key, [])
 	lst.append(work)
 	colony_works[key] = lst

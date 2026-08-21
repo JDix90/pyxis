@@ -447,6 +447,58 @@ func legend_layout(words: PackedStringArray) -> PackedFloat32Array:
 	return out
 
 
+func _build_weather_rows(has_relay: bool, has_repeater: bool) -> void:
+	# §112 + §116. TWO WORKS, ONE LIST, AND EACH ONE OWNS ITS OWN HALF OF IT.
+	# The relay carries the CHARTED markets (its blurb's own word); the repeater
+	# carries the deep stations'. A pilot with one sees one section, with both
+	# sees both, and the two can never print the same line twice because the
+	# `deep` flag partitions the array rather than filtering it twice.
+	#
+	# `event_place` is what makes the deep half legible at all: a deep station
+	# streams OUT while its weather runs, so the cell persists and the node does
+	# not, and §108 captured the name on the event for exactly this reader.
+	var sections: Array = []
+	if has_relay:
+		sections.append({"head": "RELAY MAST — THE CHARTED MARKETS TONIGHT",
+			"quiet": "   NOTHING MOVING ON THE CHART", "deep": false})
+	if has_repeater:
+		sections.append({"head": "DEEP REPEATER — PAST THE CHART TONIGHT",
+			"quiet": "   NOTHING MOVING PAST THE CHART", "deep": true})
+	for sec_v in sections:
+		var sec: Dictionary = sec_v
+		var want_deep := bool(sec["deep"])
+		var head := Label.new()
+		head.text = String(sec["head"])
+		head.add_theme_font_size_override("font_size", 10)
+		head.add_theme_color_override("font_color", Palette.GOLD)
+		_colony_rows.add_child(head)
+		var shown := 0
+		for ev_v in GameState.market_events:
+			var ev: Dictionary = ev_v
+			if bool(ev.get("deep", false)) != want_deep:
+				continue
+			shown += 1
+			var eline := Label.new()
+			eline.text = "   %s AT %s — %s, %s LEFT" % [
+				Market.event_label(ev), Market.event_place(ev),
+				CommodityDB.short_name(String(ev.get("good", ""))),
+				"%d:%02d" % [int(float(ev.get("remaining", 0.0))) / 60,
+					int(float(ev.get("remaining", 0.0))) % 60]]
+			eline.add_theme_font_size_override("font_size", 10)
+			eline.add_theme_color_override("font_color", Market.event_color(ev))
+			_colony_rows.add_child(eline)
+		if shown == 0:
+			# A SECTION THAT SAYS NOTHING IS A WORK THAT LOOKS BROKEN. The quiet
+			# line is the same courtesy the rumour desk's NOTHING NEW TONIGHT
+			# pays (§108): a paid-for surface that renders empty reads as a
+			# defect, and this one is worse because the player bought it.
+			var quiet := Label.new()
+			quiet.text = String(sec["quiet"])
+			quiet.add_theme_font_size_override("font_size", 10)
+			quiet.add_theme_color_override("font_color", Palette.AMBER_DIM)
+			_colony_rows.add_child(quiet)
+
+
 func ring_label(id: String, band: int) -> String:
 	# THE EXACT STRING DRAWN BESIDE A BAND RING, exposed so the assertion can
 	# read what the plot draws rather than rebuilding it from the same two
@@ -1298,6 +1350,15 @@ func _refresh_colonies() -> void:
 				wb.text = "%s — SOUND ITS GROUND FIRST (WORK A MAST IN ITS CELL)" \
 					% String(wdef["name"])
 				wb.disabled = true
+			elif not bool(main.work_delivery_met(key, wid)):
+				# §116. A work with a manifest names it, and names where. The
+				# button is the affordance and it is DISABLED rather than
+				# absent, which is the hunt desk's rule (a dead control is its
+				# own kind of lie) and the unsounded row's own posture one
+				# branch up: the refusal is what teaches the verb.
+				wb.text = "%s — BRING %s TO THE COLONY" % [String(wdef["name"]),
+					main.work_manifest(wid)]
+				wb.disabled = true
 			else:
 				wb.text = "RAISE %s — %s" % [String(wdef["name"]),
 					str(int(wdef["price"]))]
@@ -1315,29 +1376,25 @@ func _refresh_colonies() -> void:
 	for cr_v in GameState.colonies_in(_selected):
 		if GameState.has_work(String((cr_v as Dictionary)["key"]), "relay"):
 			has_relay = true
-	if has_relay:
-		var rhead := Label.new()
-		rhead.text = "RELAY MAST — THE CHARTED MARKETS TONIGHT"
-		rhead.add_theme_font_size_override("font_size", 10)
-		rhead.add_theme_color_override("font_color", Palette.GOLD)
-		_colony_rows.add_child(rhead)
-		if GameState.market_events.is_empty():
-			var quiet := Label.new()
-			quiet.text = "   NOTHING MOVING ON THE CHART"
-			quiet.add_theme_font_size_override("font_size", 10)
-			quiet.add_theme_color_override("font_color", Palette.AMBER_DIM)
-			_colony_rows.add_child(quiet)
-		for ev_v in GameState.market_events:
-			var ev: Dictionary = ev_v
-			var eline := Label.new()
-			eline.text = "   %s AT %s — %s, %s LEFT" % [
-				Market.event_label(ev), Market.event_place(ev),
-				CommodityDB.short_name(String(ev.get("good", ""))),
-				"%d:%02d" % [int(float(ev.get("remaining", 0.0))) / 60,
-					int(float(ev.get("remaining", 0.0))) % 60]]
-			eline.add_theme_font_size_override("font_size", 10)
-			eline.add_theme_color_override("font_color", Market.event_color(ev))
-			_colony_rows.add_child(eline)
+	# §116. AND THE REPEATER, which is the other half of the same list.
+	var has_repeater := false
+	for cr2_v in GameState.colonies_in(_selected):
+		if GameState.has_work(String((cr2_v as Dictionary)["key"]), "repeater"):
+			has_repeater = true
+	# §116. THE RELAY WAS SHOWING BOTH, and its own blurb says CHARTED MARKETS.
+	# `market_events` carries the deep's weather in the same array under a
+	# `deep` flag (§108), this loop never filtered, and the header above it read
+	# "THE CHARTED MARKETS TONIGHT" -- so since §112 a relay has been quietly
+	# reporting deep-station weather under a heading the data contradicts. That
+	# is §110's forge hint again: copy derived from a table under a false
+	# assumption about it.
+	#
+	# It is fixed rather than reworded, because the blurb is the promise the
+	# player bought and the WORD in it is "charted". Fixing it is also what
+	# makes the repeater a real grant instead of a rung that gives what
+	# everybody already has -- the §111 test RIFT-WORK's t2 candidate failed.
+	if has_relay or has_repeater:
+		_build_weather_rows(has_relay, has_repeater)
 
 	# §112, FILING t3. THE HELD CELL IS AN ANCHOR: the nearest few cells the
 	# network holds, as jump rows on the beacon jump's own fee and its own cap.
