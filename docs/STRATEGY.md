@@ -10810,6 +10810,29 @@ back **survives the loss**: a pilot who held it through nine assaults and lost
 the tenth has still held it through nine, and retaking does not make them a
 novice.
 
+### What it cost, and the fifth rule that came out of it
+
+`nursery_wave_index` shipped with `var strided := floor(...)`. GDScript's bare
+math globals are Variant-in, Variant-out, so `:=` cannot infer from one — and
+that is a **parse error** in an autoload, which took `game_state.gd` down,
+which took every script depending on it down, which meant the harness could
+not run at all. The typed variants (`floorf`, `absf`, `clampf`, `mini`…) are
+what this codebase uses everywhere; one bare call was enough.
+
+Nothing in the three gates could see it. It is not an indent, not a duplicate,
+not a shadowed loop variable and not an unresolved reference; it reads as
+completely ordinary code, and it survived being written, re-read and statically
+checked before Godot ever saw it. So `check_scripts.py` gains a **fifth rule**
+— `check_infer`, flagging `:=` against an untyped global.
+
+**And the first draft of that rule reported thirteen false positives**, every
+one an `int(ceil(...))` that is legal precisely because the conversion supplies
+the type — the pattern allowed wrapper calls in front of the untyped one,
+contradicting the rule's own docstring. The shadow rule learned this from 28 of
+them. A checker that cries wolf is a checker nobody runs, so the untyped call
+must now be outermost, and the rule is red-verified in both directions: zero on
+the tree, one when the defect is put back.
+
 ### The horizon closes
 
 Ten legends, ten plates, all standing. The far deep now answers a pilot who

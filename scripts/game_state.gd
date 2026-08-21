@@ -2034,8 +2034,13 @@ func nursery_wave_index() -> int:
 	var since := played_seconds - float(nursery.get("taken_at", played_seconds))
 	if since <= 0.0:
 		return 0
-	var strided := floor(since / NURSERY_STRIDE) * NURSERY_STRIDE
-	return int(floor(strided / NURSERY_PERIOD))
+	# floorf, NOT floor: the bare global is untyped, so `:=` cannot infer from
+	# it and the whole autoload fails to compile -- which takes every script
+	# that depends on it down with it. The typed float variants (floorf, absf,
+	# maxf, clampf...) are what this codebase uses everywhere else for exactly
+	# this reason.
+	var strided := floorf(since / NURSERY_STRIDE) * NURSERY_STRIDE
+	return int(floorf(strided / NURSERY_PERIOD))
 
 
 func nursery_wave_size(index: int) -> int:

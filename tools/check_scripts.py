@@ -173,6 +173,57 @@ LOCAL = re.compile(r'^(\t*)(?:var|const)\s+([A-Za-z_]\w*)')
 FUNC = re.compile(r'^(?:static\s+)?func\s')
 
 
+UNTYPED_GLOBALS = (
+    "floor", "ceil", "round", "abs", "sign", "min", "max", "clamp", "lerp",
+    "wrap", "snapped", "posmod", "step_decimals", "inverse_lerp", "remap",
+)
+
+
+def check_infer(path: str):
+    """`var x := <untyped global>(...)` -- the type cannot be inferred.
+
+    THE FIFTH RULE, and it cost a whole harness run to learn. GDScript's bare
+    math globals (floor, abs, min, clamp...) are Variant-in/Variant-out, so
+    `var strided := floor(a / b)` fails to compile with "Cannot infer the type
+    of ... because the value doesn't have a set type". The typed variants --
+    floorf/floori, absf/absi, minf/mini, clampf/clampi -- are what this
+    codebase uses everywhere, and mixing one bare call in is a PARSE error:
+    it took down game_state.gd, which is an autoload, which took down every
+    script that depends on it and every harness with it.
+
+    Nothing else catches this. It is not an indent, not a duplicate, not a
+    shadow and not an unresolved reference, and it reads as completely
+    ordinary code -- which is why it survived a written file, a re-read and a
+    static check before Godot saw it.
+
+    Only `:=` is flagged. `var x: float = floor(...)` is explicit and legal,
+    and so is `int(floor(...))`, because the conversion supplies the type.
+    """
+    out = []
+    # THE UNTYPED CALL MUST BE OUTERMOST. The first version of this pattern
+    # allowed wrapper calls in front of it, which contradicted this rule's own
+    # docstring and reported 13 collisions against a tree that parses -- every
+    # one of them an `int(ceil(...))` that is legal precisely because the
+    # conversion supplies the type. The shadow rule learned the same lesson
+    # from 28 of them: a checker that cries wolf is a checker nobody runs.
+    pat = re.compile(
+        r"^\s*var\s+[A-Za-z_]\w*\s*:=\s*(" +
+        "|".join(UNTYPED_GLOBALS) + r")\s*\(")
+    for lineno, line in enumerate(open(path, encoding="utf-8"), 1):
+        code = line.split("#", 1)[0]
+        m = pat.match(code)
+        if not m:
+            continue
+        # A typed sibling on the same line (floorf, absi) is the fix, not the
+        # defect -- the pattern above already requires an exact name match, but
+        # the guard is stated so the next reader does not have to derive it.
+        out.append((lineno, "`:=` cannot infer from the untyped global "
+                    "`%s()` -- use %sf()/%si()" % (m.group(1), m.group(1),
+                                                   m.group(1)),
+                    line.rstrip()))
+    return out
+
+
 def check_shadow(path: str):
     """A `for` variable with the same name as a local that is still in scope.
 
@@ -328,7 +379,8 @@ def main(argv):
     found = 0
     for path in targets:
         for lineno, why, text in check_indent(path) + check_duplicates(path) + \
-                check_shadow(path) + check_refs(path, members, parent, home):
+                check_shadow(path) + check_infer(path) + \
+                check_refs(path, members, parent, home):
             rel = os.path.relpath(path, root)
             print("%s:%d: %s\n    %s" % (rel, lineno, why, text[:88]))
             found += 1
