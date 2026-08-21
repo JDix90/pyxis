@@ -18,8 +18,13 @@ that are not about strength:
    survives review, gets committed, and is discovered by whoever pulls next.
    That has happened (STRATEGY §77). Python 3 is everywhere Godot is not.
 
-Four checks, all chosen because they cause the class-registry cascade above
-and none is visible when reading a diff.
+SIX checks, all chosen because they cause the class-registry cascade above and
+none is visible when reading a diff. This line said "four" for two rules after
+it was six -- rule five arrived in STRATEGY §106 and rule six in §111, and both
+sections say six while this header said four. A file's own count of itself is
+a measurement column maintained by hand, which is the class §113 documents;
+the honest version is `main()` below, which is where the checks are actually
+listed and where the number can be read rather than remembered.
 
     tools/check_scripts.py            # scripts/**/*.gd
     tools/check_scripts.py a.gd b.gd  # just these
