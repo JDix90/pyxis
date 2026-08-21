@@ -350,6 +350,21 @@ const FILING_REACH_MULT := 1.5      # come alongside from further out
 # §112. COLONY WORKS -- the investment sink. One-time, per colony, and every
 # return is a SERVICE (§26's currencies): the relay is information, the dock is
 # time, the annex is access. No work touches a stat, a price or an income term.
+#
+# AND NOBODY MAY GIVE A WORK AN UPKEEP, which is written here because here is
+# where somebody would type it. "Operating costs" was one of three sink
+# categories approved on 2026-08-21 (§64) and it is the one that never shipped;
+# it was not deferred and not refused, it simply evaporated, because the
+# decision lived in prose and nowhere near the code it described.
+#
+# §5 refused it a year earlier and the sentence is exact: "no clocks, no
+# queues, NO CURRENCY SINK PRETENDING TO BE A DECISION, and nothing that
+# rewards logging in rather than flying ... Nothing may be built by waiting."
+# A recurring bill against a colony is all three at once -- it is a clock, it
+# is not a decision, and it pays attention rather than flying. §5's own
+# alternative is the one to reach for instead: "if a structure takes time to
+# become something, the time is spent flying to it with what it needs -- the
+# trip is the cost."
 const COLONY_WORKS := {
 	"relay": {"name": "RELAY MAST", "price": 4000,
 		"blurb": "THE CHART CARRIES THE CHARTED MARKETS' WEATHER OUT TO THIS SYSTEM"},

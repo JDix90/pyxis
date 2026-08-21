@@ -13183,6 +13183,149 @@ func _run_pacing_test() -> void:
 	print("[pacing] FILING IS NOT A RAISE loop names a filing term=%s (rate %.2f rides the once-only filed set) -> %s" % [
 		str(names_filing), FIRST_FILING_RATE,
 		"PASS" if not names_filing else "FAIL"])
+
+	# --- THE LEDGER OF PRICES (Horizon 11 commit 0) --------------------------
+	#
+	# WHY THIS EXISTS. Everything above this line measures INCOME. Nothing in
+	# this project has ever measured a SINK, and `DEFAULT_LEDGER`'s seven keys
+	# hold no credit figure either -- so the entire outflow side of the economy,
+	# which is what Horizon 10 was ABOUT, has been unmeasured by construction.
+	#
+	# The consequence, found by converting the shipped constants against the
+	# loop this function has just measured: the deepest possible tug's fee is a
+	# few dozen SECONDS of standard-loop income, a full repair rather less, and
+	# every colony work in a whole run together is about an hour. §109 priced
+	# the rescue at exactly twice the beacon jump, which is correct arithmetic
+	# against a number that had itself never been anchored to anything. That is
+	# the whole defect in one sentence, and it is the rule this block hands the
+	# repo: EVERY PRICE HERE IS ANCHORED TO ANOTHER PRICE, AND NONE IS ANCHORED
+	# TO THE LOOP.
+	#
+	# IT ASSERTS LAWS, NEVER TARGETS. The re-pricing is deliberately a decision
+	# for a later horizon, taken with this table in hand (§41's own posture, and
+	# §99's: the numbers are provisional, the laws are what is checked). So
+	# nothing below asserts that a sink is BIG ENOUGH. A leg that did would be
+	# this commit quietly making the decision it exists to inform.
+	#
+	# AND IT IS HONEST ABOUT ITS REACH, `FEEDS COMPETE, SIX WAYS`' posture: the
+	# sink list below is AUTHORED, so a sink somebody adds later and does not
+	# add here is invisible to all three legs. What is derived is every PRICE --
+	# each row reads the live constant or the live port def rather than a number
+	# typed twice -- which is what makes `EVERY SINK IS PRICED` able to notice a
+	# constant that moved or a key that was renamed.
+	var sink_rows: Array = []
+	sink_rows.append({"name": "the module catalogue", "cost": float(catalog),
+		"forced": false})
+	var works_total := 0
+	for w_v in GameState.COLONY_WORKS:
+		works_total += int((GameState.COLONY_WORKS[w_v] as Dictionary).get("price", 0))
+	sink_rows.append({"name": "colony works, one colony", "cost": float(works_total),
+		"forced": false})
+	# The dearest component the order desk will ever quote, derived rather than
+	# named: a later component priced above lens_unsounded moves this row.
+	var req_max := 0
+	for cid_v in CommodityDB.ids():
+		var cid := String(cid_v)
+		if String(CommodityDB.get_good(cid).get("parent", "")) == "":
+			continue
+		req_max = maxi(req_max, Market.requisition_price(cid))
+	sink_rows.append({"name": "a requisition, dearest part", "cost": float(req_max),
+		"forced": false})
+	# THE TWO A PILOT CANNOT DECLINE. A shield-zero ship has no other way out,
+	# and a hull that will not mend is a ship that cannot be flown -- so these
+	# two are the ones the third law below is about.
+	# AT THE FAR MARKS, and the depth is FarMarks' own rather than a doubled
+	# hyper cap: the rescue ramp deliberately does NOT clamp (§109), so the row
+	# is only honest if it names the deepest place a pilot can actually die.
+	sink_rows.append({"name": "the tug, at the far marks",
+		"cost": float(rescue_fee(FarMarks.DEPTH_MAX)), "forced": true})
+	sink_rows.append({"name": "repair to full",
+		"cost": float(PortPanel.REPAIR_FULL_PRICE), "forced": true})
+	sink_rows.append({"name": "a beacon jump, at its cap",
+		"cost": float(beacon_jump_fee(float(BEACON_JUMP_MAX_DEPTH))), "forced": false})
+	sink_rows.append({"name": "a colony jump", "cost": float(COLONY_JUMP_FEE),
+		"forced": false})
+	sink_rows.append({"name": "paint", "cost": float(PortPanel.PAINT_PRICE),
+		"forced": false})
+	# The intel and rumour desks price by PORT DEF, and the dearest desk in the
+	# game is the one worth quoting -- walked rather than named, so a new deep
+	# station with a steeper desk lands in the table without an edit here.
+	var intel_max := 0
+	var rumor_max := 0
+	for pid_v in SystemDB.port_ids():
+		var pd := SystemDB.port_def_by_id(String(pid_v))
+		intel_max = maxi(intel_max, int(pd.get("hunt_price", 0)))
+		rumor_max = maxi(rumor_max, int(pd.get("rumor_price", 0)))
+	for aid_v in DeepPortDB.ids():
+		var ad := DeepPortDB.by_id(String(aid_v))
+		intel_max = maxi(intel_max, int(ad.get("hunt_price", 0)))
+		rumor_max = maxi(rumor_max, int(ad.get("rumor_price", 0)))
+	sink_rows.append({"name": "the sharpest bearing sold", "cost": float(intel_max),
+		"forced": false})
+	sink_rows.append({"name": "a rumour, dearest desk", "cost": float(rumor_max),
+		"forced": false})
+	var stake_total := 0
+	for s_v in PortPanel.GAMBLE_STAKES:
+		stake_total += int(s_v)
+	sink_rows.append({"name": "the wager, a full streak", "cost": float(stake_total),
+		"forced": false})
+
+	var loop_secs := PACING_MINUTES * 60.0
+	print("[pacing] SINKS priced against this run's own steady loop (%.0f per %.0f min)" % [
+		steady, PACING_MINUTES])
+	for row_v in sink_rows:
+		var row: Dictionary = row_v
+		var loops := float(row["cost"]) / maxf(steady, 1.0)
+		print("[pacing]   %-28s %10s   %7.3f loops   %8.0f s%s" % [
+			String(row["name"]), _comma_int(int(row["cost"])), loops,
+			loops * loop_secs, "   (cannot be declined)" if bool(row["forced"]) else ""])
+
+	# 1. Every row read a live number. A zero means the constant or the port-def
+	#    key it derives from has moved, been renamed, or gone -- at which point
+	#    the row above is a measurement column reporting on nothing, which is the
+	#    failure this whole block was built to stop being possible.
+	var unpriced: Array = []
+	for row2_v in sink_rows:
+		var row2: Dictionary = row2_v
+		if float(row2["cost"]) <= 0.0:
+			unpriced.append(String(row2["name"]))
+	print("[pacing] EVERY SINK IS PRICED %d sink(s) derived from live data, %d read zero%s -> %s" % [
+		sink_rows.size(), unpriced.size(),
+		"" if unpriced.is_empty() else (" (%s)" % ", ".join(PackedStringArray(unpriced))),
+		"PASS" if unpriced.is_empty() else "FAIL"])
+
+	# 2. The catalogue is what a run is FOR, so nothing may cost more than it.
+	#    True today by a wide margin; it goes red the moment somebody prices a
+	#    work or an order above the entire yard, which is the one direction a
+	#    re-pricing could overshoot without anybody noticing.
+	var over: Array = []
+	for row3_v in sink_rows:
+		var row3: Dictionary = row3_v
+		if String(row3["name"]) != "the module catalogue" \
+				and float(row3["cost"]) > float(catalog):
+			over.append(String(row3["name"]))
+	print("[pacing] THE CATALOGUE IS THE LONGEST PRICE catalogue %s, %d sink(s) above it%s -> %s" % [
+		_comma_int(catalog), over.size(),
+		"" if over.is_empty() else (" (%s)" % ", ".join(PackedStringArray(over))),
+		"PASS" if over.is_empty() else "FAIL"])
+
+	# 3. THE ONE PROMISE WORTH PINNING BEFORE ANY RE-PRICING, and it is a floor
+	#    rather than a ceiling on purpose. A charge a pilot cannot decline that
+	#    costs more than a whole measured loop does not price a mistake -- it
+	#    deletes the session that preceded it, which is a different game from
+	#    this one and not the one the tutorial taught. It is comfortably true
+	#    today (both forced sinks are seconds, not loops), it survives a
+	#    re-pricing in EITHER direction, and it is therefore safe to assert now
+	#    without prejudging the decision this table exists to inform.
+	var forced_over: Array = []
+	for row4_v in sink_rows:
+		var row4: Dictionary = row4_v
+		if bool(row4["forced"]) and float(row4["cost"]) > steady:
+			forced_over.append(String(row4["name"]))
+	print("[pacing] NOTHING INVOLUNTARY EXCEEDS A LOOP one loop is %s, %d forced sink(s) above it%s -> %s" % [
+		_comma_int(int(steady)), forced_over.size(),
+		"" if forced_over.is_empty() else (" (%s)" % ", ".join(PackedStringArray(forced_over))),
+		"PASS" if forced_over.is_empty() else "FAIL"])
 	get_tree().quit()
 
 

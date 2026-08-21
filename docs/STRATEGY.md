@@ -6362,7 +6362,7 @@ this section exists to prevent, happening inside this section's own paragraph**,
 and it is worth more than the item: a decision recorded in prose and nowhere
 else is a decision that can evaporate without a diff.
 
-**It is closed as REFUSED rather than deferred, on §5's own terms.** §5's
+**It is closed as REFUSED rather than deferred, on §5's own terms (done — §114).** §5's
 base-building amendment (2026-08-04) already states the boundary: *"no clocks,
 no queues, no currency sink pretending to be a decision, and nothing that
 rewards logging in rather than flying … Nothing may be built by waiting."* An
@@ -6380,8 +6380,8 @@ below:
 
 | # | what | save | status |
 |---|---|---|---|
-| 0 | the ledger of prices: a SINKS block deriving every sink as loop-minutes off PACINGTEST's own `earned`; the §-rule; §5's refusal of operating costs recorded at the site | none | **PLANNED** |
-| 1 | the runner's teeth: kill on the first SCRIPT ERROR, `--parse`, `--legs`, the checker's stale docstring | none | **PLANNED** |
+| 0 | the ledger of prices: a SINKS block deriving every sink as loop-minutes off PACINGTEST's own `earned`; the §-rule; §5's refusal of operating costs recorded at the site | none | **BUILT** — §114 |
+| 1 | the runner's teeth: kill on the first SCRIPT ERROR, `--parse`, `--legs`, the checker's stale docstring | none | **BUILT** — and `--legs` found TITLETEST on its first run |
 | 2 | `docs/DEFECTS.md` — ten recurring defect classes, each with the rule or leg that covers it | none | **PLANNED** |
 | 3 | the colleague's cell: a third validated word in `survey_filed`, captured at the act because it CANNOT be derived | **v28** | **PLANNED** |
 | 4 | the trip is the cost: a fourth colony work taking a DELIVERED good, raised at the structure | rides v28 | **PLANNED** |
@@ -6430,6 +6430,18 @@ nine names were. And the `main.gd` refactor is misaimed: the file is 28,626
 lines of which **78% is harness**, cleanly split at line 5,219, so the game half
 is ~5,200 lines — comparable to `game_state.gd`. That measurement is recorded
 so the proposal does not recur.
+
+**And commit 1 found a live one on its first execution, which is now owed.**
+`TITLETEST` is in `run_harness.sh`'s `TAGS`, burns a run in every sweep, and
+**cannot fail**: `_run_title_test` prints four lines carrying their own
+expectations in prose — `expect 0`, `expect false`, `expect ~0`, `matches save
+present=` — and not one `-> PASS`/`-> FAIL` anywhere. That is §107's MARKETTEST
+defect exactly ("printed five true things and asserted **none** of them, for
+twenty-two versions"), still live in a second tag, and it means the sweep's
+headline run count has included one run that has never been able to go red.
+`--legs` reports it under CANNOT FAIL. **It is not fixed in commit 1, which
+deliberately touches no game code**; it wants four assertions and the one
+sweep that proves them, and it is owed by this horizon.
 
 **One rule the pass produced, worth keeping loose from its commit.** A fact
 about WHEN something happened cannot be derived from a monotone predicate about
@@ -11876,3 +11888,113 @@ were found *by* the work before any sweep saw them: a tautological assertion,
 a dead rung, a loader validating against a store that loads later, and a hint
 whose fix had restated its own bug. The checker ended the horizon with six
 rules; it began it with four.
+
+## 114. The ledger of prices (Horizon 11, commit 0)
+
+Horizon 11 opened the night §113 closed, on a research pass over fifteen ideas.
+Ten of them died or were reshaped on contact with the code, and the finding
+that reordered the rest is one sentence long:
+
+**This project has an income instrument and has never had a wealth one.**
+
+### What was unmeasured, and what that hid
+
+`PACINGTEST` folds seven measured yields over an authored eight-minute loop and
+divides by a mid-tier module, then asserts the ratio sits in `[0.60, 3.00]`.
+That is an *earning rate*. Nothing anywhere has measured a balance, a sink, or
+a lifetime spend — and `DEFAULT_LEDGER`'s seven keys carry no credit figure
+either, so the outflow side of the economy, which is what the whole of Horizon
+10 was about, was unmeasured **by construction** rather than by neglect.
+
+Converted against the loop this function already measures, the shipped
+constants read:
+
+| sink | credits | loops |
+|---|---|---|
+| the module catalogue | ~919,000 | ~27 |
+| every colony work on one colony | 18,000 | 0.53 |
+| the wager, a full streak | 5,250 | 0.15 |
+| a requisition, dearest part | 4,500 | 0.13 |
+| **the tug, at the far marks** | 1,869 | **0.055** |
+| **repair to full** | 1,400 | **0.041** |
+| the sharpest bearing sold | 900 | 0.026 |
+| paint | 800 | 0.024 |
+| a beacon jump at its cap, a colony jump, a rumour | 500 | 0.015 |
+
+The two in bold are the only charges a pilot cannot decline. **The deepest
+possible rescue in the game is twenty-six seconds of standard-loop income**,
+and a full repair is twenty. Even against the pacing band's *floor* — the
+poorest economy this project asserts as legal — the deepest rescue is a fifth
+of one loop.
+
+### The rule, and it is §11's missing half
+
+§11 says no port may be a money printer, and every commit for two years has
+checked itself against it. Nothing said anything about the other direction, so
+the other direction drifted without a single assertion noticing.
+
+> **A SINK'S PRICE IS STATED IN LOOP-MINUTES.**
+
+§109 priced the tug at exactly twice the beacon jump. That arithmetic is right,
+the reasoning is written down, and `THE RESCUE COSTS MORE THAN THE JUMP` sweeps
+seven depths to keep it right. It is also anchored to a number that had itself
+never been anchored to anything — and the beacon jump was anchored to the
+colony jump, which was authored. **Every price in this game is anchored to
+another price, and none is anchored to the loop.** That is the whole defect,
+and it is invisible to every existing assertion because every existing
+assertion compares prices to each other too.
+
+### What the block asserts, and what it deliberately will not
+
+Three laws, and no targets. The re-pricing is a decision for a later horizon
+taken with this table in hand — §41's posture exactly, and §99's: the numbers
+are provisional, the laws are what is checked. **A leg asserting that a sink is
+big enough would be this commit quietly making the decision it exists to
+inform.**
+
+- `EVERY SINK IS PRICED` — every row derives its number from the live constant
+  or the live port def rather than from a figure typed twice, and a row reading
+  zero means the thing it reads has moved, been renamed or gone. Without this
+  the table is a measurement column that can lose a row in silence, which is
+  the class §113 had just finished paying off.
+- `THE CATALOGUE IS THE LONGEST PRICE` — nothing costs more than the yard. True
+  today by a wide margin, and it reddens the moment a re-pricing overshoots in
+  the one direction nobody would otherwise notice.
+- `NOTHING INVOLUNTARY EXCEEDS A LOOP` — a **floor**, not a ceiling, and the one
+  promise worth pinning before any re-pricing. A charge a pilot cannot decline
+  that costs more than a whole measured loop does not price a mistake; it
+  deletes the session that preceded it, which is a different game from this one
+  and not the one the tutorial taught. It survives a re-pricing in either
+  direction, which is what makes it safe to assert now.
+
+**And it is honest about its reach in its own comment**, `FEEDS COMPETE, SIX
+WAYS`' posture: the sink *list* is authored, so a sink somebody adds later and
+does not add here is invisible to all three legs. What is derived is every
+*price*. That distinction is the difference between a test that notices a
+changed constant and one that merely restates it.
+
+### The scope decision that evaporated, and where its refusal now lives
+
+§64 recorded four scope decisions on 2026-08-21. One named three sink
+categories: requisitions, colony/station investment, and **operating costs**.
+The first shipped as §110 and the second as §112. The third appears **twice in
+the entire repository** — in that §64 sentence and in the identical list in the
+Horizon 10 doc — and in no commit, no section, no assertion, and no row of
+§64's own deferral table. It was not built, not deferred, and not refused.
+
+That is the failure §64 exists to prevent, happening inside §64's own
+paragraph, and the item matters less than the mechanism: **a decision recorded
+in prose and nowhere near the code it describes can evaporate without a diff.**
+
+It is closed as **REFUSED**, on §5's own terms, written a year before the
+decision was taken: *"no clocks, no queues, no currency sink pretending to be a
+decision, and nothing that rewards logging in rather than flying … Nothing may
+be built by waiting."* A recurring bill against a colony is all three at once.
+
+The refusal is now recorded **at the `COLONY_WORKS` table**, which is where
+somebody would type an upkeep field, as well as here. That placement is the
+durable half and the research pass's own finding: of fifteen ideas, five died
+against a comment sitting exactly where the bad idea would have been typed,
+while the one refusal that lived only in STRATEGY is the one that got
+forgotten. **The rule is not "write the refusal down." It is "write it where
+somebody would type the mistake."**
