@@ -6216,6 +6216,16 @@ and a torpedo-only fit unable to open on an ALLIED ship (a torpedo's only damage
 vector is that sweep). The concrete harm that prompted the question — an escort
 parked inside the blast — is fixed independently by moving the station.
 
+**It now has a dependent, which is a reason to draw the line rather than leave
+it drawn nowhere** (2026-08-21). Horizon 11's research pass wanted an NPC that
+competes without fighting — a hull that arrives, works a spill the player left
+at a deep death, and leaves. Every version of it runs into this question: one
+the player can shoot is a combat encounter, one they cannot is a ghost, and one
+that splash catches by accident is this paragraph under a new name. The feature
+was reshaped around the question rather than forcing it (Horizon 11 commit 6
+ships a record, not a body), but the next non-combatant in the world will ask
+again.
+
 **The contact menu has no touch gesture** (deferred 2026-08-06, §72). Right-click
 opens it; a phone has no way in. This is the one place in the game where a verb
 is desktop-only, and it is deferred rather than dropped because the reason is a
@@ -6341,6 +6351,92 @@ it lands.** Every commit here moves income zero or negative — a shelf throttle
 repeat farming, and fees, orders and works are sinks — so the band will be
 measured against an honestly poorer loop, which is the sharpened version of the
 debt §80 left standing rather than a new one.
+
+**And one of those four decisions never shipped, was never deferred, and was
+refused a year before it was taken.** "Operating costs" appears exactly TWICE
+in this repository — in the paragraph above and in the identical list in
+`HORIZON-10-THE-COUNTED-SHELF.md` — and in no commit, no section, no assertion
+and no row of this inventory. Requisitions shipped (§110) and colony investment
+shipped (§112); the third category was dropped silently. **That is the failure
+this section exists to prevent, happening inside this section's own paragraph**,
+and it is worth more than the item: a decision recorded in prose and nowhere
+else is a decision that can evaporate without a diff.
+
+**It is closed as REFUSED rather than deferred, on §5's own terms.** §5's
+base-building amendment (2026-08-04) already states the boundary: *"no clocks,
+no queues, no currency sink pretending to be a decision, and nothing that
+rewards logging in rather than flying … Nothing may be built by waiting."* An
+upkeep bill is all three at once. The refusal was already law; what was missing
+was anybody writing it down where the scope decision could meet it. Horizon 11
+commit 0 records it at the site as well as here — which is the durable half,
+since a refusal living only in STRATEGY is exactly the one that got forgotten.
+
+**Horizon 11 — the reckoning** (opened 2026-08-21, the evening Horizon 10
+closed; researched in `docs/HORIZON-11-RESEARCH.md`, specced in
+`docs/HORIZON-11-THE-RECKONING.md`). Ten commits, **none built.** Fifteen ideas
+went into the research pass and **ten died or were reshaped on contact with the
+code** — the deaths are listed in the research doc's §5 and the survivors are
+below:
+
+| # | what | save | status |
+|---|---|---|---|
+| 0 | the ledger of prices: a SINKS block deriving every sink as loop-minutes off PACINGTEST's own `earned`; the §-rule; §5's refusal of operating costs recorded at the site | none | **PLANNED** |
+| 1 | the runner's teeth: kill on the first SCRIPT ERROR, `--parse`, `--legs`, the checker's stale docstring | none | **PLANNED** |
+| 2 | `docs/DEFECTS.md` — ten recurring defect classes, each with the rule or leg that covers it | none | **PLANNED** |
+| 3 | the colleague's cell: a third validated word in `survey_filed`, captured at the act because it CANNOT be derived | **v28** | **PLANNED** |
+| 4 | the trip is the cost: a fourth colony work taking a DELIVERED good, raised at the structure | rides v28 | **PLANNED** |
+| 5 | a kept light: the procession and a player colony, one broadcast, once per run | rides v28 | **PLANNED** |
+| 6 | what the claimant left: a claimed spill enters the captain's log and the ledger | rides v28 | **PLANNED** |
+| 7 | the prompt holds its refusals: `prompt(text, hold_s := 0.0)` appended-optional, and the label wraps | rides v28 | **PLANNED** |
+| 8 | the eleventh: an all-ladders capstone derived from both table families, one broadcast, a visible count | rides v28 | **PLANNED** |
+| 9 | the measure: the horizon closed and the sweep read | none | **PLANNED** |
+
+**The finding that set the order, and it is a measurement rather than a
+feeling.** This project has an income instrument and has never had a wealth
+one. `PACINGTEST` measures earning rate against a mid-tier module and asserts a
+band; **nothing anywhere measures a balance or a sink**, and `DEFAULT_LEDGER`'s
+seven keys contain no credit figure. Converted against a steady loop of roughly
+34,000: the module catalogue is ~1.1M (**~4.3 hours**) and *everything else in
+the game together* is about 300,000 — colony works ≤270k, a requisition ≤4,500,
+a full repair 1,400, and the deepest possible tug's fee 1,870, which is
+**twenty-six seconds of income**. Even at the pacing band's floor the deepest
+rescue is a fifth of one loop. So §64's own question — does a mid-game pilot
+ever feel poor again — has an answer: not after the catalogue, and Horizon 10
+moved that by about an hour. The cause is one sentence, and it is the rule
+commit 0 writes: **every price in this game is anchored to another price, and no
+price is anchored to the loop.**
+
+**Four decisions taken before any code** (2026-08-21): both halves ship (the
+measurement AND the presence work, because the measurement is what lets the
+presence work be argued income-neutral rather than assumed so); **measure
+first, re-price next horizon** — the instrument and the rule ship and no sink
+price moves, §41's own posture; the capstone's count is **visible**, with §19's
+cost accepted in the open and bought back by restraint everywhere else (a
+derived count on the ledger header, nothing that says what the eleventh does);
+and the spill claimant **stays faceless** — a record, never a body.
+
+**Three things the research pass killed outright and this horizon will not
+build.** The pressure front survives only as a *quadrant*-shaped reshape and is
+not scoped here: raiders are one kind tapered by depth (`DEEP_RAID_TAPER`)
+rather than a per-band roster, `PACK_DROP` rides the same index as
+`PACK_DIFFICULTY` so a band shift is a printer or a tax with nothing between,
+and `plan_cell` is a pure function of `(system, cx, cz)` that `THE DEEP IS
+STILL UNCLAIMED` guards. The spill claimant's *hull* is blocked behind the
+ALLIED-splash question below, and its two proposed replacements died too — a
+deep market event on the claimed good hits `EVENT_MAX_DEEP := 1` and §108's
+bias-table bound (**no deep station's bias table contains a single salvage
+good**), and a *named* claimant is a writing-pass decision gated the way the
+nine names were. And the `main.gd` refactor is misaimed: the file is 28,626
+lines of which **78% is harness**, cleanly split at line 5,219, so the game half
+is ~5,200 lines — comparable to `game_state.gd`. That measurement is recorded
+so the proposal does not recur.
+
+**One rule the pass produced, worth keeping loose from its commit.** A fact
+about WHEN something happened cannot be derived from a monotone predicate about
+WHETHER it has. `Rival.filed` is monotone in `played_seconds`, so a chart that
+derived "a colleague filed this" would retroactively re-label every cell the
+player filed *first* — the exact inverse of §97's `files_with_the_network()`,
+which is derivable because it is an existential over a store that only grows.
 
 ### Built, despite what the docs said
 
@@ -11721,6 +11817,27 @@ stood open since §77.
   timeout; a self-arming quit-after-60s inside the harness dispatch would turn
   that into a fast failure with the error in the log. Touches all 56 tags, so
   it wants its own small commit and a full sweep of its own.
+
+> **Amended 2026-08-21 (Horizon 11's research pass, `docs/HORIZON-11-RESEARCH.md`).**
+> Three of these four now have measurements against them and one is refuted, so
+> the list above is a record of what was open that night rather than a plan.
+> **The watchdog as written is refused by `run_harness.sh`'s own comment** —
+> `PYXIS_BALANCE` legitimately runs five to eleven minutes, so a 60-second bound
+> would fail the sweep for something that is not a defect, and a per-tag table
+> would be 56 hand-maintained numbers, the class §113 had just finished paying
+> off. It is also aimed at the wrong thing: `run_one` already enforces the
+> timeout and already counts `HARNESS TIMEOUT` as an error, so the sweep is
+> correct today and the cost is wall clock. The replacement kills on the
+> *symptom* — the first `SCRIPT ERROR`, which already fails the run — inside the
+> existing wait loop, in about eight lines, touching zero tags.
+> **`CANNOT_READ` is 124 characters and the next-longest prompt in the game is
+> 83**, so it is one outlier rather than a systemic wrapping problem — and the
+> device §105 asked for is nearly free, because `_prompt_label` already grows
+> upward (`GROW_DIRECTION_BEGIN`, away from the action dock) and no leg reads
+> its geometry. **The deep-event rumour line** is held rather than shipped,
+> because Horizon 11 commit 4 may want a deep repeater as its colony work and
+> shipping the copy twice is worse than shipping it late. Only **5c** stands
+> exactly as written.
 
 ### The sweep, measured (2026-08-21)
 
