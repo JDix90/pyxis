@@ -18,6 +18,21 @@
 
 set -uo pipefail
 
+# WHAT TREE IS THIS? Printed by every mode, because a sweep that does not say
+# what it measured is a measurement column maintained by hand in a different
+# costume -- and this has now cost three round trips. Twice the answer was "an
+# old checkout" and once it was "main, which does not have the branch's work";
+# every time, the counts looked plausible and were correct for a tree nobody had
+# checked. Guarded, because a tarball with no .git is still a valid way to run
+# this.
+tree_id() {
+	command -v git >/dev/null 2>&1 || { echo "no git"; return; }
+	git -C "$ROOT" rev-parse --short HEAD >/dev/null 2>&1 || { echo "not a repo"; return; }
+	printf '%s @ %s' \
+		"$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)" \
+		"$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null)"
+}
+
 GODOT="${GODOT:-/Applications/Godot.app/Contents/MacOS/Godot}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="${PYXIS_HARNESS_OUT:-$(mktemp -d)}"
@@ -132,6 +147,7 @@ SAVE_MODES=("${ALL_MODES[@]}")
 # counts") paid: the README now points here instead of hand-maintaining a
 # figure that has been wrong twice.
 if [ "${1:-}" = "--counts" ]; then
+	echo "TREE: $(tree_id)"
 	echo "TAGS: ${#TAGS[@]}"
 	echo "SAVE_MODES: ${#SAVE_MODES[@]}"
 	echo "RUNS: $((${#TAGS[@]} + ${#SAVE_MODES[@]}))  (${#TAGS[@]} tags + ${#SAVE_MODES[@]} SAVETEST modes)"
@@ -148,6 +164,7 @@ fi
 # but cannot sweep. See tools/harness_legs.py for why this is a lower bound
 # and what it refuses to gate on.
 if [ "${1:-}" = "--legs" ]; then
+	echo "TREE: $(tree_id)"
 	python3 "$ROOT/tools/harness_legs.py" "${TAGS[@]}"
 	exit $?
 fi
@@ -390,6 +407,7 @@ for mode in "${SAVE_MODES[@]+"${SAVE_MODES[@]}"}"; do run_one "SAVETEST=$mode" "
 AFTER="$(save_md5)"
 echo "---"
 echo "$runs runs | $pass PASS | $fail FAIL | $errs script errors | $short short"
+echo "tree: $(tree_id)"
 if [ "$BEFORE" != "$AFTER" ]; then
 	echo "SAVE TOUCHED: $BEFORE -> $AFTER   (a harness wrote the real save)"
 	exit 1

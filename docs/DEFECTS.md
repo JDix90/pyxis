@@ -116,9 +116,18 @@ and a sweep of 66. §113 found "green at 758" for a sweep that was never run. An
 `check_scripts.py`'s own header said "four checks" for two rules after it was
 six — while §111 and §113 both said six.
 
+**And a fourth instance, from the other end: a measurement that does not say
+what it measured.** Three times in one horizon a sweep's counts looked plausible
+and were correct for a tree nobody had checked — twice an old checkout, once
+`main` while the work sat on a branch. The numbers were never wrong; they were
+unattributed, which in a repo with two live trees is the same failure wearing a
+different coat. `--counts`, `--legs` and the sweep summary now all print
+`branch @ sha`.
+
 **Covered by:** `run_harness.sh --counts` (runs) and `--legs` (assertions), both
-derived, neither needing the Godot binary. **If a number describes the code,
-derive it or do not write it.**
+derived, neither needing the Godot binary; and `tree_id` on every mode so a
+figure carries its provenance. **If a number describes the code, derive it or do
+not write it — and say which code.**
 
 ---
 
