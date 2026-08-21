@@ -225,7 +225,7 @@ def check_infer(path: str):
 
 
 def check_shadow(path: str):
-    """A `for` variable with the same name as a local that is still in scope.
+    """A `for` variable OR a `var` colliding with a local that is still in scope.
 
     THE FOURTH RULE, and the second one a scripted edit produced. GDScript
     rejects `for b in 40` outright when a `var b` earlier in the same function
@@ -263,7 +263,19 @@ def check_shadow(path: str):
             continue
         m = LOCAL.match(line)
         if m:
-            live.append((len(m.group(1)), m.group(2), n))
+            depth, name = len(m.group(1)), m.group(2)
+            # THE SAME RULE, THE OTHER DIRECTION -- and the one that cost a
+            # sweep. `var` against a live `var` is the identical parse error as
+            # `for` against a live `var`, and the tracking above already knew
+            # about it; the check simply was not asked. A scripted insert put a
+            # second `var rec2` a hundred lines below the first, inside a
+            # 27,000-line file, and the static pass reported zero problems while
+            # the harness could not boot at all.
+            hit = [e for e in live if e[1] == name and e[0] <= depth]
+            if hit:
+                bad.append((n, "var %s is already a live local from line %d"
+                            % (name, hit[-1][2]), line.strip()))
+            live.append((depth, name, n))
     return bad
 
 

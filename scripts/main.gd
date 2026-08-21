@@ -6670,13 +6670,13 @@ func _run_forge_test() -> void:
 	var unshoppable := ""
 	var recipe_bands := ""
 	for cid2_v in craftables:
-		var rec2 := ModuleDB.recipe(String(cid2_v))
+		var bill2 := ModuleDB.recipe(String(cid2_v))
 		var common := []
 		var first := true
-		for good_v in rec2:
+		for bgood_v in bill2:
 			var bset := []
 			for sal3_v in CommodityDB.READS_AS:
-				if (CommodityDB.READS_AS[sal3_v] as Array).has(String(good_v)):
+				if (CommodityDB.READS_AS[sal3_v] as Array).has(String(bgood_v)):
 					bset.append(CommodityDB.band_of(String(sal3_v)))
 			if first:
 				common = bset
