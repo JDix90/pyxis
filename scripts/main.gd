@@ -1694,6 +1694,61 @@ func legend_arrives(mark_system: String, index: int, kind: String, at: Vector3) 
 	if system_root == null or mark_system != system_id:
 		return
 	SystemBuilder.build_legend(system_root, mark_system, index, kind, at)
+	if kind == "procession":
+		_procession_passes_a_kept_light()
+
+
+# §117. THE UNCOUNTED HUNDREDS AND ONE LIGHT SOMEBODY KEEPS. Nothing in the
+# world moves and nothing is spawned: every piece of this already exists and
+# none of them were pointed at each other.
+#
+# BROADCASTS[5] is titled A KEPT LIGHT and says "there is a light ahead of you,
+# it is kept, and by somebody"; its `body_after` closes with "it is lit for
+# whoever is still out here, which by the authority's own ledger now includes
+# you". COLONIAL's t3 perk is named KEPT LIGHTS -- a founded colony borrows
+# TIER_HOME so its light never fades. And the Procession is seven named hulls
+# that filed and were never counted, in front of four hundred more. The player's
+# colony IS a kept light, in the game's own words. This is the sentence that
+# says so once.
+var _kept_light_spoken := false
+
+
+func _procession_passes_a_kept_light() -> void:
+	# ONE SCRIPTED INTERSECTION, ONCE PER RUN, AND IT PAYS NOTHING. §105 is
+	# emphatic that the formation "never spends its mark" and that a set of ten
+	# legends needs one that only asks; this must not become the thing that
+	# breaks that. No credits, no standing, no ledger, no store.
+	#
+	# FIRED AT ARRIVAL RATHER THAN AT A HULL. The hulls answer taps on the same
+	# plate and refuse each other with SLOWLY precisely because it has no queue
+	# -- adding a second speaker to that moment would be the collision §113 spent
+	# a red on. Arrival is the beat before any of that starts.
+	#
+	# THE ORDERING IS STATED RATHER THAN GUARDED. A pilot who founds their first
+	# colony AFTER meeting the procession never hears this, and that is allowed:
+	# the marks sit at 6,500-9,000u and hyper structures at 1,600-4,200u, so
+	# anybody standing at this formation has flown past the colonies twice. A
+	# second trigger on the founding verb would cover a case the geometry barely
+	# permits, at the cost of a second call site that could fire it late and
+	# out of any moment at all.
+	if _kept_light_spoken or hud == null:
+		return
+	if GameState.colonies.is_empty():
+		return
+	# ASK FIRST, never clobber -- §96's rule for this plate, which the procession
+	# itself enforces on its own hulls. Unspoken rather than spent if the plate
+	# is busy: a once-per-run sentence must not be consumed by being suppressed
+	# (Barks.fire's rule, honoured from the other side), so the flag is set only
+	# when the plate actually carries it.
+	if hud.has_method("broadcast_busy") and hud.broadcast_busy():
+		return
+	_kept_light_spoken = true
+	hud.show_broadcast("· · ·",
+		"The line is passing a light. It is kept, and it is kept by you. "
+		+ "Nothing in the formation acknowledges it. They filed for eleven "
+		+ "years and were received and were never read, and they are still "
+		+ "pointed home; you are the first thing on this bearing in a long "
+		+ "time that somebody is still keeping a light for.", Palette.RIVAL)
 
 
 func drop_beacon_here() -> bool:
@@ -18108,6 +18163,49 @@ func _run_return_test() -> void:
 	#     asked of the player. Also the fiction's own constraint: the rival
 	#     stays anonymous, which is a claim about what is NOT in the table and
 	#     therefore has to be asserted rather than assumed.
+	# §117. AND ONE OF THEM PASSES A LIGHT SOMEBODY KEEPS. Driven through
+	#     legend_arrives, which is the real caller, so the leg tests the wiring
+	#     and not a helper nobody reaches. Both directions, because a sentence
+	#     that fired for every pilot would be a sentence about nothing: silent
+	#     with no colony, spoken with one, and spoken ONCE.
+	#     THE PLATE IS FREED BY HAND BETWEEN CLAUSES, and that is required
+	#     rather than convenient: the helper refuses while a plate is up (§96's
+	#     ask-first), so a "never twice" clause run against a busy plate would
+	#     pass on the BUSY guard whether the once-per-run flag worked or not --
+	#     a leg that cannot fail, which is the exact defect --legs just found in
+	#     TITLETEST. Reaching a private HUD field is the prompt sweep's own
+	#     precedent (it reads _prompt_label.modulate.a for the same kind of
+	#     reason: the public surface cannot express the state a leg must set up).
+	var kept_was := _kept_light_spoken
+	var colonies_was: Dictionary = GameState.colonies.duplicate(true)
+	var at_proc := Vector3(2400.0, 0.0, 2400.0)
+
+	_kept_light_spoken = false
+	GameState.colonies = {}
+	hud._broadcast_box.visible = false
+	legend_arrives(msid, 4, "procession", at_proc)
+	var silent_alone: bool = not _kept_light_spoken and not hud.broadcast_busy()
+
+	GameState.claim_colony(msid + ":3", 1800.0, 0.0)
+	legend_arrives(msid, 4, "procession", at_proc)
+	var spoke_with_light: bool = _kept_light_spoken \
+		and hud.broadcast_text().contains("kept by you")
+
+	# The plate is freed, so the ONLY thing that can stop a second sentence is
+	# the flag. A sentinel goes up first so "nothing new was written" is
+	# measured against a known string rather than against emptiness.
+	hud._broadcast_box.visible = false
+	hud.show_broadcast("SENTINEL", "SENTINEL", Palette.AMBER)
+	legend_arrives(msid, 4, "procession", at_proc)
+	var spoke_once: bool = hud.broadcast_text() == "SENTINEL"
+
+	hud._broadcast_box.visible = false
+	GameState.colonies = colonies_was
+	_kept_light_spoken = kept_was
+	print("[return] THE PROCESSION PASSES A KEPT LIGHT silent with no colony=%s, spoken with one=%s, and never twice with the plate FREE=%s -> %s" % [
+		str(silent_alone), str(spoke_with_light), str(spoke_once),
+		"PASS" if silent_alone and spoke_with_light and spoke_once else "FAIL"])
+
 	var proc_key := GameState.mark_key(msid, 4)
 	GameState.marks_seen = {}
 	GameState.marks_seen[proc_key] = GameState.MARK_READ
