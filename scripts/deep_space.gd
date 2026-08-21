@@ -2258,9 +2258,32 @@ func note_guard_died(key: Vector2i) -> void:
 	# player most obviously earned it — and would credit it minutes later, out of
 	# sight of the thing that caused it.
 	if _counted.has(key) or post_standing(key) > 0:
+		# §111, WARDENRY t2. THE COUNT KEPT: a warden hears a post as a number
+		# going down. Only while some still stand -- the clear itself already
+		# speaks below -- and only the toast, because a counter that hung on the
+		# screen would be a HUD element for a fight that lasts forty seconds.
+		if not _counted.has(key) and post_standing(key) > 0 \
+				and GameState.skill_tier("wardenry") >= GameState.WARDEN_COUNT_TIER:
+			var hud_w := get_tree().get_first_node_in_group("hud")
+			if hud_w != null and hud_w.has_method("show_toast"):
+				hud_w.show_toast("POST — %d STILL STANDING" % post_standing(key),
+					Palette.THREAT)
 		return
 	_counted[key] = true
 	GameState.note_ledger("posts_cleared", 1)
+	# §111. WARDENRY's one feed, beside the ledger line it has always ridden --
+	# _counted is the once-per-post bound, the same bound the ledger trusts.
+	GameState.mark_skill("wardenry")
+	# §111, WARDENRY t3. THE BREACH WINDOW: the hulk this post was guarding
+	# opens easier for the hand that just cleared it. The FLAG is set on the
+	# hull; the RATE lives in GameState.wardenry_breach_mult(), so the tier can
+	# be measured off-tree and the flag alone does nothing for anyone else.
+	for c_v in get_tree().get_nodes_in_group("crackable"):
+		var cd := c_v as Node3D
+		if cd is Derelict and is_instance_valid(cd) \
+				and cd.global_position.distance_to(
+					_guard_origin.get(key, Vector3.ZERO)) <= 40.0:
+			(cd as Derelict).post_cleared = true
 	# Band from the HULK's own position, never from the cell centre: a cell is 64u
 	# across and a band edge can run straight through one, so the two can name
 	# different bands for the same post.

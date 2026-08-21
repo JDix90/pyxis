@@ -176,6 +176,12 @@ func _complete(entry: Dictionary) -> void:
 	var main := get_tree().get_first_node_in_group("main")
 	if main and main.has_method("add_salvage"):
 		main.add_salvage(reward)
+	# §111. BROKERAGE's first feed: a DELIVERY filled. Deliveries only -- a
+	# combat or survey contract is somebody else's verb, and a ladder fed by
+	# "any contract" would rise alongside three other ladders' work, which is
+	# the clock §19 warns about.
+	if String(def.get("kind", "")) == "deliver":
+		GameState.mark_skill("brokerage")
 	Sfx.play_streak("pickup", -4.0)
 	completed.emit(String(def.get("title", "CONTRACT")), reward)
 

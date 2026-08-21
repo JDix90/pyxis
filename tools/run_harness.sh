@@ -25,7 +25,9 @@ mkdir -p "$OUT"
 # FAIL lines -- so the sweep would print "65 runs | 0 PASS | 0 FAIL" and exit 0,
 # which is the worst possible answer: a green-looking summary that measured
 # nothing at all.
-if ! [ -x "$GODOT" ] && ! command -v "$GODOT" >/dev/null 2>&1; then
+# --counts never launches the binary (see §113 below), so it must not be
+# refused by the check that exists to protect launches.
+if [ "${1:-}" != "--counts" ] && ! [ -x "$GODOT" ] && ! command -v "$GODOT" >/dev/null 2>&1; then
 	echo "GODOT not found: $GODOT" >&2
 	echo "Set it explicitly, e.g." >&2
 	echo "  GODOT=/Applications/Godot.app/Contents/MacOS/Godot tools/run_harness.sh" >&2
@@ -85,6 +87,7 @@ TAGS=(
 	CARTTEST SPILLTEST STORETEST SALVAGETEST SHIPTEST DEEPTEST APEXTEST
 	LIVERYTEST STATIONTEST TORPTEST CONTRACTTEST RAIDTEST PAUSETEST
 	RADARTEST MUSICTEST PACINGTEST PROFILETEST SIGTEST LAYOUTTEST TITLETEST TUTORIALTEST
+	STOCKTEST SKILLTEST
 	INPUTTEST DOCKTEST MARKETTEST BALANCE BOSSTEST
 	FEELTEST UITEST GSATEST ACCESSTEST STREAMTEST ENVTEST MINETEST MANUALTEST
 	HUNTTEST FACTIONTEST BEACONTEST COLONYTEST FRONTIERTEST STORMTEST
@@ -109,7 +112,20 @@ TIMEOUT_S="${PYXIS_HARNESS_TIMEOUT:-1500}"
 # SAVETEST is stateful: =write lays down a fixture the bare read consumes, so
 # the pair must stay adjacent and in this order. The migrate modes are
 # self-contained and each builds its own old-version fixture.
-SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 migrate14 migrate15 migrate16 migrate17 migrate18 migrate19 migrate20 migrate21 migrate22 migrate23 migrate24 migrate25 future partial6)
+SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 migrate14 migrate15 migrate16 migrate17 migrate18 migrate19 migrate20 migrate21 migrate22 migrate23 migrate24 migrate25 migrate26 future partial6)
+
+# §113. THE COUNTS, DERIVED. `tools/run_harness.sh --counts` prints the run
+# arithmetic and exits -- no Godot binary touched, so it works on any machine
+# including the ones that author but cannot sweep. This is the number the
+# README quotes, and the long-standing §64 debt ("derive the README's harness
+# counts") paid: the README now points here instead of hand-maintaining a
+# figure that has been wrong twice.
+if [ "${1:-}" = "--counts" ]; then
+	echo "TAGS: ${#TAGS[@]}"
+	echo "SAVE_MODES: ${#SAVE_MODES[@]}"
+	echo "RUNS: $((${#TAGS[@]} + ${#SAVE_MODES[@]}))  (${#TAGS[@]} tags + ${#SAVE_MODES[@]} SAVETEST modes)"
+	exit 0
+fi
 
 if [ $# -gt 0 ]; then
 	# SAVETEST names the whole stateful sequence below, never a plain tag. Left in
@@ -119,7 +135,7 @@ if [ $# -gt 0 ]; then
 	SAVE_MODES=()
 	for t in "$@"; do
 		if [ "$t" = "SAVETEST" ]; then
-			SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 migrate14 migrate15 migrate16 migrate17 migrate18 migrate19 migrate20 migrate21 migrate22 migrate23 migrate24 migrate25 future partial6)
+			SAVE_MODES=(write 1 migrate migrate2 migrate3 migrate5 migrate6 migrate11 migrate12 migrate13 migrate14 migrate15 migrate16 migrate17 migrate18 migrate19 migrate20 migrate21 migrate22 migrate23 migrate24 migrate25 migrate26 future partial6)
 		else
 			TAGS+=("$t")
 		fi

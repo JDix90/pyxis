@@ -36,6 +36,11 @@ var repeat_mult := 1.0
 # A flag rather than a subclass: 17's "parameters, not new classes".
 var spill := false
 
+# §111. Minted by an open shear. RIFT-WORK's one feed counts these on pickup --
+# a flag rather than a subclass, spill's own reasoning one comment up, and a
+# separate flag from `spill` because a death-spill is recovery, not a claim.
+var from_rift := false
+
 
 func place_at(pos: Vector3) -> void:
 	# Cubes are added to the tree first and positioned after, so _ready runs at
@@ -115,6 +120,11 @@ func _collect(player: Node3D) -> void:
 
 	if CommodityDB.exists(commodity):
 		if GameState.load_cargo(commodity, 1) > 0:
+			# §111. RIFT-WORK's feed: a crate CLAIMED -- loaded, not scrapped.
+			# The hold-full path below pays credits and pays this nothing, the
+			# same line the seam draws between a cut and a sale.
+			if from_rift:
+				GameState.mark_skill("rift_work")
 			FX.flash(get_parent(), player.global_position + Vector3(0, 0.3, 0),
 				CommodityDB.color_of(commodity), 0.7, 0.16)
 			Sfx.play_streak("pickup", -12.0)

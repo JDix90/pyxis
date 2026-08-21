@@ -47,13 +47,16 @@ behind a `PYXIS_*` environment variable and run headless:
 PYXIS_LOGTEST=1 /Applications/Godot.app/Contents/MacOS/Godot --headless --path .
 ```
 
-Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 54 of them —
-the 54 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
-`TAGS` at all: it is one harness with 23 stateful modes, run as its own
-sequence. So a full sweep is 54 + 24 = **78 runs** (23 modes through v25; `migrate25` arrives with §106).
+Each prints `[tag] NAME <measurements> -> PASS|FAIL`. There are 56 of them —
+the 56 tags in `run_harness.sh`'s `TAGS` — plus `SAVETEST`, which is **not** in
+`TAGS` at all: it is one harness with 25 stateful modes, run as its own
+sequence. So a full sweep is 56 + 25 = **81 runs** (`STOCKTEST` and `migrate26`
+arrived with §107; `SKILLTEST` with §111).
 
-Those three numbers are derivable from `run_harness.sh` and nothing else, so
-check them there rather than trusting this paragraph — it has been wrong before,
+Those three numbers are derivable from `run_harness.sh` and nothing else — and
+now derived FOR you: `tools/run_harness.sh --counts` prints the arithmetic
+without touching the Godot binary. Check that rather than trusting this
+paragraph — it has been wrong before,
 in two places that disagreed with each other (STRATEGY §73).
 
 **`tools/run_harness.sh` now runs this check for you** and refuses to start the
@@ -235,11 +238,50 @@ of a passing remark rather than a count. That was a prediction typed as a
 measurement, which is the one thing this paragraph exists to refuse; it is
 recorded here rather than quietly deleted.
 
-**§106 (the nursery) is the next figure and it is a prediction, not a
-measurement.** It bumps the save to **v26**, adds the `migrate25` mode (one
-new run carrying one) and two `RETURNTEST` legs, and introduces one new
-`class_name` (`TallyNursery`) — so run `"$GODOT" --headless --path . --import`
-first. A full sweep should be **54 + 24 = 78 runs** reading **772 across 78**.
+**772 across 78 (through §106) is the last hard number in this repo.** It was
+measured on a full sweep after the nursery shipped: 78 runs, 772 PASS, 0 FAIL,
+0 script errors, save format v26.
+
+**The Horizon 10 sweep read 81 runs | 812 PASS | 1 FAIL | 0 script errors**
+(measured 2026-08-21, all seven commits in). The one red was `A MARK IS THE
+NETWORK'S TO READ`: §112's new bark fired inline after the CANNOT_READ prompt
+and replaced it -- the exact v18 defect Barks.fire's own comment records, a
+bark stomping the sentence the player needed. The bark now arms on the refusal
+and fires at range-exit, where the refusal is a stale line being flown away
+from.
+
+**The fix was then verified by re-running RETURNTEST alone: 27 pass, 0 fail.**
+So the horizon's standing figure is **813 PASS across 81 runs, 0 FAIL, 0 script
+errors, save format v27** — and that 813 is ARITHMETIC ACROSS TWO RUNS (a full
+sweep of 812/1, plus a one-tag re-run turning the 1 into a pass), not a single
+measured sweep. Written out because this repo has twice been wrong in exactly
+the direction of rounding that distinction away. The next full sweep is what
+turns 813 into a measured number.
+
+**Before that sweep: §107–§110 swept green; §111–§113 were staged as follows.** Together they add `SKILLTEST` (one new run — 81 by
+`--counts`), grow `migrate26` with the ladder's and the works' clauses, and
+introduce no new `class_name`, so no import pass is needed. The morning sweep
+is, in order:
+
+```bash
+tools/run_harness.sh --counts                       # expect 81
+tools/run_harness.sh SKILLTEST COLONYTEST SPILLTEST CARTTEST PAUSETEST LAYOUTTEST MANUALTEST CONTACTTEST HUNTTEST RIFTTEST
+tools/run_harness.sh SAVETEST                       # migrate26 grew twice
+tools/run_harness.sh                                # the full 81
+```
+
+The run count is arithmetic; the PASS total is not, and none is recorded here
+until a sweep reports one. If `STEADY MIDTIER` lands red, that is §41's
+re-derivation arriving on schedule — see STRATEGY §113 for what to do, which
+is a decision taken in the open and not a nudge toward green.
+
+**§107 (the counted shelf), for the record.** It bumps the save to **v27**,
+adds the `STOCKTEST` tag (7 legs) and the `migrate26` mode — two new runs — and
+gives `MARKETTEST` its first five assertions and `PACINGTEST` one more, none of
+which existed to pass or fail before. It introduces no new `class_name`, so the
+import pass is not required for this one. The run count above is arithmetic off
+`run_harness.sh`; **the PASS total is not, and no figure for it is recorded here
+until a sweep reports one.**
 
 (§96's adversarial pass reported after both commits shipped; its two confirmed
 findings were folded back in without changing any count — one strengthened an

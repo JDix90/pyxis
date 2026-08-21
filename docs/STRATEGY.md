@@ -1285,6 +1285,16 @@ contraband trade §17 rests on. And **nothing spills inside the charted system**
 so the tutorial's promise — *you lose position and tempo, never salvage* — stays
 literally true everywhere it was taught.
 
+> **Amended v27 (§109): the promise holds, and the deep now has a clock and a
+> bill.** Two of this section's clauses were quietly load-bearing in a way that
+> made deep death nearly free. "Recoverable this session" meant a spill was
+> *immortal* — the whole penalty was the flight back, with nothing counting
+> down — and the free emergency warp made dying **cheaper than a beacon jump**,
+> which turned the fail state into the game's best fast travel. §109 adds a
+> depth-scaled tug's fee and a depth-scaled claim window on what you dropped.
+> **The sentence above is untouched and is now asserted twice**: nothing spills
+> inside the charted system, and nothing is billed there either.
+
 **Three stock loot-cube behaviours had to be switched off, and every one of them
 would have silently deleted the mechanic rather than erroring:**
 
@@ -1525,6 +1535,17 @@ creates no capability — swapping to a smaller-hold module already dumps
 cheapest-first for free — it makes an existing one honest.
 
 ### The pilot line
+
+> **Amended v27 (§111): the refusal stands per-SKILL; eleven ladders earn one
+> shared record.** The sentence below is about a skill getting *its own*
+> console, and that is still refused — not one ladder in the game has a screen,
+> a tree, a point to allocate or a button to press. What changed is arithmetic:
+> four one-line summaries fit on the pause root and eleven do not, and the two
+> comments in `pause_menu.gd` that each argued "one more `_sub` is affordable,
+> the page already scrolls" were correct three times and would not have been
+> correct a seventh. So the lines moved to a PILOT'S LEDGER page and **the root
+> page got shorter, not longer**. The test of whether this broke the rule is
+> the one the rule implies: there is nothing on that page to press.
 
 There is deliberately no skill screen ("a skill with its own screen is a skill
 that has become bookkeeping"). What was missing was never a tree, it was
@@ -4508,6 +4529,30 @@ in-sweep and passed 4 of 4 alone. That is a third flaky assertion, and the fix
 is the one §41 already describes: re-derive the bar from the distribution
 rather than nudge it until the sweep goes quiet. Recorded, not done.
 
+### Amended v27: a shopfront is not the world
+
+§107 gives every counter a finite shelf that refills over played time, and the
+first question anyone should ask of it is whether that breaks the property
+above. It does not, and the distinction is worth writing down because it will
+come up again the next time something in the world is allowed to change on its
+own.
+
+**What this rule protects is the world's EARNABLE CONTENT** — sentries, seams,
+hulks, posts, marks. Those are things the player can take, and a world that
+refilled them unwatched would be a world where clearing a post meant nothing.
+A shopfront is not that. It is the world's **counterparty**: nothing a player
+could earn is created or destroyed when a shelf comes back, no encounter is
+respawned, and the credits still have to come from somewhere else entirely.
+
+**And the store proves it rather than the prose.** `market_stock` records only
+the *deficit* — the hole the player put in the counter — and the one function
+that writes it is called from exactly two places, both of them a trade the
+player performed. `ONLY THE PLAYER EMPTIES A SHELF` ticks thirty played minutes
+with nobody trading and reads every shelf back full and the store back empty,
+which is the same shape of assertion `SKIRMISH_HP_FLOOR` uses to keep this rule
+true with three friendly guns in the sky: the property is measured, not
+promised.
+
 ## 52. Factions — stage 4, THE MUSTER
 
 A massed column gathers 75u outside the charted volume and marches in. The
@@ -6243,6 +6288,59 @@ of which shipped. The sentence that stood here — *"beacons and per-PYX identit
 can stay unbuilt indefinitely"* — was true when it was written and stale the day
 §65 and §66 shipped, which is the whole failure mode this section exists to
 prevent. Both are built, and Horizon 6 extends both.
+
+**Horizon 10 — the counted shelf** (opened 2026-08-21 after a second week of
+playtesting; specced in `docs/HORIZON-10-THE-COUNTED-SHELF.md`). Seven commits,
+**one built**. The playtest produced five complaints and the research pass
+corrected the premise of three of them, which is recorded here because the
+corrections are what set the commit order:
+
+| # | what | save | status |
+|---|---|---|---|
+| 1 | THE SHELF: a finite, replenishing, per-counter stock derived from the port's own bias table; events as masks; MARKETTEST given assertions | **v27** | **BUILT** — §107 |
+| 2 | the word on the shelf: stock outranks arbitrage at the rumour desk, a FRIENDLY+ reserve as a GATE, and the deep-station events §107 deferred | rides v27 | **BUILT** — §108; the deferred debt is discharged, and two live defects at the rumour desk fell out of reading it |
+| 3 | the tug and the claim: a depth-scaled rescue fee, and a claim clock on deep spills | rides v27 | **BUILT** — §109; dying was cheaper than a beacon jump, and the code's own comment claiming otherwise was aspirational |
+| 4 | the order book: the forge hint that lied, TWO widened read windows (the third was cut by its own arithmetic), and requisitions as the first real credit sink | rides v27 | **BUILT** — §110; the hint was a v22 fix restating the bug it fixed |
+| 5a | the ladder: the machinery, the shared ledger page, and the first two (SURVEYING, FILING) | rides v27 | **BUILT** — §111; HUNTING moved to 5b rather than ship tiers that grant nothing (§88) |
+| 5b | the rest of the roster (HUNTING, RIFT-WORK, BROKERAGE, COLONIAL, WARDENRY) | rides v27 | **BUILT** — §111; two rungs died on contact with the code and were replaced before shipping |
+| 5c | the four legacy deepenings (a t4 each for SMUGGLING, MINING, PERSUASION; ARCHEOLOGY argued complete) | rides v27 | **DEFERRED** — each legacy skill hand-writes its line function with the cap written out (a §36-era decision), and pins it in legs; extending them is an afternoon with a sweep at hand, not a night without one |
+| 6 | the sounded ground: teach the filing chain, held cells as jump anchors, colony works | rides v27 | **BUILT** — §112; the works loader's first draft validated against a store that loads seventy lines later, caught by checking the order its own comment claimed |
+| 7 | the measure: the counts derived (`--counts`), the §41 re-derivation staged, the horizon closed | none | **BUILT** — §113; the PASS figure lands only when the sweep reports one |
+
+**Three premises the playtest got wrong, and the research pass caught.** The
+buy verb was never missing — it has worked since phase 1, and what was missing
+was a *counter* (§107). "Losing unread charts on death" describes something
+that cannot happen: charts carry `chart_band` and never `band`, so `spill_unread`
+has never touched one, and the player was describing unread **salvage**. And
+"the forge materials never drop" is substantially a **copy defect**: the hint
+line prints `FALLS FROM READING BAND n+ SALVAGE`, but `READS_AS` is not monotone
+— `sink_thermal` falls from band 2 ONLY, `manifest_forged` from band 3 ONLY,
+`plate_ablative` and `cell_fuel` from bands 0–1 ONLY — so a late-game pilot
+following the game's own printed instruction can read the Quiet forever and
+never see four of the eight inputs. Commit 4 owes that fix first, before any
+new supply.
+
+**The §107 deferral is discharged.** Deep-station market events shipped in
+§108, which is also where the counter identity finally reached the price engine:
+`pressure` moved to the counter alongside events (it had the identical wormhole
+and nothing in the repo acknowledged it), while `drift` deliberately stayed on
+the archetype. Two rumour-desk defects were found and fixed in passing — a desk
+that charged before it knew what it would say, and an undeduplicated last rung
+that would sell the same sentence twice.
+
+**The user's four scope decisions are settled** (2026-08-21): 10–12 skills with
+one shared ledger page rather than twenty with a screen each; death prices the
+*rescue* rather than breaking the tutorial's promise; the sinks are
+requisitions, colony/station investment and operating costs, and NOT prestige
+purchases; and a filed cell becomes a paid jump anchor, §87's fast-travel
+objection answered by the fee, the depth cap and the length of the chain that
+earns it.
+
+**§41's `MIDTIER` re-derivation is owed by this horizon and commit 7 is where
+it lands.** Every commit here moves income zero or negative — a shelf throttles
+repeat farming, and fees, orders and works are sinks — so the band will be
+measured against an honestly poorer loop, which is the sharpened version of the
+debt §80 left standing rather than a new one.
 
 ### Built, despite what the docs said
 
@@ -10838,3 +10936,826 @@ the tree, one when the defect is put back.
 Ten legends, ten plates, all standing. The far deep now answers a pilot who
 files with the network: bearings to marks, marks to legends, and one piece of
 ground that answers back.
+
+## 107. The counted shelf (v27)
+
+Horizon 10, commit 1. A second week of playtesting produced five complaints,
+and the first of them was *"you can only sell — there are long lists of things
+and no way to buy any of it."* That report is worth recording carefully,
+because the literal claim was **false and the feeling behind it was correct**.
+
+`Market.buy_price` has existed since phase 1, `PortPanel._market_row` has drawn
+a symmetric BUY/SELL row for just as long, and `_buy` works. What the player
+was reading was the *shape of the list*: **21 of 34 goods carry `no_retail`**
+— every salvage grade, every chart survey, every component — so two thirds of
+the rows a pilot scrolls past say FENCED or NOT SOLD HERE, and the thirteen
+that do sell look identical at every counter in the game. There was no reason
+to visit one market over another, and nothing anywhere was ever *out*.
+
+So this commit does not add the buy verb. It gives the buy verb a **counter**.
+
+### The cap is derived from data that was already there
+
+A shelf is a pure function of the port's own `bias` table:
+
+| bias | what it means | shelf |
+|---|---|---|
+| ≤ 0.95 | this port PRODUCES the thing | `STOCK_BASE × 2` |
+| 0.95 – 1.15 | neutral | `STOCK_BASE` |
+| 1.15 – 1.25 | an importer | `STOCK_BASE ÷ 2` |
+| ≥ 1.25 | this port CONSUMES the thing | **0 — it buys and does not sell** |
+
+Not one new table was authored. The bias numbers were written when the trade
+routes were designed, and they already encode exactly the fact a stock table
+would have to state twice: Cinderworks smelts alloys at 0.68 and stands
+forty-eight of them; Bastion Yards consumes them at 1.30 and its market tab now
+says `BUYS ONLY / NOT STOCKED HERE`. **The assortment inconsistency the
+playtest asked for was latent in the game's own data for two years.** Authoring
+a second table would also have meant two sources of truth for one fact, which
+is §9 rule 1 again in a different costume.
+
+### The store is a deficit, not an inventory
+
+`market_stock` holds `"<counter>|good" -> {d, t}` and nothing else: how many
+units the player has taken and when. The full shelf is never written down,
+because it is derivable; the entry is **erased the moment it replenishes**, so
+a counter at rest costs the save zero bytes. That is `market_pressure`'s
+posture, chosen again for the same reason.
+
+Replenishment is **lazy and read off `played_seconds`** — one unit per
+`STOCK_REPLENISH_SECONDS`, computed when somebody looks. Nothing ticks a shelf.
+A save therefore reloads onto exactly the counter it was left on, which is
+drift's own rule and the reason drift has never needed a migration.
+
+`recover_stock()` sweeps beside `recover_pressure()` for the case the writer
+cannot reach: a pilot who empties a counter and never returns would otherwise
+leave the entry in the save forever, reading correct and costing a byte for
+nothing. `AT REST THE LEDGER IS EMPTY` asserts **both** halves — that the entry
+really does linger until swept, so the sweep is not asserting nothing, and that
+the sweep clears it.
+
+### The counter, never the port id
+
+The shelf keys on `PortPanel._bay_key()`: a charted port's own id, and a deep
+station's **cell**. Out past the chart `port_id` is the *archetype*, shared by
+every station of that kind in every system, so keying on it would mean buying
+out one Shoal Relay emptied the Relay three systems over. The bonded bay
+learned this first and `NO WORMHOLE` is its assertion; `NO WORMHOLE FOR
+SHELVES` is the same test on the same key shape, and it deliberately uses two
+cells with **identical coordinates in different systems**, which is the precise
+collision that caught the warehouse.
+
+### An event is a mask, not a write
+
+A SHORTAGE bares the counter for its duration; a GLUT doubles it and fills it.
+Neither touches the store, so when the event lapses the shelf's own state
+re-emerges underneath having lost nothing — and a hole the player took *before*
+a shortage is still exactly that deep afterwards. An event that could launder a
+shelf you emptied would be a way to farm one.
+
+This is also §30's redundancy rule applied to an economy. A shortage was
+already a 2.2× price and a coloured tag; it is now a 2.2× price, a coloured
+tag, **and the word OUT**. The player who does not read the arrow reads the
+word.
+
+### What was deliberately NOT built here
+
+**Deep-station events.** The plan had them in this commit. They came out
+because a deep event has to key on the same counter identity the shelf does, and
+`unit_price` still takes `port_id` — so a deep shortage would bare the shelf
+without moving the price, which is one fact said two contradictory ways. It
+belongs with §108, which opens the event surface for the rumour desk anyway.
+Recorded in §64 as deferred, not dropped.
+
+**A price that knows about scarcity.** A shelf running low does not raise its
+own price. `pressure` already does that, on the player's own trades, and a
+second scarcity term would double-count the same act — the buy that empties the
+counter is the buy that already moved the price.
+
+### The harness got teeth it never had
+
+`MARKETTEST` printed five true things and asserted **none** of them, for
+twenty-two versions. Every economic guarantee in the game lived in STATIONTEST's
+guard rails and PACINGTEST's band, and both of those check that the economy is
+not *broken* — neither checked that it still *works*. If the authored routes had
+silently stopped paying, all five of those lines would have gone on looking
+perfectly reasonable. It now asserts that both routes pay, that pressure both
+dents and heals (both halves — a dent that never healed and a dent that never
+happened each satisfy one of them), that an event applies and lapses to the
+credit, that the hold is a wall, and that drift moves on the played clock.
+
+`PRESSURE MOVES AND HEALS` is worth one more line. Recovery is geometric at 10%
+of the remaining gap per minute, so twelve minutes closes ~72% of a dent and
+**not** all of it. The obvious assertion — `recovered == before` — would have
+been asserting a bug. What is true is that it moved back most of the way and
+never overshot its own baseline, and that is what it says.
+
+### And the pacing band is guarded by measurement, not by argument
+
+A finite counter is *allowed* to throttle the second and third run of a route
+inside one loop — that is the farm, and throttling it is the entire point. It
+must never shorten the **one full hold** the pacing contract is derived from,
+or every number in §10 moves for a reason that has nothing to do with yields.
+
+`STOCK_BASE` is therefore sized against the hold rather than against a feeling:
+a starter hold is 24 space, so the largest full-hold trade `_pacing_trade_yield`
+can price is 24 units of a space-1 good, and a neutral shelf stands exactly
+that. But the reasoning is not trusted. `THE SHELF SERVES THE STANDARD LOOP`
+re-derives the best legal route the harness just measured, asks the counter it
+actually buys from, and names the pair if it comes up short. A red there means
+the caps are wrong — not that the band is.
+
+## 108. The word on the shelf (rides v27)
+
+Horizon 10, commit 2. §107 built a counter and left three things owed: the deep
+had no weather, the desk that sells news could not see the shelf, and standing
+had never once mattered at a market. All three are the same commit because all
+three turn on one question — **which key is a price a fact about?**
+
+### `port_id` fed three terms, and only one of them wanted it
+
+`unit_price` multiplies bias × drift × pressure × event, and three of those are
+keyed on `port_id`. Out past the chart `port_id` is the **archetype**, shared by
+every station of that kind in every system, which meant:
+
+- **drift** — a slow oscillation whose seed *and period* are hashed from the id.
+- **pressure** — dumping forty units at one Shoal Relay depressed the price at
+  **every** Relay in the game. Nobody had noticed, and nothing in the repo said
+  so; `market_pressure`'s comment reads `"port|good"` and stops there.
+- **events** — the reason §107 deferred deep weather in the first place.
+
+The split now written down: **drift stays on the archetype, pressure and events
+move to the counter.** Drift is the one term where archetype-wide is the *right*
+fiction — the Relays all run on the same rhythm — and it is also the one term
+where re-keying would move every deep price in the game and drag PACINGTEST's
+band along with it, for no design gain. Pressure and events are facts about a
+place, and a place out there is a cell.
+
+### The argument is appended and optional, and that is a claim about this repo
+
+`unit_price`, `buy_price`, `sell_price` and `trend` gained `port_key := ""`,
+appended, rather than a fourth positional argument.
+
+That is not style. **There is no Godot binary in the authoring environment**, a
+wrong arity is a parse error `check_scripts.py` cannot see, and the alternative
+required touching ~21 harness call sites that sweep ids derived from `SystemDB`
+and `DeepPortDB` with no node in scope to read a cell from. With a default,
+every one of those sweeps stays byte-identical and untouched, and only the nine
+PortPanel sites — each of which already has `_bay_key()` one line away — change.
+Empty means *the counter IS the id*, which is exactly true of every charted
+port. `stock_left` shed its `port_id` argument in the same move: it existed only
+for the event mask, which now reads the counter.
+
+The save needs no migration. Old archetype-keyed deep pressure entries simply
+stop matching and decay out, which is what a pressure entry does anyway.
+
+### Weather past the chart, and where its goods come from
+
+`try_spawn_deep_event` rolls on the same 90-second clock with its own budget of
+**one**, so the deep can never crowd the two events the chart is allowed. Its
+good is drawn from **the archetype's own `bias` table** — three or four authored
+entries, not all thirty-four. That is what keeps a 2.2× shortage off a component
+at a 1.45× deep fence **by construction** rather than by arguing the product
+stays bounded. Both directions stay meaningful even where the shelf is zero: a
+shortage on a good a station *consumes* is that desk paying well over the odds,
+which is the best intel in the game.
+
+**The counters are filtered on `bay_key`, never on `def` non-empty.** The latter
+is `find_port`'s tell for "not the charted port" and it has a live false
+positive: THE PROCESSION carries a duplicated def of its own, and `main.gd`'s
+own note says the event roll must never learn it exists — THE CONVOY KEEPS ITS
+SCHEDULE asserts its absence from `SystemDB` for exactly this reason. A convoy
+that vanishes every twenty minutes would have left weather behind it over a cell
+with no counter in it. Only `DeepSpace` ever sets `bay_key`.
+
+### The name travels on the event
+
+Every reader of an event resolved its place through `SystemDB.port_def_by_id`,
+which returns `{}` for anything off-chart — so the rumour line and the HUD toast
+would both have printed the literal string **`Shortage at ? — ISOTOPES, 4:12
+left`** the first time a cell got weather. The name is now captured at spawn and
+carried on the event, because a deep station **streams out while its weather is
+still running**: the cell persists, the node does not. `event_place` falls back
+to the chart for a v27 save written before this section, and to a phrase rather
+than a `?` for an orphaned cell. Both new fields are additive with defaults —
+defaults-not-branches, no migration leg.
+
+### The desk learned to read the shelf, and stopped selling the same sentence twice
+
+The ladder is now rift → events → **a bare counter** → **a route somebody can
+actually fill**.
+
+The new rung outranks the standing spread because **it expires**: the spread
+will still be there tomorrow and a shelf that is filling will not. And the only
+deficits that exist are ones the player made, so it is always news about
+somewhere they have actually been — which is what makes a restock clock worth
+four hundred credits rather than a fact about strangers.
+
+The last rung was also quietly wrong. It checked `trades_at` on both legs and
+nothing else, so it would cheerfully sell you the word that alloys move out of
+Bastion Yards — bias 1.30, a yard that has never retailed an alloy in its life.
+That was wrong before §107 and is *checkable* now.
+
+**Two live defects fell out while reading it.** `_buy_rumor` charged before it
+generated the line — the exact inverse of the hunt desk's own documented posture
+two screens down (*"FILED FIRST, CHARGED SECOND … a desk that took the money
+anyway would be selling the same sentence twice"*) — and the arbitrage rung was
+returned unconditionally and undeduplicated, so a second purchase with nothing
+running took the money and printed the identical sentence again. That was
+survivable only while the last rung could never come up empty. Giving the ladder
+a rung that *can* run out turns a latent hole into a certainty, so it is closed
+rather than worked around: the word is generated first, and a ladder that has
+nothing new renders **`NOTHING NEW TONIGHT`, disabled** — the hunt desk's own
+rule that a dead control is its own kind of lie.
+
+Both new rungs are **pure functions on Market** (`bare_shelf_report`,
+`best_stocked_route`), so the assertions test the rule and not the rendering,
+and the O(goods × ports²) scan moved out of a panel and into the engine. It is
+also now *cheaper* than the one it replaces: a good with no shelf at the buy leg
+short-circuits before the inner loop, which skips all twenty-one `no_retail`
+goods immediately.
+
+### The second standing gate, and the direction that makes it legal
+
+At **FRIENDLY or better** with a port's owner, `stock_cap` returns ×1.5.
+
+**It is ×1.5 at FRIENDLY, never ×0.67 unless FRIENDLY.** Those are the same
+arithmetic and opposite designs. `fence_open` has said since stage 5 that
+market, outfitter and repair stay open at every standing, because a port that
+turned a damaged pilot away is a death trap nobody designed — and a reserve
+implemented as a penalty lands on the wrong side of that. At NEUTRAL and below
+the shelf reads **exactly** the number it read before this feature existed. An
+unowned desk gives no reserve at all: `fence_open` fails *open* for `""` so a
+missing owner cannot lock a counter by accident, but a bonus everybody receives
+is not a gate.
+
+GATES, NEVER PRICES survives intact and is still asserted to the credit. What a
+band buys is **how many**, never what they cost.
+
+### The prose that had no assertion behind it, for five stages
+
+`market.gd`'s comment read *"THE ONE STANDING GATE IN STAGE 5, and deliberately
+the only one"*, and this commit makes that false. Two things follow, both in
+this commit: the comment is amended to name the second gate, and the missing
+sweep is written. `NO COUNTER CLOSES AT HOSTILE` drives **every** counter in the
+game, charted and deep, to HOSTILE and asserts no shelf shrank, every reserve
+shut, and at least one fence closed — the last clause so the leg cannot pass by
+never having reached HOSTILE at all.
+
+It allows exactly one kind of fall, and names it: a counter whose faction
+started FRIENDLY may lose its reserve on the way down. That is the gate working,
+not a counter closing, and stating the exception is what stops the assertion
+from being either a tautology or a trap.
+
+`ONLY THE SHELF MOVES WITH STANDING` rides the existing price sweep's own loops
+and asserts **both halves** — nothing fell, *and* something rose. Without the
+second clause a reserve that silently did nothing would pass, which is the
+posture `A CONSUMER SELLS NOTHING` uses and `A COMMISSION IS NOT A WAY IN`
+states outright. The sweep already probes `deep_haven`, whose owner is one of
+the two factions it shifts, so the deep third of it is a live test rather than a
+control — worth checking before trusting, and it held.
+
+## 109. The tug and the claim (rides v27)
+
+Horizon 10, commit 3. The playtest said the economy felt trivial and that dying
+was inconsequential, and the second half of that was more true than the report
+knew.
+
+### Dying was the best fast travel in the game
+
+`PlayerShip._emergency_warp` teleports a shield-zero ship from **any** depth
+back to the spawn point, for free. A beacon jump over the same distance costs
+120–500 credits and is refused entirely past `HYPER_DEPTH_MAX`. So the cheapest
+way home from 9,000 units out was to stop dodging.
+
+`main.gd` carried a comment claiming *"dying still warps you out, which is what
+keeps dying the expensive exit rather than the convenient one"*. That sentence
+was **aspirational rather than true**, and it had been for as long as beacon
+jumps have had a fee. This section makes it true.
+
+**The tug bills, and the bill walks the jump's own ramp at twice the price.**
+~240 at the chart edge, 1,000 where a jump stops being offered, ~1,870 at the
+far marks. It deliberately does **not** call `beacon_jump_fee(depth) * 2`: that
+function clamps at `BEACON_JUMP_MAX_DEPTH` because past there a jump is refused
+outright, and borrowing the clamp would make the rescue flat across the entire
+far deep — cheapest exactly where it should cost the most. `THE RESCUE COSTS
+MORE THAN THE JUMP` sweeps seven depths rather than spot-checking one, because
+the two curves stay apart only while that clamp is *not* inherited.
+
+**It takes what you have and never refuses.** There is no other way out of a
+shield-zero ship, so a rescue that could fail for want of credits is a soft-lock
+with a story attached; and a debt would be a second currency this game does not
+have. It bills the account and writes off the rest. Asserted in all three
+directions — a full wallet pays the fee, a thin one pays exactly what it had and
+lands on zero, a broke one pays nothing and lands on zero, never below.
+
+**The numbers are provisional and they are all in one block** — §99's posture.
+The laws are what is asserted (deeper costs more, always more than a jump,
+nothing at all inside the chart); a retune changes three constants and no
+assertion.
+
+### A spill was immortal, and that was the whole penalty
+
+`spill` cubes skip the 25-second reaper, deliberately and correctly: the round
+trip from spawn to a deep death site is longer than that before the player has
+even turned around. But nothing replaced it, so cargo dropped at a deep death
+sat there for the rest of the visit and the entire cost of dying in the expanse
+was the flight back — untimed.
+
+It now has a deadline, **scaled by depth, because the flight back is what the
+deadline is measuring**: three minutes plus a further second and a half per
+hundred units, so ~390s at 1,400u and ~25 minutes out at the marks. Generous,
+because the flight is real. Finite, because otherwise there is no reason to
+hurry. A warning fires at thirty seconds; at zero the pile is claimed and says
+so in words.
+
+**No AI and no new class.** What a claimant *is*, mechanically, is a deadline on
+cargo you are not standing next to — the same reasoning `spill` itself used when
+it chose a flag over a subclass (§17: parameters, not new kinds). A rival hull
+that actually flies in is a bigger feature and is not this one.
+
+The rule lives in Main rather than on the cube: Main owns world glue, the cube
+owns its own motion, which is `drop_beacon_here`'s split said again. One clock
+for one pile — a second death before the first spill is recovered *restarts* it
+rather than stacking a second deadline. And it is cleared in `_load_system`,
+because the cubes are `system_root` children that a warp abandons (`WARP CLEARS`
+has asserted that since §22) and a clock must not outlive the pile it counts.
+
+### The assertion that had to be rewritten rather than deleted
+
+`NO EXPIRY` was a true and useful leg, and half of it still is. It became
+`A SPILL OUTLIVES THE REAPER AND DIES ON ITS OWN CLOCK`, asserting all three
+facts at once: past the 25-second reaper, longer when deeper, gone at zero. This
+is §24's discipline — an assertion whose premise a feature reverses gets
+**rewritten to state the new rule**, never quietly dropped, so the change has to
+be argued in the same commit that makes it.
+
+`CHART DEATH INTACT` grew a clause for the same reason. §109 puts a price on the
+rescue, and that leg is what keeps the price off the promise: at depth 0 the
+spill is zero **and the bill is zero**, on a wallet the leg checks is untouched
+to the credit.
+
+### What this does not do
+
+It does not touch what is lost. Unread salvage only, components stowed, the
+whole hold never — §22's scope survives intact, and the contraband trade the
+expanse rests on is as safe as it was. What changed is that the deep now costs
+something on the way out and counts down on what you left behind, while the
+charted system remains exactly what the tutorial taught it was.
+
+## 110. The order book, and the hint that lied (rides v27)
+
+Horizon 10, commit 4. The playtest said forge materials never drop and the
+player had never found some of them. That is the *second* time that report has
+arrived, and the first fix is why the second one happened.
+
+### READS_AS is not monotone, and the hint assumed it was
+
+v22 added a source line to the forge — *"a component names the read that
+produces it"* had been written at the top of the file and never wired, and a
+playtest had concluded the forge's inputs did not exist. The fix derived the
+line from `READS_AS` itself, took the **shallowest** grade that yields the part,
+and printed:
+
+> `SINK FALLS FROM READING BAND 2+ SALVAGE`
+
+That sentence is only true if the read table is monotone in band. **It is not,
+and never was.** `sink_thermal` fell from the Drift and nowhere deeper.
+`manifest_forged` from the Reaches and nowhere deeper. `plate_ablative` and
+`cell_fuel` from the Charted and the Shoals and nowhere deeper. So a pilot
+standing in the Quiet with a hold of Quiet salvage, following the game's own
+printed instruction, could read crate after crate and **never once** see four of
+the eight forge inputs.
+
+The `+` was doing the damage, and it was a fix restating the bug it fixed. The
+line now names the grades themselves — *"SINK READS OUT OF DRIFT SALV, REACHES
+SALV"* — derived from the same table, so it is exact by construction rather than
+by inference. `THE HINT WOULD HAVE LIED` asserts **both halves**: that at least
+one component breaks a `BAND n+` claim (or the copy change was unnecessary and
+this leg measures nothing), and that the derived list is exactly the yielding
+set for every part.
+
+### One recipe could not be planned at all
+
+`mod_baffle` wants MANIFEST ×1 + PLATE ×2. Manifest fell from band 3 only; plate
+from bands 0–1 only. **No single band in the game yielded both**, so filling it
+meant two separate expeditions with a held hold in between, and nothing anywhere
+said so. Every other recipe already had exactly one such band.
+
+`salvage_shoal` now also reads into manifest. That makes the set a ladder —
+baffle at band 1, sink-lattice at 2, survey-array at 3, resonance at 4 — instead
+of a set with one hole in it, and `NO RECIPE IS UNSHOPPABLE` pins it as a
+property rather than an accident.
+
+`salvage_reaches` also gained sink, which fixes no recipe: it widens the
+narrowest supply window in the table, **outward**, which is the safe direction.
+
+**Both laws were checked before the change shipped and neither number moved.**
+`READING PAYS`' worst margin is still SHOAL at +55 (manifest at 320 is not the
+cheapest read of a Shoal crate — plate at 150 is), `READ COMPRESSION`'s worst is
+still UNSOUNDED at 2.18×, and the best-read ceiling stays monotone outward: band
+1 goes 300 → 320 against band 2's 480.
+
+**A third change was planned and cut.** `cell_fuel` into `salvage_drift` was on
+the list until the arithmetic ran: cell at 190 against Drift's raw 150 would
+have become the *cheapest* read of that grade and dropped its floor from +150 to
++40 — the worst margin in the game, in a table whose whole design is that grades
+are told apart by their floor. And cell is not an input to any recipe, so it
+bought nothing. Widening a window is not free just because the assertion still
+passes.
+
+### The order book — the demand side, and the first real credit sink
+
+The read-table fix makes every recipe **plannable**. It does not make the eighth
+unit of a part you already understand any less of a grind. So the five fencing
+desks gain a `requisitions` service: one dictionary entry and one
+`_build_requisitions` method, which is §12's rule rather than an exception to it.
+
+**It orders; it still does not retail.** `Market.can_buy` is untouched by the
+entire feature and `SELL ONLY` keeps passing — a fence that sold components off
+a shelf would reopen the exact loop §11 closed. You pay up front, at a counter
+that keeps nothing, and somebody brings one back in five played minutes.
+
+**The price is a bound, not a feeling.** The worst legal price any counter will
+ever *pay* for a component is
+
+    base × drift(1.12) × pressure(1.25) × event(2.2) × spread(0.94)
+         × bulk(1.06) × fence(1.45)  =  4.45× base
+
+so at **5.0×** an order costs more than the best sale in the game — under a
+shortage, at the deepest fence, in bulk, at a freeport, at peak drift and peak
+pressure, *simultaneously*. `THE ORDER DESK IS NOT A PRINTER` re-derives that
+product from the live constants rather than trusting the paragraph above, so a
+later change to any of them recomputes the bar instead of silently clearing it.
+
+That bound has to hold against the **bonded bay**, not just against a same-tick
+round trip. Components are storable (`can_store == no_retail`), and
+`NO ROUND-TRIP PROFIT` prices both legs in one instant under one `market_events`
+array — it explicitly cannot see a loop run across two different market states
+with a warehouse in the middle. An order cheaper than a future sale would be
+exactly that loop.
+
+**Two gates, and both state their own terms.** The desk is behind `fence_open`,
+enforced at the build *and* at the action (survey_mast's lesson, and the fence's
+own posture). And it sources only a component this pilot has **read at least
+once** — *bring me one you have held* — recorded in `identify`, the single
+function that has ever produced a component, so the gate cannot drift from the
+thing it gates on. That is what keeps requisitions a relief for late-game
+scarcity rather than a way around ARCHEOLOGY: you cannot order a part you have
+never learned to recognise.
+
+**An order is a receipt, never a debt.** Paid in full when placed, so abandoning
+one costs exactly what was already spent. It survives a full hold — a
+requisition that evaporated because the player arrived with two spare units of
+space would be paid-for cargo deleted by a rounding error, which is
+`mineable_seam`'s all-or-nothing rule applied to a purchase. And if the store
+refuses the order after the wallet was charged, the money goes back:
+`identify`'s *nothing may vanish* rule, applied to credits.
+
+### The save
+
+Two stores on v27, both additive: `requisition_orders` and `reads_done`. A v27
+file written before this section has neither key, arrives with an empty book and
+nothing read, and is a pilot who never used the desk — which is every pilot
+before it existed. Both are re-bounded in the loader, `REQ_MAX_OPEN` included,
+because a hand-edited file is input and not truth. The `migrate26` leg grew the
+clauses: four orders in, two out (a bulk good and a component this build never
+had), a future stamp clamped rather than dropped, and `reads_done` keeping only
+real components with positive counts.
+
+## 111. The ladder (rides v27)
+
+Horizon 10, commit 5a. The playtest asked for twenty RuneScape-style skills
+trained by doing. The game already had four, governed by law that twenty cannot
+fit inside, so the scope settled at **ten to twelve with one shared record** —
+and this is the machinery, the record, and the first two.
+
+### One table, and a tier that cannot disagree with itself
+
+The legacy four shipped one at a time over twenty versions, each with its own
+`var`, its own `_xp` var, its own tier constants and its own line function. That
+is fine at four and unmanageable at eleven. The new ones are **a dict and a
+table**: `SKILL_TIERS`, `SKILL_LABELS`, `SKILL_VERBS`, `SKILL_PERKS`, and a
+`skills` store holding xp alone.
+
+**The tier is derived, never stored.** The legacy four keep a tier beside an xp
+and a loader that clamps one against the other; there is only one number here,
+so there is nothing to drift. `THE TIER IS DERIVED, NEVER STORED` writes every
+rung of every ladder straight into the xp and reads the tier back, then pushes
+past the last rung to confirm it pins at the cap rather than running off the end.
+
+A new ladder is a row in a table. It is never a line of the ledger page, never a
+line function, and never a save migration.
+
+### The two that shipped, and why only two
+
+**SURVEYING** — fed by masts worked, which is *the one verb in the game that fed
+nothing at all*. Survey coverage has counted it persistently and boundedly since
+v21 and no ladder ever read the count. Four tiers: the reading is named before
+you spend the hold; a quarter off the hold; the rival heads-up moves from after
+the hold to before it (so a filed cell becomes a choice rather than a surprise);
+and THE LONG ARM, half again the reach — which §22 makes meaningful, because the
+mast rides the stern precisely so the stand-off sits outside a guarded hull's
+ring. A longer arm makes the sneak play **safer**, not richer.
+
+**FILING** — fed by returns filed with the network and by far marks read for the
+first time, deliberately the two halves of one act (§98: filing is what buys the
+literacy, and a mark is what the literacy is for). Two tiers, both time and
+reach at a plate.
+
+**Two, not five, and that is §88 rather than a shortfall.** The plan had
+SURVEYING, FILING and HUNTING in this commit. HUNTING's tiers want HUD work —
+naming an apex's phase timing, narrowing an intel cone's rendering — and a tier
+that is reachable but grants nothing a player can see is "a wired verb without
+an affordance", which is an unbuilt feature wearing a table row. It moves to 5b
+with the other four, where the HUD work happens in one pass instead of four.
+`EVERY RUNG SAYS WHAT IT BOUGHT` is the leg that keeps that honest: a rung with
+no perk string fails.
+
+### The tier the design refused
+
+FILING t1 was written as **THE MARKS NAME THEMSELVES** — an unread far mark
+showing its kind at range. `sounding_mark.gd` refuses that in writing:
+
+> *an unread mark is "A SOUNDING MARK" to everybody, because the kind is
+> precisely what the notation tells you*
+
+and a harness pins `NAMES` to `FarMarks.kinds()` rather than trusting the
+comment. A tier that revealed the kind at range would delete the one thing
+reading a mark is *for*. Both FILING tiers now buy the same reading **sooner and
+from further out**, which is time and access — currencies §26 permits — and
+leaves the reveal exactly where it was.
+
+### The feeds, and what the assertion actually covers
+
+Seven acts feed six ladders and no act feeds two: breach and read
+(ARCHEOLOGY), a fence sale (SMUGGLING), a seam cut (MINING), a parley talked
+down (PERSUASION), a mast worked (SURVEYING), a return filed and a mark first
+read (FILING).
+
+`FEEDS COMPETE, SIX WAYS` snapshots every ladder, fires one feed, and asserts
+exactly one moved. **It is honest about its reach in its own comment**: that
+catches a mutator paying two ladders or a shared helper fanning out, and it does
+*not* prove the verbs are disjoint — that is a fact about where the calls live,
+established by reading them, not by running them.
+
+Two feeds were shaped specifically to refuse a farm. A mast counts **once per
+mast**, and a worked cell cannot be re-worked (the spawn checks `is_surveyed`),
+so re-holding a dish pays nothing. A mark counts **first reads only**, using the
+`first` flag already computed there for the legend spawn. And filing counts the
+cells the player's own goods paid for and **not** the rival-reached cells that
+come home free — a ladder that rose for work somebody else did would be the
+"pays for running" shape the skill law refuses by name.
+
+### The run this cost, and the gate that did not catch it
+
+The first sweep of this commit **hung**, and the way it hung is worth writing
+down because the mechanism will recur.
+
+`_prompt_line` opened with `var band_name := DeepSpace.BAND_NAMES[i]`.
+`BAND_NAMES` is an untyped `const` Array, so indexing it yields a Variant and
+`:=` has nothing to infer from — the identical parse error the fifth checker
+rule was written for, in its **third** form (bare math globals, then untyped
+containers).
+
+Three things compounded it:
+
+- **A parse error in a leaf class takes the chain down behind it.**
+  `survey_mast.gd` failed to compile, and `deep_space`, `system_db`,
+  `game_state` and the audio autoload all failed behind it. The §106 case was
+  loud because it was in an autoload; this one was quiet because it was in a
+  leaf.
+- **The pre-flight could not see it.** `run_harness.sh` parse-checks
+  `main.gd`, which parses perfectly well on its own, so the gate passed and the
+  sweep started. The harness printed three cheerful PASS lines and then died on
+  `SurveyMast.new()` with "Nonexistent function 'new' in base 'GDScript'",
+  which is what a class that failed to compile looks like from the outside.
+- **A Godot runtime error aborts the FUNCTION, not the process**, so
+  `get_tree().quit()` was never reached and the run sat silent against a
+  1,500-second backstop — exactly the failure `run_harness.sh`'s own comment
+  warns about for a tag whose harness does not dispatch.
+
+The fix is one `String()`. The lesson is the sixth checker rule: it collects
+every `const NAME := [` or `{` this project declares and flags `:=` off a
+lookup into one, so it is exact rather than heuristic — a typed `Array[String]`
+or a local dictionary is never reported. Both forms are covered, indexing and
+`.get()`, and both were red-verified.
+
+**The pre-flight's blind spot is now covered by the static pass rather than by
+Godot**, which is the cheaper place for it: `check_scripts.py` reads all seventy
+files in well under a second, and no amount of `--check-only` on `main.gd` will
+ever see a leaf class fail.
+
+`NO LADDER PAYS IN CREDITS` climbs every ladder from zero to cap, tier landings
+included, watching the wallet — a tier that paid on arrival would slip past a
+single-call check. That is what keeps all of this clear of PACINGTEST's band,
+which matters more this horizon than most: `MIDTIER` has under a tenth of a
+mid-tier module of headroom.
+### Commit 5b — the rest of the roster
+
+Five more ladders, every grant a rule function with one consumer, every feed a
+single site beside the bound that already policed it.
+
+| skill | feed (the site) | tiers | grants |
+|---|---|---|---|
+| HUNTING | an engine down (`award_apex_bonus`, first per system — its own guard is the anti-farm) and a legend resolved (`note_mark_spent`, first-only by construction) | [0,1,4] | t1 THE COLD TRAIL — every intel channel lands ×0.85 error at the one intake door; t2 THE CIRCLE READ — each filing names what it was worth ("CIRCLE 240u → 175u") |
+| RIFT-WORK | rift crates CLAIMED — loaded, not scrapped; the hold-full path pays this nothing | [0,24,72,150] | t1 THE FUSE READ — pulses remaining, in a number; t2 THE WIDE READING — the shear's own ±4° reading taken from ×1.5 out; t3 THE LAST SECOND — the klaxon three seconds early |
+| BROKERAGE | a delivery filled (deliveries ONLY — "any contract" would rise alongside three other ladders' work) and a convoy sale (per SALE, not per unit) | [0,4,11,24] | t1 THE MANIFEST HAIL — a hail quotes the hold, behind the trade's own two gates; t2 THE STANDING WORD — a consignment row reads the weather at its destination; t3 ROUTE SENSE — the pair, NEVER the margin: deliberately weaker than the paid rumour |
+| COLONIAL | a colony founded (in the one mutator, success path only) | [0,1,3,6] | t1 THE SILHOUETTE NAMED — sighted from ×2; t2 THE GROUND SOUNDED — founding marks the cell worked, through the one door every mast reading takes, no chart good and no SURVEYING xp; t3 KEPT LIGHTS — a founded colony borrows TIER_HOME on the radar, the beacon-course precedent, so its light is never capped and never fades |
+| WARDENRY | a post cleared (beside the ledger line, behind `_counted`'s once-per-post bound) | [0,5,14,30] | t1 THE POST READ — the breach prompt counts the watch; t2 THE COUNT KEPT — each guard down names how many stand; t3 THE BREACH WINDOW — the hull this post guarded cracks ×1.25, flag on the WORLD, rate in the tier, either alone doing nothing |
+
+**Two rungs died on contact with the code, which is 5a's lesson holding.**
+RIFT-WORK t2 was written as THE SHEAR HEARD — a spawn announcement with a
+bearing — and the spawn already announces itself to everybody on the comms
+plate, bearing included: a tier that grants what everyone has is a rung that
+grants nothing (§88, caught by reading the surface before wiring the perk).
+And BROKERAGE's t2 candidate "the board holds a posting for you across docks"
+died on pacing: `_pacing_contract_yield` measures the stranger's board, and a
+tier that changed what boards offer would move a measured number with a skill,
+which is the §26 shape exactly.
+
+**HUNTING is two rungs and that is its honest length.** Three engines and a
+handful of legends exist per game; a ladder longer than its feed is a checklist
+that cannot be finished.
+
+**The deepenings (legacy t4s) are deferred to §64, with the reason written
+down.** Extending a legacy tier array is mechanically safe — the walk is
+generic — but each of the four carries a hand-written line function whose cap
+is written out rather than derived (a deliberate §36-era decision), legs that
+pin that cap, and copy that names it. Doing that unswept, at night, against
+SMUGTEST and MINETEST, is the wrong risk for four rungs; it is an afternoon's
+work with a sweep at hand, and it is recorded as owed rather than dropped.
+
+`A TIER IS A GATE` grew the five 5b helpers, at zero and at cap, asserting
+each moves in the direction its grant claims — error down, reach up, warning
+up, sight up, rate up. A helper that reads the same at both ends is a tier
+granting nothing, measured.
+
+
+## 112. The sounded ground (rides v27)
+
+Horizon 10, commit 6. The playtest's fourth complaint was the deepest one:
+*"why should surveying matter to the goal players actually care about?"* The
+answer has existed since Horizon 9 — filing buys far-mark literacy, and the
+marks are where the legends stand — and the playtest proved the other half of
+the sentence: **a chain nothing teaches does not exist.** This commit teaches
+it, pays it off, and roots the credit sink in it.
+
+### The chain, taught in three registers
+
+**The manual** gains THE NETWORK — the one page that says what the world only
+implies: survey data has two buyers and only one pays in credits. It names the
+ACTS and stops exactly where discovery starts: no places, no names, and not one
+word about what a legend is.
+
+**A bark** fires the first time a mark refuses the read. The refusal already
+named the act (§58 — *file a return at a foreign mast*); the bark names where
+the ask comes from, which was the one link nothing anywhere pointed at.
+
+**The Watch** speaks once, unprompted and unpriced, to a pilot who has read at
+least a fragment of the deepest record and not yet finished it — a nudge
+offered exactly to the person who has demonstrably begun. It sells nothing, so
+it lives outside the rumour ladder.
+
+### The held cell is an anchor (FILING t3)
+
+The payoff the chain was missing, and the user-approved answer to "the worst
+part of dying is flying all the way back out." A cell the network holds is a
+place somebody keeps a light on: at FILING t3 it takes a **jump**, on the
+beacon jump's own fee curve and its own depth cap, drawn on the chart as rows
+beside the colonies (nearest four, so a long-armed filer's chart stays a chart).
+
+**§87 is answered, not waved at.** Eight beacons were cut to three because
+*free, early* route-threading killed the recover verb. This network is late —
+behind the longest chain in the game — earned per cell, paid per jump, and
+capped at the same depth every jump has always stopped at. Past the cap the row
+itself says *THE COURSE STILL SERVES*: the refusal removes the shortcut, never
+the destination. The gate lives in `anchor_rows` as well as in the chart,
+because a rule that lived only in a panel would hand the rows to any future
+caller free.
+
+### Colony works — the sink with a survey gate
+
+Three one-time works per colony, and every return is a **service** in §26's
+currencies: the RELAY MAST (4,000) carries the charted markets' weather out to
+the colony's system on the chart — information; the DRY DOCK (6,000) doubles
+shield mend alongside your own yard, behind the calm delay by position, so in
+a fight it is nothing — time, the same product every repair bay sells, still
+costing the flying there; the BONDED ANNEX (8,000) is a warehouse bay on the
+colony's own key, worked by the hold gesture — access, and every bound is the
+warehouse's own law reused (`can_store == no_retail` holds at the annex exactly
+as at a dock, so it can never become the timed-arbitrage shelf STORETEST
+closed).
+
+**Nobody builds on an unsounded bottom.** A work requires the colony's own cell
+in coverage — worked by a mast, or auto-sounded by a COLONIAL t2 founding — and
+the refusal names the act. That is the third leg of surveying's answer: the
+teaching makes the chain visible, the anchor makes filing pay, and the ground
+gate makes the *sink* pass through the survey verb.
+
+Up to ~270k of voluntary sink across a full run, against the credit cliff §110
+documented: the first place late-game money has ever had to go.
+
+### The defect the first draft carried
+
+The works loader sat with the other v27 stores and validated every key against
+`colonies` — **which loads seventy lines later.** On any real boot it would
+have validated against the previous session's colony set (or nothing) and
+silently dropped every work in the save. Caught by re-checking the load order
+the comment claimed rather than trusting it; the block now sits immediately
+after `_load_colonies`, with the first draft's mistake written at the site —
+the berths loader documents the same class of defect from the other direction.
+
+## 113. The measure (the horizon closes)
+
+Horizon 10, commit 7 — the closing commit, written the night the last four
+shipped and deliberately BEFORE the sweep that judges them, because its whole
+job is to say what that sweep means.
+
+### What this horizon did to the economy, in one paragraph
+
+Every commit moved income zero or negative. The shelf caps repeat farming and
+leaves the measured loop alone (asserted, not argued). The tug, the orders and
+the works are pure outflow — the rescue fee alone prices the fail state above
+the fast travel it was quietly beating, and the works are ~270k of voluntary
+sink against a documented credit cliff. Eleven ladders pay in time, choice,
+access and information, with `NO LADDER PAYS IN CREDITS` climbing every one to
+its cap to prove the wallet never moves. Nothing in seven commits added an
+income term.
+
+### The §41 debt comes due here, on purpose
+
+`MIDTIER` was measured at 2.91 ± 0.05 against a hard 3.00 before this horizon,
+and §80 already moved surveys out of the recurring term. This horizon's shelf
+caps cannot touch the standard loop (`THE SHELF SERVES THE STANDARD LOOP`
+measures exactly that), so PACINGTEST *should* read what it read. If it does,
+the reading gets recorded in the README as the new hard number and the band
+stands. **If `STEADY MIDTIER` lands red, that is not a defect in a commit — it
+is the re-derivation §41 has owed since v21, arriving.** The answer is a
+decision about yields or about the band, taken in the open, with the four
+samples §51's postscript demands. It is never a nudge toward whichever number
+makes the sweep quiet.
+
+### The counts are derived now
+
+`tools/run_harness.sh --counts` prints the run arithmetic without touching the
+Godot binary, and the README points at it instead of hand-maintaining a figure.
+That figure has been wrong twice in this repo's history — 44/61 in one place
+while 62 stood in another, and a "green at 758" that was never swept — and both
+times the error was the same shape: a measurement column maintained by hand is
+a prediction wearing a measurement's clothes. The §64 item this closes had
+stood open since §77.
+
+### What this horizon leaves open, stated rather than implied
+
+- **The four legacy deepenings (5c)** — deferred with reasons in §64; an
+  afternoon's work with a sweep at hand.
+- **The deep-event rumour at the Watch** — deep events exist (§108) and the
+  desk reads the shared event list, so they surface; a *dedicated* line
+  distinguishing the deep's weather from the chart's is copy polish for a
+  quiet moment.
+- **`SoundingMark.CANNOT_READ` at 118 characters** through an un-wrapped
+  label — §105's flag, still standing, still wanting a device rather than a
+  guess.
+- **A harness watchdog** — a runaway tag today costs a silent 1,500-second
+  timeout; a self-arming quit-after-60s inside the harness dispatch would turn
+  that into a fast failure with the error in the log. Touches all 56 tags, so
+  it wants its own small commit and a full sweep of its own.
+
+### The sweep, measured (2026-08-21)
+
+**81 runs | 812 PASS | 1 FAIL | 0 script errors**, and after the fix below, a
+RETURNTEST re-run at 27 pass / 0 fail — so the horizon stands at **813 across
+81**, a figure that is arithmetic across two runs rather than one measured
+sweep, and is written that way on purpose. PACINGTEST held — eleven
+green, `STEADY MIDTIER` included, so the band stands and §41's re-derivation
+is again a debt rather than a crisis. The save was untouched, and every
+migrate mode including the twice-grown `migrate26` passed.
+
+**The one red was §112's bark, and it was a recurrence with a paper trail.**
+`A MARK IS THE NETWORK'S TO READ` asserts the unfiled refusal appears in its
+own words; the new `far_mark_locked` bark fired inline, one line after
+`hud.prompt(CANNOT_READ)`, and `Barks.fire`'s own v18 comment says exactly what
+happened next: *a bark writes straight to the same prompt label*. The refusal
+was replaced by the nudge on the first-ever tap — the pilot least able to
+guess, which is word for word the case the v18 comment was written about.
+
+The fix is a posture, not a patch: the bark **arms** on the refusal and
+**fires at range-exit**, where the refusal is a stale line the player is
+already flying away from — replacing it there is a handoff, not a stomp. If
+anything else writes the prompt first, the moment has passed and the bark
+stands down *unspent*, which is fire()'s own rule ("a bark that fires once
+ever must not be consumed by being suppressed") honoured from the other side.
+
+### The horizon, remembered
+
+Ten sections, §107–§113 built across seven commits and two sub-splits, one
+save bump spent on the first and ridden by the rest. The playtest's five
+complaints each got a structural answer rather than a patch: the market got a
+counter, the counter got a voice, dying got a bill, the forge got a true
+sentence and an order book, the skills got a roster and a ledger, and
+surveying — the game's own name — got taught, paid and rooted. Four defects
+were found *by* the work before any sweep saw them: a tautological assertion,
+a dead rung, a loader validating against a store that loads later, and a hint
+whose fix had restated its own bug. The checker ended the horizon with six
+rules; it began it with four.

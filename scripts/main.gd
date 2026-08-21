@@ -107,6 +107,8 @@ const HARNESS_VARS := [
 	"PYXIS_SMUGTEST",
 	"PYXIS_SPILLTEST",
 	"PYXIS_STATIONTEST",
+	"PYXIS_SKILLTEST",
+	"PYXIS_STOCKTEST",
 	"PYXIS_STORETEST",
 	"PYXIS_STORMTEST",
 	"PYXIS_STREAMTEST",
@@ -465,6 +467,11 @@ var _event_roll_timer := Market.EVENT_ROLL_INTERVAL
 # the player cannot fly. Asserted to be non-zero: a sweep that skips nothing is a
 # sweep whose filter has stopped running.
 var _pacing_trade_skipped := 0
+# The best LEGAL route's buy leg, recorded by _pacing_trade_yield so the v27
+# shelf guard can ask whether the counter it buys from actually stands that many.
+var _pacing_trade_port := ""
+var _pacing_trade_good := ""
+var _pacing_trade_units := 0
 var _pending_dock: Port = null
 
 var _hitstop := false
@@ -1190,6 +1197,12 @@ func _ready() -> void:
 	elif OS.get_environment("PYXIS_MARKETTEST") != "":
 		GameState.lock_saving()
 		_run_market_test()
+	elif OS.get_environment("PYXIS_STOCKTEST") != "":
+		GameState.lock_saving()
+		_run_stock_test()
+	elif OS.get_environment("PYXIS_SKILLTEST") != "":
+		GameState.lock_saving()
+		_run_skill_test()
 	elif OS.get_environment("PYXIS_BALANCE") != "":
 		GameState.lock_saving()
 		_run_balance_test()
@@ -1263,6 +1276,65 @@ func _build_beacons() -> void:
 # where you sold it and what the port thinks of that good today; provenance is
 # a fact about the CELL, and a fact should not pay differently at a fence.
 const FIRST_FILING_RATE := 0.5
+
+
+func colony_ground_sounded(colony_key: String) -> bool:
+	# §112. NOBODY BUILDS ON AN UNSOUNDED BOTTOM. The colony's own cell must be
+	# in coverage -- worked by a mast, or auto-sounded by a COLONIAL t2 founding.
+	# Main owns this join for cell_depth_of_key's reason: GameState holds the
+	# colony as opaque data and never references DeepSpace.
+	var c: Dictionary = GameState.colonies.get(colony_key, {})
+	if c.is_empty():
+		return false
+	var cell := DeepSpace.cell_of(Vector3(float(c.get("x", 0.0)), 0.0,
+		float(c.get("z", 0.0))))
+	var sys := colony_key.split(":")[0] if colony_key.contains(":") else system_id
+	return GameState.is_survey_worked(DeepSpace.cell_key(String(sys), cell.x, cell.y))
+
+
+func buy_colony_work(colony_key: String, work: String) -> bool:
+	# The gate AND the purchase, in that order, with the refusal free -- nothing
+	# is spent before the ground check. The store enforces its own four rules;
+	# this adds the one it cannot ask.
+	if not colony_ground_sounded(colony_key):
+		if hud:
+			hud.show_toast("SOUND THE GROUND FIRST — WORK A MAST IN ITS CELL",
+				Palette.THREAT)
+		return false
+	if not GameState.buy_colony_work(colony_key, work):
+		return false
+	if hud:
+		hud.set_value(GameState.salvage)
+		hud.show_toast("WORKS RAISED — %s" % String(
+			(GameState.COLONY_WORKS[work] as Dictionary).get("name", work)),
+			Palette.GOLD)
+	Sfx.play("breach", -10.0, 1.1)
+	return true
+
+
+func anchor_rows(sys: String) -> Array:
+	# §112, FILING t3. The held cells of one system as jump rows -- nearest
+	# first, capped at four so a long-armed filer's chart stays a chart rather
+	# than a ledger. Same row shape beacon_rows returns, labels synthesized the
+	# same way, because the jump handler downstream is the same handler.
+	# Gated HERE as well as at the chart -- the button is the affordance, this
+	# is the rule, and a rule that lived only in a panel would hand the rows to
+	# any future caller free.
+	if GameState.skill_tier("filing") < GameState.FILING_ANCHOR_TIER:
+		return []
+	var out: Array = []
+	for k_v in GameState.held_cells(sys):
+		var key := String(k_v)
+		var bits := key.split(":")
+		if bits.size() != 3:
+			continue
+		var centre := DeepSpace.cell_centre(int(String(bits[1])), int(String(bits[2])))
+		out.append({"x": centre.x, "z": centre.z,
+			"depth": cell_depth_of_key(key),
+			"label": "HELD %s:%s" % [String(bits[1]), String(bits[2])]})
+	out.sort_custom(func(a, b) -> bool:
+		return float((a as Dictionary)["depth"]) < float((b as Dictionary)["depth"]))
+	return out.slice(0, 4)
 
 
 func cell_depth_of_key(key: String) -> float:
@@ -1439,9 +1511,21 @@ func file_charts_with_network() -> int:
 		GameState.note_survey_held(String(key_v))
 	for key_v in lost:
 		GameState.note_survey_held(String(key_v))
+	# §111. FILING'S FEED, and the ONE thing this verb has ever paid in besides
+	# a bearing. Counted on `cells` and deliberately NOT on `lost`: those came
+	# home free because a colleague had already reached them, and a ladder that
+	# rose for work somebody else did would be the "pays for running" shape the
+	# skill law refuses by name. Still no credits, still no Commission -- a tier
+	# buys time and reach at a plate, which is what filing is for.
+	if not cells.is_empty() and GameState.mark_skill("filing", cells.size()) and hud:
+		hud.show_toast("FILING %d — %s" % [GameState.skill_tier("filing"),
+			String((GameState.SKILL_PERKS["filing"] as Array)[
+				GameState.skill_tier("filing")])], Palette.GOLD)
+
 	# THE GOODS LEAVE LAST, after the marks are safe. No credits, no bonus, no
 	# cells_filed, no chart_data_sold: the Commission cannot hear about this and
-	# the wallet does not move. The whole payment is that somebody reads it.
+	# the wallet does not move. The whole payment is that somebody reads it --
+	# and, since §111, that the hand doing it gets quicker.
 	for good_v in (plan["goods"] as Dictionary):
 		GameState.unload_cargo(String(good_v), int(plan["goods"][good_v]))
 	if hud:
@@ -1595,6 +1679,109 @@ const BEACON_JUMP_MAX_DEPTH := SystemDB.HYPER_DEPTH_MAX
 # Scaled by depth and capped at the colony fee, so a jump is never the cheaper
 # way to reach a colony you founded -- that verb is the earned one.
 const BEACON_JUMP_MIN_FEE := 120
+
+# §109. THE TUG. Dying deep used to be FREE, and the comment two screens down
+# claiming it "keeps dying the expensive exit rather than the convenient one"
+# was aspirational rather than true: an emergency warp teleports you home from
+# any depth at no charge, which made it strictly cheaper than the 120-500 credit
+# beacon jump and therefore the best fast travel in the game.
+#
+# The fee walks beacon_jump_fee's own ramp at twice the price and WITHOUT its
+# clamp, so it keeps climbing past the depth a jump will reach: ~240 at the
+# chart edge, 1,000 where a jump stops being offered at all, ~1,870 at the far
+# marks. THE RESCUE COSTS MORE THAN THE JUMP sweeps it.
+#
+# The numbers are provisional and they are all in this block, §99's posture --
+# the LAWS are what is asserted (deeper costs more, always more than a jump,
+# nothing at all inside the chart), so a retune changes three lines and no
+# assertion.
+const RESCUE_FEE_MULT := 2.0
+
+# THE CLAIM. A spill used to be immortal: `spill` cubes skip the 25s reaper, so
+# cargo dropped at a deep death sat there for the rest of the visit and the whole
+# penalty was the flight back. It now has a clock, and the clock is generous
+# because the flight back is real -- three minutes plus a further second and a
+# half per hundred units of depth, so ~390s at 1,400u and ~25 minutes out at the
+# marks. Long enough to be fair, short enough to be a reason to hurry.
+const SPILL_CLAIM_BASE := 180.0
+const SPILL_CLAIM_PER_DEPTH := 0.15
+const SPILL_CLAIM_WARN := 30.0
+
+
+# Seconds left before somebody else takes what you dropped. 0 = nothing adrift.
+var _spill_claim_left := 0.0
+var _spill_warned := false
+
+
+func rescue_fee(depth: float) -> int:
+	# DEPTH 0 IS FREE, and that is the tutorial's promise kept literally: inside
+	# the charted system you lose position and tempo and nothing else, which is
+	# what it was taught with and what CHART DEATH INTACT asserts.
+	if depth <= 0.0:
+		return 0
+	# Deliberately NOT beacon_jump_fee(depth) * 2: that function clamps its ramp
+	# at BEACON_JUMP_MAX_DEPTH because past there a jump is refused outright, and
+	# borrowing the clamp would make the rescue flat across the entire far deep --
+	# cheapest exactly where it should cost the most.
+	var t := depth / float(BEACON_JUMP_MAX_DEPTH)
+	var one_way := lerpf(float(BEACON_JUMP_MIN_FEE), float(COLONY_JUMP_FEE), t)
+	return int(round(one_way * RESCUE_FEE_MULT))
+
+
+func spill_claim_seconds(depth: float) -> float:
+	return SPILL_CLAIM_BASE + maxf(depth, 0.0) * SPILL_CLAIM_PER_DEPTH
+
+
+func charge_rescue(at: Vector3) -> int:
+	# Billed by whoever came and got you. Called from PlayerShip._emergency_warp
+	# beside spill_unread, and living here for the same reason that one does: the
+	# ship owns the tween, Main owns the rule (drop_beacon_here's split).
+	if deep_space == null:
+		return 0
+	var fee := rescue_fee(deep_space.depth_at(at))
+	if fee <= 0:
+		return 0
+	# THE TUG TAKES WHAT YOU HAVE AND NEVER REFUSES. A rescue that could fail for
+	# want of credits is a soft-lock with a story attached -- there is no other
+	# way out of a shield-zero ship -- and a debt is a second currency the game
+	# does not have. So it bills what is in the account and writes the rest off.
+	var paid := mini(fee, GameState.salvage)
+	if paid > 0:
+		GameState.spend_salvage(paid)
+	if hud:
+		hud.show_toast("TUG'S FEE — %s SALVAGE%s" % [_comma_int(paid),
+			"" if paid >= fee else " (ALL YOU HAD)"], Palette.THREAT)
+		hud.set_value(GameState.salvage)
+	return paid
+
+
+func _tick_spill_claim(delta: float) -> void:
+	# Somebody else out here works the same wrecks you do. No AI and no class:
+	# what a claimant IS, mechanically, is a deadline on cargo you are not
+	# standing next to.
+	if _spill_claim_left <= 0.0:
+		return
+	var adrift := _spill_cubes()
+	if adrift.is_empty():
+		# Recovered, or abandoned by a warp. Either way the clock is not running.
+		_spill_claim_left = 0.0
+		_spill_warned = false
+		return
+	_spill_claim_left -= delta
+	if not _spill_warned and _spill_claim_left <= SPILL_CLAIM_WARN:
+		_spill_warned = true
+		if hud:
+			hud.show_toast("SOMEBODY IS WORKING YOUR SPILL", Palette.THREAT)
+	if _spill_claim_left > 0.0:
+		return
+	var where: Vector3 = (adrift[0] as Node3D).global_position
+	for c in adrift:
+		c.queue_free()
+	_spill_claim_left = 0.0
+	_spill_warned = false
+	FX.flash(system_root, where, Palette.THREAT, 3.0, 0.4)
+	if hud:
+		hud.show_toast("CLAIMED — SOMEBODY ELSE GOT THERE FIRST", Palette.THREAT)
 
 
 func beacon_jump_fee(depth: float) -> int:
@@ -1981,6 +2168,12 @@ func _load_system(id: String) -> void:
 	# this the deferred call would fire a second, redundant world rebuild one
 	# frame later. See rebuild_visuals.
 	_vision_rebuild_pending = false
+	# §109. Whatever was adrift is gone with the system that held it -- spill
+	# cubes are system_root children and leaving abandons them, which WARP CLEARS
+	# has asserted since §22. The clock must not survive the pile it was counting
+	# down, or the next spill inherits a deadline that already half expired.
+	_spill_claim_left = 0.0
+	_spill_warned = false
 
 	# Boss state never survives a system change: a DAMAGED engine resets to full on
 	# warp or reload, because retreating costs tempo and never salvage. Clearing
@@ -2234,10 +2427,18 @@ func _recall_sequence() -> void:
 	# toward the player and reroll every deep sector — all for a move that never
 	# leaves the system. The world is untouched; only the ship moves.
 	#
-	# And it is FREE. PlayerShip._emergency_warp already puts a dying player back
-	# at the spawn point, so the game does this for you involuntarily already;
-	# charging for the voluntary version would only tax doing deliberately what
-	# you get for nothing by being careless.
+	# And it is FREE -- but NOT for the reason this comment used to give. It read
+	# "the game does this for you involuntarily already; charging for the
+	# voluntary version would only tax doing deliberately what you get for
+	# nothing by being careless," and §109 made the second half false: dying past
+	# the chart now bills a tug's fee scaled by depth.
+	#
+	# It stays free on a better argument. Recall is the DELIBERATE exit -- it has
+	# a charge time, it cannot be taken mid-fight, and it costs the player the
+	# position they flew out to reach. The fail state is what got priced, and
+	# pricing the safe, slow, chosen version as well would be taxing the act of
+	# going home rather than the act of losing. The ordering that matters is the
+	# one that now holds: failing costs more than leaving.
 	var player: PlayerShip = get_tree().get_first_node_in_group("player")
 	var rig := get_tree().get_first_node_in_group("camera_rig")
 
@@ -2965,6 +3166,16 @@ func hail_contact(ship) -> void:
 		if "designation" in (ship as Node3D) else ""
 	if desig != "":
 		line += " · %s" % desig
+	# §111, BROKERAGE t1. THE MANIFEST HAIL: a broker hears a hail as a quote.
+	# Convoys at FRIENDLY+ only -- the same pair of gates the trade verb itself
+	# stands behind, so this never names a number the menu will not honour.
+	# INFORMATION: the trade, at the same rate, is one more tap either way.
+	if GameState.skill_tier("brokerage") >= GameState.BROKER_HAIL_TIER \
+			and (ship as Node3D).is_in_group("deep_convoy") \
+			and band <= FactionDB.Band.FRIENDLY:
+		var q := space_trade_quote()
+		if int(q["total"]) > 0:
+			line += " · THEY'D PAY %s FOR THE HOLD" % _comma_int(int(q["total"]))
 	_contact_toast(line, FactionDB.tint_of(flag))
 
 
@@ -3105,6 +3316,10 @@ func space_trade(ship) -> void:
 	for id_v in goods:
 		GameState.unload_cargo(String(id_v), int(goods[id_v]))
 	GameState.add_salvage(total)
+	# §111. BROKERAGE's second feed: a convoy dealt with, once per SALE rather
+	# than once per unit -- units would make one bulk haul a whole tier, which
+	# is volume wearing a verb's clothes.
+	GameState.mark_skill("brokerage")
 	# The dock's own sale sound, for the dock's own reason: this is the same
 	# transaction happening somewhere with no counter.
 	Sfx.play_streak("pickup", -8.0)
@@ -4278,6 +4493,8 @@ func _comma_int(n: int) -> String:
 func _tick_market(delta: float) -> void:
 	GameState.advance_clock(delta)
 	Market.recover_pressure(delta)
+	Market.recover_stock()
+	_tick_spill_claim(delta)
 
 	for ev in Market.tick_events(delta):
 		if hud:
@@ -4309,12 +4526,44 @@ func _tick_market(delta: float) -> void:
 		_event_roll_timer = Market.EVENT_ROLL_INTERVAL
 		var ev := Market.try_spawn_event(SystemDB.port_ids())
 		if not ev.is_empty() and hud:
-			var pdef := SystemDB.port_def_by_id(String(ev["port"]))
 			hud.show_toast("%s %s — %s" % [
-				String(pdef.get("name", "PORT")),
+				Market.event_place(ev),
 				Market.event_label(ev),
 				CommodityDB.short_name(String(ev["good"]))],
 				Market.event_color(ev))
+		# §108. The deep gets its own weather, on the same clock and its own
+		# budget. Rolled second so a charted event still has first call on the
+		# player's attention.
+		var dev := Market.try_spawn_deep_event(_live_deep_counters())
+		if not dev.is_empty() and hud:
+			hud.show_toast("%s %s — %s" % [
+				Market.event_place(dev),
+				Market.event_label(dev),
+				CommodityDB.short_name(String(dev["good"]))],
+				Market.event_color(dev))
+
+
+func _live_deep_counters() -> Array:
+	# §108. The deep stations streamed in right now, as
+	# [{key, id, name, def}] for Market.try_spawn_deep_event.
+	#
+	# FILTERED ON bay_key, NOT ON def. `def` non-empty is find_port's tell for
+	# "not the charted port", and it has a live false positive: THE PROCESSION
+	# carries a duplicated def of its own, and main.gd's own note says the
+	# market-event roll must never learn it exists -- THE CONVOY KEEPS ITS
+	# SCHEDULE asserts it is absent from SystemDB for exactly that reason. A
+	# convoy that vanishes every twenty minutes would leave weather behind it
+	# over a cell that has no counter in it. Only DeepSpace ever sets bay_key.
+	var out := []
+	for n in get_tree().get_nodes_in_group("dockable"):
+		if not (n is Port):
+			continue
+		var p := n as Port
+		if p.bay_key == "" or p.def.is_empty():
+			continue
+		out.append({"key": p.bay_key, "id": p.port_id,
+			"name": p.port_name, "def": p.def})
+	return out
 
 
 func find_port() -> Port:
@@ -4484,6 +4733,13 @@ func file_apex_intel(kind: String, from: Vector3, err_deg: float) -> bool:
 	# reading can refuse to charge for one that would have been a duplicate.
 	if not SystemDB.exists(system_id):
 		return false
+	# §111, HUNTING t1. THE COLD TRAIL: a practiced hand files every channel's
+	# reading a little truer. At the intake, so the mast, the relic, both desks,
+	# the post and the shear all benefit equally -- and only the bearing tier,
+	# because the ring tier has no error to narrow.
+	if err_deg > 0.0:
+		err_deg *= GameState.hunting_error_mult()
+	var before_est: Dictionary = Hunt.estimate(system_id)
 	var hint: Dictionary = Hunt.ring_hint(system_id, GameState.run_seed) if err_deg <= 0.0 \
 		else Hunt.bearing_hint(system_id, from, kind, err_deg, GameState.run_seed)
 	if not GameState.add_apex_hint(system_id, hint):
@@ -4495,6 +4751,17 @@ func file_apex_intel(kind: String, from: Vector3, err_deg: float) -> bool:
 	var est: Dictionary = Hunt.estimate(system_id)
 	var engine := String((SystemDB.get_system(system_id).get("apex", {}) as Dictionary)
 		.get("name", "THE ENGINE"))
+	# §111, HUNTING t2. THE CIRCLE READ: what this reading was WORTH, said in
+	# the same breath. "The circle got smaller" was always the only legible
+	# feedback; a practiced hunter reads it in units. INFORMATION about your own
+	# dossier, never about the engine.
+	var shrink_note := ""
+	if GameState.skill_tier("hunting") >= GameState.HUNTING_CIRCLE_TIER \
+			and not before_est.is_empty() and not est.is_empty():
+		var r0 := float(before_est.get("radius", 0.0))
+		var r1 := float(est.get("radius", 0.0))
+		if r0 > r1:
+			shrink_note = " · CIRCLE %du -> %du" % [int(r0), int(r1)]
 	var line := ""
 	if err_deg <= 0.0:
 		line = "INTEL — %s IN %s, %s" % [engine,
@@ -4502,9 +4769,9 @@ func file_apex_intel(kind: String, from: Vector3, err_deg: float) -> bool:
 	else:
 		# The hint's stored bearing is in the world convention (and is in players'
 		# saves that way); it is turned into a compass number here, at the glass.
-		line = "INTEL — %s · BEARING %03d ±%d° · SEARCH ±%du" % [engine,
+		line = "INTEL — %s · BEARING %03d ±%d° · SEARCH ±%du%s" % [engine,
 			DeepSpace.to_compass(float(hint["bearing"])), int(round(err_deg)),
-			int(round(float(est["radius"])))]
+			int(round(float(est["radius"]))), shrink_note]
 	if hud:
 		hud.show_toast(line, Palette.GOLD)
 	GameState.note_log(line)
@@ -4773,8 +5040,16 @@ func spill_unread(at: Vector3) -> int:
 			spilled += 1
 
 	if spilled > 0:
+		# §109. The clock starts the moment it hits the vacuum, and it is scaled
+		# by the depth it was dropped at because that is what the flight back
+		# costs. A second death before the first spill is recovered RESTARTS it
+		# rather than stacking a second deadline -- there is only ever one pile.
+		_spill_claim_left = spill_claim_seconds(deep_space.depth_at(at))
+		_spill_warned = false
 		if hud:
-			hud.show_toast("HOLD BREACHED — %d UNREAD ADRIFT" % spilled, Palette.THREAT)
+			hud.show_toast("HOLD BREACHED — %d UNREAD ADRIFT, %d MIN" % [
+				spilled, maxi(1, int(round(_spill_claim_left / 60.0)))],
+				Palette.THREAT)
 		FX.burst(system_root, at, Palette.AMBER, 40, 6.0, 0.3, 1.0)
 	return spilled
 
@@ -4827,6 +5102,10 @@ func award_apex_bonus(sys_id: String, bonus: int) -> void:
 	if sys_id == "" or GameState.has_killed_apex(sys_id):
 		return
 	GameState.mark_apex_killed(sys_id)
+	# §111. HUNTING's first feed: an engine down, first kill per system only --
+	# this function's own guard is the anti-farm, and a repeat kill pays the
+	# ladder the same nothing it pays the bonus.
+	GameState.mark_skill("hunting")
 	add_salvage(bonus)
 	if hud:
 		hud.show_toast("FIRST KILL BONUS  +%d" % bonus, Palette.GOLD)
@@ -6444,6 +6723,89 @@ func _run_forge_test() -> void:
 	print("[forge] FITTED EFFECT LIVE equipped=%s, signature %.2f -> %.2f, hold %d -> %d (hold must not move) -> %s" % [
 		str(equipped), sig_bare, sig_fitted, cap_bare, cap_fitted,
 		"PASS" if equipped and sig_fitted < sig_bare and cap_bare == cap_fitted else "FAIL"])
+	# §110. THE HINT WOULD HAVE LIED, and this leg proves both halves: that the
+	#     old form was false, and that the new one cannot be.
+	#
+	# The forge printed "X FALLS FROM READING BAND n+ SALVAGE", derived by taking
+	# the SHALLOWEST grade whose read table yields X. That is only true if
+	# READS_AS is monotone in band, and it is not: sink falls from the Drift and
+	# the Reaches and nowhere else, manifest from the Shoals and the Reaches,
+	# plate and cell from the Charted and the Shoals. A pilot standing in the
+	# Quiet following the game's own instruction reads crate after crate and
+	# never sees four of the eight inputs -- which is the playtest report that
+	# opened this horizon, filed against a hint added to fix the previous one.
+	#
+	# Clause one counts components the "+" claim is FALSE for. It must be
+	# non-zero, or this leg is asserting nothing and the copy change was
+	# unnecessary. Clause two is the new rule: the grades named are exactly the
+	# grades that yield it.
+	var gap_count := 0
+	var gaps := ""
+	var exact := true
+	for cid_v in CommodityDB.ids():
+		var cid := String(cid_v)
+		if not CommodityDB.is_component(cid):
+			continue
+		var from_bands := []
+		var named := []
+		for sal_v in CommodityDB.READS_AS:
+			if (CommodityDB.READS_AS[sal_v] as Array).has(cid):
+				from_bands.append(CommodityDB.band_of(String(sal_v)))
+				named.append(String(sal_v))
+		if from_bands.is_empty():
+			continue
+		# Would "BAND lo+" have been true? Only if every band from lo to the
+		# deepest yielding one also produces it.
+		var lo: int = from_bands.min()
+		var hi: int = from_bands.max()
+		for b in range(lo, hi + 1):
+			if not from_bands.has(b):
+				gap_count += 1
+				gaps += "%s(no b%d) " % [CommodityDB.short_name(cid), b]
+				break
+		# And the derived list must be exactly the yielding grades -- the same
+		# table read the same way, so the copy cannot drift from the mechanic.
+		for sal2_v in CommodityDB.READS_AS:
+			var has_it: bool = (CommodityDB.READS_AS[sal2_v] as Array).has(cid)
+			if has_it != named.has(String(sal2_v)):
+				exact = false
+	print("[forge] THE HINT WOULD HAVE LIED %d component(s) break a BAND-n+ claim (%s), and the grade list is exact for every one=%s -> %s" % [
+		gap_count, gaps.strip_edges() if gaps != "" else "none", str(exact),
+		"PASS" if gap_count > 0 and exact else "FAIL"])
+
+	# §110. NO RECIPE IS UNSHOPPABLE. Stronger than "every input exists": there
+	#     must be ONE band that yields every input of a recipe, or filling it
+	#     means two separate expeditions and nothing in the game says so.
+	#     mod_baffle failed this from the day it shipped -- manifest from the
+	#     Reaches, plate from the Charted and Shoals, no overlap anywhere.
+	var unshoppable := ""
+	var recipe_bands := ""
+	for cid2_v in craftables:
+		var bill2 := ModuleDB.recipe(String(cid2_v))
+		var common := []
+		var first := true
+		for bgood_v in bill2:
+			var bset := []
+			for sal3_v in CommodityDB.READS_AS:
+				if (CommodityDB.READS_AS[sal3_v] as Array).has(String(bgood_v)):
+					bset.append(CommodityDB.band_of(String(sal3_v)))
+			if first:
+				common = bset
+				first = false
+			else:
+				var keep := []
+				for b2 in common:
+					if bset.has(b2):
+						keep.append(b2)
+				common = keep
+		if common.is_empty():
+			unshoppable += String(cid2_v) + " "
+		else:
+			recipe_bands += "%s@b%d " % [String(cid2_v).replace("mod_", ""),
+				(common as Array).min()]
+	print("[forge] NO RECIPE IS UNSHOPPABLE every recipe fillable from a single band (%s), unreachable: %s -> %s" % [
+		recipe_bands.strip_edges(), unshoppable if unshoppable != "" else "none",
+		"PASS" if unshoppable == "" else "FAIL"])
 	get_tree().quit()
 
 
@@ -7487,8 +7849,17 @@ func _run_spill_test() -> void:
 		gap_before, gap_before - gap_after,
 		"PASS" if gap_before - gap_after < 6.0 else "FAIL"])
 
-	# 4. NO EXPIRY. Stock cubes reap at 25s; the round trip from spawn to a deep
-	#    death site is longer than that before the player has even turned around.
+	# 4. A SPILL OUTLIVES THE REAPER AND DIES ON ITS OWN CLOCK. This was NO
+	#    EXPIRY, and half of it still is: stock cubes reap at 25s, and the round
+	#    trip from spawn to a deep death site is longer than that before the
+	#    player has even turned around, so the spill must ignore that reaper.
+	#
+	# What changed in §109 is the other half. "Never expires" made the whole deep
+	# death penalty a flight back with no clock on it, and the code's own claim
+	# that dying is "the expensive exit" was aspirational. It now has a deadline,
+	# scaled by depth because the flight back is what it is measuring, and this
+	# leg asserts all three: past the reaper, longer when deeper, gone at zero.
+	#
 	# Age is driven past the reaper rather than waited out: 25s of harness time to
 	# prove a branch is off is 25s nobody will spend, and a test nobody runs is a
 	# test that is not there.
@@ -7501,8 +7872,19 @@ func _run_spill_test() -> void:
 	for c in _spill_cubes():
 		if is_instance_valid(c):
 			alive += 1
-	print("[spill] NO EXPIRY %d of %d alive at age 40s (the stock reaper is 25s) -> %s" % [
-		alive, spilled_n, "PASS" if alive == spilled_n and spilled_n > 0 else "FAIL"])
+	var ttl_shallow := spill_claim_seconds(200.0)
+	var ttl_deep := spill_claim_seconds(2000.0)
+	# Driven to the wire rather than ticked down 390 times, same reasoning.
+	_spill_claim_left = 1.0
+	_spill_warned = true
+	_tick_spill_claim(2.0)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var after_claim := _spill_cubes().size()
+	print("[spill] A SPILL OUTLIVES THE REAPER AND DIES ON ITS OWN CLOCK %d of %d alive at age 40s (reaper is 25s); the claim runs %.0fs at 200u and %.0fs at 2000u; run out, %d of %d left -> %s" % [
+		alive, spilled_n, ttl_shallow, ttl_deep, after_claim, spilled_n,
+		"PASS" if alive == spilled_n and spilled_n > 0 and ttl_deep > ttl_shallow
+			and after_claim == 0 else "FAIL"])
 
 	# 5. IDENTIFIED STAYS. Reading a thing is also stowing it — the line that
 	#    gives ARCHEOLOGY a third job and makes field-reading a survival act.
@@ -7530,9 +7912,16 @@ func _run_spill_test() -> void:
 	player.global_position = Vector3(0, 0, 6)
 	await get_tree().physics_frame
 	var home_spill := spill_unread(Vector3(0, 0, 6))
-	print("[spill] CHART DEATH INTACT depth 0 spilled %d, hold still %d -> %s" % [
-		home_spill, GameState.cargo_count("salvage_charted"),
-		"PASS" if home_spill == 0 and GameState.cargo_count("salvage_charted") == 6 else "FAIL"])
+	# §109 put a price on the rescue, and this is the leg that keeps the price
+	# off the promise. The tutorial teaches "you lose position and tempo, never
+	# salvage" INSIDE the charted system, so the tug must not bill there either.
+	GameState.salvage = 5000
+	var home_fee := charge_rescue(Vector3(0, 0, 6))
+	print("[spill] CHART DEATH INTACT depth 0 spilled %d, hold still %d, tug billed %d of a %d balance -> %s" % [
+		home_spill, GameState.cargo_count("salvage_charted"), home_fee,
+		GameState.salvage,
+		"PASS" if home_spill == 0 and GameState.cargo_count("salvage_charted") == 6
+			and home_fee == 0 and GameState.salvage == 5000 else "FAIL"])
 
 	# 7. NO DOUBLE SPILL. The hold is emptied BEFORE the cubes exist, so a second
 	#    death inside WARP_GRACE finds nothing left to duplicate.
@@ -7572,6 +7961,75 @@ func _run_spill_test() -> void:
 			"null" if rig.get("_hold_target") == null else "HELD",
 			str(player.has_move_target),
 			"PASS" if rig.get("_hold_target") == null and not player.has_move_target else "FAIL"])
+	# --- §109. THE TUG ------------------------------------------------------------
+
+	# 10. THE RESCUE COSTS MORE THAN THE JUMP. The assertion this whole feature
+	#     exists for. _emergency_warp teleports a shield-zero ship home from ANY
+	#     depth, and until now it did it for free -- which made dying strictly
+	#     cheaper than the 120-500 credit beacon jump, and therefore the best
+	#     fast travel in the game. main.gd's own comment claimed dying was "the
+	#     expensive exit rather than the convenient one"; it was not.
+	#
+	# Swept rather than spot-checked, because the two curves are only guaranteed
+	# to stay apart if the rescue does NOT borrow beacon_jump_fee's clamp -- and
+	# the far deep, past where a jump is refused at all, is exactly where an
+	# inherited clamp would have made the rescue flattest.
+	var fee_bad := ""
+	var fee_last := 0
+	var fee_rises := true
+	for d in [1.0, 200.0, 900.0, 2600.0, 4200.0, 6500.0, 9000.0]:
+		var rf := rescue_fee(d)
+		var jf := beacon_jump_fee(d)
+		if rf <= jf and fee_bad == "":
+			fee_bad = "at %du rescue %d <= jump %d" % [int(d), rf, jf]
+		if rf <= fee_last:
+			fee_rises = false
+		fee_last = rf
+	print("[spill] THE RESCUE COSTS MORE THAN THE JUMP 7 depths swept, %du costs %d, deeper always dearer=%s, first cheaper-than-a-jump: %s -> %s" % [
+		9000, rescue_fee(9000.0), str(fee_rises),
+		fee_bad if fee_bad != "" else "none",
+		"PASS" if fee_bad == "" and fee_rises else "FAIL"])
+
+	# 11. THE TUG TAKES WHAT YOU HAVE. A rescue that could fail for want of
+	#     credits is a soft-lock with a story attached -- there is no other way
+	#     out of a shield-zero ship -- and a debt is a second currency this game
+	#     does not have. So it bills what is in the account and writes off the
+	#     rest. Both directions: a full wallet pays the whole fee, a thin one
+	#     pays exactly what it had and lands on zero, never below.
+	player.global_position = deep_pos
+	await get_tree().physics_frame
+	var owed := rescue_fee(deep_space.depth_at(deep_pos))
+	GameState.salvage = owed + 250
+	var paid_full := charge_rescue(deep_pos)
+	var left_full := GameState.salvage
+	GameState.salvage = 40
+	var paid_thin := charge_rescue(deep_pos)
+	var left_thin := GameState.salvage
+	GameState.salvage = 0
+	var paid_broke := charge_rescue(deep_pos)
+	var left_broke := GameState.salvage
+	print("[spill] THE TUG TAKES WHAT YOU HAVE fee %d at %du: a %d balance pays %d and keeps %d; a 40 balance pays %d and keeps %d; a broke one pays %d and keeps %d -> %s" % [
+		owed, int(deep_space.depth_at(deep_pos)), owed + 250, paid_full, left_full,
+		paid_thin, left_thin, paid_broke, left_broke,
+		"PASS" if owed > 0 and paid_full == owed and left_full == 250
+			and paid_thin == 40 and left_thin == 0
+			and paid_broke == 0 and left_broke == 0 else "FAIL"])
+
+	# 12. THE CLOCK IS THE FLIGHT BACK. The claim window is not a flat number: it
+	#     is scaled by the depth the cargo was dropped at, because what it is
+	#     really measuring is how far the player has to come. A flat window would
+	#     be generous at the chart edge and impossible at the marks.
+	var near_ttl := spill_claim_seconds(0.0)
+	var mid_ttl := spill_claim_seconds(1400.0)
+	var far_ttl := spill_claim_seconds(9000.0)
+	print("[spill] THE CLOCK IS THE FLIGHT BACK %.0fs at the edge, %.0fs at 1,400u, %.0fs at the marks -> %s" % [
+		near_ttl, mid_ttl, far_ttl,
+		"PASS" if near_ttl >= SPILL_CLAIM_BASE and mid_ttl > near_ttl
+			and far_ttl > mid_ttl else "FAIL"])
+
+	GameState.salvage = 5000
+	_spill_claim_left = 0.0
+	_spill_warned = false
 	get_tree().quit()
 
 
@@ -7819,6 +8277,123 @@ func _run_store_test() -> void:
 	print("[store] NO PASSIVE GROWTH flew 40 cells past live stations: %d keys -> %d -> %s" % [
 		keys_before, GameState.warehouse.size(),
 		"PASS" if GameState.warehouse.size() == keys_before else "FAIL"])
+	# --- §110. THE ORDER BOOK -------------------------------------------------
+
+	# THE ORDER DESK IS NOT A PRINTER. §11's law, applied to a verb that did not
+	# exist when it was written. An order that cost less than a sale anywhere
+	# would be a money loop -- and worse, one NO ROUND-TRIP PROFIT cannot see,
+	# because components are storable (can_store == no_retail) so the loop can be
+	# run through a bonded bay across two different market states.
+	#
+	# The bound is RE-DERIVED from the live constants rather than trusted from a
+	# comment: peak drift, peak pressure, a shortage, a freeport's thinner
+	# spread, a bulk break and the deepest fence multiplier in the game, all at
+	# once, on top of any authored bias. If any of those constants moves, this
+	# recomputes and stays honest.
+	var fence_best := 1.0
+	for pid_fv in SystemDB.port_ids():
+		fence_best = maxf(fence_best,
+			float(SystemDB.port_def_by_id(String(pid_fv)).get("fence_mult", 1.0)))
+	for aid_fv in DeepPortDB.ids():
+		fence_best = maxf(fence_best,
+			float(DeepPortDB.by_id(String(aid_fv)).get("fence_mult", 1.0)))
+	var bulk_best := 1.0
+	for pid_bv in SystemDB.port_ids():
+		bulk_best = maxf(bulk_best,
+			1.0 + float(SystemDB.port_def_by_id(String(pid_bv)).get("bulk_bonus", 0.0)))
+	var worst_event := 1.0
+	for k_v in Market.EVENT_KINDS:
+		worst_event = maxf(worst_event,
+			float((Market.EVENT_KINDS[k_v] as Dictionary).get("max_mult", 1.0)))
+	var ceiling_mult := (1.0 + Market.DRIFT_AMPLITUDE) * (1.0 + Market.PRESSURE_CAP) \
+		* worst_event * (1.0 - Market.FREEPORT_SPREAD) * bulk_best * fence_best
+	var printer := ""
+	var comps := 0
+	for gid_pv in CommodityDB.ids():
+		var gid_p := String(gid_pv)
+		if not CommodityDB.is_component(gid_p):
+			continue
+		comps += 1
+		var base_p := float(CommodityDB.base_price(gid_p))
+		var bias_best := 1.0
+		for d_pv in SystemDB.port_ids():
+			bias_best = maxf(bias_best,
+				Market.port_bias(SystemDB.port_def_by_id(String(d_pv)), gid_p))
+		for a_pv in DeepPortDB.ids():
+			bias_best = maxf(bias_best,
+				Market.port_bias(DeepPortDB.by_id(String(a_pv)), gid_p))
+		var best_sale := base_p * bias_best * ceiling_mult
+		if float(Market.requisition_price(gid_p)) <= best_sale and printer == "":
+			printer = "%s orders at %d, best legal sale %.0f" % [
+				CommodityDB.short_name(gid_p), Market.requisition_price(gid_p), best_sale]
+	print("[store] THE ORDER DESK IS NOT A PRINTER %d components, order at %.1fx base against a worst-case sale of %.2fx, first loop: %s -> %s" % [
+		comps, Market.REQ_MULT, ceiling_mult,
+		printer if printer != "" else "none",
+		"PASS" if printer == "" and comps > 0 else "FAIL"])
+
+	# NO ORDER WITHOUT THE READ. The desk sources what you have handled, so
+	# requisitions relieve late-game scarcity without becoming a way around
+	# ARCHEOLOGY. Both directions, or a gate that always refused would pass.
+	GameState.requisition_orders = []
+	GameState.reads_done = {}
+	var before_read := GameState.can_order("sink_thermal")
+	GameState.note_read("sink_thermal")
+	var after_read := GameState.can_order("sink_thermal")
+	var never_a_good := GameState.can_order("alloys")
+	print("[store] NO ORDER WITHOUT THE READ unread=%s, after one read=%s, and a bulk good is never orderable=%s -> %s" % [
+		str(before_read), str(after_read), str(never_a_good),
+		"PASS" if not before_read and after_read and not never_a_good else "FAIL"])
+
+	# AN ORDER WAITS, and the book has a bottom. Delivery is a played-clock wait
+	# rather than a vending machine, and three open orders is the cap -- enforced
+	# at the store and not only in the UI.
+	GameState.requisition_orders = []
+	GameState.cargo = {}
+	GameState.played_seconds += 10.0
+	var placed := GameState.place_order("sink_thermal", "void")
+	var early := GameState.collect_order(0)
+	GameState.played_seconds += GameState.REQ_DELAY
+	var late := GameState.collect_order(0)
+	var landed := GameState.cargo_count("sink_thermal")
+	GameState.note_read("rod_decay")
+	GameState.note_read("plate_ablative")
+	GameState.note_read("lattice_data")
+	GameState.requisition_orders = []
+	for oi in range(5):
+		GameState.place_order("sink_thermal", "void")
+	var capped := GameState.requisition_orders.size()
+	GameState.requisition_orders = []
+	GameState.cargo = {}
+	print("[store] AN ORDER WAITS placed=%s, collecting early=%s, after %ds=%s (%d aboard), and five attempts leave %d of %d open -> %s" % [
+		str(placed), str(early), int(GameState.REQ_DELAY), str(late), landed,
+		capped, GameState.REQ_MAX_OPEN,
+		"PASS" if placed and not early and late and landed == 1
+			and capped == GameState.REQ_MAX_OPEN else "FAIL"])
+
+	# THE DESK IS A GATE, NOT A COUNTER. Ordering is a distinct verb from
+	# retailing: Market.can_buy is untouched by the whole feature, so SELL ONLY
+	# keeps passing and a fence still buys without selling. If this ever goes
+	# red, the back room has become a shopfront and §11's loop is open again.
+	var retailed_comp := ""
+	for pid_gv in SystemDB.port_ids():
+		var gdef := SystemDB.port_def_by_id(String(pid_gv))
+		for gid_gv in CommodityDB.ids():
+			if CommodityDB.is_component(String(gid_gv)) \
+					and Market.can_buy(gdef, String(gid_gv)) and retailed_comp == "":
+				retailed_comp = "%s at %s" % [String(gid_gv), String(pid_gv)]
+	var desk_ports := 0
+	for pid_sv in SystemDB.port_ids():
+		if (SystemDB.port_def_by_id(String(pid_sv)).get("services", []) as Array).has("requisitions"):
+			desk_ports += 1
+	for aid_sv in DeepPortDB.ids():
+		if (DeepPortDB.by_id(String(aid_sv)).get("services", []) as Array).has("requisitions"):
+			desk_ports += 1
+	print("[store] THE DESK IS A GATE, NOT A COUNTER %d order desks in the game, and no component is retailed anywhere (%s) -> %s" % [
+		desk_ports, retailed_comp if retailed_comp != "" else "none",
+		"PASS" if retailed_comp == "" and desk_ports >= 2 else "FAIL"])
+
+	GameState.requisition_orders = []
+	GameState.reads_done = {}
 	get_tree().quit()
 
 
@@ -12474,6 +13049,22 @@ func _run_pacing_test() -> void:
 	print("[pacing] TRADE SWEEP %d goods x %d port pairs, %d illegal skipped -> %s" % [
 		CommodityDB.ids().size(), SystemDB.port_ids().size() * (SystemDB.port_ids().size() - 1),
 		_pacing_trade_skipped, "PASS" if _pacing_trade_skipped > 0 else "FAIL"])
+
+	# v27. THE SHELF SERVES THE STANDARD LOOP. A finite counter is allowed to
+	# throttle the second and third run of a route inside one loop -- that is the
+	# farm, and throttling it is the feature -- but it must NEVER shorten the one
+	# full hold the pacing contract is derived from, or every number below moves
+	# for a reason that has nothing to do with yields.
+	#
+	# Measured, not reasoned: the best legal route was just re-derived above, so
+	# this asks the shelf it actually buys from. A red here names the exact pair
+	# and means the caps are wrong, not that the band is.
+	var shelf_cap := Market.stock_cap(
+		SystemDB.port_def_by_id(_pacing_trade_port), _pacing_trade_good)
+	print("[pacing] THE SHELF SERVES THE STANDARD LOOP best route buys %d %s at %s, the shelf stands %d -> %s" % [
+		_pacing_trade_units, CommodityDB.short_name(_pacing_trade_good),
+		_pacing_trade_port, shelf_cap,
+		"PASS" if shelf_cap >= _pacing_trade_units else "FAIL"])
 	# The catalog is what a run can BUY. A craftable has no price, so it cannot be
 	# in it — and cannot silently grow the denominator the ceiling is measured
 	# against, which is the failure mode 10 warns about after the Mk II tiers.
@@ -12785,6 +13376,9 @@ func _pacing_trade_yield() -> float:
 					continue
 				if profit > best:
 					best = profit
+					_pacing_trade_port = a
+					_pacing_trade_good = good
+					_pacing_trade_units = units
 					label = "%s %s->%s  %d units  buy %d sell %d" % [
 						CommodityDB.short_name(good), a, b, units, buy, sell]
 	print("[pacing]   best route: %s -> %.0f profit on a %d-space hold" % [label, best, hold])
@@ -13726,6 +14320,17 @@ func _run_market_test() -> void:
 		buy_iso, sell_iso, sell_iso - buy_iso,
 		100.0 * float(sell_iso - buy_iso) / maxf(float(buy_iso), 1.0)])
 
+	# This harness printed five true things and asserted none of them for
+	# twenty-two versions, which meant the whole price engine was policed only
+	# indirectly, by STATIONTEST's guard rails and PACINGTEST's band. Both of
+	# those check that the economy is not BROKEN; none of them checked that it
+	# still WORKS. The two authored routes are the thing the bias tables exist
+	# to create -- if either stops paying, the trade verb is dead and every
+	# printed line above would have gone on looking perfectly reasonable.
+	print("[market] THE AUTHORED ROUTES PAY alloys %+d/unit, isotopes %+d/unit -> %s" % [
+		margin, sell_iso - buy_iso,
+		"PASS" if margin > 0 and sell_iso - buy_iso > 0 else "FAIL"])
+
 	# 2. Player pressure: dumping into a market must visibly move it and then
 	#    recover, rather than being either ignored or permanent.
 	var before := Market.sell_price(bastion, "bastion", "alloys")
@@ -13737,6 +14342,19 @@ func _run_market_test() -> void:
 		Market.recover_pressure(60.0)
 	var recovered := Market.sell_price(bastion, "bastion", "alloys")
 	print("[market] PRESSURE after 12 min recovery: %d (expect ~%d)" % [recovered, before])
+	# BOTH HALVES, because either alone passes on broken code: a dent that never
+	# healed and a dent that never happened both satisfy one of them. Recovery is
+	# geometric (10% of the remaining gap per minute), so twelve minutes closes
+	# ~72% of it and NOT all of it -- asserting "recovered == before" would be
+	# asserting a bug. What must be true is that it moved back most of the way
+	# and never overshot its own baseline.
+	var dent := float(before - after)
+	var healed := float(recovered - after)
+	print("[market] PRESSURE MOVES AND HEALS dent %.0f (%.0f%% of price, need >=15%%), healed %.0f of it (%.0f%%, need >=50%%), never past baseline=%s -> %s" % [
+		dent, 100.0 * dent / maxf(float(before), 1.0), healed,
+		100.0 * healed / maxf(dent, 1.0), str(recovered <= before),
+		"PASS" if dent >= 0.15 * float(before) and healed >= 0.5 * dent
+			and recovered <= before else "FAIL"])
 
 	# 3. Events apply and expire.
 	GameState.market_events.append({
@@ -13744,9 +14362,19 @@ func _run_market_test() -> void:
 		"mult": 2.0, "remaining": 5.0})
 	print("[market] EVENT shortage active: isotopes sell at cinder = %d (was %d)" % [
 		Market.sell_price(cinder, "cinderworks", "isotopes"), sell_iso])
+	var iso_under := Market.sell_price(cinder, "cinderworks", "isotopes")
 	Market.tick_events(6.0)
+	var iso_after := Market.sell_price(cinder, "cinderworks", "isotopes")
 	print("[market] EVENT after expiry: %d, active_events=%d" % [
-		Market.sell_price(cinder, "cinderworks", "isotopes"), GameState.market_events.size()])
+		iso_after, GameState.market_events.size()])
+	# An event that never lapsed would be a permanent re-pricing of the world,
+	# and an event that never applied would be a toast about nothing. The clock
+	# has not moved between the two readings, so the price must return EXACTLY.
+	print("[market] AN EVENT APPLIES AND LAPSES %d -> %d under a 2.0x shortage -> %d on expiry (was %d), none left=%s -> %s" % [
+		sell_iso, iso_under, iso_after, sell_iso,
+		str(GameState.market_events.is_empty()),
+		"PASS" if iso_under > sell_iso and iso_after == sell_iso
+			and GameState.market_events.is_empty() else "FAIL"])
 
 	# 4. Cargo capacity and the hold-full path.
 	GameState.cargo = {}
@@ -13756,12 +14384,466 @@ func _run_market_test() -> void:
 		cap, took, GameState.cargo_used(), GameState.cargo_free()])
 	var overflow := GameState.load_cargo("relics", 1)
 	print("[market] CARGO overflow load returned %d (expect 0 -> crate would scrap)" % overflow)
+	print("[market] THE HOLD IS A WALL capacity %d, used %d, overflow load took %d -> %s" % [
+		cap, GameState.cargo_used(), overflow,
+		"PASS" if overflow == 0 and GameState.cargo_used() <= cap else "FAIL"])
 
 	# 5. Drift moves prices over played time without touching wall clock.
 	var t0 := Market.unit_price(cinder, "cinderworks", "volatiles")
 	GameState.played_seconds += 240.0
 	var t1 := Market.unit_price(cinder, "cinderworks", "volatiles")
 	print("[market] DRIFT volatiles at cinder: %.1f -> %.1f after 4 played minutes" % [t0, t1])
+	# The clock is PLAYED time, never wall clock, so a save reloads onto the same
+	# curve -- and drift that did not move would make every price in the game a
+	# constant with extra steps.
+	print("[market] DRIFT IS A CLOCK 4 played minutes moved volatiles %.1f -> %.1f -> %s" % [
+		t0, t1, "PASS" if not is_equal_approx(t0, t1) else "FAIL"])
+	get_tree().quit()
+
+
+# --- stock harness ----------------------------------------------------------
+
+func _run_stock_test() -> void:
+	# v27. THE SHELF. Everything here is pure state work on Market + GameState --
+	# no world, no ports built, no frames -- so it needs no PLAYING boot.
+	#
+	# smuggling is pinned to 0 first: SMUGGLING_ACCESS_TIER makes every deep fence
+	# take everything, which sends can_buy false and every deep cap to 0. That is
+	# correct behaviour and NOT what these legs are measuring, so the confound is
+	# removed rather than worked around.
+	GameState.market_stock = {}
+	GameState.market_events = []
+	GameState.smuggling = 0
+	GameState.played_seconds = 1000.0
+
+	var cinder := SystemDB.port_def_by_id("cinderworks")
+	var cap := Market.stock_cap(cinder, "alloys")
+
+	# 1. A SHELF IS FINITE. Cinderworks smelts alloys (bias 0.68), so it stands
+	#    them deep -- and taking them off it moves the number, one for one.
+	var left0 := Market.stock_left(cinder, "cinderworks", "alloys")
+	Market.note_bought("cinderworks", "alloys", 10)
+	var left1 := Market.stock_left(cinder, "cinderworks", "alloys")
+	Market.note_bought("cinderworks", "alloys", 1000)
+	var left2 := Market.stock_left(cinder, "cinderworks", "alloys")
+	print("[stock] A SHELF IS FINITE cinderworks stands %d alloys, %d before, %d after taking 10, %d after taking it out -> %s" % [
+		cap, left0, left1, left2,
+		"PASS" if cap > 0 and left0 == cap and left1 == cap - 10 and left2 == 0
+			else "FAIL"])
+
+	# 2. ONLY THE PLAYER EMPTIES A SHELF (§51, and the whole reason this store is
+	#    a deficit rather than an inventory). Half an hour of played time passes
+	#    with nobody trading: no counter anywhere may lose a unit, and the store
+	#    must not gain a single entry. A simulation would fail this line, which is
+	#    exactly what makes it worth having.
+	GameState.market_stock = {}
+	var rest_before := Market.stock_left(cinder, "cinderworks", "alloys")
+	GameState.played_seconds += 1800.0
+	var rest_after := Market.stock_left(cinder, "cinderworks", "alloys")
+	print("[stock] ONLY THE PLAYER EMPTIES A SHELF 30 played minutes with no trade: %d -> %d, store holds %d entries -> %s" % [
+		rest_before, rest_after, GameState.market_stock.size(),
+		"PASS" if rest_before == cap and rest_after == cap
+			and GameState.market_stock.is_empty() else "FAIL"])
+
+	# 3. THE SHELF REFILLS AND STOPS. One unit per STOCK_REPLENISH_SECONDS, and
+	#    it stops dead at the cap -- a counter that kept counting upward would be
+	#    a warehouse with a price on it.
+	GameState.market_stock = {}
+	Market.note_bought("cinderworks", "alloys", cap)
+	var empty := Market.stock_left(cinder, "cinderworks", "alloys")
+	GameState.played_seconds += 5.0 * Market.STOCK_REPLENISH_SECONDS
+	var part := Market.stock_left(cinder, "cinderworks", "alloys")
+	GameState.played_seconds += 100000.0
+	var full := Market.stock_left(cinder, "cinderworks", "alloys")
+	print("[stock] THE SHELF REFILLS AND STOPS emptied %d, five periods later %d, a long time later %d (cap %d) -> %s" % [
+		empty, part, full, cap,
+		"PASS" if empty == 0 and part == 5 and full == cap else "FAIL"])
+
+	# 4. AT REST THE LEDGER IS EMPTY. Both halves: the entry really is still
+	#    sitting there after it replenished (so the sweep is not asserting
+	#    nothing), and the sweep really does clear it.
+	var lingered := GameState.market_stock.size()
+	Market.recover_stock()
+	print("[stock] AT REST THE LEDGER IS EMPTY %d replenished entr(y/ies) lingered, %d after the sweep -> %s" % [
+		lingered, GameState.market_stock.size(),
+		"PASS" if lingered == 1 and GameState.market_stock.is_empty() else "FAIL"])
+
+	# 5. A SHORTAGE BARES THE SHELF, A GLUT FLOODS IT -- as a MASK. The last two
+	#    readings are the ones that matter: a deficit taken before an event must
+	#    still be there when the event lapses, or an event would be a way to
+	#    launder a shelf you emptied.
+	GameState.market_stock = {}
+	GameState.market_events = [{"kind": "shortage", "port": "cinderworks",
+		"good": "alloys", "mult": 2.0, "remaining": 100.0}]
+	var bare := Market.stock_left(cinder, "cinderworks", "alloys")
+	GameState.market_events = [{"kind": "glut", "port": "cinderworks",
+		"good": "alloys", "mult": 0.55, "remaining": 100.0}]
+	var flooded := Market.stock_left(cinder, "cinderworks", "alloys")
+	GameState.market_events = []
+	Market.note_bought("cinderworks", "alloys", 10)
+	GameState.market_events = [{"kind": "shortage", "port": "cinderworks",
+		"good": "alloys", "mult": 2.0, "remaining": 100.0}]
+	var bare2 := Market.stock_left(cinder, "cinderworks", "alloys")
+	GameState.market_events = []
+	var re_emerged := Market.stock_left(cinder, "cinderworks", "alloys")
+	print("[stock] A SHORTAGE BARES THE SHELF, A GLUT FLOODS IT shortage %d, glut %d (cap %d), and a 10-unit hole taken first survives the event: %d during, %d after -> %s" % [
+		bare, flooded, cap, bare2, re_emerged,
+		"PASS" if bare == 0 and flooded == cap * Market.STOCK_GLUT_MULT
+			and bare2 == 0 and re_emerged == cap - 10 else "FAIL"])
+
+	# 6. NO WORMHOLE FOR SHELVES. The bonded bay's rule, re-asserted for stock:
+	#    port_id out past the chart is the ARCHETYPE, shared by every station of
+	#    that kind everywhere, so the shelf keys on the cell. Two cells with the
+	#    same coordinates in different systems is the exact collision that caught
+	#    the warehouse.
+	GameState.market_stock = {}
+	var relay := DeepPortDB.by_id("deep_relay")
+	var k1 := DeepSpace.cell_key("pyx01", 7, -3)
+	var k2 := DeepSpace.cell_key("pyx02", 7, -3)
+	var cap_r := Market.stock_cap(relay, "isotopes")
+	Market.note_bought(k1, "isotopes", cap_r)
+	var here := Market.stock_left(relay, k1, "isotopes")
+	var there := Market.stock_left(relay, k2, "isotopes")
+	print("[stock] NO WORMHOLE FOR SHELVES bought out %s (%d left); %s still stands %d of %d -> %s" % [
+		k1, here, k2, there, cap_r,
+		"PASS" if cap_r > 0 and here == 0 and there == cap_r else "FAIL"])
+
+	# 7. A CONSUMER SELLS NOTHING, and A PRODUCER STANDS IT DEEP -- swept over the
+	#    REAL defs, charted and deep, so this measures the shipped bias tables
+	#    rather than a fixture. Both directions are counted and both must be
+	#    non-zero: a sweep that found no consumers would be asserting nothing, and
+	#    it is the pair that proves the assortment varies at all.
+	GameState.market_stock = {}
+	var defs := []
+	for pid_v in SystemDB.port_ids():
+		defs.append(SystemDB.port_def_by_id(String(pid_v)))
+	for aid_v in DeepPortDB.ids():
+		defs.append(DeepPortDB.by_id(String(aid_v)))
+	var consumers := 0
+	var producers := 0
+	var wrong := ""
+	for d_v in defs:
+		var d: Dictionary = d_v
+		for g_v in CommodityDB.ids():
+			var g := String(g_v)
+			if not Market.can_buy(d, g):
+				continue
+			# Mirror stock_cap's own second gate: a good this desk does not carry
+			# has no shelf, and counting it here would report every restricted
+			# good as a broken producer row.
+			if not CommodityDB.trades_at(g, String(d.get("id", ""))):
+				continue
+			var bias := Market.port_bias(d, g)
+			var c := Market.stock_cap(d, g)
+			if bias >= Market.STOCK_NONE_BIAS:
+				consumers += 1
+				if c != 0:
+					wrong = "%s stands %d %s at bias %.2f" % [
+						String(d.get("id", "?")), c, g, bias]
+			elif bias <= Market.STOCK_DEEP_BIAS:
+				producers += 1
+				var want := int(round(float(Market.STOCK_BASE_ORE if CommodityDB.is_ore(g)
+					else Market.STOCK_BASE) * Market.STOCK_DEEP_MULT))
+				if c != want:
+					wrong = "%s stands %d %s at bias %.2f, wanted %d" % [
+						String(d.get("id", "?")), c, g, bias, want]
+	print("[stock] A CONSUMER SELLS NOTHING %d consumer rows stand nothing, %d producer rows stand double, offender=%s -> %s" % [
+		consumers, producers, wrong if wrong != "" else "none",
+		"PASS" if consumers > 0 and producers > 0 and wrong == "" else "FAIL"])
+
+	# 8. THE RESERVE IS A GATE (§108). A desk that knows you keeps more back --
+	#    and charges the same for it, to the credit. Measured against its OWN
+	#    hostile reading rather than against a baseline band, so the leg does not
+	#    quietly depend on what the starter attitude happens to be.
+	GameState.market_stock = {}
+	GameState.market_events = []
+	_clear_faction_matrix()
+	var cinder_owner := Market.owner_of(cinder)
+	GameState.shift_faction(FactionDB.SURVEYOR, cinder_owner, 12)
+	var friend_band := GameState.faction_band(FactionDB.SURVEYOR, cinder_owner)
+	var friend_cap := Market.stock_cap(cinder, "alloys")
+	var friend_buy := Market.buy_price(cinder, "cinderworks", "alloys", 1, "cinderworks")
+	var friend_sell := Market.sell_price(cinder, "cinderworks", "alloys", 1, "cinderworks")
+	GameState.shift_faction(FactionDB.SURVEYOR, cinder_owner, -24)
+	var hostile_band := GameState.faction_band(FactionDB.SURVEYOR, cinder_owner)
+	var hostile_cap := Market.stock_cap(cinder, "alloys")
+	var hostile_buy := Market.buy_price(cinder, "cinderworks", "alloys", 1, "cinderworks")
+	var hostile_sell := Market.sell_price(cinder, "cinderworks", "alloys", 1, "cinderworks")
+	_clear_faction_matrix()
+	# THE DIRECTION IS THE ASSERTION. x1.5 at FRIENDLY, never x0.67 unless: the
+	# hostile reading must equal the number the shelf had before this feature
+	# existed, which is what keeps fence_open's "no counter ever closes" true.
+	var reserve_ok: bool = friend_cap == int(round(float(hostile_cap) * Market.STOCK_RESERVE_MULT)) \
+		and friend_cap > hostile_cap \
+		and friend_buy == hostile_buy and friend_sell == hostile_sell
+	print("[stock] THE RESERVE IS A GATE %s stands %d at band %d and %d at band %d (x%.2f), and charges %d/%d either way -> %s" % [
+		cinder_owner, friend_cap, friend_band, hostile_cap, hostile_band,
+		Market.STOCK_RESERVE_MULT, friend_buy, friend_sell,
+		"PASS" if reserve_ok else "FAIL"])
+
+	# 9. NO WORMHOLE FOR EVENTS. The shelf keys on the cell and so must the
+	#    weather over it, or a shortage at one Shoal Relay bares the shelf of
+	#    every Relay in the game. Same two cells as leg 6, same collision.
+	GameState.market_stock = {}
+	GameState.market_events = [{"kind": "shortage", "port": k1, "good": "isotopes",
+		"name": "SHOAL RELAY", "deep": true, "mult": 2.0, "remaining": 100.0}]
+	var struck := Market.stock_left(relay, k1, "isotopes")
+	var spared := Market.stock_left(relay, k2, "isotopes")
+	GameState.market_events = []
+	print("[stock] NO WORMHOLE FOR EVENTS a shortage over %s leaves it %d; %s is untouched at %d of %d -> %s" % [
+		k1, struck, k2, spared, cap_r,
+		"PASS" if struck == 0 and spared == cap_r else "FAIL"])
+
+	# 10. A DEEP COUNTER HAS ITS OWN WEATHER. Three properties of the roll, and
+	#     the second is the one that matters: the good is drawn from the
+	#     archetype's OWN bias table, which is how a 2.2x shortage on a component
+	#     at a 1.45x deep fence is kept out of the game by construction.
+	GameState.market_events = []
+	var synth := [{"key": k1, "id": "deep_relay", "name": "SHOAL RELAY", "def": relay}]
+	var relay_bias: Array = (relay.get("bias", {}) as Dictionary).keys()
+	var off_table := ""
+	var over_budget := false
+	for i in range(200):
+		Market.try_spawn_deep_event(synth)
+		if Market.deep_event_count() > Market.EVENT_MAX_DEEP:
+			over_budget = true
+		for e_v in GameState.market_events:
+			var e: Dictionary = e_v
+			if not relay_bias.has(String(e.get("good", ""))):
+				off_table = String(e.get("good", ""))
+		GameState.market_events = []
+	var no_counters: bool = Market.try_spawn_deep_event([]).is_empty()
+	GameState.market_events = []
+	print("[stock] A DEEP COUNTER HAS ITS OWN WEATHER 200 rolls: budget %d never exceeded=%s, every good drawn from the archetype's own %d-row bias table (stray=%s), and no counters means no weather=%s -> %s" % [
+		Market.EVENT_MAX_DEEP, str(not over_budget), relay_bias.size(),
+		off_table if off_table != "" else "none", str(no_counters),
+		"PASS" if not over_budget and off_table == "" and no_counters else "FAIL"])
+
+	# 11. THE DESK NAMES A REAL PLACE. Every reader of an event used to resolve
+	#     its port through SystemDB and print a literal "?" for anything the
+	#     chart does not carry. Four shapes, including the v27 save written
+	#     before §108 that has no name at all.
+	var name_deep := Market.event_place({"port": k1, "name": "SHOAL RELAY", "deep": true})
+	var name_chart := Market.event_place({"port": "cinderworks", "name": "CINDERWORKS"})
+	var name_legacy := Market.event_place({"port": "cinderworks", "name": ""})
+	var name_orphan := Market.event_place({"port": k2, "name": ""})
+	print("[stock] THE DESK NAMES A REAL PLACE deep='%s', charted='%s', a nameless v27 event resolves to '%s', and an orphaned cell says '%s' rather than ? -> %s" % [
+		name_deep, name_chart, name_legacy, name_orphan,
+		"PASS" if name_deep == "SHOAL RELAY" and name_chart == "CINDERWORKS"
+			and name_legacy != "" and name_legacy != "?"
+			and name_orphan != "" and name_orphan != "?" else "FAIL"])
+
+	# 12. A ROUTE THE PLAYER CAN ACTUALLY BUY. The old scan checked trades_at on
+	#     both legs and nothing else, so it would sell you the word that a good
+	#     moves out of a yard which has never retailed one. Both halves: the
+	#     route it names must be fillable, and emptying that shelf must make it
+	#     stop naming it.
+	GameState.market_stock = {}
+	GameState.market_events = []
+	var route := Market.best_stocked_route()
+	var route_ok: bool = not route.is_empty() \
+		and Market.stock_left(SystemDB.port_def_by_id(String(route["a"])),
+			String(route["a"]), String(route["good"])) > 0
+	var named_a := String(route.get("a", "?"))
+	var named_good := String(route.get("good", "?"))
+	Market.note_bought(named_a, named_good, 9999)
+	var moved_on := Market.best_stocked_route()
+	var re_routed: bool = moved_on.is_empty() \
+		or String(moved_on.get("a", "")) != named_a \
+		or String(moved_on.get("good", "")) != named_good
+	GameState.market_stock = {}
+	print("[stock] A ROUTE THE PLAYER CAN ACTUALLY BUY best fillable run is %s out of %s (%d units standing); emptying that shelf moves the word=%s -> %s" % [
+		named_good, named_a, int(route.get("units", 0)), str(re_routed),
+		"PASS" if route_ok and re_routed else "FAIL"])
+
+	# 13. THE COUNTER THAT RAN SHORT. The desk's new rung, as a rule rather than
+	#     as a sentence. It must say nothing about a full shelf, name the one the
+	#     player emptied, and quote a restock clock that shrinks as time passes.
+	GameState.market_stock = {}
+	var quiet: bool = Market.bare_shelf_report().is_empty()
+	Market.note_bought("cinderworks", "alloys", cap)
+	var short_now := Market.bare_shelf_report()
+	var clock_now := float(short_now.get("seconds", 0.0))
+	GameState.played_seconds += 10.0 * Market.STOCK_REPLENISH_SECONDS
+	var clock_later := float(Market.bare_shelf_report().get("seconds", 0.0))
+	GameState.market_stock = {}
+	print("[stock] THE COUNTER THAT RAN SHORT a full chart says nothing=%s; emptied, it names %s at %s with %.0fs to fill, %.0fs ten periods later -> %s" % [
+		str(quiet), String(short_now.get("good", "?")),
+		String(short_now.get("name", "?")), clock_now, clock_later,
+		"PASS" if quiet and String(short_now.get("port", "")) == "cinderworks"
+			and String(short_now.get("good", "")) == "alloys"
+			and clock_now > 0.0 and clock_later < clock_now else "FAIL"])
+
+	GameState.market_stock = {}
+	GameState.market_events = []
+	_clear_faction_matrix()
+	get_tree().quit()
+
+
+# --- skill harness ----------------------------------------------------------
+
+func _skill_snapshot() -> Dictionary:
+	var out := {"archeology": GameState.archeology_xp,
+		"smuggling": GameState.smuggling_xp, "mining": GameState.mining_xp,
+		"persuasion": GameState.persuasion_xp}
+	for id_v in GameState.skill_ids():
+		out[String(id_v)] = GameState.skill_xp(String(id_v))
+	return out
+
+
+func _skill_moved(before: Dictionary) -> Array:
+	var moved := []
+	var now := _skill_snapshot()
+	for k in now:
+		if int(now[k]) != int(before.get(k, 0)):
+			moved.append(String(k))
+	return moved
+
+
+func _run_skill_test() -> void:
+	# §111. Pure state work on GameState plus two nodes built off-tree, so this
+	# needs no PLAYING boot and no world.
+	GameState.skills = {}
+	GameState.archeology_xp = 0
+	GameState.smuggling_xp = 0
+	GameState.mining_xp = 0
+	GameState.persuasion_xp = 0
+	GameState.archeology = 0
+	GameState.smuggling = 0
+	GameState.mining = 0
+	GameState.persuasion = 0
+	GameState.salvage = 10000
+
+	# 1. FEEDS COMPETE, SIX WAYS. Every ladder in the game, snapshotted; one feed
+	#    fired; exactly one may have moved. This is the runtime half of §19's
+	#    rule -- it catches a mutator that pays two ladders, or a shared helper
+	#    that fans out. It does NOT prove the VERBS are disjoint (that is a fact
+	#    about where the calls live, checked by reading them: breach, read,
+	#    fence-sale, seam-cut, parley, mast, filing -- seven acts, no overlap).
+	var feeds := ["archeology", "smuggling", "mining", "persuasion",
+		"surveying", "filing", "hunting", "rift_work", "brokerage",
+		"colonial", "wardenry"]
+	var crossed := ""
+	for f in feeds:
+		var before := _skill_snapshot()
+		match f:
+			"archeology": GameState.mark_archeology(1)
+			"smuggling": GameState.mark_smuggling(1)
+			"mining": GameState.mark_mining(1)
+			"persuasion": GameState.mark_persuasion(1)
+			_: GameState.mark_skill(f, 1)
+		var moved := _skill_moved(before)
+		if moved.size() != 1 or String(moved[0]) != f:
+			crossed = "%s moved %s" % [f, str(moved)]
+	print("[skill] FEEDS COMPETE, ELEVEN WAYS one feed fired at a time across %d ladders, first crossover: %s -> %s" % [
+		feeds.size(), crossed if crossed != "" else "none",
+		"PASS" if crossed == "" and feeds.size() == 11 else "FAIL"])
+
+	# 2. NO LADDER PAYS IN CREDITS. §19/§26's first law, and the one that keeps
+	#    every ladder clear of PACINGTEST's band. Swept across a full climb of
+	#    each new skill from zero to cap, tier landings included -- a tier that
+	#    paid on arrival would slip past a single-call check.
+	GameState.skills = {}
+	var purse := GameState.salvage
+	var paid := ""
+	for id_pv in GameState.skill_ids():
+		var sid_p := String(id_pv)
+		for i in range(80):
+			GameState.mark_skill(sid_p, 1)
+			if GameState.salvage != purse and paid == "":
+				paid = "%s at xp %d" % [sid_p, GameState.skill_xp(sid_p)]
+	print("[skill] NO LADDER PAYS IN CREDITS %d salvage before a full climb of every ladder, %d after, first payer: %s -> %s" % [
+		purse, GameState.salvage, paid if paid != "" else "none",
+		"PASS" if paid == "" and GameState.salvage == purse else "FAIL"])
+
+	# 3. THE TIER IS DERIVED, NEVER STORED. The legacy four keep a tier var
+	#    beside an xp var and a loader that clamps one against the other; these
+	#    keep one number. Written straight into the xp, read back as a tier.
+	GameState.skills = {}
+	var derive_bad := ""
+	for id_dv in GameState.skill_ids():
+		var sid_d := String(id_dv)
+		var rungs: Array = GameState.SKILL_TIERS[sid_d]
+		for want in range(rungs.size()):
+			GameState.skills[sid_d] = int(rungs[want])
+			if GameState.skill_tier(sid_d) != want and derive_bad == "":
+				derive_bad = "%s at %d xp read tier %d, wanted %d" % [
+					sid_d, int(rungs[want]), GameState.skill_tier(sid_d), want]
+		# And past the last rung it pins at the cap rather than running off.
+		GameState.skills[sid_d] = 999999
+		if GameState.skill_tier(sid_d) != GameState.skill_cap(sid_d) and derive_bad == "":
+			derive_bad = "%s ran past its cap" % sid_d
+	print("[skill] THE TIER IS DERIVED, NEVER STORED every rung of every ladder written as xp and read back, first mismatch: %s -> %s" % [
+		derive_bad if derive_bad != "" else "none",
+		"PASS" if derive_bad == "" else "FAIL"])
+
+	# 4. A TIER IS A GATE. The rule functions, not the rendering (§19): each
+	#    grant is measured at tier 0 and at cap, off-tree so no world is needed.
+	var mast := SurveyMast.new()
+	var mark := SoundingMark.new()
+	GameState.skills = {}
+	var hold0 := mast.survey_seconds()
+	var reach0 := mast.reach()
+	var read0 := mark.read_seconds()
+	var near0 := mark.read_range()
+	var at_zero := [GameState.hunting_error_mult(), GameState.rift_read_mult(),
+		GameState.rift_warn_seconds(), GameState.colonial_name_mult(),
+		GameState.wardenry_breach_mult()]
+	GameState.skills = {"surveying": 999, "filing": 999, "hunting": 999,
+		"rift_work": 999, "brokerage": 999, "colonial": 999, "wardenry": 999}
+	var hold1 := mast.survey_seconds()
+	var reach1 := mast.reach()
+	var read1 := mark.read_seconds()
+	var near1 := mark.read_range()
+	var at_cap := [GameState.hunting_error_mult(), GameState.rift_read_mult(),
+		GameState.rift_warn_seconds(), GameState.colonial_name_mult(),
+		GameState.wardenry_breach_mult()]
+	mast.free()
+	mark.free()
+	# Every 5b helper must MOVE across the climb, in the direction its grant
+	# claims: error down, reach up, warning up, sight up, rate up. A helper
+	# that reads the same at zero and at cap is a tier granting nothing.
+	var helpers_ok: bool = float(at_cap[0]) < float(at_zero[0]) \
+		and float(at_cap[1]) > float(at_zero[1]) \
+		and float(at_cap[2]) > float(at_zero[2]) \
+		and float(at_cap[3]) > float(at_zero[3]) \
+		and float(at_cap[4]) > float(at_zero[4])
+	var gates_ok: bool = hold1 < hold0 and reach1 > reach0 \
+		and read1 < read0 and near1 > near0 and helpers_ok
+	print("[skill] A TIER IS A GATE mast hold %.2fs->%.2fs, reach %.1f->%.1f; plate read %.2fs->%.2fs, alongside %.1f->%.1f; the five 5b helpers all move (error %.2f->%.2f, shear reach %.1fx->%.1fx, warn %.0fs->%.0fs, sight %.1fx->%.1fx, breach %.2fx->%.2fx) -> %s" % [
+		hold0, hold1, reach0, reach1, read0, read1, near0, near1,
+		float(at_zero[0]), float(at_cap[0]), float(at_zero[1]), float(at_cap[1]),
+		float(at_zero[2]), float(at_cap[2]), float(at_zero[3]), float(at_cap[3]),
+		float(at_zero[4]), float(at_cap[4]),
+		"PASS" if gates_ok else "FAIL"])
+
+	# 5. EVERY RUNG SAYS WHAT IT BOUGHT. A tier with no perk string is a tier
+	#    that grants nothing the player can read -- §88's "a wired verb without
+	#    an affordance" wearing a table. Also pins the tier-0 line to the VERB
+	#    rather than to a gate, which is §58.
+	var voiceless := ""
+	for id_lv in GameState.skill_ids():
+		var sid_l := String(id_lv)
+		var perks: Array = GameState.SKILL_PERKS.get(sid_l, [])
+		var rungs2: Array = GameState.SKILL_TIERS[sid_l]
+		if perks.size() != rungs2.size() and voiceless == "":
+			voiceless = "%s has %d rungs and %d perks" % [
+				sid_l, rungs2.size(), perks.size()]
+		for t in range(1, perks.size()):
+			if String(perks[t]).strip_edges() == "" and voiceless == "":
+				voiceless = "%s tier %d is unnamed" % [sid_l, t]
+	GameState.skills = {}
+	var zero_names_verb := true
+	for id_zv in GameState.skill_ids():
+		var line0 := GameState.skill_line(String(id_zv))
+		if not line0.contains(String(GameState.SKILL_VERBS[id_zv])):
+			zero_names_verb = false
+	print("[skill] EVERY RUNG SAYS WHAT IT BOUGHT %d ladders, first silent rung: %s; and tier 0 names the act rather than the gate=%s -> %s" % [
+		GameState.skill_ids().size(), voiceless if voiceless != "" else "none",
+		str(zero_names_verb),
+		"PASS" if voiceless == "" and zero_names_verb else "FAIL"])
+
+	GameState.skills = {}
 	get_tree().quit()
 
 
@@ -18521,6 +19603,147 @@ func _run_save_test() -> void:
 			str(dropped_idx), str(clamped),
 			"PASS" if ok25 and kept25 and held26 and derived26 and dropped_idx
 				and clamped else "FAIL"])
+	elif mode == "migrate26":
+		# v27 adds THE SHELF, its own store. No migration branch, the standing
+		# rule: a v26 file has no key, gets {}, and loads as a pilot who has
+		# never taken a unit off a counter -- which is every shelf full, and true
+		# of every pilot before the feature existed.
+		#
+		# THE RUBBISH PASS IS THE POINT, and this store has more ways to be wrong
+		# than most: the key is a JOIN of a counter and a good, so a hand-edited
+		# file can name a good that does not exist, forget the join entirely, put
+		# a deficit at or below zero (which is not a hole -- it is the default,
+		# and the default is never written down), or hand out a clock that runs
+		# ahead of the player's own.
+		var v26 := {
+			"version": 26,
+			"salvage": 9400,
+			"current_system": "pyx01",
+			"run_seed": 262626,
+			"tutorial_step": -1,
+			"played_seconds": 6000.0,
+		}
+		var f26 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		f26.store_string(JSON.stringify(v26))
+		f26.close()
+		var ok26 := GameState.load_game()
+		var cinder26 := SystemDB.port_def_by_id("cinderworks")
+		var cap26 := Market.stock_cap(cinder26, "alloys")
+		var kept26: bool = GameState.salvage == 9400 \
+			and GameState.market_stock.is_empty() \
+			and Market.stock_left(cinder26, "cinderworks", "alloys") == cap26
+
+		# A GOOD ONE SURVIVES, deficit and clock intact, and the shelf derives
+		# from it rather than from anything stored.
+		var good27 := {
+			"version": 27,
+			"salvage": 9400,
+			"current_system": "pyx01",
+			"run_seed": 262626,
+			"tutorial_step": -1,
+			"played_seconds": 6000.0,
+			"market_stock": {
+				"cinderworks|alloys": {"d": 12, "t": 6000.0},
+				"pyx01:7:-3|isotopes": {"d": 4, "t": 5940.0},
+				"nowhere|not_a_good": {"d": 5, "t": 100.0},
+				"missingjoin": {"d": 5, "t": 100.0},
+				"cinderworks|volatiles": {"d": 0, "t": 100.0},
+				"cinderworks|cores": {"d": 3, "t": 9.9e9},
+			},
+			# §110's two stores, on the same version. A v27 file written before
+			# the order book simply has neither key and arrives with an empty
+			# book and nothing read -- which is every pilot before it existed.
+			"requisition_orders": [
+				{"good": "sink_thermal", "port": "void", "at": 5600.0},
+				{"good": "alloys", "port": "void", "at": 5800.0},
+				{"good": "not_a_part", "port": "void", "at": 5800.0},
+				{"good": "rod_decay", "port": "void", "at": 9.9e9},
+			],
+			"reads_done": {"sink_thermal": 3, "alloys": 9, "rod_decay": 0},
+			# §111's ladder, on the same version. xp only -- the tier is derived,
+			# so there is no second number here to disagree with the first.
+			"skills": {"surveying": 20, "filing": 4, "basket_weaving": 9,
+				"surveying_typo": 0},
+			# §112. Works ride the same version. One real colony with one real
+			# work and one junk id; one whole entry for a colony this save does
+			# not hold. The colony itself must be in the fixture or the works
+			# loader (which runs after the colonies loader) rightly drops it.
+			"colonies": {"pyx01:3": {"x": 2100.0, "z": -300.0,
+				"founded_at": 900.0}},
+			"colony_works": {
+				"pyx01:3": ["relay", "monorail"],
+				"pyx01:9": ["dock"],
+			},
+		}
+		var fg27 := FileAccess.open(GameState.save_path, FileAccess.WRITE)
+		fg27.store_string(JSON.stringify(good27))
+		fg27.close()
+		GameState.load_game()
+		# Three of the six survive: the two good rows, and the future-stamped one
+		# CLAMPED rather than dropped -- corrupt bookkeeping about a hole that is
+		# really there, so it replenishes from now, which is the safe direction.
+		var cleaned27: bool = GameState.market_stock.size() == 3 \
+			and GameState.market_stock.has("cinderworks|alloys") \
+			and GameState.market_stock.has("pyx01:7:-3|isotopes") \
+			and GameState.market_stock.has("cinderworks|cores") \
+			and not GameState.market_stock.has("nowhere|not_a_good") \
+			and not GameState.market_stock.has("missingjoin") \
+			and not GameState.market_stock.has("cinderworks|volatiles")
+		var shelf27: bool = Market.stock_left(cinder26, "cinderworks", "alloys") \
+			== cap26 - 12
+		var clamped27: bool = is_equal_approx(
+			float((GameState.market_stock["cinderworks|cores"] as Dictionary).get("t", 0.0)),
+			GameState.played_seconds)
+		# AND THE CELL KEY SURVIVES THE ROUND TRIP. A deep row keys on its cell,
+		# and JSON is where a key shape gets quietly mangled.
+		var deep27: bool = Market.stock_left(DeepPortDB.by_id("deep_relay"),
+			"pyx01:7:-3", "isotopes") \
+			== Market.stock_cap(DeepPortDB.by_id("deep_relay"), "isotopes") - 2
+		# §110. AN ORDER SURVIVES A RELOAD, and rubbish does not. Two of the four
+		# orders are junk (a bulk good and a component this build never had) and
+		# must drop; the future-stamped one is CLAMPED rather than dropped, the
+		# nursery's rule -- corrupt bookkeeping about a part that really was
+		# paid for. reads_done keeps only components, and only positive counts.
+		var orders27: bool = GameState.requisition_orders.size() == 2 \
+			and String((GameState.requisition_orders[0] as Dictionary).get("good", "")) == "sink_thermal" \
+			and String((GameState.requisition_orders[1] as Dictionary).get("good", "")) == "rod_decay" \
+			and is_equal_approx(float((GameState.requisition_orders[1] as Dictionary).get("at", 0.0)),
+				GameState.played_seconds)
+		var waiting27: bool = not GameState.order_ready(GameState.requisition_orders[1]) \
+			and GameState.order_ready(GameState.requisition_orders[0])
+		var reads27: bool = GameState.has_read("sink_thermal") \
+			and not GameState.has_read("alloys") and not GameState.has_read("rod_decay")
+		# §111. Two real ladders survive with their xp, and the TIER each reads
+		# back is computed from that xp rather than restored beside it: 20 xp
+		# clears surveying's third rung (16) and not its fourth (34), so it reads
+		# tier 2, and 4 clears filing's second (3) so it reads tier 1. An unknown
+		# id and a zero drop, the same way an unknown good does two blocks up.
+		var works27: bool = GameState.colony_works.size() == 1 \
+			and GameState.has_work("pyx01:3", "relay") \
+			and not GameState.has_work("pyx01:3", "monorail") \
+			and not GameState.colony_works.has("pyx01:9")
+		var skills27: bool = GameState.skills.size() == 2 \
+			and GameState.skill_xp("surveying") == 20 \
+			and GameState.skill_tier("surveying") == 2 \
+			and GameState.skill_xp("filing") == 4 \
+			and GameState.skill_tier("filing") == 1 \
+			and not GameState.skills.has("basket_weaving") \
+			and not GameState.skills.has("surveying_typo")
+		GameState.requisition_orders = []
+		GameState.reads_done = {}
+		GameState.skills = {}
+		GameState.colony_works = {}
+		GameState.colonies = {}
+		GameState.market_stock = {}
+		print("[savetest] v26->v27 ORDERS 2 of 4 survived (a bulk good and an unknown part dropped, a future stamp clamped)=%s, the clamped one is still in transit while the old one is ready=%s, reads_done kept only real components=%s, two ladders reload with tiers DERIVED from xp=%s, and colony works keep only real works on real colonies=%s" % [
+			str(orders27), str(waiting27), str(reads27), str(skills27),
+			str(works27)])
+		print("[savetest] v26->v27 A V26 SAVE HAS EVERY SHELF FULL kept=%s; rubbish pass kept 3 of 6 (unknown good, missing join and a zero deficit dropped)=%s with a 12-unit hole reloading as %d of %d=%s, a future stamp clamped to now=%s, and a deep row keyed on its CELL surviving JSON=%s -> %s" % [
+			str(kept26), str(cleaned27), cap26 - 12, cap26, str(shelf27),
+			str(clamped27), str(deep27),
+			"PASS" if ok26 and kept26 and cleaned27 and shelf27 and clamped27
+				and deep27 and orders27 and waiting27 and reads27 and skills27
+				and works27 else "FAIL"])
 	elif mode == "future":
 		# A SAVE FROM A NEWER BUILD. Refusing to load it was never the hard
 		# part — that clause has always been there. What it did NOT do was stop
@@ -21548,7 +22771,15 @@ func _run_faction_test() -> void:
 	var price_moved := ""
 	var cantina_def := SystemDB.port_def_by_id("cantina")
 	var probe_defs := [void_def, cantina_def, DeepPortDB.by_id("deep_haven")]
+	# §108 rides this sweep rather than building a second one. The reserve is the
+	# first thing standing has ever moved at a market counter, so the same loops
+	# that prove no PRICE moved now also prove that what DID move is the shelf,
+	# and only ever upward. Two accumulators: anything wrong, and evidence the
+	# gate is alive at all.
 	var base_prices := {}
+	var base_caps := {}
+	var cap_wrong := ""
+	var cap_rose := ""
 	for d_v in probe_defs:
 		var d: Dictionary = d_v
 		for g_v in CommodityDB.ids():
@@ -21556,6 +22787,7 @@ func _run_faction_test() -> void:
 			base_prices["%s|%s" % [d.get("id"), g]] = [
 				Market.buy_price(d, String(d.get("id")), g, 1),
 				Market.sell_price(d, String(d.get("id")), g, 1)]
+			base_caps["%s|%s" % [d.get("id"), g]] = Market.stock_cap(d, g)
 	for extreme in [12, -24]:
 		GameState.shift_faction(FactionDB.SURVEYOR, "grin", extreme)
 		GameState.shift_faction(FactionDB.SURVEYOR, "embers", extreme)
@@ -21569,10 +22801,89 @@ func _run_faction_test() -> void:
 				if now != base_prices[key] and price_moved == "":
 					price_moved = "%s at shift %d: %s -> %s" % [key, extreme,
 						str(base_prices[key]), str(now)]
+				var cap_now := Market.stock_cap(d2, g2)
+				var cap_was := int(base_caps[key])
+				# +12 saturates to ALLIED and may only ADD stock; -24 lands on
+				# HOSTILE, where the shelf must read exactly what it read before
+				# the reserve existed. A cap that FELL in either direction is a
+				# counter closing on a standing, which is the death trap.
+				if extreme > 0 and cap_now < cap_was and cap_wrong == "":
+					cap_wrong = "%s fell %d -> %d at ALLIED" % [key, cap_was, cap_now]
+				if extreme > 0 and cap_now > cap_was and cap_rose == "":
+					cap_rose = "%s %d -> %d" % [key, cap_was, cap_now]
+				if extreme < 0 and cap_now != cap_was and cap_wrong == "":
+					cap_wrong = "%s moved %d -> %d at HOSTILE" % [key, cap_was, cap_now]
 	_clear_faction_matrix()
 	print("[faction] NO PRICE MOVES WITH STANDING %d goods x 3 desks x 2 extremes, first divergence: %s -> %s" % [
 		CommodityDB.ids().size(), "none" if price_moved == "" else price_moved,
 		"PASS" if price_moved == "" else "FAIL"])
+	# BOTH HALVES. Without the second clause a reserve that silently did nothing
+	# would pass this line -- the posture A CONSUMER SELLS NOTHING uses and A
+	# COMMISSION IS NOT A WAY IN states outright.
+	print("[faction] ONLY THE SHELF MOVES WITH STANDING the reserve is alive (%s) and nothing fell or moved at HOSTILE (%s) -> %s" % [
+		cap_rose if cap_rose != "" else "NOTHING ROSE",
+		cap_wrong if cap_wrong != "" else "none",
+		"PASS" if cap_rose != "" and cap_wrong == "" else "FAIL"])
+
+	# NO COUNTER CLOSES AT HOSTILE. market.gd has claimed since stage 5 that
+	# "market, outfitter and repair stay open at every standing" because a port
+	# that refused a damaged pilot is a death trap -- and for five stages that
+	# was PROSE WITH NO ASSERTION BEHIND IT. §108 adds a second standing gate, so
+	# the claim gets teeth in the same commit that complicates it: every counter
+	# in the game, charted and deep, driven to HOSTILE.
+	var hostile_defs := []
+	for pid_hv in SystemDB.port_ids():
+		hostile_defs.append(SystemDB.port_def_by_id(String(pid_hv)))
+	for aid_hv in DeepPortDB.ids():
+		hostile_defs.append(DeepPortDB.by_id(String(aid_hv)))
+	var open_caps := {}
+	_clear_faction_matrix()
+	for d_hv in hostile_defs:
+		var dh: Dictionary = d_hv
+		for g_hv in CommodityDB.ids():
+			open_caps["%s|%s" % [dh.get("id"), String(g_hv)]] = \
+				Market.stock_cap(dh, String(g_hv))
+	for fid_v in FactionDB.ids():
+		GameState.shift_faction(FactionDB.SURVEYOR, String(fid_v), -24)
+	var cap_lost := ""
+	var reserve_still_open := ""
+	var fences_closed := 0
+	for d_hv2 in hostile_defs:
+		var dh2: Dictionary = d_hv2
+		# The one gate that IS allowed to close, counted so this leg cannot pass
+		# by never having reached HOSTILE at all.
+		if not Market.fence_open(dh2):
+			fences_closed += 1
+		if Market.reserve_open(dh2) and reserve_still_open == "":
+			reserve_still_open = String(dh2.get("id", "?"))
+		for g_hv2 in CommodityDB.ids():
+			var kh := "%s|%s" % [dh2.get("id"), String(g_hv2)]
+			var cap_h := Market.stock_cap(dh2, String(g_hv2))
+			var cap_o := int(open_caps[kh])
+			if cap_lost != "":
+				continue
+			# A COUNTER MAY LOSE ITS RESERVE, AND MAY LOSE NOTHING ELSE. Where a
+			# faction starts FRIENDLY or better, the open reading already carries
+			# the x1.5 and dropping back to the baseline on the way to HOSTILE is
+			# the gate working, not a counter closing. Anything else -- and in
+			# particular anything that stocked a good and now stocks none -- is
+			# the death trap, and is named.
+			var lost_reserve: bool = cap_o == int(round(float(cap_h)
+				* Market.STOCK_RESERVE_MULT))
+			if (cap_h > 0) != (cap_o > 0) or not (cap_h == cap_o or lost_reserve):
+				cap_lost = "%s %d -> %d" % [kh, cap_o, cap_h]
+	_clear_faction_matrix()
+	# Services are static data on the def and cannot vary with standing, so
+	# asserting them here would be asserting nothing. What CAN vary is what the
+	# two gates return, and that is what this measures: every shelf identical to
+	# its open reading, every reserve shut, and the fence -- the one counter a
+	# standing may close -- demonstrably closing somewhere.
+	print("[faction] NO COUNTER CLOSES AT HOSTILE %d counters driven hostile: %d fences shut (the one gate that may), every reserve shut=%s, first shelf to shrink: %s -> %s" % [
+		hostile_defs.size(), fences_closed,
+		"yes" if reserve_still_open == "" else "no, " + reserve_still_open,
+		cap_lost if cap_lost != "" else "none",
+		"PASS" if cap_lost == "" and reserve_still_open == "" and fences_closed > 0
+			else "FAIL"])
 
 	# THE CONVOY KEEPS ITS SCHEDULE, AND THE REGISTRY NEVER LEARNS ITS NAME.
 	# Purity: the same window answers the same system, always. Coverage: over
@@ -24695,6 +26006,94 @@ func _run_colony_test() -> void:
 			and claimed_text.contains("JUMP")
 	print("[colony] THE MONUMENT ANSWERS A TAP unclaimed says '%s'; claimed says '%s'; both name themselves and their verb -> %s" % [
 		tap_text, claimed_text, "PASS" if tap_ok else "FAIL"])
+
+	# --- §112. THE SOUNDED GROUND ---------------------------------------------
+
+	# WORKS ARE GATES, AND THE INVESTMENT IS A SINK. One purchase of each work
+	# on a sounded colony: the wallet moves by exactly the price, nothing pays
+	# anything back, and no ship stat moves -- measured, §26's whole claim.
+	GameState.colonies = {}
+	GameState.colony_works = {}
+	GameState.skills = {}
+	GameState.salvage = 30000
+	GameState.claim_colony("pyx01:7", 2000.0, 0.0)
+	var wcell := DeepSpace.cell_of(Vector3(2000.0, 0.0, 0.0))
+	GameState.note_survey_worked(DeepSpace.cell_key("pyx01", wcell.x, wcell.y))
+	var stats_before := GameState.stats.duplicate(true)
+	var spent_total := 0
+	var works_ok := true
+	for w_v in GameState.COLONY_WORKS:
+		var wid := String(w_v)
+		var before_w := GameState.salvage
+		if not buy_colony_work("pyx01:7", wid):
+			works_ok = false
+		spent_total += before_w - GameState.salvage
+		if not GameState.has_work("pyx01:7", wid):
+			works_ok = false
+	var want_total := 0
+	for w2_v in GameState.COLONY_WORKS:
+		want_total += int((GameState.COLONY_WORKS[w2_v] as Dictionary)["price"])
+	var stats_same := str(stats_before) == str(GameState.stats)
+	var re_buy := buy_colony_work("pyx01:7", "relay")
+	print("[colony] WORKS ARE A SINK, NOT A STAT three works cost %d (want %d), stats byte-identical=%s, a re-buy refuses=%s -> %s" % [
+		spent_total, want_total, str(stats_same), str(not re_buy),
+		"PASS" if works_ok and spent_total == want_total and stats_same
+			and not re_buy else "FAIL"])
+
+	# SURVEYED GROUND ONLY, and the refusal is free. A colony whose cell no
+	# mast ever worked refuses every work, and refuses them for nothing.
+	GameState.claim_colony("pyx01:8", -2600.0, 400.0)
+	var before_ground := GameState.salvage
+	var ground_refused := not buy_colony_work("pyx01:8", "relay")
+	print("[colony] SURVEYED GROUND ONLY an unsounded bottom refuses=%s and the refusal cost %d -> %s" % [
+		str(ground_refused), before_ground - GameState.salvage,
+		"PASS" if ground_refused and GameState.salvage == before_ground else "FAIL"])
+
+	# THE DOCK IS TIME, NOT POWER. The aura reads true alongside the yard and
+	# false a hundred units off -- the rule function, not the regen rendering.
+	var near_aura := GameState.dock_aura_at(2000.0, 0.0)
+	var far_aura := GameState.dock_aura_at(2000.0, 500.0)
+	print("[colony] THE DOCK IS TIME, NOT POWER aura alongside=%s, 500u off=%s -> %s" % [
+		str(near_aura), str(far_aura),
+		"PASS" if near_aura and not far_aura else "FAIL"])
+
+	# THE ANNEX IS THE WAREHOUSE'S OWN LAW. Storables in, the bonded set only,
+	# and back out -- through store_cargo/withdraw_cargo, so the 60-space bay
+	# and can_store == no_retail hold here exactly as at a dock.
+	GameState.cargo = {}
+	GameState.load_cargo("plate_ablative", 3)
+	GameState.load_cargo("alloys", 2)
+	var put := GameState.store_cargo("pyx01:7", "plate_ablative", 3)
+	var bulk_refused := GameState.store_cargo("pyx01:7", "alloys", 2) == 0
+	var got_back := GameState.withdraw_cargo("pyx01:7", "plate_ablative", 3)
+	print("[colony] THE ANNEX IS BONDED 3 plates in=%d, bulk goods refused=%s, 3 back out=%d -> %s" % [
+		put, str(bulk_refused), got_back,
+		"PASS" if put == 3 and bulk_refused and got_back == 3 else "FAIL"])
+
+	# THE ANCHOR IS EARNED, AND OBEYS THE CAP. anchor_rows is empty below
+	# FILING t3 by the chart's own gate; at t3 a held cell rows up with its
+	# depth, and the jump verb keeps the beacon cap -- a 5000u held cell offers
+	# no jump. The fee is the beacon's own curve at the anchor's own depth.
+	GameState.skills = {}
+	GameState.survey_coverage = {}
+	GameState.note_survey_worked("pyx01:40:0")
+	GameState.note_survey_held("pyx01:40:0")
+	var rows_low := anchor_rows("pyx01")
+	GameState.skills = {"filing": 999}
+	var rows_high := anchor_rows("pyx01")
+	var arow: Dictionary = rows_high[0] if not rows_high.is_empty() else {}
+	var adepth := float(arow.get("depth", -1.0))
+	var afee := beacon_jump_fee(adepth)
+	var capped_ok := not can_beacon_jump(9000.0)
+	print("[colony] THE ANCHOR IS EARNED rows below the tier=%d, at t3=%d at %du for %d, and 9000u still refuses a jump=%s -> %s" % [
+		rows_low.size(), rows_high.size(), int(adepth), afee, str(capped_ok),
+		"PASS" if rows_low.is_empty() and rows_high.size() == 1
+			and adepth > 0.0 and afee > 0 and capped_ok else "FAIL"])
+
+	GameState.skills = {}
+	GameState.survey_coverage = {}
+	GameState.colony_works = {}
+	GameState.cargo = {}
 
 	GameState.colonies = {}
 	get_tree().quit()

@@ -48,6 +48,10 @@ const LINES := {
 	"first_trade": "CARGO IS WORTH WHAT THE NEXT PORT WILL PAY",
 	"first_salvage": "UNREADABLE SALVAGE ABOARD — REFIT CAN READ WHAT YOU KNOW",
 	"hold_full": "HOLD AT CAPACITY — CRATES ARE BEING SCRAPPED",
+	# §112. Fired the first time a mark refuses the read. The refusal names the
+	# ACT (file a return); this names where the ASK comes from -- the one link
+	# in the chain nothing anywhere pointed at.
+	"far_mark_locked": "THAT NOTATION IS TAUGHT, NOT SOLD. THE DEEPEST RECORDS ASK SOMETHING OF WHOEVER FINISHES THEM.",
 }
 
 # THE SAME LINES, FOR A DEVICE THAT CANNOT TAP. Only the three that name a

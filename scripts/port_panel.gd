@@ -26,6 +26,7 @@ const TAB_LABELS := {
 	"storage": "STORAGE",
 	"forge": "FORGE",
 	"commission": "COMMISSION",
+	"requisitions": "ORDERS",
 }
 const DEFAULT_SERVICES := ["market", "outfitter", "contracts"]
 
@@ -343,21 +344,26 @@ func _buy(good: String, units: int) -> void:
 		return
 	# Priced at the size actually being traded, so the bulk break the row
 	# advertises is the break the player is charged.
-	var price := Market.buy_price(_port_def, _port.port_id, good, units)
+	var price := Market.buy_price(_port_def, _port.port_id, good, units, _bay_key())
 	var affordable := int(GameState.salvage / maxi(price, 1))
 	var fits := GameState.cargo_free() / maxi(CommodityDB.space_of(good), 1)
-	var n := mini(units, mini(affordable, fits))
+	# v27. The shelf is the third clamp, beside the wallet and the hold, and it
+	# reads exactly like them: you get what was there. REFUSAL IS FREE -- nothing
+	# is charged or loaded above, so a bare counter costs the player nothing.
+	var on_shelf := Market.stock_left(_port_def, _bay_key(), good)
+	var n := mini(units, mini(mini(affordable, fits), on_shelf))
 	if n <= 0:
 		_reject()
 		return
 	# Re-priced at what actually fit: buying 5 and only affording 3 must not
 	# quietly keep the 5-unit discount.
-	price = Market.buy_price(_port_def, _port.port_id, good, n)
+	price = Market.buy_price(_port_def, _port.port_id, good, n, _bay_key())
 	if not GameState.spend_salvage(price * n):
 		_reject()
 		return
 	GameState.load_cargo(good, n)
-	Market.apply_trade_pressure(_port.port_id, good, n, false)
+	Market.apply_trade_pressure(_bay_key(), good, n, false)
+	Market.note_bought(_bay_key(), good, n)
 	Sfx.play("equip", -7.0, 1.1)
 	Barks.fire("first_trade")
 	_refresh()
@@ -374,7 +380,7 @@ func _sell(good: String, units: int) -> void:
 	if Market.fences(_port_def, good) and not Market.fence_open(_port_def):
 		_reject()
 		return
-	var price := Market.sell_price(_port_def, _port.port_id, good, n)
+	var price := Market.sell_price(_port_def, _port.port_id, good, n, _bay_key())
 	GameState.unload_cargo(good, n)
 	GameState.add_salvage(price * n)
 	if CommodityDB.is_chart(good):
@@ -404,7 +410,8 @@ func _sell(good: String, units: int) -> void:
 				m0.hud.show_toast("SMUGGLING %d — %s" % [GameState.smuggling,
 					"THE LANES KNOW YOU" if GameState.smuggling < 3
 					else "EVERY DEEP FENCE DEALS WITH YOU"], Palette.GOLD)
-	Market.apply_trade_pressure(_port.port_id, good, n, true)
+	Market.apply_trade_pressure(_bay_key(), good, n, true)
+	Market.note_sold(_bay_key(), good, n)
 	Sfx.play_streak("pickup", -8.0)
 	var main := get_tree().get_first_node_in_group("main")
 	if main and main.hud:
@@ -540,6 +547,8 @@ func _refresh() -> void:
 			_build_forge()
 		"commission":
 			_build_commission()
+		"requisitions":
+			_build_requisitions()
 		_:
 			_body.add_child(_reactor_row())
 			# v24 (§94). THE BERTHS SIT WITH THE REACTOR, not in the module
@@ -755,14 +764,26 @@ func _forge_row(id: String) -> Control:
 		# Derived from READS_AS, the same table the reads use, so it cannot
 		# drift: the shallowest salvage grade whose read table yields this
 		# component names the band to go crack.
-		var src_band := -1
+		# v27 (§110). THE "+" WAS A LIE, and it was the lie that produced the
+		# second playtest report of the same complaint the first one fixed.
+		# READS_AS IS NOT MONOTONE: sink fell from the Drift and nowhere deeper,
+		# manifest from the Reaches and nowhere deeper, plate and cell from the
+		# Charted and Shoals and nowhere deeper. This line took the SHALLOWEST
+		# yielding grade and printed "BAND n+", so a pilot standing in the Quiet
+		# with a hold of Quiet salvage, following the game's own instruction,
+		# could read crate after crate and never once see four of the eight
+		# inputs.
+		#
+		# It now names the grades themselves, from the same table, so it cannot
+		# be wrong in that direction again: a grade is listed if and only if
+		# reading it can produce this part.
+		var from_grades := []
 		for sal_v in CommodityDB.READS_AS:
 			if (CommodityDB.READS_AS[sal_v] as Array).has(good):
-				var b := CommodityDB.band_of(String(sal_v))
-				src_band = b if src_band < 0 else mini(src_band, b)
-		if src_band >= 0 and have < need:
-			sources += "%s FALLS FROM READING BAND %d+ SALVAGE\n" % [
-				CommodityDB.short_name(good), src_band]
+				from_grades.append(CommodityDB.short_name(String(sal_v)))
+		if not from_grades.is_empty() and have < need:
+			sources += "%s READS OUT OF %s\n" % [
+				CommodityDB.short_name(good), ", ".join(from_grades)]
 	var bill := Label.new()
 	bill.text = parts
 	bill.add_theme_font_size_override("font_size", 10)
@@ -1329,7 +1350,8 @@ func _fence_row(good: String) -> Control:
 		CommodityDB.color_of(good) if held > 0 else Palette.HULL)
 	left.add_child(name_line)
 
-	var fenced := Market.sell_price(_port_def, _port.port_id, good, maxi(held, 1))
+	var fenced := Market.sell_price(_port_def, _port.port_id, good, maxi(held, 1),
+		_bay_key())
 	var clean := int(round(float(fenced) / maxf(Market.fence_bonus(_port_def, good), 0.01)))
 	var sub := Label.new()
 	sub.text = "FENCE %d/unit   (clean price %d)" % [fenced, clean]
@@ -1363,20 +1385,40 @@ func _build_rumors() -> void:
 		known.add_theme_color_override("font_color", Palette.GOLD)
 		_body.add_child(known)
 
+	# A DEAD CONTROL IS ITS OWN KIND OF LIE -- the hunt desk's rule, two screens
+	# down, applied here now that the ladder can genuinely run dry. The button
+	# says which of the two reasons it is refusing for.
+	var nothing_left := _rumor_text() == ""
 	var buy := Button.new()
-	buy.text = "BUY INTEL   %s" % _comma(price)
+	buy.text = "NOTHING NEW TONIGHT" if nothing_left \
+		else "BUY INTEL   %s" % _comma(price)
 	buy.custom_minimum_size = Vector2(0, 36)
 	buy.add_theme_font_size_override("font_size", 12)
-	buy.disabled = GameState.salvage < price
+	buy.disabled = nothing_left or GameState.salvage < price
 	buy.pressed.connect(func() -> void: _buy_rumor(price))
 	_body.add_child(buy)
 
 	var note := Label.new()
-	note.text = "Intel names one market event on the chart — where it is, what it is, and how long it holds."
+	note.text = "Intel names one thing worth knowing — a market event, a counter that has run short, or the best run anyone can actually fill tonight."
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.add_theme_font_size_override("font_size", 10)
 	note.add_theme_color_override("font_color", Color(0.6, 0.6, 0.66))
 	_body.add_child(note)
+
+	# §112. THE WATCH KNOWS WHAT YOU STARTED. One unpriced line, at this desk
+	# only, for a pilot who has read at least a fragment of the deepest record
+	# and not yet finished it -- a nudge toward the one chain nothing taught,
+	# offered exactly to the person who has demonstrably begun it. It sells
+	# nothing and charges nothing, so it lives outside the rumour ladder.
+	if String(_port_def.get("id", "")) == "deep_watch" \
+			and GameState.return_archive_started() \
+			and not GameState.heard_the_request():
+		var watch_line := Label.new()
+		watch_line.text = "THE WATCH, UNPROMPTED: \"YOU HAVE BEEN READING THE OLD RECORDS. READ THE LAST OF ONE — THEY DO NOT END WHERE YOU THINK.\""
+		watch_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		watch_line.add_theme_font_size_override("font_size", 10)
+		watch_line.add_theme_color_override("font_color", Palette.RIVAL)
+		_body.add_child(watch_line)
 
 	_build_hunt_desk()
 
@@ -1472,10 +1514,22 @@ func _buy_hunt_intel(price: int, err: float) -> void:
 
 
 func _buy_rumor(price: int) -> void:
+	# WORD FIRST, MONEY SECOND -- the hunt desk's own posture, applied to the bar
+	# it shares. This charged first and generated afterwards, which was safe only
+	# while the last rung could never come up empty: the arbitrage line was
+	# returned unconditionally and undeduplicated, so a second purchase with
+	# nothing running took the money and printed the identical sentence again.
+	# §108 gives the ladder a rung that CAN run out, which turns that from a
+	# latent hole into a certainty, so it is closed here rather than worked
+	# around. REFUSAL IS FREE: nothing is spent above this line.
+	var line := _rumor_text()
+	if line == "":
+		_reject()
+		return
 	if GameState.salvage < price or not GameState.spend_salvage(price):
 		_reject()
 		return
-	_rumors_known.append(_rumor_text())
+	_rumors_known.append(line)
 	Sfx.play("equip", -6.0, 1.2)
 	var main := get_tree().get_first_node_in_group("main")
 	if main and main.hud:
@@ -1496,39 +1550,246 @@ func _rumor_text() -> String:
 		var rift_line := String(main.rift_rumor())
 		if rift_line != "" and not _rumors_known.has(rift_line):
 			return rift_line
+	# Events, charted and deep alike. THROUGH event_place, never through
+	# SystemDB: an event out past the chart has no entry to look up, and this
+	# line printed a literal "?" for one until §108 put the name on the event.
 	var unheard := []
 	for e in GameState.market_events:
 		var ev: Dictionary = e
 		var line := "%s at %s — %s, %s left" % [
 			Market.event_label(ev).capitalize(),
-			String(SystemDB.port_def_by_id(String(ev["port"])).get("name", "?")),
-			CommodityDB.short_name(String(ev["good"])),
+			Market.event_place(ev),
+			CommodityDB.short_name(String(ev.get("good", ""))),
 			_mmss(float(ev.get("remaining", 0.0)))]
 		if not _rumors_known.has(line):
 			unheard.append(line)
 	if not unheard.is_empty():
 		return String(unheard[0])
 
-	# No events running: name the best standing spread anyone here knows about.
-	var best_line := "Nothing moving on the chart tonight. Prices are what they look like."
-	var best_margin := 0
-	for good_v in CommodityDB.ids():
-		var good := String(good_v)
-		for a_v in SystemDB.port_ids():
-			for b_v in SystemDB.port_ids():
-				var a := String(a_v)
-				var b := String(b_v)
-				if a == b or not CommodityDB.trades_at(good, a) or not CommodityDB.trades_at(good, b):
-					continue
-				var margin := Market.sell_price(SystemDB.port_def_by_id(b), b, good) \
-					- Market.buy_price(SystemDB.port_def_by_id(a), a, good)
-				if margin > best_margin:
-					best_margin = margin
-					best_line = "%s moves %s to %s for about %d a unit right now." % [
-						CommodityDB.short_name(good),
-						String(SystemDB.port_def_by_id(a).get("name", "?")),
-						String(SystemDB.port_def_by_id(b).get("name", "?")), margin]
-	return best_line
+	# §108. A BARE COUNTER, and how long it has left. Outranks the standing
+	# spread below because it expires: the spread will still be there tomorrow,
+	# and a shelf that is filling will not be.
+	var bare := Market.bare_shelf_report()
+	if not bare.is_empty():
+		var mins := int(round(float(bare["seconds"]) / 60.0))
+		var bare_line := "%s is short on %s — %d of %d on the shelf, and about %s before they can fill an order." % [
+			String(bare["name"]), CommodityDB.short_name(String(bare["good"])),
+			int(bare["left"]), int(bare["cap"]),
+			"a minute" if mins <= 1 else "%d minutes" % mins]
+		if not _rumors_known.has(bare_line):
+			return bare_line
+
+	# No events, nothing bare: name the best standing spread anyone here knows
+	# about -- one somebody can actually FILL, which is the part that was wrong.
+	var route := Market.best_stocked_route()
+	if not route.is_empty():
+		var route_line := "%s moves %s to %s for about %d a unit right now — they are standing %d." % [
+			CommodityDB.short_name(String(route["good"])), String(route["from"]),
+			String(route["to"]), int(route["margin"]), int(route["units"])]
+		if not _rumors_known.has(route_line):
+			return route_line
+
+	# Everything this desk knows, it has already told you. It says so rather
+	# than selling the same sentence twice.
+	return ""
+
+
+# --- requisitions (§110) -----------------------------------------------------
+
+func _build_requisitions() -> void:
+	# THE BACK ROOM ORDERS; IT STILL DOES NOT RETAIL. Market.can_buy is untouched
+	# by this whole section and SELL ONLY keeps passing -- a fence that sold
+	# components off a shelf would reopen the loop §11 closed. This is a distinct
+	# verb: you pay now, at a price above every sale in the game, and somebody
+	# brings one back later.
+	#
+	# It answers the second playtest complaint from the demand side. The read
+	# table fix (§110, commodity_db) makes every recipe plannable from one band;
+	# this makes the EIGHTH unit of something you already understand a purchase
+	# rather than another four hours of hoping.
+	var key := _bay_key()
+	var head := Label.new()
+	head.text = "THE BACK ROOM SOURCES PARTS. PAID UP FRONT, DELIVERED HERE."
+	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	head.add_theme_font_size_override("font_size", 10)
+	head.add_theme_color_override("font_color", Palette.AMBER_DIM)
+	_body.add_child(head)
+
+	# THE STANDING GATE, at the build AND at the action -- survey_mast's lesson,
+	# and the same double enforcement the fence itself uses. REFUSAL IS FREE and
+	# it states its own terms (§58).
+	if not Market.fence_open(_port_def):
+		var shut := Label.new()
+		shut.text = "THEY WILL SELL YOU NOTHING AND SOURCE YOU NOTHING. MEND IT WITH %s FIRST." % \
+			FactionDB.display_name(Market.owner_of(_port_def)).to_upper()
+		shut.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		shut.add_theme_font_size_override("font_size", 12)
+		shut.add_theme_color_override("font_color", Palette.THREAT)
+		_body.add_child(shut)
+		return
+
+	var waiting := GameState.orders_at(key)
+	if not waiting.is_empty():
+		var wh := Label.new()
+		wh.text = "ON ORDER HERE"
+		wh.add_theme_font_size_override("font_size", 12)
+		wh.add_theme_color_override("font_color", Palette.GOLD)
+		_body.add_child(wh)
+	for o_v in waiting:
+		var o: Dictionary = o_v
+		_body.add_child(_order_waiting_row(o))
+
+	var offered := 0
+	for gid_v in CommodityDB.ids():
+		var gid := String(gid_v)
+		if not CommodityDB.is_component(gid) or not GameState.has_read(gid):
+			continue
+		offered += 1
+		_body.add_child(_order_row(gid))
+
+	var note := Label.new()
+	if offered == 0:
+		# A DESK WITH NOTHING ON IT SAYS WHY. The gate is "bring me one you have
+		# held", so an empty book is a sentence about reading, not a broken tab.
+		note.text = "THEY SOURCE WHAT YOU HAVE HANDLED. READ A CRATE AT A LAB OR IN THE FIELD AND THEY WILL FIND YOU ANOTHER."
+	else:
+		note.text = "%d OF %d ORDERS OPEN. DELIVERY TAKES %d MINUTES OF FLYING, AND THEY CHARGE FOR THE TROUBLE." % [
+			GameState.requisition_orders.size(), GameState.REQ_MAX_OPEN,
+			int(round(GameState.REQ_DELAY / 60.0))]
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.add_theme_font_size_override("font_size", 10)
+	note.add_theme_color_override("font_color", Color(0.6, 0.6, 0.66))
+	_body.add_child(note)
+
+
+func _order_waiting_row(o: Dictionary) -> Control:
+	var row := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(Palette.GOLD.r, Palette.GOLD.g, Palette.GOLD.b, 0.06)
+	style.set_corner_radius_all(6)
+	style.content_margin_left = 10
+	style.content_margin_right = 10
+	style.content_margin_top = 7
+	style.content_margin_bottom = 7
+	row.add_theme_stylebox_override("panel", style)
+	var box := HBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	row.add_child(box)
+
+	var left := VBoxContainer.new()
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left.add_theme_constant_override("separation", -1)
+	box.add_child(left)
+	var name_line := Label.new()
+	name_line.text = CommodityDB.display(String(o.get("good", "")))
+	name_line.add_theme_font_size_override("font_size", 13)
+	name_line.add_theme_color_override("font_color", Palette.GOLD)
+	left.add_child(name_line)
+
+	var ready := GameState.order_ready(o)
+	var sub := Label.new()
+	sub.text = "READY" if ready else "IN TRANSIT — %s" % _mmss(GameState.order_seconds_left(o))
+	sub.add_theme_font_size_override("font_size", 10)
+	sub.add_theme_color_override("font_color",
+		Palette.GOLD if ready else Palette.AMBER_DIM)
+	left.add_child(sub)
+
+	var idx := GameState.requisition_orders.find(o)
+	var b := Button.new()
+	b.text = "COLLECT" if ready else "WAITING"
+	b.disabled = not ready
+	b.custom_minimum_size = Vector2(96, 34)
+	b.add_theme_font_size_override("font_size", 11)
+	b.pressed.connect(func() -> void: _collect_order(idx))
+	box.add_child(b)
+	return row
+
+
+func _order_row(good: String) -> Control:
+	var row := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(Palette.AMBER.r, Palette.AMBER.g, Palette.AMBER.b, 0.04)
+	style.set_corner_radius_all(6)
+	style.content_margin_left = 10
+	style.content_margin_right = 10
+	style.content_margin_top = 7
+	style.content_margin_bottom = 7
+	row.add_theme_stylebox_override("panel", style)
+	var box := HBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	row.add_child(box)
+
+	var left := VBoxContainer.new()
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left.add_theme_constant_override("separation", -1)
+	box.add_child(left)
+	var name_line := Label.new()
+	name_line.text = "%s   ×%d" % [CommodityDB.display(good), GameState.cargo_count(good)]
+	name_line.add_theme_font_size_override("font_size", 13)
+	name_line.add_theme_color_override("font_color", CommodityDB.color_of(good))
+	left.add_child(name_line)
+
+	var price := Market.requisition_price(good)
+	var sub := Label.new()
+	# WHY IT COSTS WHAT IT COSTS, on the row. A part sourced for you is dearer
+	# than one you found -- that is the entire deal, and hiding the comparison
+	# would make the price look arbitrary instead of like a premium.
+	sub.text = "SOURCED %s   ·   THEY BUY AT ABOUT %d" % [_comma(price),
+		Market.sell_price(_port_def, _port.port_id, good, 1, _bay_key())]
+	sub.add_theme_font_size_override("font_size", 10)
+	sub.add_theme_color_override("font_color", Palette.AMBER_DIM)
+	left.add_child(sub)
+
+	var full := GameState.requisition_orders.size() >= GameState.REQ_MAX_OPEN
+	var b := Button.new()
+	b.text = "BOOK FULL" if full else "ORDER"
+	b.disabled = full or GameState.salvage < price
+	b.custom_minimum_size = Vector2(96, 34)
+	b.add_theme_font_size_override("font_size", 11)
+	b.pressed.connect(func() -> void: _order(good))
+	box.add_child(b)
+	return row
+
+
+func _order(good: String) -> void:
+	# PAID IN FULL AT THE DESK, so an order is a receipt and never a debt --
+	# abandoning one costs exactly what was already spent and nothing more.
+	# Gated here as well as in the UI: the button is the affordance, this is the
+	# rule (_buy's own line).
+	if not Market.fence_open(_port_def) or not GameState.can_order(good):
+		_reject()
+		return
+	var price := Market.requisition_price(good)
+	if GameState.salvage < price or not GameState.spend_salvage(price):
+		_reject()
+		return
+	if not GameState.place_order(good, _bay_key()):
+		# Could not be recorded after all: hand the money back rather than eat
+		# it. Nothing may vanish -- identify()'s rule, applied to a wallet.
+		GameState.add_salvage(price)
+		_reject()
+		return
+	Sfx.play("equip", -7.0, 0.9)
+	var main_o := get_tree().get_first_node_in_group("main")
+	if main_o and main_o.hud:
+		main_o.hud.set_value(GameState.salvage)
+		main_o.hud.show_toast("ORDERED — %s, %d MIN" % [
+			CommodityDB.short_name(good),
+			int(round(GameState.REQ_DELAY / 60.0))], Palette.GOLD)
+	_refresh()
+
+
+func _collect_order(index: int) -> void:
+	if not GameState.collect_order(index):
+		# The one refusal worth naming: a full hold. The order KEEPS -- paid-for
+		# cargo is never deleted by arriving with two units of space.
+		var main_f := get_tree().get_first_node_in_group("main")
+		if main_f and main_f.hud:
+			main_f.hud.show_toast("NO ROOM FOR IT — THEY WILL HOLD IT", Palette.THREAT)
+		_reject()
+		return
+	Sfx.play("equip", -6.0, 1.15)
+	_refresh()
 
 
 # --- games (cantina) ---------------------------------------------------------
@@ -1619,6 +1880,39 @@ func _build_contract_board() -> void:
 
 	for offer in contracts.board(_port.port_id):
 		_body.add_child(_contract_row(offer, free))
+		# §111, BROKERAGE t2. THE STANDING WORD: a broker reads a consignment
+		# against the weather at its destination. Fine print under the row it is
+		# about, INFORMATION only -- the reward and the terms move by nothing.
+		if GameState.skill_tier("brokerage") >= GameState.BROKER_WORD_TIER \
+				and String(offer.get("kind", "")) == "deliver":
+			var cdef := ContractDB.get_contract(String(offer.get("id", "")))
+			var dest := String(cdef.get("dest", ""))
+			var dgood := String(cdef.get("good", ""))
+			var dev := Market.event_for(dest, dgood)
+			if not dev.is_empty():
+				var word := Label.new()
+				word.text = "THE WORD: %s AT %s — %s RUNS OUT IN %s" % [
+					Market.event_label(dev), Market.event_place(dev),
+					CommodityDB.short_name(dgood),
+					_mmss(float(dev.get("remaining", 0.0)))]
+				word.add_theme_font_size_override("font_size", 9)
+				word.add_theme_color_override("font_color", Market.event_color(dev))
+				_body.add_child(word)
+
+	# §111, BROKERAGE t3. ROUTE SENSE: the pair, NEVER the margin. The paid
+	# rumour quotes the number; a broker's own read of the board names only
+	# where things are moving -- deliberately the weaker product, the same
+	# ordering the hunt desk keeps between the free mast and the paid word.
+	if GameState.skill_tier("brokerage") >= GameState.BROKER_ROUTE_TIER:
+		var route := Market.best_stocked_route()
+		if not route.is_empty():
+			var sense := Label.new()
+			sense.text = "ROUTE SENSE — %s IS MOVING %s TO %s TONIGHT" % [
+				CommodityDB.short_name(String(route["good"])),
+				String(route["from"]), String(route["to"])]
+			sense.add_theme_font_size_override("font_size", 10)
+			sense.add_theme_color_override("font_color", Palette.TEAL)
+			_body.add_child(sense)
 
 
 func _contract_row(offer: Dictionary, slots_free: int) -> Control:
@@ -1755,8 +2049,8 @@ func _market_row(good: String) -> Control:
 
 	# Trend arrow + event tag: the whole "is this a deal?" question, answered
 	# without arithmetic.
-	var trend := Market.trend(_port_def, _port.port_id, good)
-	var ev := Market.event_for(_port.port_id, good)
+	var trend := Market.trend(_port_def, _port.port_id, good, _bay_key())
+	var ev := Market.event_for(_bay_key(), good)
 	var sub := Label.new()
 	var arrow := "▲ HIGH" if trend > 0 else ("▼ LOW" if trend < 0 else "— STEADY")
 	var tag := ("   [%s]" % Market.event_label(ev)) if not ev.is_empty() else ""
@@ -1793,24 +2087,32 @@ func _market_row(good: String) -> Control:
 		fence_tag.add_theme_color_override("font_color", Palette.TEAL)
 		left.add_child(fence_tag)
 
-	var buy_price := Market.buy_price(_port_def, _port.port_id, good)
-	var sell_price := Market.sell_price(_port_def, _port.port_id, good)
+	var buy_price := Market.buy_price(_port_def, _port.port_id, good, 1, _bay_key())
+	var sell_price := Market.sell_price(_port_def, _port.port_id, good, 1, _bay_key())
 
 	# A bulk break the player cannot see is a bulk break that does not exist.
 	var bulk_units := int(_port_def.get("bulk_units", 0))
 	if bulk_units > 0:
 		var note := Label.new()
 		note.text = "BULK %d+: buy %d / sell %d" % [bulk_units,
-			Market.buy_price(_port_def, _port.port_id, good, bulk_units),
-			Market.sell_price(_port_def, _port.port_id, good, bulk_units)]
+			Market.buy_price(_port_def, _port.port_id, good, bulk_units, _bay_key()),
+			Market.sell_price(_port_def, _port.port_id, good, bulk_units, _bay_key())]
 		note.add_theme_font_size_override("font_size", 10)
 		note.add_theme_color_override("font_color", Palette.TEAL)
 		left.add_child(note)
 
 	var buys := VBoxContainer.new()
 	buys.add_theme_constant_override("separation", 2)
-	if Market.can_buy(_port_def, good):
+	# v27. WHAT IS ON THE SHELF, on the row, because a buy button that silently
+	# hands you three of the five you asked for is a bug the player has no way to
+	# read as a rule. Three states, and each says which it is in words: a number,
+	# OUT, or a counter that never stocked this at all.
+	var on_shelf := Market.stock_left(_port_def, _bay_key(), good)
+	var shelf_cap := Market.stock_cap(_port_def, good)
+	if Market.can_buy(_port_def, good) and on_shelf > 0:
 		buys.add_child(_price_label("BUY %d" % buy_price, Palette.AMBER_DIM))
+		buys.add_child(_price_label("IN STOCK %d" % on_shelf,
+			Palette.GOLD if on_shelf >= shelf_cap else Palette.AMBER_DIM))
 		var buy_row := HBoxContainer.new()
 		buy_row.add_theme_constant_override("separation", 3)
 		buy_row.add_child(_mini_button("+1", func() -> void: _buy(good, 1)))
@@ -1819,6 +2121,16 @@ func _market_row(good: String) -> Control:
 		var step := maxi(5, int(_port_def.get("bulk_units", 0)))
 		buy_row.add_child(_mini_button("+%d" % step, func() -> void: _buy(good, step)))
 		buys.add_child(buy_row)
+	elif Market.can_buy(_port_def, good) and shelf_cap > 0:
+		# Emptied, or under a shortage. Either way it comes back, and saying so is
+		# the difference between a counter that is out and a counter that is dead.
+		buys.add_child(_price_label("OUT", Palette.THREAT))
+		buys.add_child(_price_label("RESTOCKING", Palette.AMBER_DIM))
+	elif Market.can_buy(_port_def, good):
+		# bias >= 1.25. This desk is a BUYER of the thing -- it is why the sell
+		# price here is the best on the chart -- and it has never had a shelf.
+		buys.add_child(_price_label("BUYS ONLY", Palette.TEAL))
+		buys.add_child(_price_label("NOT STOCKED HERE", Palette.AMBER_DIM))
 	else:
 		# A fence takes these off your hands and does not sell them back.
 		buys.add_child(_price_label("FENCED", Palette.THREAT))

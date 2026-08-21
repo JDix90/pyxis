@@ -337,11 +337,26 @@ class RadarLayer:
 		# SignatureSite carries marker_color() and answers with its band, because a
 		# signature is a PLACE and band colour is what "where" means.
 		["signature", TIER_SIGNATURE, Palette.HULL, SIZE_NORMAL],
+		# §111, COLONIAL t3. KEPT LIGHTS: a founded colony's light never leaves
+		# the board. TIER_HOME is BORROWED, the beacon-course precedent exactly
+		# -- a new tier would grow TIER_NAMES and owe the manual a legend row,
+		# and "never capped, never faded" is the whole grant. The guard below
+		# filters this group to claimed structures at the tier; unclaimed hyper
+		# silhouettes stay off the radar the way they always were.
+		["hyper", TIER_HOME, Palette.GOLD, SIZE_NORMAL],
 		]:
 			for node in get_tree().get_nodes_in_group(String(spec[0])):
 				var n := node as Node3D
 				if not is_instance_valid(n) or seen.has(n.get_instance_id()):
 					continue
+				# §111. The "hyper" row above carries ONLY kept lights: claimed,
+				# and only for a pilot at COLONIAL t3. Everything else in that
+				# group is a silhouette the chart handles.
+				if String(spec[0]) == "hyper":
+					if GameState.skill_tier("colonial") < GameState.COLONIAL_LIGHTS_TIER:
+						continue
+					if not (n.has_method("is_claimed") and n.is_claimed()):
+						continue
 				seen[n.get_instance_id()] = true
 				# Ports mark their dock ring, not their hull centre: the ring is
 				# the thing you are actually flying to.

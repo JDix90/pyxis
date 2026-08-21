@@ -46,6 +46,22 @@ const READ_RANGE := 12.0
 const READ_TIME := 3.0
 const DECAY_RATE := 0.5
 
+
+# §111. FILING's two tiers, and neither of them touches what a plate SAYS. The
+# kind is revealed by the reading and never before it -- that is the rule this
+# file states about itself, and the whole reason reading a mark is worth doing.
+# What a filer's hand earns is the same reading, sooner and from further out.
+func read_seconds() -> float:
+	if GameState.skill_tier("filing") >= GameState.FILING_QUICK_TIER:
+		return READ_TIME * (1.0 - GameState.FILING_QUICK_BONUS)
+	return READ_TIME
+
+
+func read_range() -> float:
+	if GameState.skill_tier("filing") >= GameState.FILING_REACH_TIER:
+		return READ_RANGE * GameState.FILING_REACH_MULT
+	return READ_RANGE
+
 # WHAT THE NETWORK CALLS EACH OF THEM, revealed by the reading and never
 # before it: an unread mark is "A SOUNDING MARK" to everybody, because the kind
 # is precisely what the notation tells you. Keys are FarMarks.kinds() and the
@@ -94,6 +110,14 @@ var index := -1
 var kind := ""
 
 var _holding := false
+# §112/§113. The far-mark bark is ARMED by a refusal and FIRED at range-exit.
+# Fired inline it stomped the refusal itself -- Barks.fire's own v18 comment
+# says a bark writes straight to the same prompt label, and A MARK IS THE
+# NETWORK'S TO READ went red on exactly that. At range-exit the refusal is a
+# STALE line the player is flying away from, so replacing it is a handoff,
+# not a stomp -- and if anything else has written the prompt first, the
+# moment has passed and the bark stands down unspent.
+var _refused := false
 var _progress := 0.0
 var _lamp_mat: StandardMaterial3D
 var _t := 0.0
@@ -178,6 +202,20 @@ func _process(delta: float) -> void:
 	if not _holding and _progress > 0.0:
 		_progress = maxf(_progress - DECAY_RATE * delta, 0.0)
 		_sync_gauge()
+	if _refused:
+		var hud := get_tree().get_first_node_in_group("hud")
+		if hud == null or not hud.has_method("prompt_text"):
+			_refused = false
+		elif String(hud.prompt_text()) != CANNOT_READ:
+			# Something else owns the prompt now; the moment has passed, and a
+			# bark must not be spent where it cannot be seen.
+			_refused = false
+		else:
+			var p := get_tree().get_first_node_in_group("player")
+			if p == null or global_position.distance_to(
+					(p as Node3D).global_position) > read_range() * 1.5:
+				_refused = false
+				Barks.fire("far_mark_locked")
 
 
 func pick_anchor() -> Vector3:
@@ -186,13 +224,13 @@ func pick_anchor() -> Vector3:
 
 func _player_in_range() -> bool:
 	var p := get_tree().get_first_node_in_group("player")
-	return p != null and global_position.distance_to(p.global_position) <= READ_RANGE
+	return p != null and global_position.distance_to(p.global_position) <= read_range()
 
 
 func _approach() -> void:
 	var p := get_tree().get_first_node_in_group("player")
 	if p and p.has_method("command_move"):
-		p.command_move(global_position + Vector3(READ_RANGE * 0.6, 0.0, 0.0))
+		p.command_move(global_position + Vector3(read_range() * 0.6, 0.0, 0.0))
 
 
 func on_tapped() -> void:
@@ -206,6 +244,7 @@ func on_tapped() -> void:
 		# the ship for nothing, which is the affordance problem inverted.
 		if hud:
 			hud.prompt(CANNOT_READ)
+			_refused = true
 		return
 	if hud:
 		if is_read():
@@ -223,6 +262,7 @@ func hold_begin() -> void:
 		var hud := get_tree().get_first_node_in_group("hud")
 		if hud:
 			hud.prompt(CANNOT_READ)
+			_refused = true
 		return
 	if not _player_in_range():
 		_approach()
@@ -243,7 +283,7 @@ func hold_tick(delta: float) -> void:
 	if not _player_in_range():
 		hold_release()
 		return
-	_progress += delta / READ_TIME
+	_progress += delta / read_seconds()
 	_sync_gauge()
 	if _progress >= 1.0:
 		_read()
@@ -263,6 +303,13 @@ func _read() -> void:
 	_holding = false
 	_progress = 0.0
 	var first := GameState.note_mark_read(mark_key())
+	# §111. FILING's second feed. FIRST READS ONLY -- `first` is exactly that
+	# question, already asked here for the legend spawn -- so re-reading a plate
+	# you have already read pays nothing and the ladder cannot be farmed off one
+	# buoy. Filing a return is the other half; the two are one act (§98) and
+	# feed one ladder.
+	if first:
+		GameState.mark_skill("filing")
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud:
 		hud.crack_progress(-1.0)

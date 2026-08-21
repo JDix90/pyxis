@@ -33,7 +33,7 @@ signal lane_opened(id: String)
 signal standing_shifted(other: String, delta: int, band: int)
 
 const SAVE_PATH := "user://save.json"
-const SAVE_VERSION := 26
+const SAVE_VERSION := 27
 const SAVE_DEBOUNCE := 1.0
 
 # v6 defaults. Kept as one dictionary each so a migration only has to merge
@@ -201,6 +201,171 @@ var cargo := {}                # good id -> units held
 var played_seconds := 0.0      # drives market drift; never wall-clock
 var docked_at := ""            # port id, so a reload resumes docked
 var market_pressure := {}      # "port|good" -> -0.25..0.25
+# v27. THE SHELF. "<counter>|good" -> {d: units the player has taken, t: the
+# played-clock stamp it was taken at}. Only the hole is stored; the full shelf is
+# derived from the port's bias table by Market.stock_cap, and an entry is ERASED
+# the moment it replenishes, so a counter at rest costs the save nothing.
+#
+# The counter, NOT the port id: a charted port keys on its own id, a deep station
+# on its CELL, because port_id out past the chart is the archetype and buying out
+# one Shoal Relay must say nothing about the Relay three systems over. The bonded
+# bay learned this first -- NO WORMHOLE -- and the shelf keys the same way,
+# through the same PortPanel._bay_key().
+var market_stock := {}
+# v27 (§110). THE ORDER BOOK. [{good, port, at}] -- what was ordered, from which
+# counter, on which tick of the played clock. Paid in full when placed, so an
+# order is a receipt rather than a debt and abandoning one costs the player
+# exactly what they already spent.
+#
+# Bounded by REQ_MAX_OPEN on the way in, and re-bounded in the loader, because a
+# hand-edited file is input and not truth.
+var requisition_orders: Array = []
+# Which components this pilot has ever read out of a crate. The order desk will
+# only source something you have SEEN -- "bring me one you have held" -- which is
+# what stops requisitions being a way to skip ARCHEOLOGY rather than a way to
+# stop hunting for the eighth unit of something you already understand.
+var reads_done := {}
+# v27 (§111). skill id -> xp. The TIER is never stored; skill_tier derives it.
+var skills := {}
+# v27 (§112). colony key -> Array[String] of works built. Parallel to
+# `colonies` rather than inside its entries, so the colony loader's shape
+# checks stay exactly what they were.
+var colony_works := {}
+
+# v27 (§111). THE LADDER. Four skills shipped one at a time over twenty
+# versions, each with its own var, its own xp var, its own tier constant and its
+# own line function -- which was fine at four and is not fine at eleven. These
+# are a DICT and a table, and the tier is DERIVED from the xp rather than stored
+# beside it, so unlike the legacy four there is no second number that can
+# disagree with the first.
+#
+# THE LAW THEY ALL KEEP (§19, §26, §36): a tier buys TIME, a CHOICE, ACCESS or
+# INFORMATION. Never credits, never a stat, never a price. And every feed is a
+# DIFFERENT VERB -- an hour surveying is an hour not cracking hulks -- because
+# skills all fed by "playing the game" rise together and become a clock rather
+# than a decision. FEEDS COMPETE asserts that as data.
+const SKILL_TIERS := {
+	# Masts worked. The one verb in the game that fed nothing at all: survey
+	# coverage has counted it persistently and bounded since v21, and no ladder
+	# has ever read the count.
+	"surveying": [0, 6, 16, 34, 60],
+	# Apexes downed and legends spent: at most three of one and a handful of the
+	# other in a whole game, so two rungs is the honest length of this ladder.
+	"hunting": [0, 1, 4],
+	# Rift CRATES claimed, not pots -- a pot is 30-36 crates and a third of what
+	# stands evaporates per pulse, so the count is the risk actually taken.
+	"rift_work": [0, 24, 72, 150],
+	"brokerage": [0, 4, 11, 24],
+	"colonial": [0, 1, 3, 6],
+	"wardenry": [0, 5, 14, 30],
+	# Returns filed with the refusers' network, and far marks read for the first
+	# time. Deliberately the two halves of one act -- filing is what buys the
+	# literacy, and a mark is what the literacy is FOR (§98).
+	"filing": [0, 3, 8, 18],
+}
+const SKILL_LABELS := {
+	"surveying": "SURVEYING",
+	"filing": "FILING",
+	"hunting": "HUNTING",
+	"rift_work": "RIFT-WORK",
+	"brokerage": "BROKERAGE",
+	"colonial": "COLONIAL",
+	"wardenry": "WARDENRY",
+}
+# What to do if you want the first tier. §58's rule: a refusal names the act.
+const SKILL_VERBS := {
+	"surveying": "WORK A SURVEY MAST OUT PAST THE CHART",
+	"filing": "FILE A RETURN AT A FOREIGN MAST",
+	"hunting": "PUT AN APEX ENGINE DOWN",
+	"rift_work": "CLAIM CRATES OUT OF AN OPEN SHEAR",
+	"brokerage": "FILL A CONSIGNMENT OR TRADE WITH A CONVOY",
+	"colonial": "FOUND A COLONY ON A HYPER-STRUCTURE",
+	"wardenry": "CLEAR A GUARD POST IN THE DEEP",
+}
+# Index by tier, so index 0 is the unearned rung and reads as "".
+const SKILL_PERKS := {
+	"surveying": ["", "THE READING IS NAMED", "MAST TEMPO",
+		"THE RIVAL SHOWS EARLY", "THE LONG ARM"],
+	# NOT "the marks name themselves". That was the plan and sounding_mark.gd
+	# refuses it in writing: "an unread mark is A SOUNDING MARK to everybody,
+	# because the kind is precisely what the notation tells you", and a harness
+	# pins NAMES to FarMarks.kinds() rather than trusting the comment. A tier
+	# that revealed the kind at range would delete the one thing reading a mark
+	# is FOR. Both of these buy the same reading, sooner and from further out.
+	"filing": ["", "A QUICKER HAND", "ALONGSIDE FROM FURTHER",
+		"THE HELD CELL IS AN ANCHOR"],
+	# §111 commit 5b, the rest of the roster. Every grant is a helper below with
+	# a world class as its one consumer, so A TIER IS A GATE can measure the
+	# rule off-tree without building the world that renders it.
+	"hunting": ["", "THE COLD TRAIL", "THE CIRCLE READ"],
+	# NOT "the shear heard" -- the spawn already announces itself to everybody
+	# on the comms plate, bearing included, and a tier that grants what everyone
+	# has is a rung that grants nothing (§88, caught by reading the surface
+	# before wiring the perk). The middle rung is reach at the tear instead.
+	"rift_work": ["", "THE FUSE READ", "THE WIDE READING", "THE LAST SECOND"],
+	"brokerage": ["", "THE MANIFEST HAIL", "THE STANDING WORD", "ROUTE SENSE"],
+	"colonial": ["", "THE SILHOUETTE NAMED", "THE GROUND SOUNDED", "KEPT LIGHTS"],
+	"wardenry": ["", "THE POST READ", "THE COUNT KEPT", "THE BREACH WINDOW"],
+}
+
+# The tiers, named where the world reads them so a call site says what it means.
+const SURVEY_NAMED_TIER := 1
+const SURVEY_TEMPO_TIER := 2
+const SURVEY_TEMPO_BONUS := 0.25    # a quarter off the hold
+const SURVEY_RIVAL_TIER := 3
+const SURVEY_REACH_TIER := 4
+const SURVEY_REACH_MULT := 1.5      # far enough to work a guarded hull's mast
+const HUNTING_TRAIL_TIER := 1
+const HUNTING_TRAIL_MULT := 0.85    # every filed bearing lands a little truer
+const HUNTING_CIRCLE_TIER := 2
+const RIFT_FUSE_TIER := 1
+const RIFT_READ_TIER := 2
+const RIFT_READ_MULT := 1.5     # the shear's own reading, taken from further out
+const RIFT_WARN_TIER := 3
+const RIFT_WARN_SECONDS := 3.0
+const BROKER_HAIL_TIER := 1
+const BROKER_WORD_TIER := 2
+const BROKER_ROUTE_TIER := 3
+const COLONIAL_NAME_TIER := 1
+const COLONIAL_NAME_MULT := 2.0     # the silhouette answers from twice as far
+const COLONIAL_SOUND_TIER := 2
+const COLONIAL_LIGHTS_TIER := 3
+const WARDEN_READ_TIER := 1
+const WARDEN_COUNT_TIER := 2
+const WARDEN_WINDOW_TIER := 3
+const WARDEN_WINDOW_MULT := 1.25    # a hulk whose post you cleared cracks faster
+
+const FILING_QUICK_TIER := 1
+const FILING_QUICK_BONUS := 0.25    # a quarter off the hold
+const FILING_REACH_TIER := 2
+# t3, and the payoff the whole chain was missing (§112). A cell the network
+# holds is a place somebody keeps a light on: the jump verb may target it, at
+# the beacon jump's own fee and its own depth cap. §87 cut beacons 8 -> 3
+# because FREE, EARLY route-threading killed the recover verb; this network is
+# late, earned through the longest chain in the game, paid per jump and capped
+# -- every property §87's failure lacked.
+const FILING_ANCHOR_TIER := 3
+const FILING_REACH_MULT := 1.5      # come alongside from further out
+
+# §112. COLONY WORKS -- the investment sink. One-time, per colony, and every
+# return is a SERVICE (§26's currencies): the relay is information, the dock is
+# time, the annex is access. No work touches a stat, a price or an income term.
+const COLONY_WORKS := {
+	"relay": {"name": "RELAY MAST", "price": 4000,
+		"blurb": "THE CHART CARRIES THE CHARTED MARKETS' WEATHER OUT TO THIS SYSTEM"},
+	"dock": {"name": "DRY DOCK", "price": 6000,
+		"blurb": "YOUR SHIELD MENDS AT TWICE THE PACE ALONGSIDE THIS COLONY"},
+	"annex": {"name": "BONDED ANNEX", "price": 8000,
+		"blurb": "A BONDED BAY OF ITS OWN — HOLD AT THE COLONY TO USE IT"},
+}
+const DOCK_AURA_RANGE := 30.0
+const DOCK_AURA_MULT := 2.0
+
+const REQ_MAX_OPEN := 3
+# Five played minutes. Long enough that ordering is a decision made on the way
+# out rather than a vending machine at the counter you are standing at, short
+# enough that it lands inside the same session it was placed in.
+const REQ_DELAY := 300.0
 # v8. How much salvage this pilot can read. Not a power stat and deliberately not
 # spendable: it is a record of what you have actually done that opens doors, the
 # same shape as `breached`. See identify() for the one rule it drives.
@@ -1197,6 +1362,11 @@ func reset_to_starter() -> void:
 	played_seconds = 0.0
 	docked_at = ""
 	market_pressure = {}
+	market_stock = {}
+	requisition_orders = []
+	reads_done = {}
+	skills = {}
+	colony_works = {}
 	market_events = []
 	archeology = 0
 	archeology_xp = 0
@@ -1876,6 +2046,10 @@ func note_mark_spent(key: String) -> bool:
 	if not is_mark_read(key) or is_mark_spent(key):
 		return false
 	marks_seen[key] = MARK_CLOSED if is_mark_given(key) else MARK_SPENT
+	# §111. HUNTING's second feed: a legend resolved. First transitions only by
+	# construction -- the guard above already refused a re-spend -- so a legend
+	# pays this ladder exactly once, the way a mark pays FILING exactly once.
+	mark_skill("hunting")
 	_queue_save()
 	return true
 
@@ -2206,6 +2380,17 @@ const DIRECTIVE_STAGE := 2
 const ARCHIVE_KINDS := ["meridian", "glass", "return"]
 
 
+func return_archive_started() -> bool:
+	# §112. Has the pilot read ANY fragment of the bearing-terminus record --
+	# the rung below knowing what it says. Gates one unpriced line at the
+	# Watch's desk: a nudge toward finishing a thing already started, offered
+	# only to somebody who has demonstrably started it.
+	for key_v in deep_logs:
+		if String(key_v).ends_with(":return") and int(deep_logs[key_v]) >= 1:
+			return true
+	return false
+
+
 func knows_directive_9() -> bool:
 	# The PRIVATE beat: the pilot has read the order itself. Gates the ship's
 	# line, the log entry and the Commission field — things that belong to the
@@ -2450,6 +2635,9 @@ func claim_colony(key: String, x: float, z: float) -> bool:
 		return false
 	colonies[key] = {"x": x, "z": z, "founded_at": played_seconds}
 	note_log("COLONY FOUNDED — %s" % key)
+	# §111. COLONIAL's one feed, in the one mutator, on the success path only --
+	# a duplicate key returned above and paid nothing.
+	mark_skill("colonial")
 	_queue_save()
 	return true
 
@@ -3260,6 +3448,232 @@ func can_read(salvage_id: String, at_lab: bool) -> bool:
 	return band <= archeology + (1 if at_lab else 0)
 
 
+func skill_ids() -> Array:
+	return SKILL_TIERS.keys()
+
+
+func skill_xp(id: String) -> int:
+	return int(skills.get(id, 0))
+
+
+func skill_tier(id: String) -> int:
+	# DERIVED, NEVER STORED. The legacy four keep a tier var beside an xp var and
+	# a loader that clamps one against the other; this cannot drift because there
+	# is only one number.
+	var tiers: Array = SKILL_TIERS.get(id, [])
+	var xp := skill_xp(id)
+	var t := 0
+	for i in range(tiers.size()):
+		if xp >= int(tiers[i]):
+			t = i
+	return t
+
+
+func skill_cap(id: String) -> int:
+	return maxi((SKILL_TIERS.get(id, [0]) as Array).size() - 1, 0)
+
+
+func skill_to_next(id: String) -> int:
+	# -1 at the cap, which is what the line renders as NOTHING LEFT TO LEARN.
+	var tiers: Array = SKILL_TIERS.get(id, [])
+	var t := skill_tier(id)
+	if t >= tiers.size() - 1:
+		return -1
+	return maxi(int(tiers[t + 1]) - skill_xp(id), 0)
+
+
+func mark_skill(id: String, n := 1) -> bool:
+	# THE ONE MUTATOR, and it returns whether a TIER landed rather than whether
+	# xp moved -- mark_mining's signature, and for its reason: the caller wants
+	# to know whether to say something, and xp moves constantly.
+	if not SKILL_TIERS.has(id) or n <= 0:
+		return false
+	var before := skill_tier(id)
+	skills[id] = skill_xp(id) + n
+	var after := skill_tier(id)
+	_queue_save()
+	if after <= before:
+		return false
+	# The FINAL tier only. A jump of two rungs is one line in the log, not two --
+	# mark_smuggling's rule.
+	note_log("%s %d — %s" % [String(SKILL_LABELS.get(id, id.to_upper())), after,
+		String((SKILL_PERKS.get(id, []) as Array)[after])])
+	return true
+
+
+func skill_line(id: String) -> String:
+	# ONE RULE, rendered everywhere. The legacy four each wrote their own; these
+	# share this, so a new ladder is a table row and never a line function.
+	var label := String(SKILL_LABELS.get(id, id.to_upper()))
+	var t := skill_tier(id)
+	if t <= 0:
+		# §58: the unearned rung names the ACT, not the gate.
+		return "%s 0 — %s" % [label, String(SKILL_VERBS.get(id, ""))]
+	var perk := String((SKILL_PERKS.get(id, []) as Array)[t])
+	var left := skill_to_next(id)
+	if left < 0:
+		return "%s %d — %s · NOTHING LEFT TO LEARN" % [label, t, perk]
+	return "%s %d — %s · %d TO NEXT" % [label, t, perk, left]
+
+
+# §111 commit 5b. THE GRANTS, AS RULE FUNCTIONS. Each of these is the whole of
+# its tier's mechanism; the world class that consumes it renders the result and
+# decides nothing. That is what lets A TIER IS A GATE measure every one of them
+# off-tree, and it is §19's "test the rule, not the rendering" made structural.
+
+func hunting_error_mult() -> float:
+	# t1. Applied at file_apex_intel's intake, so every channel -- mast, relic,
+	# both desks, a cleared post, a shear -- lands a little truer. INFORMATION:
+	# nothing is free that was paid for before, the same readings just age
+	# better in a practiced hand.
+	if skill_tier("hunting") >= HUNTING_TRAIL_TIER:
+		return HUNTING_TRAIL_MULT
+	return 1.0
+
+
+func rift_read_mult() -> float:
+	# t2. The once-per-shear ±4° reading -- the sharpest channel in the game --
+	# taken from half again the distance, which is less time spent standing in
+	# a collapse zone. Reach at a thing that already pays, never a new payout.
+	if skill_tier("rift_work") >= RIFT_READ_TIER:
+		return RIFT_READ_MULT
+	return 1.0
+
+
+func rift_warn_seconds() -> float:
+	# t3. TIME, literally: the collapse klaxon sounds this many seconds before
+	# the pulse rather than on it.
+	if skill_tier("rift_work") >= RIFT_WARN_TIER:
+		return RIFT_WARN_SECONDS
+	return 0.0
+
+
+func colonial_name_mult() -> float:
+	if skill_tier("colonial") >= COLONIAL_NAME_TIER:
+		return COLONIAL_NAME_MULT
+	return 1.0
+
+
+func wardenry_breach_mult() -> float:
+	# t3. Only a hulk whose OWN post the player just cleared -- the consumer
+	# checks the flag, this supplies the rate. TIME, and earned at the exact
+	# hull it was earned on.
+	if skill_tier("wardenry") >= WARDEN_WINDOW_TIER:
+		return WARDEN_WINDOW_MULT
+	return 1.0
+
+
+func works_of(key: String) -> Array:
+	return colony_works.get(key, [])
+
+
+func has_work(key: String, work: String) -> bool:
+	return (colony_works.get(key, []) as Array).has(work)
+
+
+func buy_colony_work(key: String, work: String) -> bool:
+	# PURE STORE RULES: a real colony, a known work, not already built, and the
+	# credits in hand. The one gate this cannot ask -- is the colony's ground
+	# sounded -- is the WORLD's question, so Main.buy_colony_work asks it first
+	# and is the only caller. (GameState never references DeepSpace; the same
+	# edge rule cell_depth_of_key documents.)
+	if not colonies.has(key) or not COLONY_WORKS.has(work):
+		return false
+	if has_work(key, work):
+		return false
+	var price := int((COLONY_WORKS[work] as Dictionary).get("price", 0))
+	if not spend_salvage(price):
+		return false
+	var lst: Array = colony_works.get(key, [])
+	lst.append(work)
+	colony_works[key] = lst
+	note_log("WORKS RAISED — %s" % String((COLONY_WORKS[work] as Dictionary).get("name", work)))
+	_queue_save()
+	return true
+
+
+func dock_aura_at(x: float, z: float) -> bool:
+	# §112, THE DRY DOCK. True within DOCK_AURA_RANGE of any owned colony that
+	# built one, in the current system. TIME, not power: out of combat the
+	# shield mends free anyway -- alongside your own yard it mends at twice the
+	# pace, and in combat this reads false by the caller's own calm-delay gate.
+	for c_v in colonies_in(current_system):
+		var c: Dictionary = c_v
+		if not has_work(String(c["key"]), "dock"):
+			continue
+		var dx := float(c["x"]) - x
+		var dz := float(c["z"]) - z
+		if sqrt(dx * dx + dz * dz) <= DOCK_AURA_RANGE:
+			return true
+	return false
+
+
+func note_read(component: String) -> void:
+	# The order desk's gate, written by the one thing that produces a component.
+	if CommodityDB.is_component(component):
+		reads_done[component] = int(reads_done.get(component, 0)) + 1
+
+
+func has_read(component: String) -> bool:
+	return int(reads_done.get(component, 0)) > 0
+
+
+func orders_at(port_key: String) -> Array:
+	var out: Array = []
+	for o in requisition_orders:
+		if String((o as Dictionary).get("port", "")) == port_key:
+			out.append(o)
+	return out
+
+
+func order_ready(order: Dictionary) -> bool:
+	return played_seconds - float(order.get("at", 0.0)) >= REQ_DELAY
+
+
+func order_seconds_left(order: Dictionary) -> float:
+	return maxf(REQ_DELAY - (played_seconds - float(order.get("at", 0.0))), 0.0)
+
+
+func can_order(good: String) -> bool:
+	# THREE REFUSALS, and each states its own terms at the desk. Not a component,
+	# never read one, or the book is full.
+	if not CommodityDB.is_component(good):
+		return false
+	if not has_read(good):
+		return false
+	return requisition_orders.size() < REQ_MAX_OPEN
+
+
+func place_order(good: String, port_key: String) -> bool:
+	# The CALLER pays -- port_panel._order does, the way _buy does -- so this
+	# stays a store and the counter stays the place money changes hands.
+	if not can_order(good):
+		return false
+	requisition_orders.append({"good": good, "port": port_key, "at": played_seconds})
+	_queue_save()
+	return true
+
+
+func collect_order(index: int) -> bool:
+	if index < 0 or index >= requisition_orders.size():
+		return false
+	var o: Dictionary = requisition_orders[index]
+	if not order_ready(o):
+		return false
+	var good := String(o.get("good", ""))
+	# ALL OR NOTHING, and the order SURVIVES a full hold. A requisition that
+	# evaporated because the player arrived with two spare units of space would
+	# be paid-for cargo deleted by a rounding error -- mineable_seam's own rule,
+	# and the reason it asks before it spends.
+	if cargo_free() < CommodityDB.space_of(good):
+		return false
+	if load_cargo(good, 1) < 1:
+		return false
+	requisition_orders.remove_at(index)
+	_queue_save()
+	return true
+
+
 func identify(salvage_id: String, output_id: String, at_lab: bool) -> bool:
 	# Consumes one unit of salvage and produces one of the chosen output. The
 	# player picks the output from CommodityDB.reads_as() — there is no roll here
@@ -3284,6 +3698,10 @@ func identify(salvage_id: String, output_id: String, at_lab: bool) -> bool:
 	# player anything, and "did 0->1 arrive fast enough" is the whole question the
 	# first play-test has to answer.
 	last_read_tiered = mark_archeology(ARCHEOLOGY_PER_READ)
+	# §110. The order desk sources what you have held. Recorded HERE, in the one
+	# function that has ever produced a component, so the gate cannot drift from
+	# the thing it gates on.
+	note_read(output_id)
 
 	# SOMEBODY ELSE'S CHART, read properly. `index_cartographic` is the one
 	# salvage in the catalog that literally IS a survey somebody else made, so it
@@ -3679,6 +4097,11 @@ func save_dict() -> Dictionary:
 		"played_seconds": played_seconds,
 		"docked_at": docked_at,
 		"market_pressure": market_pressure,
+		"market_stock": market_stock,
+		"requisition_orders": requisition_orders,
+		"reads_done": reads_done,
+		"skills": skills,
+		"colony_works": colony_works,
 		"market_events": market_events,
 		# NO `settings` AND NO `audio_muted`. Both moved to prefs.json when the
 		# save became per-pilot: they belong to the device, and leaving them here
@@ -3987,6 +4410,71 @@ func load_game() -> bool:
 	for k in data.get("market_pressure", {}):
 		market_pressure[str(k)] = clampf(float(data["market_pressure"][k]),
 			-Market.PRESSURE_CAP, Market.PRESSURE_CAP)
+	# v27. Entry by entry, dropping rather than crashing -- _load_seams_cut's
+	# posture. Four ways a hand-edited file is refused: a value that is not a
+	# dictionary, a key with no counter/good join in it, a good this build has
+	# never heard of, and a deficit at or below zero (which is not a hole, it is
+	# the default, and the default is never written down).
+	#
+	# A stamp is CLAMPED rather than dropped. A clock from the future is corrupt
+	# bookkeeping about a shelf that really is empty, and clamping it to now
+	# replenishes from this instant -- the safe direction, and the nursery's rule
+	# for the same shape of rubbish. It must run after played_seconds is read.
+	market_stock = {}
+	for k in data.get("market_stock", {}):
+		var sk := str(k)
+		var srec = data["market_stock"][k]
+		if typeof(srec) != TYPE_DICTIONARY or not sk.contains("|"):
+			continue
+		if not CommodityDB.exists(sk.substr(sk.rfind("|") + 1)):
+			continue
+		var sd := int((srec as Dictionary).get("d", 0))
+		if sd <= 0:
+			continue
+		var st := float((srec as Dictionary).get("t", 0.0))
+		if st < 0.0 or st > played_seconds:
+			st = played_seconds
+		market_stock[sk] = {"d": sd, "t": st}
+	# v27 (§110). Same posture, one row at a time. An order must name a component
+	# this build still has, sit on a real point of the player's own clock, and
+	# survive the open cap -- which is enforced here as well as at the desk,
+	# because the desk is a button and this is the rule.
+	requisition_orders = []
+	for o in data.get("requisition_orders", []):
+		if typeof(o) != TYPE_DICTIONARY:
+			continue
+		var og := str((o as Dictionary).get("good", ""))
+		if not CommodityDB.is_component(og):
+			continue
+		var oat := float((o as Dictionary).get("at", 0.0))
+		if oat < 0.0 or oat > played_seconds:
+			oat = played_seconds
+		requisition_orders.append({
+			"good": og,
+			"port": str((o as Dictionary).get("port", "")),
+			"at": oat,
+		})
+		if requisition_orders.size() >= REQ_MAX_OPEN:
+			break
+	reads_done = {}
+	for rk in data.get("reads_done", {}):
+		var rid := str(rk)
+		if not CommodityDB.is_component(rid):
+			continue
+		var rn := int(data["reads_done"][rk])
+		if rn > 0:
+			reads_done[rid] = rn
+	# v27 (§111). Only ids this build still has, only positive xp. No clamp on
+	# the value: xp past the last rung is harmless (the tier derives to the cap)
+	# and clamping it would silently rewrite a save every time a tier is added.
+	skills = {}
+	for kk in data.get("skills", {}):
+		var kid := str(kk)
+		if not SKILL_TIERS.has(kid):
+			continue
+		var kx := int(data["skills"][kk])
+		if kx > 0:
+			skills[kid] = kx
 	# v5 fields. Anyone loading a v1-v4 save has been playing already, so the
 	# tutorial is treated as finished rather than replayed at them.
 	#
@@ -4043,6 +4531,25 @@ func load_game() -> bool:
 	# v20 stage 6, riding the same version as beacons — one bump for both stores,
 	# since neither needs a grandfather and an absent key is the correct empty.
 	_load_colonies(data.get("colonies", {}))
+	# v27 (§112). Works only for colonies this save actually holds, only work
+	# ids this build knows, deduplicated. IMMEDIATELY after _load_colonies and
+	# never before it -- the first draft of this block sat 70 lines up with the
+	# other v27 stores and validated every key against the PREVIOUS session's
+	# colony set, which is the load-order defect the berths loader's own
+	# comment warns about from the other direction.
+	colony_works = {}
+	for wk in data.get("colony_works", {}):
+		var wkey := str(wk)
+		if not colonies.has(wkey):
+			continue
+		var wraw = data["colony_works"][wk]
+		var wlist: Array = []
+		for w_v in (wraw as Array if wraw is Array else []):
+			var wid := str(w_v)
+			if COLONY_WORKS.has(wid) and not wlist.has(wid):
+				wlist.append(wid)
+		if not wlist.is_empty():
+			colony_works[wkey] = wlist
 	# BOTH KEYS, and no version bump. A rename is a shape change only if the old
 	# file stops loading; reading the legacy key as the default for the new one
 	# means a v20 save keeps its cooldown instead of silently coming back with
@@ -4138,6 +4645,12 @@ func load_game() -> bool:
 				"kind": str(ev.get("kind", "shortage")),
 				"port": str(ev.get("port", "")),
 				"good": str(ev.get("good", "")),
+				# v27/§108. Two additive fields, defaults-not-branches: a save
+				# written before deep weather existed has neither, arrives with
+				# an empty name and deep=false, and Market.event_place falls back
+				# to the chart for it -- which is exactly what it was.
+				"name": str(ev.get("name", "")),
+				"deep": bool(ev.get("deep", false)),
 				"mult": float(ev.get("mult", 1.0)),
 				"remaining": float(ev.get("remaining", 0.0)),
 			})

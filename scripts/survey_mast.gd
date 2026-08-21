@@ -116,24 +116,83 @@ func _process(delta: float) -> void:
 		var hud := get_tree().get_first_node_in_group("hud")
 		if hud:
 			if near and not surveyed:
-				hud.prompt("HOLD TO SURVEY — %s" % DeepSpace.BAND_NAMES[
-					clampi(band, 0, DeepSpace.BAND_NAMES.size() - 1)])
+				hud.prompt(_prompt_line())
 			else:
 				hud.clear_prompt()
+
+
+func reach() -> float:
+	# SURVEYING t4, THE LONG ARM. §22 records that surveying a guarded hulk is
+	# the sneak play and cracking it is what contests the post -- the mast rides
+	# the stern precisely so the stand-off sits outside the guard ring. A longer
+	# arm makes that play SAFER rather than making it pay more, which is the
+	# shape a tier is allowed to have: it buys distance, not yield.
+	if GameState.skill_tier("surveying") >= GameState.SURVEY_REACH_TIER:
+		return SURVEY_RANGE * GameState.SURVEY_REACH_MULT
+	return SURVEY_RANGE
 
 
 func _player_in_range() -> bool:
 	var player: Node3D = get_tree().get_first_node_in_group("player")
 	if player == null:
 		return false
-	return player.global_position.distance_to(global_position) <= SURVEY_RANGE
+	return player.global_position.distance_to(global_position) <= reach()
 
 
 func survey_seconds() -> float:
 	# Scanners finally do something sensor-shaped. Until now "Targeting Scanner"
 	# was a range-and-crit module wearing an instrument's name.
 	var speed := 1.0 + float(GameState.stats.get("survey_speed", 0.0))
+	# SURVEYING t2, MAST TEMPO. A hand that has worked sixteen of these is
+	# quicker at it. Stacks with the scanner because they are different things --
+	# the module is the instrument, this is the operator -- and it is TIME, which
+	# is the currency §26 says a tier may be paid in.
+	if GameState.skill_tier("surveying") >= GameState.SURVEY_TEMPO_TIER:
+		speed += GameState.SURVEY_TEMPO_BONUS
 	return survey_time / maxf(speed, 0.2)
+
+
+func rival_was_first() -> bool:
+	# Lifted out of _complete so the PROMPT can ask the same question the toast
+	# does -- one source, so a tier-3 heads-up and the settlement afterwards
+	# cannot disagree. The sentinel guard mirrors note_surveyed's: a rift mast
+	# has no cell, so it has no rival either.
+	var main_r := get_tree().get_first_node_in_group("main")
+	if main_r == null or absi(cell.x) > 1 << 20 or absi(cell.y) > 1 << 20 \
+			or not main_r.has_method("cell_depth_of_key"):
+		return false
+	var ck := DeepSpace.cell_key(main_r.system_id, cell.x, cell.y)
+	return Rival.filed(ck, float(main_r.cell_depth_of_key(ck)),
+		GameState.run_seed, GameState.played_seconds)
+
+
+func _prompt_line() -> String:
+	# The band was all this ever said. Two SURVEYING tiers add to it, and both
+	# are INFORMATION -- neither changes what the mast yields or what it costs.
+	# String(), and NOT because it is tidier: BAND_NAMES is an untyped const
+	# Array, so indexing it yields a Variant and `:=` has nothing to infer from.
+	# That is a PARSE error, and a parse error in a leaf class takes down every
+	# script that depends on it -- deep_space, system_db, game_state and the
+	# audio autoload all failed to compile behind this one line.
+	var band_name := String(DeepSpace.BAND_NAMES[
+		clampi(band, 0, DeepSpace.BAND_NAMES.size() - 1)])
+	var line := "HOLD TO SURVEY — %s" % band_name
+	# t1, THE READING IS NAMED. What comes aboard, before you spend the hold --
+	# which matters most in the one case the mast already refuses for: a hold
+	# with no room for it.
+	if GameState.skill_tier("surveying") >= GameState.SURVEY_NAMED_TIER:
+		var good := CommodityDB.chart_for_band(band)
+		if good != "":
+			line += " · %s x%d" % [CommodityDB.short_name(good), YIELD_UNITS]
+	# t3, THE RIVAL SHOWS EARLY. The heads-up moves from AFTER the hold to
+	# BEFORE it, so the reading becomes a choice rather than a surprise. The
+	# cargo is unchanged either way -- only the first-filing bonus was ever at
+	# stake -- so this buys a decision, not a credit.
+	if GameState.skill_tier("surveying") >= GameState.SURVEY_RIVAL_TIER \
+			and rival_was_first():
+		line += " · ALREADY FILED" if not GameState.files_with_the_network() \
+			else " · A COLLEAGUE HAS IT"
+	return line
 
 
 # --- the hold contract ------------------------------------------------------
@@ -186,7 +245,7 @@ func _approach() -> void:
 	toward.y = 0.0
 	if toward.length() < 0.1:
 		toward = Vector3.BACK
-	var stand: Vector3 = global_position + toward.normalized() * (SURVEY_RANGE * 0.78)
+	var stand: Vector3 = global_position + toward.normalized() * (reach() * 0.78)
 	stand.y = 0.0
 	player.command_move(stand)
 
@@ -244,13 +303,7 @@ func _complete() -> void:
 	# so the mast's heads-up and the counter's verdict cannot disagree about
 	# where this cell is. The sentinel guard mirrors note_surveyed's: a rift
 	# mast has no cell, so it has no rival either.
-	var rival_here := false
-	var main_r := get_tree().get_first_node_in_group("main")
-	if main_r != null and absi(cell.x) <= 1 << 20 and absi(cell.y) <= 1 << 20 \
-			and main_r.has_method("cell_depth_of_key"):
-		var ck := DeepSpace.cell_key(main_r.system_id, cell.x, cell.y)
-		rival_here = Rival.filed(ck, float(main_r.cell_depth_of_key(ck)),
-			GameState.run_seed, GameState.played_seconds)
+	var rival_here := rival_was_first()
 
 	if hud:
 		hud.crack_progress(-1.0)
@@ -279,6 +332,16 @@ func _complete() -> void:
 	var main := get_tree().get_first_node_in_group("main")
 	if main and main.deep_space:
 		main.deep_space.note_surveyed(cell)
+
+	# §111. SURVEYING'S ONE FEED, and the verb nothing else in the game is fed
+	# by. Counted per MAST rather than per unit or per cell: a mast is the act,
+	# and a cell already worked cannot be worked again (the spawn checks
+	# is_surveyed), so this cannot be farmed by re-holding the same dish.
+	if GameState.mark_skill("surveying") and hud:
+		hud.show_toast("SURVEYING %d — %s" % [
+			GameState.skill_tier("surveying"),
+			String((GameState.SKILL_PERKS["surveying"] as Array)[
+				GameState.skill_tier("surveying")])], Palette.GOLD)
 
 	# THE MAST HEARS THE ENGINE, but only from close enough to triangulate. A
 	# survey dish is not an intel desk: it picks up the transmission as

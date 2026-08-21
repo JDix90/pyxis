@@ -220,6 +220,8 @@ func _refresh() -> void:
 		_build_controls()
 	elif _page == "log":
 		_build_log()
+	elif _page == "ledger":
+		_build_ledger()
 	else:
 		_build_root()
 	# The cap is per-PAGE, not per-window: three pages of different heights share
@@ -234,22 +236,21 @@ func _build_root() -> void:
 	# The pilot line. The pause menu is reachable anywhere, including 900u out
 	# with no station in any direction — which is exactly where a player wants to
 	# know what they can read.
-	_body.add_child(_sub(GameState.archeology_line()))
-	_body.add_child(_sub(GameState.smuggling_line()))
-	# The third line is SAFE to add here, and that was measured rather than
-	# assumed: the root page already sits past its scroll cap at a 1.6 UI scale
-	# (546 rows against 456), so _clamp_height pins the panel at 492 of 512 and a
-	# fourth _sub costs 26 rows of scroll rather than an overflow. SHEET FITS
-	# cannot see the difference — see STRATEGY §36 for why that is its own defect.
-	_body.add_child(_sub(GameState.mining_line()))
-	# And a FOURTH, on the same measured argument as the third: the page is
-	# already scrolling at a 1.6 UI scale, so this costs rows of scroll rather
-	# than an overflow, and _clamp_height keeps the panel inside the canvas
-	# either way. SHEET FITS still cannot tell the difference — it reads the
-	# clamped panel height, which is exactly what the clamp guarantees.
-	_body.add_child(_sub(GameState.persuasion_line()))
+	# §111. FOUR LINES BECAME ONE, and the root page got SHORTER rather than
+	# longer. The two comments this replaces both argued, correctly and with
+	# measurements, that one more _sub was affordable because the page already
+	# scrolls at a 1.6 UI scale -- an argument that works three times and then
+	# does not. At eleven ladders it stops being a pilot line and becomes a
+	# console on the pause screen, which is the thing §19 refuses.
+	#
+	# So the lines move to their own page and this becomes a door. The pause
+	# menu is still reachable 900u out with no station in any direction, which
+	# was always the reason these lived here.
 	_body.add_child(_spacer(6))
 	_body.add_child(_action("RESUME", Palette.TEAL, resume))
+	_body.add_child(_action("PILOT'S LEDGER", Palette.AMBER, func() -> void:
+		_page = "ledger"
+		_refresh()))
 	_body.add_child(_action("CAPTAIN'S LOG", Palette.AMBER, func() -> void:
 		_page = "log"
 		_refresh()))
@@ -284,6 +285,36 @@ func _build_root() -> void:
 		_body.add_child(_action("ABANDON TO TITLE", Palette.THREAT, func() -> void:
 			_confirming_abandon = true
 			_refresh()))
+
+
+func _build_ledger() -> void:
+	# §111. THE ONE SHARED PAGE, and the §19 amendment that permits it.
+	#
+	# "A skill with its own screen is a skill that has become bookkeeping" still
+	# stands, and stands per-skill: not one of these has a console, a spend
+	# button, a tree or a point to allocate. What is here is a RECORD -- eleven
+	# one-line statements of what this pilot has done and what it opened -- and
+	# it exists because eleven of them cannot live on the root page, not because
+	# any single one of them earned a screen. There is nothing on this page to
+	# press. That is the difference, and it is the whole of it.
+	_body.add_child(_heading("PILOT'S LEDGER"))
+	_body.add_child(_sub("WHAT YOU HAVE DONE, AND WHAT IT OPENED. NOTHING HERE IS SPENT."))
+	_body.add_child(_spacer(4))
+	# The legacy four first, in the order they shipped -- they each own their own
+	# line function and their own save keys, and folding them into SKILL_TIERS
+	# would be a migration for a cosmetic gain.
+	_body.add_child(_sub(GameState.archeology_line()))
+	_body.add_child(_sub(GameState.smuggling_line()))
+	_body.add_child(_sub(GameState.mining_line()))
+	_body.add_child(_sub(GameState.persuasion_line()))
+	# Then the table-driven ones, which render through ONE line function, so a
+	# new ladder is a row in SKILL_TIERS and never a line of this page.
+	for id_v in GameState.skill_ids():
+		_body.add_child(_sub(GameState.skill_line(String(id_v))))
+	_body.add_child(_spacer(6))
+	_body.add_child(_action("BACK", Palette.AMBER, func() -> void:
+		_page = "root"
+		_refresh()))
 
 
 func _build_log() -> void:

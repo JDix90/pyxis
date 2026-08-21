@@ -46,6 +46,12 @@ const INTEL_ERROR_DEG := 20.0
 
 # Set by SystemBuilder from the system definition.
 var crack_time := 1.8
+# §111, WARDENRY t3. Set by DeepSpace the moment this hull's own guard post is
+# cleared. The flag is a fact about the WORLD (the guns that watched this
+# breach point are gone); whether it means anything is the tier's question,
+# asked in hold_tick through wardenry_breach_mult() -- flag without tier does
+# nothing, tier without flag does nothing.
+var post_cleared := false
 var loot_total := 70
 
 # Whether cracking this hull counts as SURVEYING THE SYSTEM — charting the next
@@ -276,6 +282,16 @@ func breach_prompt() -> String:
 	# ship in front of a wreck and reading the HUD.
 	if not trap.is_empty() and (GameState.hold_has("heart_reliquary") or GameState.fit_has("mod_resonance")):
 		return "RIGGED — THE HEART IS HUMMING. HOLD TO BREACH ANYWAY"
+	# §111, WARDENRY t1. THE POST READ: a warden sizes the watch before walking
+	# into it. Asked of the world through main (deep_space owns the posts), and
+	# INFORMATION only -- the count was always discoverable by flying at it.
+	if GameState.skill_tier("wardenry") >= GameState.WARDEN_READ_TIER:
+		var main_w := get_tree().get_first_node_in_group("main")
+		if main_w != null and main_w.deep_space != null:
+			var standing: int = main_w.deep_space.post_standing(
+				main_w.deep_space.cell_of(global_position))
+			if standing > 0:
+				return "A POST OF %d WATCHES THIS HULL — HOLD TO BREACH UNDER THEIR GUNS" % standing
 	return "HOLD ON THE BREACH POINT"
 
 
@@ -411,7 +427,12 @@ func hold_tick(delta: float) -> void:
 	# crack_time, because crack_time is the WRECK's property — set by the band it
 	# was found in — and a tool that edited it would be writing the world's number
 	# from the ship. The hold gets faster; the hull stays what it is.
-	_progress += delta * (1.0 + maxf(float(GameState.stats.get("breach_speed", 0.0)), 0.0)) / crack_time
+	# §111, WARDENRY t3 rides the same shape as the torch and for the torch's
+	# reason: a RATE, never an edit to crack_time, because crack_time is the
+	# wreck's own number.
+	var warden_rate := GameState.wardenry_breach_mult() if post_cleared else 1.0
+	_progress += delta * warden_rate \
+		* (1.0 + maxf(float(GameState.stats.get("breach_speed", 0.0)), 0.0)) / crack_time
 	_sync_gauge()
 
 	var rig := get_tree().get_first_node_in_group("camera_rig")
