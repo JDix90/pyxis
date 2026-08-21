@@ -12646,7 +12646,6 @@ func _run_raid_test() -> void:
 	hud._prompt_soft_until = 0.0
 	hud.clear_prompt()
 	hud.prompt_refusal("THE NOTATION IS NOT YOURS")
-	hud.prompt("A DERELICT IS WITHIN RANGE")
 	hud.clear_prompt()
 	await get_tree().create_timer(0.3).timeout
 	var refusal_kept := hud.prompt_text()
@@ -12661,28 +12660,39 @@ func _run_raid_test() -> void:
 	Barks.fire("first_hostiles")
 	await get_tree().process_frame
 	var bark_deferred: bool = not GameState.has_seen_bark("first_hostiles") \
-		and hud.prompt_text() == refusal_kept
-	# c. A REFUSAL REPLACES A REFUSAL. The newest one is the one the player just
+		and hud.prompt_text() == "THE NOTATION IS NOT YOURS"
+	# c. AND AN ACT IS ALWAYS ANSWERED. The clause this leg's own red earned.
+	#    The first draft of the lock blocked WRITES as well as clears, so a live
+	#    refusal swallowed the next thing the player tapped -- `THE MONUMENT
+	#    ANSWERS A TAP` went red with a warden refusal standing in for both a
+	#    locked monument's answer and a claimed one's. A deadline is a statement
+	#    about the line on screen, never a mute on the world.
+	hud.prompt("THE CHART CARRIES ITS JUMP")
+	await get_tree().process_frame
+	var act_answered := hud.prompt_text()
+	# d. A REFUSAL REPLACES A REFUSAL. The newest one is the one the player just
 	#    earned, so this must NOT be a first-writer-wins lock.
 	hud.prompt_refusal("THE GROUND IS NOT SOUNDED")
 	await get_tree().process_frame
 	var refusal_replaced := hud.prompt_text()
-	# d. AND THE DEMAND OUTRANKS IT. hold_prompt clears the soft deadline before
+	# e. AND THE DEMAND OUTRANKS IT. hold_prompt clears the soft deadline before
 	#    it writes; without that line a refusal would refuse the one sentence in
 	#    this game that gets six seconds while something closes on the player.
 	hud.hold_prompt("RAIDERS DEMAND 400 SALVAGE — PAY OR REFUSE")
 	await get_tree().process_frame
 	var demand_wins := hud.prompt_text()
 	hud.hide_parley()
-	# e. AND IT LAPSES. Not a lock the world never gets back -- with the deadline
+	# f. AND IT LAPSES. Not a lock the world never gets back -- with the deadline
 	#    passed, the next ambient line lands normally.
 	hud._prompt_soft_until = 0.0
 	hud.prompt("THE WORLD GETS IT BACK AGAIN")
 	await get_tree().process_frame
 	var lapsed := hud.prompt_text()
-	print("[raid] A REFUSAL OWNS THE LINE held through a nudge and a raw clear ('%s'); a once-ever bark deferred not spent=%s; a second refusal replaces it ('%s'); the demand outranks both ('%s'); and it lapses ('%s') -> %s" % [
-		refusal_kept, str(bark_deferred), refusal_replaced, demand_wins, lapsed,
+	print("[raid] A REFUSAL SURVIVES A CLEAR held through a raw clear_prompt ('%s'); a once-ever bark deferred not spent=%s; but an ACT is always answered ('%s'); a second refusal replaces it ('%s'); the demand outranks both ('%s'); and it lapses ('%s') -> %s" % [
+		refusal_kept, str(bark_deferred), act_answered, refusal_replaced,
+		demand_wins, lapsed,
 		"PASS" if refusal_kept == "THE NOTATION IS NOT YOURS" and bark_deferred
+			and act_answered == "THE CHART CARRIES ITS JUMP"
 			and refusal_replaced == "THE GROUND IS NOT SOUNDED"
 			and demand_wins.contains("RAIDERS")
 			and lapsed == "THE WORLD GETS IT BACK AGAIN" else "FAIL"])

@@ -1979,20 +1979,34 @@ func prompt(text: String, hold_s := 0.0) -> void:
 	# reason: it would deliver sentences AFTER the moment that made them true,
 	# which is worse than losing them.
 	#
-	# What this fixes is narrower than "the line is crowded", and §113 measured
-	# it: a nudge replaced a refusal on the first-ever tap, for the pilot least
-	# able to guess. So a refusal owns the line for a moment, and only these
-	# three rules decide who writes:
+	# WHAT THE DEADLINE MEANS, and the first draft got this wrong in a way the
+	# sweep caught: it is a statement about THE LINE CURRENTLY ON SCREEN --
+	# "this is a refusal, do not CLEAR it yet" -- and never a global mute.
 	#
-	#   the parley's hard lock  >  a live refusal  >  everything else
+	# The draft blocked writes as well, so a live refusal refused everything for
+	# two seconds. That reads fine until you notice what a player does next:
+	# they tap something else. `THE MONUMENT ANSWERS A TAP` went red because a
+	# warden refusal from an earlier hold was still holding the line, and BOTH
+	# subsequent taps -- and the clears between them -- were swallowed. In the
+	# game that is a monument answering a tap with somebody else's sentence,
+	# which is §88's complaint ("a tap that moves the ship without a word") with
+	# a stale line on top.
 	#
-	# A refusal REPLACES a refusal, because the newest one is the one the player
-	# just earned. Ambient lines wait.
+	# AN ACT IS ALWAYS ANSWERED. A tap, a hold, a verb the player just tried --
+	# whatever it has to say, it says. What the deadline actually buys is the
+	# two things that were genuinely wrong:
+	#
+	#   * clear_prompt() waits, so drifting out of a seam's range cannot delete
+	#     the refusal the player is mid-read of;
+	#   * prompt_busy() reports, so a caller with something that can WAIT asks
+	#     first -- which is §113's evidenced defect exactly, a once-ever BARK
+	#     firing inline over a refusal, and it is fixed by the voluntary half
+	#     rather than by muting the world.
+	#
+	# The hard lock is untouched and still outranks all of it.
 	if _prompt_held:
 		return
 	var now := Time.get_ticks_msec() / 1000.0
-	if hold_s <= 0.0 and now < _prompt_soft_until:
-		return
 	if _prompt_label.text == text and _prompt_label.modulate.a > 0.5:
 		# RE-ARMED ON A REPEAT, not merely skipped. A refusal fired again by a
 		# player still holding the same thing should keep owning the line rather
@@ -2000,6 +2014,10 @@ func prompt(text: String, hold_s := 0.0) -> void:
 		if hold_s > 0.0:
 			_prompt_soft_until = now + hold_s
 		return
+	# THE DEADLINE TRAVELS WITH THE LINE. A new sentence replaces the old one, so
+	# it replaces the old one's claim too -- an ambient write clears the hold
+	# rather than inheriting it, or the next clear of THAT line would be refused
+	# on behalf of a refusal that is no longer on screen.
 	_prompt_soft_until = (now + hold_s) if hold_s > 0.0 else 0.0
 	_prompt_label.text = text
 	# THE FADE-OUT HAS TO DIE FIRST, and not doing so is a defect this line

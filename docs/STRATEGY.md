@@ -12478,24 +12478,51 @@ So the defect is narrower than "the line is crowded" — and §113 measured it: 
 nudge replaced a refusal on the first-ever tap**, for the pilot least able to
 guess.
 
-### A soft lock with a duration, and three rules
-
-    the parley's hard lock  >  a live refusal  >  everything else
+### A deadline on the LINE, not a mute on the world
 
 `prompt(text, hold_s := 0.0)` — **appended and optional**, §108's call for this
 environment said again: no Godot binary, a wrong arity is a parse error the
 static pass cannot see, and there are sixty-three call sites. Fifty-eight stay
 byte-identical.
 
-A refusal **replaces** a refusal, because the newest is the one the player just
-earned; a repeat of the same line **re-arms** rather than ageing out mid-read;
-`clear_prompt()` waits, because "the player flew a metre" is not a reason to
-delete the sentence explaining why the thing they tapped said no. A **queue** is
-refused for its own reason: it would deliver sentences *after* the moment that
-made them true, which is worse than losing them.
+**The first draft got the semantics wrong, and the sweep caught it.** It read
+the deadline as a lock and blocked *writes* as well as clears — so a live
+refusal refused everything for two seconds. That reads fine until you ask what
+a player does next: **they tap something else.**
+`THE MONUMENT ANSWERS A TAP` went red with a warden refusal from an earlier
+hold standing in for *both* a locked monument's answer and a claimed one's,
+because two `clear_prompt()` calls and two taps had all been swallowed. In the
+game that is a monument answering a tap with somebody else's sentence — §88's
+own complaint (*"a tap that moves the ship without a word"*) with a stale line
+on top of it.
 
-`hold_prompt` clears the soft deadline before it writes, and that line is
-load-bearing — without it, a refusal would refuse the demand.
+So the deadline is a statement about **the line currently on screen** — *this is
+a refusal, do not clear it yet* — and never a global mute:
+
+- **An act is always answered.** A tap, a hold, a verb just tried: whatever it
+  has to say, it says.
+- **`clear_prompt()` waits**, because "the player drifted out of a seam's range"
+  is not a reason to delete the sentence explaining why the thing they tapped
+  said no.
+- **`prompt_busy()` reports**, so a caller with something that can wait asks
+  first — which is §113's evidenced defect exactly, a once-ever *bark* firing
+  inline over a refusal, and it is fixed by the **voluntary** half rather than
+  by muting the world.
+- **The deadline travels with the line.** A new sentence replaces the old one's
+  claim too, or the next clear of *that* line would be refused on behalf of a
+  refusal no longer on screen.
+
+The hard lock is untouched and outranks all of it; `hold_prompt` clears the
+deadline before it writes, and that line is load-bearing — without it a refusal
+would refuse the demand. A **queue** is refused for its own reason: it would
+deliver sentences *after* the moment that made them true, which is worse than
+losing them.
+
+**The lesson is worth more than the mechanism.** The blocking version bought
+exactly one thing — a range prompt could not stomp a refusal — and cost the
+player's own next act an answer. Reading it, that trade was invisible; run, it
+took four seconds to expose. It is the difference between protecting a sentence
+and silencing the game.
 
 ### Which prompts are refusals is a rule, not a list
 
