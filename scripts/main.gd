@@ -626,6 +626,9 @@ func _ready() -> void:
 		_standing_pending[other] = int(_standing_pending.get(other, 0)) + delta_v
 		_standing_settle = STANDING_TOAST_SETTLE)
 
+	# §119. THE ELEVENTH, and the channel that never gives its name answers it.
+	GameState.last_rung_reached.connect(_the_eleventh)
+
 	GameState.system_unlocked.connect(func(id: String) -> void:
 		hud.show_toast("CHARTED — %s" % SystemDB.display_name(id), Palette.TEAL)
 		Barks.fire("chart_unlocked")
@@ -1711,6 +1714,44 @@ func legend_arrives(mark_system: String, index: int, kind: String, at: Vector3) 
 # colony IS a kept light, in the game's own words. This is the sentence that
 # says so once.
 var _kept_light_spoken := false
+
+
+func _the_eleventh() -> void:
+	# §119. NO PAYOUT. Not a credit, not a stat, not a tier, not a store, and
+	# not a second grant of any kind -- `NO LADDER PAYS IN CREDITS` climbs every
+	# ladder to its cap watching the wallet, and this arrives at exactly the
+	# moment that leg is standing on. What the eleventh rung buys is a sentence.
+	#
+	# THE SENDER IS THE ONE THAT HAS NEVER GIVEN A NAME. `CHANNEL_SENDERS` is
+	# the network's own set and every one of them is a description rather than a
+	# call sign; the band-6 broadcast is three dots. This uses the same set, so
+	# the voice that answers here is the voice that has answered every filing.
+	#
+	# It rides show_broadcast rather than the prompt line, which is a different
+	# surface with a different owner -- so none of §113's collision applies and
+	# commit 7's soft lock is not a dependency.
+	if hud == null:
+		return
+	if hud.has_method("broadcast_busy") and hud.broadcast_busy():
+		# UNSPOKEN RATHER THAN SPENT (§117's rule, and Barks.fire's): the flag
+		# that guards this lives in GameState and is already set, so the signal
+		# will not come again -- which means refusing here would lose the line
+		# for the run. Deferred by one frame instead, through the same call the
+		# network reply uses when the page is busy.
+		_eleventh_pending = true
+		return
+	_eleventh_pending = false
+	var sender := String(CHANNEL_SENDERS[
+		absi(hash("eleventh|%d" % GameState.run_seed)) % CHANNEL_SENDERS.size()])
+	hud.show_broadcast(sender,
+		"There is nothing further we can teach you, and that is not a "
+		+ "compliment. Every hand that reached this point is on the "
+		+ "attachment. You are not being congratulated. You are being "
+		+ "recognised, which is the only thing we have ever been able to do "
+		+ "for anybody, and it is why we keep the lights on.", Palette.RIVAL)
+
+
+var _eleventh_pending := false
 
 
 func _procession_passes_a_kept_light() -> void:
@@ -2881,6 +2922,11 @@ func _process(delta: float) -> void:
 		var pending := _network_reply_pending
 		_network_reply_pending = {}
 		network_reply(int(pending["cells"]), pending["at"] as Vector3)
+	# §119. The same flush for the same reason. The eleventh rung's signal fires
+	# once ever and GameState has already set its flag, so a plate that happened
+	# to be busy at that instant would cost the line for the whole run.
+	if _eleventh_pending and hud != null and not hud.broadcast_busy():
+		_the_eleventh()
 	if not _standing_pending.is_empty():
 		_standing_settle -= delta
 		# WAITS FOR THE SURFACE, not merely for the clock. Three of the movers
@@ -15073,6 +15119,82 @@ func _run_skill_test() -> void:
 	print("[skill] NO LADDER PAYS IN CREDITS %d salvage before a full climb of every ladder, %d after, first payer: %s -> %s" % [
 		purse, GameState.salvage, paid if paid != "" else "none",
 		"PASS" if paid == "" and GameState.salvage == purse else "FAIL"])
+
+	# 2b. THE ELEVENTH IS DERIVED FROM BOTH FAMILIES (§119). The count has to
+	#     span the four legacy vars and the seven table rows, and it has to be
+	#     asked of the TABLES -- the four legacy deepenings (5c) are still
+	#     deferred and each adds a rung, so a bar written as a number here would
+	#     silently move the day one lands. Driven from empty to full: nothing at
+	#     cap, then the seven, then all eleven.
+	GameState.skills = {}
+	GameState.archeology = 0
+	GameState.smuggling = 0
+	GameState.mining = 0
+	GameState.persuasion = 0
+	var total_l := GameState.ladders_total()
+	var none_capped := GameState.ladders_at_cap() == 0 \
+		and not GameState.every_ladder_capped()
+	for id_cv in GameState.skill_ids():
+		var sid_c := String(id_cv)
+		GameState.skills[sid_c] = 999999
+	var seven_only: bool = GameState.ladders_at_cap() == GameState.SKILL_TIERS.size() \
+		and not GameState.every_ladder_capped()
+	GameState.archeology = GameState.ARCHEOLOGY_TIERS.size() - 1
+	GameState.smuggling = GameState.SMUGGLING_TIERS.size() - 1
+	GameState.mining = GameState.MINING_TIERS.size() - 1
+	GameState.persuasion = GameState.PERSUASION_TIERS.size() - 1
+	var all_capped: bool = GameState.ladders_at_cap() == total_l \
+		and GameState.every_ladder_capped()
+	# AND THE BAR IS THE TABLES' OWN. Adding a rung to a legacy array must move
+	# the bar rather than leave a capped ladder capped -- which is exactly what
+	# 5c will do, and this is the clause that proves it will be noticed.
+	var deeper: bool = GameState.persuasion < GameState.PERSUASION_TIERS.size()
+	print("[skill] THE ELEVENTH COUNTS BOTH FAMILIES %d ladders (%d legacy + %d table); none capped=%s, seven capped is not eleven=%s, all eleven=%s, the bar reads the array not a number=%s -> %s" % [
+		total_l, GameState.LEGACY_TIER_ARRAYS.size(), GameState.SKILL_TIERS.size(),
+		str(none_capped), str(seven_only), str(all_capped), str(deeper),
+		"PASS" if none_capped and seven_only and all_capped and deeper
+			and total_l == 11 else "FAIL"])
+
+	# 2c. AND IT PAYS NOTHING. The capstone arrives at the exact moment
+	#     NO LADDER PAYS IN CREDITS is standing on, so it is measured there:
+	#     the wallet, the ledger and the log across the signal itself.
+	GameState.skills = {}
+	GameState.archeology = 0
+	GameState.smuggling = 0
+	GameState.mining = 0
+	GameState.persuasion = 0
+	var purse_c := GameState.salvage
+	var ledger_c := GameState.ledger.duplicate(true)
+	# AN ARRAY, NOT AN INT, and that is required rather than stylistic: GDScript
+	# lambdas capture by VALUE, so `var n := 0` followed by `n += 1` inside the
+	# closure increments a copy and the outer number never moves. PLOTTEST's
+	# legend_layout carries this exact defect in its own comment -- a cursor
+	# advanced inside a lambda, where nothing in a diff or an assertion could
+	# see it. An Array is a reference, so append() reaches the real one.
+	var fired: Array = []
+	var once := func() -> void: fired.append(1)
+	GameState.last_rung_reached.connect(once)
+	GameState._last_rung_announced = false
+	for id_ev in GameState.skill_ids():
+		GameState.skills[String(id_ev)] = 999999
+	GameState.archeology = GameState.ARCHEOLOGY_TIERS.size() - 1
+	GameState.smuggling = GameState.SMUGGLING_TIERS.size() - 1
+	GameState.mining = GameState.MINING_TIERS.size() - 1
+	# The LAST one lands through a real mutator, so the signal is driven by the
+	# path the game actually takes rather than by calling the helper by hand.
+	GameState.persuasion = GameState.PERSUASION_TIERS.size() - 2
+	GameState.persuasion_xp = GameState.PERSUASION_TIERS[
+		GameState.PERSUASION_TIERS.size() - 1] - 1
+	GameState.mark_persuasion(1)
+	# And a second landing must not speak again.
+	GameState.mark_skill("filing", 1)
+	GameState.last_rung_reached.disconnect(once)
+	var wallet_still := GameState.salvage == purse_c
+	var ledger_still := str(ledger_c) == str(GameState.ledger)
+	print("[skill] THE ELEVENTH PAYS NOTHING signal fired %d time(s) through a real mutator, wallet %d->%d=%s, ledger byte-identical=%s -> %s" % [
+		fired.size(), purse_c, GameState.salvage, str(wallet_still),
+		str(ledger_still),
+		"PASS" if fired.size() == 1 and wallet_still and ledger_still else "FAIL"])
 
 	# 3. THE TIER IS DERIVED, NEVER STORED. The legacy four keep a tier var
 	#    beside an xp var and a loader that clamps one against the other; these

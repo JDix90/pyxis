@@ -6388,7 +6388,7 @@ below:
 | 5 | a kept light: the procession and a player colony, one broadcast, once per run | rides v28 | **BUILT** — §117 |
 | 6 | what the claimant left: a claimed spill enters the captain's log and the ledger | rides v28 | **BUILT** — §118; three louder versions died first, including the research pass's own recommendation |
 | 7 | the prompt holds its refusals: `prompt(text, hold_s := 0.0)` appended-optional, and the label wraps | rides v28 | **PLANNED** |
-| 8 | the eleventh: an all-ladders capstone derived from both table families, one broadcast, a visible count | rides v28 | **PLANNED** |
+| 8 | the eleventh: an all-ladders capstone derived from both table families, one broadcast, a visible count | rides v28 | **BUILT** — §119; derived from the tables so 5c can land on either side of it |
 | 9 | the measure: the horizon closed and the sweep read | none | **PLANNED** |
 
 **The finding that set the order, and it is a measurement rather than a
@@ -12309,3 +12309,84 @@ and the deaths are the section:
 
 What survives is the smallest true thing. The claimant gets a face the way the
 rival got one: **evidence, and never a body.**
+
+## 119. The eleventh (Horizon 11, commit 8 — rides v28)
+
+Every ladder at its own last rung. No payout, one broadcast, from the channel
+that has never given its name.
+
+### It is derived from both families, and that is what keeps 5c free
+
+The eleven ladders live in two shapes. The legacy four each own a var, an xp
+var and a hand-written tier array — a deliberate §36-era decision, and §111
+records why extending them is its own afternoon. The other seven are one table
+with a derived tier.
+
+`LEGACY_TIER_ARRAYS` bridges them, holding the **arrays** rather than copies of
+their lengths, so there is nothing here that can disagree with them. Its keys
+are the vars' own names, which is what lets `get(id)` read a legacy tier without
+a four-way branch — the legacy four have been named one-var-per-ladder since
+they shipped, and that convention is load-bearing exactly once, here.
+
+**Everything is asked of the tables.** The four legacy deepenings (5c) are still
+deferred in §64 and each of them adds a rung; a capstone written as *"eleven
+ladders, this many tiers"* would silently move the day one lands. Asked of the
+tables, the bar rises with them, and 5c can be paid on either side of this
+without anybody remembering to come back. `THE ELEVENTH COUNTS BOTH FAMILIES`
+has a clause for exactly that: the bar reads the array, not a number.
+
+### The visible count, and what it costs
+
+**The author's decision, taken in the open: the count is visible.** The research
+pass recommended against it, and the objection is §19's own — skill feeds must
+*compete*, and a reward for capping all eleven tells the player the long-run
+answer is *do all of it*, which §111 already named as *"a checklist that cannot
+be finished."*
+
+What buys it back is restraint everywhere else. The ledger page's header carries
+`N OF 11 LADDERS STAND AT THEIR LAST RUNG` and **nothing else**: no percentage,
+no bar, no per-ladder tick, no second screen, no notification when the number
+moves — and **nothing anywhere says what happens at the eleventh.** A player can
+infer that something might; the game never poses it. That is the register
+`SINGULAR` legends and THE WATCH already use (§102, §112). The page still has
+nothing on it to press, which was §111's whole argument for its existence.
+
+Refused in the spec and in the code's comments: a second grant of any kind, a
+credit payout, a stat, and any per-ladder progress rendering beyond the count.
+
+### A signal, because five mutators can be the one that lands it
+
+`mark_smuggling`, `mark_persuasion`, `mark_mining`, `mark_archeology` and
+`mark_skill` each return "a tier landed", and any of them can be the last. There
+is no choke point a tier passes through, and hooking `_queue_save()` would be a
+save concern answering a skill question — so `_check_last_rung()` is called from
+all five, is idempotent, and emits once.
+
+The flag is **session-only**, `_kept_light_spoken`'s shape for its reason (§117):
+the capstone is a moment rather than a trophy, there is nothing to re-collect,
+and nothing on any screen reads wrong after a reload. A store would be a byte
+spent so a sentence could refuse to be said twice in a run that already heard
+it.
+
+`NO LADDER PAYS IN CREDITS` climbs every ladder to its cap watching the wallet,
+and this arrives at precisely the moment that leg is standing on — so
+`THE ELEVENTH PAYS NOTHING` is measured there: the signal fires **once**, driven
+through a real mutator rather than by calling the helper by hand, with the
+wallet unmoved and the ledger byte-identical.
+
+### Two traps the code had already documented
+
+**The lambda captures by value.** The leg's first draft counted firings with
+`var fired := 0` and `fired += 1` inside the closure — which increments a copy
+and leaves the outer number at zero, so the assertion would have measured
+nothing while passing. `legend_layout` carries this exact defect in its own
+comment (§97: *"a cursor captured by a lambda, which GDScript copies by
+value … nothing in a diff or an assertion could see it"*). An Array is a
+reference, so `append()` reaches the real one.
+
+**And the first draft of `_legacy_cap` used single-line `match` arms**, an idiom
+with **no precedent anywhere in this repo** — and there is no Godot binary in
+the authoring environment, so a wrong guess there is a parse error the static
+pass cannot see and the class-registry cascade `check_scripts.py` exists to
+prevent. It was rewritten as a dictionary lookup before it was ever run, which
+is DEFECTS.md class 10 avoided rather than paid for.

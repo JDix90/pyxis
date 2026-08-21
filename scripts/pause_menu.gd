@@ -299,6 +299,14 @@ func _build_ledger() -> void:
 	# press. That is the difference, and it is the whole of it.
 	_body.add_child(_heading("PILOT'S LEDGER"))
 	_body.add_child(_sub("WHAT YOU HAVE DONE, AND WHAT IT OPENED. NOTHING HERE IS SPENT."))
+	# §119. THE COUNT, AND NOTHING ELSE. A number on the header line: no
+	# percentage, no bar, no per-ladder tick, no second screen, and NOTHING
+	# ANYWHERE SAYS WHAT HAPPENS AT THE LAST ONE. The visible half is the
+	# author's decision taken in the open (§119 records what it costs against
+	# §19); the restraint everywhere else is what buys it back. This page has
+	# nothing to press and that is still true.
+	_body.add_child(_sub("%d OF %d LADDERS STAND AT THEIR LAST RUNG" % [
+		GameState.ladders_at_cap(), GameState.ladders_total()]))
 	_body.add_child(_spacer(4))
 	# The legacy four first, in the order they shipped -- they each own their own
 	# line function and their own save keys, and folding them into SKILL_TIERS

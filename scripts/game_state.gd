@@ -31,6 +31,11 @@ signal lane_opened(id: String)
 # only discover by docking somewhere and reading a line is not feedback for an
 # act you committed four hundred units away.
 signal standing_shifted(other: String, delta: int, band: int)
+# §119. Emitted the once, when the last of the eleven ladders reaches its own
+# last rung. A SIGNAL rather than a return value because five different mutators
+# can be the one that lands it, and because the thing that answers is a
+# broadcast plate this autoload cannot and must not reach.
+signal last_rung_reached
 
 const SAVE_PATH := "user://save.json"
 const SAVE_VERSION := 28
@@ -3185,6 +3190,7 @@ func mark_smuggling(units: int) -> bool:
 	# announcement would be a log describing a different evening.
 	if gained:
 		note_log("SMUGGLING %d — THE LANES KNOW YOU" % smuggling)
+		_check_last_rung()
 	_queue_save()
 	return gained
 
@@ -3233,6 +3239,7 @@ func mark_persuasion(wins: int) -> bool:
 	# ONE line naming the tier the player LANDED on, like the other three.
 	if gained:
 		note_log("PERSUASION %d — THEY LISTEN TO YOU" % persuasion)
+		_check_last_rung()
 	_queue_save()
 	return gained
 
@@ -3351,6 +3358,7 @@ func mark_mining(band: int) -> bool:
 	# cut can cross two at once, and the log must not disagree with the toast.
 	if gained:
 		note_log("MINING %d — THE ROCK READS DIFFERENTLY NOW" % mining)
+		_check_last_rung()
 	_queue_save()
 	return gained
 
@@ -3531,6 +3539,7 @@ func mark_archeology(xp: int) -> bool:
 	if gained:
 		note_log("ARCHEOLOGY %d — READS %s" % [archeology,
 			DeepSpace.BAND_NAMES[mini(archeology, DeepSpace.BAND_NAMES.size() - 1)]])
+		_check_last_rung()
 	_queue_save()
 	return gained
 
@@ -3544,6 +3553,80 @@ func can_read(salvage_id: String, at_lab: bool) -> bool:
 
 func skill_ids() -> Array:
 	return SKILL_TIERS.keys()
+
+
+# §119. THE ELEVENTH. The legacy four each own a var, an xp var and a
+# hand-written tier array (a deliberate §36-era decision; §111 records why
+# extending them is its own afternoon), while the other seven are one table with
+# a derived tier. This dict is the bridge, and it holds the ARRAYS rather than
+# copies of their lengths so there is nothing here that can disagree with them.
+#
+# THE KEY IS THE VAR'S OWN NAME, which is why `get(id)` below can read the tier
+# without a four-way branch: the legacy four have been named this way since they
+# shipped, one var per ladder, and the naming convention is load-bearing exactly
+# once -- here. A fifth legacy ladder would be one row.
+#
+# AND THAT IS WHAT KEEPS 5c FREE. The four legacy deepenings are still deferred
+# in §64 and each adds a rung. A capstone written as "eleven ladders, this many
+# tiers" would silently move the day one lands; asked of the tables, the bar
+# rises with them and the deferral can be paid on either side of this without
+# anybody remembering to come back.
+const LEGACY_TIER_ARRAYS := {
+	"archeology": ARCHEOLOGY_TIERS,
+	"smuggling": SMUGGLING_TIERS,
+	"mining": MINING_TIERS,
+	"persuasion": PERSUASION_TIERS,
+}
+
+
+func ladders_total() -> int:
+	# Eleven today, twelve the day a twelfth row is authored in either family.
+	return LEGACY_TIER_ARRAYS.size() + SKILL_TIERS.size()
+
+
+func ladders_at_cap() -> int:
+	# HOW MANY STAND AT THEIR OWN LAST RUNG. Not a score, not a percentage, and
+	# not a promise: it is the one number the ledger page carries, and nothing
+	# anywhere says what happens at eleven.
+	var n := 0
+	for id_v in LEGACY_TIER_ARRAYS:
+		var id := String(id_v)
+		var cap := (LEGACY_TIER_ARRAYS[id_v] as Array).size() - 1
+		# `get(id)` reads the member var of the same name -- see the note above.
+		# A missing property returns null and int(null) is 0, so a renamed var
+		# reads as "never capped" rather than erroring, which is the safe
+		# direction: this can under-report and can never award the capstone for
+		# a ladder that is not there.
+		if cap > 0 and int(get(id)) >= cap:
+			n += 1
+	for id2_v in SKILL_TIERS:
+		var id2 := String(id2_v)
+		if skill_tier(id2) >= (SKILL_TIERS[id2_v] as Array).size() - 1:
+			n += 1
+	return n
+
+
+func every_ladder_capped() -> bool:
+	return ladders_at_cap() >= ladders_total()
+
+
+# Session-only, deliberately. The capstone is a MOMENT rather than a trophy:
+# there is nothing to re-collect, nothing on any screen that would read wrong
+# after a reload, and a store would be a byte spent so that a sentence could
+# refuse to be said twice in a run that has already heard it. `_kept_light_spoken`
+# is the same shape for the same reason (§117).
+var _last_rung_announced := false
+
+
+func _check_last_rung() -> void:
+	# Called from every tier landing in both families -- five sites, each one
+	# line, because there is no single choke point a tier passes through and a
+	# hook on _queue_save() would be a save concern answering a skill question.
+	# Idempotent, so an extra call can never cost anything.
+	if _last_rung_announced or not every_ladder_capped():
+		return
+	_last_rung_announced = true
+	last_rung_reached.emit()
 
 
 func skill_xp(id: String) -> int:
@@ -3592,6 +3675,7 @@ func mark_skill(id: String, n := 1) -> bool:
 	# mark_smuggling's rule.
 	note_log("%s %d — %s" % [String(SKILL_LABELS.get(id, id.to_upper())), after,
 		String((SKILL_PERKS.get(id, []) as Array)[after])])
+	_check_last_rung()
 	return true
 
 
