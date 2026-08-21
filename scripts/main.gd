@@ -26797,7 +26797,21 @@ func _run_colony_test() -> void:
 	#
 	# Every refusal is free, this function's own posture, and the wallet is
 	# checked to the credit across all three.
-	GameState.colony_works = {}
+	#
+	# ON ITS OWN COLONY, AND THAT IS NOT TIDINESS. The first draft ran this on
+	# pyx01:7 and cleared `colony_works` to get a clean slate -- which took the
+	# DRY DOCK off the colony that THE DOCK IS TIME, NOT POWER measures eighty
+	# lines below, and turned a leg that had been green for a horizon red. The
+	# sweep caught it, which is the system working; the lesson is cheaper than
+	# the sweep. A harness block that resets SHARED state and does not restore
+	# it is a defect with a blast radius measured in whatever somebody writes
+	# after it. This one claims its own ground, at a position no other leg
+	# reads, and touches nothing else.
+	var deliver_at := Vector3(2000.0, 0.0, -1500.0)
+	var deliver_key := "pyx01:12"
+	GameState.claim_colony(deliver_key, deliver_at.x, deliver_at.z)
+	var dcell := DeepSpace.cell_of(deliver_at)
+	GameState.note_survey_worked(DeepSpace.cell_key("pyx01", dcell.x, dcell.y))
 	GameState.salvage = 30000
 	var deliver_id := ""
 	for wd_v in GameState.COLONY_WORKS:
@@ -26811,20 +26825,20 @@ func _run_colony_test() -> void:
 		GameState.cargo[String(g4_v)] = int(manifest[g4_v])
 	var wallet_d := GameState.salvage
 	if wplayer != null:
-		wplayer.global_position = Vector3(2400.0, 0.0, 0.0)
-	var far_refused := not buy_colony_work("pyx01:7", deliver_id)
+		wplayer.global_position = deliver_at + Vector3(400.0, 0.0, 0.0)
+	var far_refused := not buy_colony_work(deliver_key, deliver_id)
 	if wplayer != null:
-		wplayer.global_position = Vector3(2000.0, 0.0, 0.0)
+		wplayer.global_position = deliver_at
 	GameState.cargo = {}
-	var empty_refused := not buy_colony_work("pyx01:7", deliver_id)
+	var empty_refused := not buy_colony_work(deliver_key, deliver_id)
 	for g5_v in manifest:
 		GameState.cargo[String(g5_v)] = int(manifest[g5_v])
 	var sys_was := GameState.current_system
 	GameState.current_system = "pyx02"
-	var elsewhere_refused := not buy_colony_work("pyx01:7", deliver_id)
+	var elsewhere_refused := not buy_colony_work(deliver_key, deliver_id)
 	GameState.current_system = sys_was
-	var met := bool(work_delivery_met("pyx01:7", deliver_id))
-	var bought := buy_colony_work("pyx01:7", deliver_id)
+	var met := bool(work_delivery_met(deliver_key, deliver_id))
+	var bought := buy_colony_work(deliver_key, deliver_id)
 	print("[colony] THE TRIP IS THE COST %s wants %s: refused 400u off=%s, refused with an empty hold=%s, refused from another system with the goods aboard=%s (all free, wallet %d->%d), and lands standing there=%s -> %s" % [
 		deliver_id, work_manifest(deliver_id), str(far_refused),
 		str(empty_refused), str(elsewhere_refused), wallet_d,
@@ -26874,6 +26888,15 @@ func _run_colony_test() -> void:
 
 	# THE DOCK IS TIME, NOT POWER. The aura reads true alongside the yard and
 	# false a hundred units off -- the rule function, not the regen rendering.
+	#
+	# AND IT BUILDS WHAT IT MEASURES, rather than inheriting it from eighty
+	# lines up. It did inherit it, and §116's delivery leg went in between and
+	# cleared the store -- so this leg went red for something that was not
+	# wrong with the dock. Both sides of that are fixed: the block above no
+	# longer touches shared state, and this one no longer depends on distance.
+	# A precondition a leg needs is a precondition that leg should state.
+	if not GameState.has_work("pyx01:7", "dock"):
+		buy_colony_work("pyx01:7", "dock")
 	var near_aura := GameState.dock_aura_at(2000.0, 0.0)
 	var far_aura := GameState.dock_aura_at(2000.0, 500.0)
 	print("[colony] THE DOCK IS TIME, NOT POWER aura alongside=%s, 500u off=%s -> %s" % [

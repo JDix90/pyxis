@@ -37,20 +37,34 @@ reported. Both forms were red-verified. Also `run_harness.sh --parse`.
 
 ---
 
-## 2. A loader validating against a store that loads later
+## 2. State set at a distance, and an edit in between
 
-**What happens.** The block reads correct, validates every key, and drops
-everything — because the store it validates against has not been populated yet.
-On a real boot it validates against the *previous* session's data or against
-nothing, silently.
+**What happens.** A block depends on state established somewhere else in a
+sequence. It is correct when written and stays correct until somebody edits the
+gap — at which point it fails for a reason that has nothing to do with what it
+is testing.
 
-**Instances.** §112's colony-works loader sat with the other v27 stores and
-validated against `colonies`, which loads seventy lines later. The berths loader
-documents the same class from the other direction.
+**Instances, and they run in both directions.**
 
-**Covered by:** nothing mechanical. **Check the order the comment claims**, then
-place the block immediately after what it depends on. §112's first draft is
-written at the site as the warning.
+*Too early to read:* §112's colony-works loader sat with the other v27 stores
+and validated every key against `colonies`, **which loads seventy lines later**.
+On a real boot it would have validated against the previous session's colony set
+(or nothing) and silently dropped every work in the save. The berths loader
+documents the same shape from the other side.
+
+*Too far back to trust:* §116's `THE TRIP IS THE COST` cleared `colony_works` to
+get a clean slate, and `THE DOCK IS TIME, NOT POWER` measured that store
+**eighty lines below** — so a leg that had been green for a horizon went red for
+something that was not wrong with the dock. Caught by the sweep, which is the
+system working, but the lesson is cheaper than the sweep.
+
+**Covered by:** nothing mechanical, and the cure is the same in both directions
+— **state the dependency at the site, or remove it.** A loader goes immediately
+after what it validates against. A harness block claims its own ground instead
+of borrowing somebody's, and a leg that needs a precondition **builds it** rather
+than inheriting it from a distance. The corollary is worth its own sentence:
+**a harness block that resets shared state and does not restore it is a defect
+whose blast radius is whatever somebody writes after it.**
 
 ---
 

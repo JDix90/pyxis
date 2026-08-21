@@ -12204,6 +12204,25 @@ surface. `EACH WORK CARRIES ITS OWN WEATHER` asserts the partition rather than
 the rendering, with both halves non-empty so a filter that dropped everything
 could not pass by printing nothing.
 
+### And the sweep caught what the reading did not
+
+`THE DOCK IS TIME, NOT POWER` went red on the first full sweep of this horizon,
+and the cause was this commit's own leg. `THE TRIP IS THE COST` cleared
+`colony_works` to get a clean slate for the delivery refusals — which took the
+DRY DOCK off the colony the aura leg measures **eighty lines below**. Nothing
+was wrong with the dock.
+
+Both sides are fixed, because either one alone leaves the trap armed. The
+delivery leg now **claims its own colony** at a position no other leg reads and
+touches no shared store; and the aura leg **builds the precondition it
+measures** rather than inheriting it from a distance. That is DEFECTS.md's
+class 2 arriving from the opposite direction to §112's loader — same cure, same
+sentence: *state the dependency at the site, or remove it.*
+
+The corollary is the reusable part: **a harness block that resets shared state
+and does not restore it is a defect whose blast radius is whatever somebody
+writes after it.**
+
 ### The leg whose premise moved
 
 `WORKS ARE A SINK, NOT A STAT` loops **every** work and buys it, so a work with
