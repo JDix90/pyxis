@@ -6452,6 +6452,35 @@ derived "a colleague filed this" would retroactively re-label every cell the
 player filed *first* — the exact inverse of §97's `files_with_the_network()`,
 which is derivable because it is an existential over a store that only grows.
 
+**Horizon 12 — the settlement** (opened 2026-08-21, the evening Horizon 11
+merged; researched in `docs/HORIZON-12-RESEARCH.md`, specced in
+`docs/HORIZON-12-THE-SETTLEMENT.md`). Six commits, **none built**. The
+commission: raise the sinks so they bite, and answer *what is a late-game
+pilot's money for*. The research pass's answer: **money converts into place**
+— the network takes no credits (§96, settled), so the works ladder is where
+the Authority's ledger is spent out. Seven ideas died in the pass (courier,
+insurance, two escorts, THE GLASS, a flat repair raise, the rescue's ride on
+the jump ramp); the finding that shaped it is that **PACINGTEST is blind to
+repair costs** (the measured loop is invulnerable), so the bite lands on the
+rescue and the repair is recorded as band-blind rather than silently re-priced.
+
+Four decisions settled before code (2026-08-21): the bite is **firm** (rescue
+at 0.3–0.5 of a measured steady loop at the far marks, against 0.055 today);
+the re-priced sinks get a **measured band** so the drift §114 documented
+cannot recur; **THE ARCHIVE is allowed** — a colony work displaying the run's
+record, narrowly amending H10's "NOT prestige purchases" (the boundary held:
+status for money stays refused; a record of what was already done is not
+status); and the spec followed a research pass.
+
+| # | what | save | status |
+|---|---|---|---|
+| 0 | the death price: rescue on its own constants, banded [0.30, 0.50] of measured steady; repair recorded as band-blind | none | **PLANNED** |
+| 1 | the wider margin: REQ_MULT 5→8, jumps revisited | none | **PLANNED** |
+| 2 | the ladder stands: `requires` staging, the four works re-priced | none | **PLANNED** |
+| 3 | EXPANDED VAULTS + THE YARD | none | **PLANNED** |
+| 4 | THE LIGHT + THE ARCHIVE | none | **PLANNED** |
+| 5 | the measure | none | **PLANNED** |
+
 ### Built, despite what the docs said
 
 `HORIZON-3-COMMISSION.md` — **built**, and recorded as §28. `commission_db.gd`
