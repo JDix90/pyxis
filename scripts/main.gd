@@ -13638,6 +13638,32 @@ func _run_pacing_test() -> void:
 		works_total += int((GameState.COLONY_WORKS[w_v] as Dictionary).get("price", 0))
 	sink_rows.append({"name": "colony works, one colony", "cost": float(works_total),
 		"forced": false})
+	# §126. AND THE CHANNEL, which is a different number from the menu above it
+	# and the one the re-pricing was actually about. A pilot does not buy one
+	# colony's works; they buy every copy that grants anything, and the two
+	# scopes multiply differently -- a system-scoped work has a HARD CAP of one
+	# useful copy per authored system, because the chart asks whether ANY colony
+	# in the system has it, while a colony-scoped work multiplies by every
+	# colony there is.
+	#
+	# Pricing the menu as though it were the channel is what made "raise the
+	# works" look like one decision when it is two. Derived from `scope`,
+	# `HYPER_MAX` and the authored system list, so a new work, a new system or a
+	# wider structure count all land here without an edit.
+	var work_systems := 0
+	for sid_wv in SystemDB.ids():
+		if not SystemDB.hyper_positions(String(sid_wv), 1).is_empty():
+			work_systems += 1
+	var max_colonies := work_systems * SystemDB.HYPER_MAX
+	var channel_total := 0
+	for w3_v in GameState.COLONY_WORKS:
+		var w3 := String(w3_v)
+		var copies := work_systems if GameState.work_scope(w3) == "system" \
+			else max_colonies
+		channel_total += int((GameState.COLONY_WORKS[w3] as Dictionary)
+			.get("price", 0)) * copies
+	sink_rows.append({"name": "the works, every useful copy",
+		"cost": float(channel_total), "forced": false})
 	# The dearest component the order desk will ever quote, derived rather than
 	# named: a later component priced above lens_unsounded moves this row.
 	var req_max := 0
@@ -26915,7 +26941,16 @@ func _run_colony_test() -> void:
 	GameState.colonies = {}
 	GameState.colony_works = {}
 	GameState.skills = {}
-	GameState.salvage = 30000
+	# §126. THE PURSE IS DERIVED FROM THE PRICES, not typed beside them. This
+	# read 30,000 against a ladder that totalled 28,000, so the re-pricing to
+	# 101,000 would have reddened this leg with "a work refused" -- a pricing
+	# change reported as a mechanism failure, which is the worst kind of red
+	# because it sends the next reader to the wrong file. A fixture sized off
+	# the thing it exercises cannot go stale.
+	var works_want := 0
+	for wp_v in GameState.COLONY_WORKS:
+		works_want += int((GameState.COLONY_WORKS[wp_v] as Dictionary)["price"])
+	GameState.salvage = works_want * 2
 	GameState.claim_colony("pyx01:7", 2000.0, 0.0)
 	var wcell := DeepSpace.cell_of(Vector3(2000.0, 0.0, 0.0))
 	GameState.note_survey_worked(DeepSpace.cell_key("pyx01", wcell.x, wcell.y))
@@ -26945,9 +26980,7 @@ func _run_colony_test() -> void:
 		spent_total += before_w - GameState.salvage
 		if not GameState.has_work("pyx01:7", wid):
 			works_ok = false
-	var want_total := 0
-	for w2_v in GameState.COLONY_WORKS:
-		want_total += int((GameState.COLONY_WORKS[w2_v] as Dictionary)["price"])
+	var want_total := works_want
 	var stats_same := str(stats_before) == str(GameState.stats)
 	var re_buy := buy_colony_work("pyx01:7", "relay")
 	# AND THE MANIFEST LEFT THE HOLD. A work that took the credits and not the
@@ -26958,6 +26991,97 @@ func _run_colony_test() -> void:
 		str(hold_emptied), str(stats_same), str(not re_buy),
 		"PASS" if works_ok and spent_total == want_total and stats_same
 			and hold_emptied and not re_buy else "FAIL"])
+
+	# §126. THE LADDER STANDS. The prereq is a GATE, so it is asserted in both
+	# directions -- a gate that always refused would satisfy half of this and be
+	# useless, which is NO ORDER WITHOUT THE READ's own posture.
+	#
+	# 1. WITHOUT THE MAST IT REFUSES, on a fresh colony with a purse that could
+	#    pay twice over and a hold carrying the whole manifest, so the only
+	#    thing missing is the rung below.
+	#
+	#    ITS OWN COLONY AND ONLY ITS OWN KEY: `colony_works = {}` here would
+	#    clear the works `THE DOCK IS TIME, NOT POWER` is built on eighty lines
+	#    below -- the precise defect that leg's own comment records §116
+	#    committing, and the reason it now rebuilds its own precondition.
+	GameState.colony_works.erase("pyx01:9")
+	GameState.claim_colony("pyx01:9", 2400.0, 0.0)
+	var lcell := DeepSpace.cell_of(Vector3(2400.0, 0.0, 0.0))
+	GameState.note_survey_worked(DeepSpace.cell_key("pyx01", lcell.x, lcell.y))
+	var lplayer: PlayerShip = get_tree().get_first_node_in_group("player")
+	if lplayer != null:
+		lplayer.global_position = Vector3(2400.0, 0.0, 0.0)
+	GameState.cargo = {}
+	var lwant: Dictionary = (GameState.COLONY_WORKS["repeater"]
+		as Dictionary).get("goods", {})
+	for lg_v in lwant:
+		GameState.cargo[String(lg_v)] = int(lwant[lg_v])
+	GameState.salvage = works_want * 2
+	var purse_before := GameState.salvage
+	var cargo_before := GameState.cargo.duplicate(true)
+	var barred := not buy_colony_work("pyx01:9", "repeater")
+	# AND THE REFUSAL IS FREE, §110's rule: nothing spent, nothing unloaded.
+	# Compared as a whole hold rather than one line of it, so an empty manifest
+	# on some future work cannot index past the end of its own keys array.
+	var barred_free := GameState.salvage == purse_before \
+		and str(cargo_before) == str(GameState.cargo)
+	# CAPTURED HERE, not re-asked in the print. The state below this line moves
+	# twice, and a figure printed from a later state while claiming to describe
+	# this one is §124's whole subject.
+	var barred_says := GameState.work_prereq_missing("pyx01:9", "repeater")
+	var prereq_named := barred_says == "relay"
+	# 2. WITH THE MAST IT PASSES. Same colony, same hold, same purse.
+	var mast := buy_colony_work("pyx01:9", "relay")
+	var freed := buy_colony_work("pyx01:9", "repeater")
+	# 3. AND THE DECLARATION ORDER SATISFIES EVERY PREREQ. This test and the
+	#    chart both walk COLONY_WORKS in declaration order, so a work declared
+	#    BEFORE the one it requires would fail as a pricing bug here and show a
+	#    pilot a rung above its own prerequisite there. Derived, so it holds for
+	#    works nobody has written yet.
+	var order_ok := true
+	var seen_works: Array = []
+	for wo_v in GameState.COLONY_WORKS:
+		var wo := String(wo_v)
+		var wneed_id := String((GameState.COLONY_WORKS[wo] as Dictionary)
+			.get("requires", ""))
+		if wneed_id != "" and not seen_works.has(wneed_id):
+			order_ok = false
+		seen_works.append(wo)
+	# 4. AND STAGING NEVER UN-BUILDS. A v28 save written before this commit can
+	#    hold a repeater with no mast under it -- legal when it was written,
+	#    unreachable now. The gate is on RAISING a work and must never become a
+	#    validity rule for one already standing, or shipping a prereq would
+	#    silently demolish what a pilot already paid for.
+	#
+	#    ASSERTED ON THE STATE RATHER THAN THROUGH THE LOADER, deliberately: the
+	#    loader's filter (`COLONY_WORKS.has(wid)`) keeps any known key and asks
+	#    nothing about order, so a round-trip would only re-test that filter. What
+	#    is actually at risk is every READER downstream of it, so this builds the
+	#    orphan state the loader would produce and asks whether the work still
+	#    stands AND still grants.
+	#
+	#    ASKED OF THE STORE, not of Main: Main's half would refuse this at the
+	#    delivery gate (clause 2 just ate the manifest) and pass the assertion
+	#    for a reason that has nothing to do with the ladder. GameState's half
+	#    checks `has_work` before anything else, so an "already standing" is the
+	#    only refusal it can be.
+	#
+	#    AND IN AN EMPTY SYSTEM, because the grant half of this is system-scoped.
+	#    Run in pyx01 it would read true off the repeater `WORKS ARE A SINK`
+	#    raised at pyx01:7 -- the clause passing whether or not the orphan
+	#    granted anything, which is the same shape as three clauses passing off
+	#    the ladder in the delivery leg below. pyx02 has no colony until this
+	#    line makes one, so the only thing that can answer is the orphan.
+	GameState.claim_colony("pyx02:4", 900.0, 0.0)
+	GameState.colony_works["pyx02:4"] = ["repeater"]
+	var legacy_kept := GameState.has_work("pyx02:4", "repeater") \
+		and GameState.work_stands_in_system("pyx02", "repeater") \
+		and not GameState.buy_colony_work("pyx02:4", "repeater")
+	print("[colony] THE LADDER STANDS repeater without a mast: refused=%s (free=%s, names '%s'); with one: mast=%s repeater=%s; declaration order safe=%s; a legacy save keeps an orphan rung=%s -> %s" % [
+		str(barred), str(barred_free), barred_says,
+		str(mast), str(freed), str(order_ok), str(legacy_kept),
+		"PASS" if barred and barred_free and prereq_named and mast and freed
+			and order_ok and legacy_kept else "FAIL"])
 
 	# §116. THE TRIP IS THE COST, and this is the leg that says the gate is a
 	# JOURNEY and not just a manifest. Three refusals, each isolated: the goods
@@ -26983,12 +27107,27 @@ func _run_colony_test() -> void:
 	GameState.claim_colony(deliver_key, deliver_at.x, deliver_at.z)
 	var dcell := DeepSpace.cell_of(deliver_at)
 	GameState.note_survey_worked(DeepSpace.cell_key("pyx01", dcell.x, dcell.y))
-	GameState.salvage = 30000
 	var deliver_id := ""
 	for wd_v in GameState.COLONY_WORKS:
 		if not (GameState.COLONY_WORKS[wd_v] as Dictionary).get("goods", {}).is_empty():
 			deliver_id = String(wd_v)
 			break
+	# §126. EVERY OTHER GATE SATISFIED FIRST, or this leg measures the wrong
+	# refusal. The delivery work is the repeater and the repeater now REQUIRES a
+	# mast, so on a fresh colony all three clauses below would go green off the
+	# LADDER while the delivery gate went untested and `bought` failed -- three
+	# assertions passing for a reason that has nothing to do with what they are
+	# named after. Derived from `requires` rather than naming the relay, so a
+	# re-staged ladder does not quietly reintroduce it.
+	#
+	# And the purse is sized off the price for §126's other reason: a fixture
+	# holding a number typed beside the thing it pays for goes stale the first
+	# time that thing is re-priced, and reports it as a mechanism failure.
+	var deliver_need := String((GameState.COLONY_WORKS.get(deliver_id, {})
+		as Dictionary).get("requires", ""))
+	GameState.salvage = works_want * 2
+	if deliver_need != "":
+		GameState.buy_colony_work(deliver_key, deliver_need)
 	var manifest: Dictionary = (GameState.COLONY_WORKS.get(deliver_id, {})
 		as Dictionary).get("goods", {})
 	GameState.cargo = {}

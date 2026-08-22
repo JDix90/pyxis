@@ -180,19 +180,26 @@ service, every price a gate-plus-price where the goods are the gate:
 Prices are the spec's to derive, and **the sizing below is re-derived against
 the measured loop** (§124) rather than the estimate this section first carried.
 
-| ladder, per colony | credits | loops | wall | ×12 colonies |
+*(**And the ×12 column below is itself wrong**, corrected in §126 after commit 2
+researched it: two of the four works are **system-scoped**, capped at three
+useful copies by the chart's own any-in-system question. Multiplying every work
+by twelve prices purchases that grant nothing. The channel's real ceiling is
+derived per-scope, and the shipped answer is **843,000 / 75 loops / 10 hours**.)*
+
+| ladder, per colony | credits | loops | wall | naive ×12 |
 |---|---|---|---|---|
 | today (four works) | 28,000 | 2.5 | 20 min | 4.0 h |
-| **proposed (eight works, staged)** | **~90,000–135,000** | **8–12** | **65–95 min** | **13–19 h** |
+| **shipped (§126: 11k/17k/28k/45k)** | **101,000** | **9.0** | **72 min** | — see channel |
 | the estimate this doc shipped | ~300,000+ | 27+ | 3.6 h+ | **43 h+** — deleted |
 
-The target is *one colony fully developed ≈ one long session*. A pilot who
-adopts three colonies spends 24–36 loops on them — about a third of the yard's
-**1,106,200 / 98 loops / 13 hours** — and a completionist who develops all
-twelve spends 13–19 hours, comparable to the yard and entirely optional. That is
-the right shape for a terminal sink: it is never the road, and it is always
-longer than what is left of the road. Every individual row stays far under
-`THE CATALOGUE IS THE LONGEST PRICE`, which compares *one colony's* total.
+The target is *one colony fully developed ≈ one long session*, and §126 shipped
+it at 101,000 — nine loops, seventy-two minutes. The **channel** at its ceiling
+(3 relays, 3 repeaters, 15 docks, 15 annexes) is **843,000 / 75 loops / 10
+hours**: 76% of the yard's 1,106,200 / 98 loops / 13 hours. That is the right
+shape for a terminal sink — the largest thing in the game that is not the ship,
+never longer than it, and entirely optional. `THE CATALOGUE IS THE LONGEST
+PRICE` now clears by 24% rather than by an order of magnitude, which is the
+first time that law has had anything to hold.
 
 **Stated as fractions, not constants** (§124's rule): the four existing works
 re-price to ~3 loops together, the four new ones to ~6, and the spec derives

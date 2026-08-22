@@ -6487,7 +6487,7 @@ and commits 1–4 are re-sized against the measurement before they are built.
 | 0 | the death price: rescue on its own constants, banded [0.30, 0.50] of measured steady; repair recorded as band-blind | none | **BUILT** — §123; repair turned out never to have been involuntary, and the ceiling law was sampled rather than total |
 | — | the measurement: `RESCUE_FEE_FAR` 13,000→4,500, four documents of estimates corrected, and `_pacing_catalog_cost` given the `BERTHS` dict it had been missing since v24 | none | **BUILT** — §124; the band went red on its first sweep, which is the leg doing its job on the commit that added it — and the catalogue defect went the other way, a leg wrong where the prose was right |
 | 1 | the wider margin: REQ_MULT 5→8, jumps revisited | none | **BUILT as its opposite** — §125; both halves died on research (the jumps clear by 2–4.5×, and the order desk is a convenience whose free competitor is the core loop), and the leg turned out to print the bias-free ceiling while asserting the bias-inclusive one. `REQ_MULT` stays at 5.0; the margin is now reported |
-| 2 | the ladder stands: `requires` staging, the four works re-priced | none | **PLANNED** — re-sized against 11,236 |
+| 2 | the ladder stands: `requires` staging, the four works re-priced | none | **BUILT** — §126; scope became data, the staging shrank to one prereq (the rest would have been a price in a gate's clothes), and the channel is 76% of the yard |
 | 3 | EXPANDED VAULTS + THE YARD | none | **PLANNED** — re-sized against 11,236 |
 | 4 | THE LIGHT + THE ARCHIVE | none | **PLANNED** |
 | 5 | the measure | none | **PLANNED** |
@@ -13098,3 +13098,131 @@ The sink table has **one entry between twenty minutes and thirteen hours** — a
 colony's four works at 2.5 loops — and nothing at all between 2.5 loops and 98.
 That gap is the whole commission, and commits 2–4 are the only things in the
 horizon that reach it. Nothing else was ever going to.
+
+## 126. The ladder stands (Horizon 12, commit 2)
+
+The re-pricing the horizon was opened for. It found the thing that had made
+"raise the works" look like one decision when it is two.
+
+### The finding: two of the four rungs cap at three copies
+
+The chart asks whether **any** colony in the selected system has a relay, and
+the same for a repeater. So a second relay in a system grants **nothing**, and a
+run's authored ceiling is three systems — **three useful relays in the entire
+game, and three repeaters.** The dry dock is a 30-unit aura at the colony it
+stands at; the bonded annex is a bay keyed to its own colony. Those two
+multiply by every colony a pilot develops.
+
+| work | scope | useful copies |
+|---|---|---|
+| RELAY MAST | system | **3** — one per authored system, hard-capped by the chart's own question |
+| DEEP REPEATER | system | **3** — same question |
+| DRY DOCK | colony | up to 15, positional |
+| BONDED ANNEX | colony | up to 15 |
+
+**Raising a system-scoped work's price does not deepen the sink.** It makes the
+three copies anybody would buy dearer and nothing else. Raising a colony-scoped
+one multiplies. The flat 4 / 6 / 8 / 10 ladder priced them as though they were
+the same product.
+
+And it kills the staging the spec asked for. A prereq that forces a purchase you
+did not want is a **price wearing a gate's clothes** — §72 read backwards.
+Staging the colony works behind the relay would make a pilot who wants twelve
+annexes raise twelve masts, **nine of which would do nothing at all.**
+
+### So the scope became data, and it was already written in the blurbs
+
+*"OUT TO THIS SYSTEM"* against *"ALONGSIDE THIS COLONY"* and *"A BONDED BAY OF
+ITS OWN"*. The consumers have always behaved that way; nothing said so anywhere
+a second reader could find it. `scope` promotes that sentence to a key, and it
+is **load-bearing rather than decorative**: `work_stands_in_system` reads it, the
+chart's two hand-written any-in-system loops are gone, and the sink table derives
+the whole channel's size from it. A fifth system-scoped work arrives without a
+third copy of that walk.
+
+`work_scope` defaults to `"colony"` — the narrower reading — so a work added
+without the key grants only where it stands rather than silently across a system.
+
+### One prereq, and it is the one the fiction already wrote
+
+`repeater` **requires** `relay`. Its own blurb has said so since §116 — *"the way
+the relay carries the chart's."* And it costs nothing extra by construction: the
+mast it demands is the same single per-system mast the repeater's own grant
+depends on. Nothing else gets one, for the arithmetic above.
+
+The gate lives in `GameState.buy_colony_work`, not Main's half, because *"does
+this colony have the mast"* is answerable from `colony_works` alone — the split
+that function's own comment documents. The chart states the rung in a third
+cascade branch, ordered by root cause: **the ground** is the whole colony's
+question, **the prereq** is the ladder's, **the manifest** is this one trip's.
+Telling a pilot to bring twelve alloys for a repeater they could not buy with a
+full hold teaches the wrong thing.
+
+### The prices, as loop fractions
+
+| work | was | now | loops | wall |
+|---|---|---|---|---|
+| RELAY MAST | 4,000 | **11,000** | 0.98 | 7.8 min |
+| DRY DOCK | 6,000 | **17,000** | 1.51 | 12.1 min |
+| BONDED ANNEX | 8,000 | **28,000** | 2.49 | 19.9 min |
+| DEEP REPEATER | 10,000 | **45,000** | 4.00 | 32.0 min |
+| one colony's four | 28,000 | **101,000** | 8.99 | 72 min |
+| **the channel, at its ceiling** | 174,000 | **843,000** | **75.0** | **10.0 h** |
+
+Against the yard's 1,106,200 / 98 loops / 13 hours, the works channel is now
+**76% of the road** — the largest thing in the game that is not the ship, and
+still never longer than it. One colony fully developed is about one long
+session, which is the unit this was sized in.
+
+### `THE WORKS AT THEIR CEILING`, and why the old row was not enough
+
+`EVERY SINK IS PRICED` had a row reading *"colony works, one colony"*. That is
+the **menu**, and a pilot does not buy a menu. The new row prices the
+**channel** — every copy that grants anything — derived from `scope`,
+`HYPER_MAX` and the authored system list, so a new work, a new system or a wider
+structure count all land in it without an edit.
+
+It also gives `THE CATALOGUE IS THE LONGEST PRICE` real work to do for the first
+time: 843,000 against 1,106,200 is **24% of headroom**, where every row before
+it cleared by an order of magnitude.
+
+### Three fixtures that would have gone green for the wrong reason
+
+The commit's own legs, found by re-reading rather than by running:
+
+1. **`WORKS ARE A SINK` held `salvage = 30000`** against a ladder that had
+   totalled 28,000. At 101,000 it would have reddened with *"a work refused"* —
+   a pricing change reported as a mechanism failure, which sends the next reader
+   to the wrong file. The purse is now derived from the prices it pays.
+
+2. **`THE TRIP IS THE COST` picks the first work with a manifest** — the
+   repeater — and raises it on a fresh colony. With the prereq shipped, its
+   three refusal clauses would all have passed **off the ladder** while the
+   delivery gate went untested and `bought` failed. It now satisfies every other
+   gate first, derived from `requires` so a re-staged ladder cannot reintroduce
+   it.
+
+3. **`THE LADDER STANDS`' own clause 4** asks whether an orphan repeater still
+   *grants*. Run in pyx01 it would have read true off the repeater
+   `WORKS ARE A SINK` raised eighty lines above — passing whether or not the
+   orphan granted anything. It runs in pyx02, which has no colony until the
+   clause makes one.
+
+All three are the same defect wearing three coats: **an assertion satisfied by
+state it did not set.** `DEFECTS.md` class 2, which Horizon 11 generalised to
+"state set at a distance", now with the ladder's own instance beside it.
+
+### Staging never un-builds
+
+A v28 save written before this commit can hold a repeater with no mast under it
+— legal when written, unreachable now. The gate is on **raising** a work and
+must never become a validity rule for one already standing, or shipping a prereq
+would silently demolish what a pilot already paid for. The loader's filter keeps
+any key `COLONY_WORKS` knows and asks nothing about order; clause 4 asserts the
+readers downstream of it agree. **No save bump** — `scope` and `requires` are
+const data and `colony_works`' shape is untouched.
+
+And `A WORK IS DECLARED AFTER WHAT IT REQUIRES` is asserted rather than assumed.
+This leg and the chart both walk `COLONY_WORKS` in declaration order, so a work
+declared before its prerequisite would fail here as a pricing bug and show a
+pilot a rung above its own prerequisite there.

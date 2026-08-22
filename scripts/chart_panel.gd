@@ -1346,9 +1346,21 @@ func _refresh_colonies() -> void:
 			wb.custom_minimum_size = Vector2(0, COLONY_ROW_H)
 			wb.add_theme_font_size_override("font_size", 11)
 			var sounded: bool = bool(main.colony_ground_sounded(key))
+			var need := GameState.work_prereq_missing(key, wid)
 			if not sounded:
 				wb.text = "%s — SOUND ITS GROUND FIRST (WORK A MAST IN ITS CELL)" \
 					% String(wdef["name"])
+				wb.disabled = true
+			elif need != "":
+				# §126. THE LADDER STATES ITS RUNG. Third in the cascade on
+				# purpose, and the order is root-cause: the ground is the whole
+				# colony's question, the prereq is the ladder's, the manifest is
+				# this one trip's. Telling a pilot to bring twelve alloys for a
+				# repeater they could not buy with a full hold teaches the wrong
+				# thing -- §58's rule is that the refusal names what to DO next,
+				# and what to do next is raise the mast.
+				wb.text = "%s — RAISE %s FIRST" % [String(wdef["name"]),
+					String((GameState.COLONY_WORKS[need] as Dictionary)["name"])]
 				wb.disabled = true
 			elif not bool(main.work_delivery_met(key, wid)):
 				# §116. A work with a manifest names it, and names where. The
@@ -1372,15 +1384,12 @@ func _refresh_colonies() -> void:
 	# §112, THE RELAY MAST. With one standing anywhere in this system, the
 	# chart carries the charted markets' weather out here -- the same event
 	# list the rumour desk reads, as lines of record rather than a purchase.
-	var has_relay := false
-	for cr_v in GameState.colonies_in(_selected):
-		if GameState.has_work(String((cr_v as Dictionary)["key"]), "relay"):
-			has_relay = true
+	# §126. ASKED ONCE, IN ONE PLACE. These were two hand-written any-in-system
+	# loops; the scope key on the work is what answers it now, so a fifth
+	# system-scoped work arrives without a third copy of this walk.
+	var has_relay := GameState.work_stands_in_system(_selected, "relay")
 	# §116. AND THE REPEATER, which is the other half of the same list.
-	var has_repeater := false
-	for cr2_v in GameState.colonies_in(_selected):
-		if GameState.has_work(String((cr2_v as Dictionary)["key"]), "repeater"):
-			has_repeater = true
+	var has_repeater := GameState.work_stands_in_system(_selected, "repeater")
 	# §116. THE RELAY WAS SHOWING BOTH, and its own blurb says CHARTED MARKETS.
 	# `market_events` carries the deep's weather in the same array under a
 	# `deep` flag (§108), this loop never filtered, and the header above it read

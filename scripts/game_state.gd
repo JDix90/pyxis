@@ -380,12 +380,36 @@ const FILING_REACH_MULT := 1.5      # come alongside from further out
 # alternative is the one to reach for instead: "if a structure takes time to
 # become something, the time is spent flying to it with what it needs -- the
 # trip is the cost."
+# §126. RE-PRICED AS A FAMILY, AND SCOPE IS NOW DATA.
+#
+# THE SCOPE KEY WAS ALREADY AUTHORED -- IN THE BLURBS. "OUT TO THIS SYSTEM"
+# against "ALONGSIDE THIS COLONY" and "A BONDED BAY OF ITS OWN": two of these
+# four are SYSTEM infrastructure and two are COLONY infrastructure, the
+# consumers have always behaved that way, and nothing said so anywhere a second
+# reader could find it. `scope` promotes that sentence to a key, and the key is
+# load-bearing rather than decorative -- work_stands_in_system reads it, the
+# chart's two hand-written any-in-system loops are gone, and the sink table
+# derives the whole channel's size from it.
+#
+# AND THAT IS WHAT RE-PRICED THEM. A system-scoped work has a HARD CAP OF THREE
+# useful copies in the entire game (one per authored system, because the chart
+# asks "any colony in this system") -- so raising the relay's price does not
+# deepen the sink, it just makes the three copies anybody would buy dearer. A
+# colony-scoped work multiplies by every colony a pilot cares to develop. The
+# two are different products and cannot share one price curve, which the old
+# flat 4/6/8/10 ladder assumed they could.
+#
+# THE FIGURES ARE LOOP FRACTIONS (§124's rule), against the 11,236 the sweep
+# measures: relay ~1.0, dock ~1.5, annex ~2.5, repeater ~4.0. One colony's four
+# is 101,000 -- nine loops, about seventy minutes -- against 28,000 and under
+# twenty minutes before. THE WORKS AT THEIR CEILING is the leg that prices the
+# channel rather than the menu.
 const COLONY_WORKS := {
-	"relay": {"name": "RELAY MAST", "price": 4000,
+	"relay": {"name": "RELAY MAST", "price": 11000, "scope": "system",
 		"blurb": "THE CHART CARRIES THE CHARTED MARKETS' WEATHER OUT TO THIS SYSTEM"},
-	"dock": {"name": "DRY DOCK", "price": 6000,
+	"dock": {"name": "DRY DOCK", "price": 17000, "scope": "colony",
 		"blurb": "YOUR SHIELD MENDS AT TWICE THE PACE ALONGSIDE THIS COLONY"},
-	"annex": {"name": "BONDED ANNEX", "price": 8000,
+	"annex": {"name": "BONDED ANNEX", "price": 28000, "scope": "colony",
 		"blurb": "A BONDED BAY OF ITS OWN — HOLD AT THE COLONY TO USE IT"},
 	# v28 (§116). THE FIRST WORK THAT TAKES A DELIVERY, and §5 wrote the shape
 	# of it on 2026-08-04: "if a structure takes time to become something, the
@@ -404,8 +428,21 @@ const COLONY_WORKS := {
 	# horizon's, taken in the open with that table in hand. Pricing this one
 	# work to the new rule would be making that decision on one row, invisibly.
 	# So it sits at the top of the family it belongs to and moves when they do.
-	"repeater": {"name": "DEEP REPEATER", "price": 10000,
-		"goods": {"alloys": 12},
+	# §126. AND IT REQUIRES THE MAST, which its own blurb has said since §116 --
+	# "the way the relay carries the chart's". The repeater is the relay's
+	# deeper sibling and there is nothing for it to repeat through without one.
+	#
+	# THE ONLY PREREQ IN THE LADDER, and the reason is arithmetic rather than
+	# taste. A prereq that forces a purchase you did not want is a PRICE wearing
+	# a gate's clothes, which is §72 read backwards. Staging the colony-scoped
+	# works behind the relay would do exactly that: a pilot who wants twelve
+	# annexes would be made to raise twelve masts, and NINE OF THEM WOULD DO
+	# NOTHING AT ALL -- the chart only ever asks whether ANY colony in the
+	# system has one. This prereq costs nothing extra by construction, because
+	# the mast it demands is the same single per-system mast the repeater's own
+	# grant already depends on.
+	"repeater": {"name": "DEEP REPEATER", "price": 45000, "scope": "system",
+		"goods": {"alloys": 12}, "requires": "relay",
 		"blurb": "THE CHART CARRIES THE DEEP STATIONS' WEATHER, THE WAY THE RELAY CARRIES THE CHART'S"},
 }
 const DOCK_AURA_RANGE := 30.0
@@ -3749,6 +3786,46 @@ func has_work(key: String, work: String) -> bool:
 	return (colony_works.get(key, []) as Array).has(work)
 
 
+func work_scope(work: String) -> String:
+	# §126. "system" or "colony", authored on the work. Defaults to "colony" --
+	# the narrower reading -- so a work added without the key grants only where
+	# it stands rather than silently across a whole system.
+	return String((COLONY_WORKS.get(work, {}) as Dictionary).get("scope", "colony"))
+
+
+func work_stands_in_system(system_id: String, work: String) -> bool:
+	# §126. THE ANY-IN-SYSTEM QUESTION, asked in ONE place. The chart carried
+	# two hand-written copies of this loop (one for the relay, one for the
+	# repeater) and a third was going to arrive with every system-scoped work
+	# after them -- the shape §114's own comment calls out: a fact typed twice
+	# is a rename away from a lie.
+	#
+	# A colony-scoped work is never "in the system"; ask has_work about the
+	# colony it stands at. Answering true here for a dock would hand a whole
+	# system the aura of one yard.
+	if work_scope(work) != "system":
+		return false
+	for c_v in colonies_in(system_id):
+		if has_work(String((c_v as Dictionary)["key"]), work):
+			return true
+	return false
+
+
+func work_prereq_missing(key: String, work: String) -> String:
+	# §126. The work this one requires and this colony does not have, or "".
+	# Pure and exposed for the same two reasons work_delivery_met is: the chart
+	# row has to state its own terms (§58), and a leg has to be able to ask the
+	# question without performing the purchase.
+	#
+	# ONE LEVEL, NOT A CHAIN. There is exactly one prereq in the ladder and the
+	# comment at `repeater` argues why there should not be more; a transitive
+	# walk here would be machinery for a shape this design refuses.
+	var need := String((COLONY_WORKS.get(work, {}) as Dictionary).get("requires", ""))
+	if need == "" or has_work(key, need):
+		return ""
+	return need
+
+
 func buy_colony_work(key: String, work: String) -> bool:
 	# PURE STORE RULES: a real colony, a known work, not already built, and the
 	# credits in hand. The one gate this cannot ask -- is the colony's ground
@@ -3758,6 +3835,12 @@ func buy_colony_work(key: String, work: String) -> bool:
 	if not colonies.has(key) or not COLONY_WORKS.has(work):
 		return false
 	if has_work(key, work):
+		return false
+	# §126. THE LADDER, and it belongs HERE rather than in Main's half: "does
+	# this colony already have the mast" is answerable from colony_works alone,
+	# and the split this function's own comment documents is that Main owns only
+	# the questions the store CANNOT ask.
+	if work_prereq_missing(key, work) != "":
 		return false
 	# v28. THE GOODS ARE CHECKED BEFORE ANYTHING IS SPENT, which is this
 	# function's existing posture (the refusal is free) and §110's rule for

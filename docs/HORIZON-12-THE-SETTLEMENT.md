@@ -34,7 +34,7 @@ seven ideas died (research §6).
 |---|---|---|---|---|---|
 | 0 | **The death price** — rescue decoupled from the jump ramp onto its own constants; the band leg `THE DEATH PRICE SITS IN ITS BAND` (measured-steady fraction ∈ [0.30, 0.50]); repair recorded as band-blind, and found never to have been involuntary at all | none | ~60 lines + 2 legs | medium — the numbers everyone feels | **BUILT** — §123, corrected by §124 |
 | 1 | **The margin the line did not report** — both specced halves died on research; `THE ORDER DESK IS NOT A PRINTER` now reports the thinnest per-good margin (1.124) instead of the bias-free ceiling it was printing while asserting something else. `REQ_MULT` stays 5.0 | none | ~30 lines, no new leg | low | **BUILT** — §125 |
-| 2 | **The ladder stands** — `requires` staging in `COLONY_WORKS`; existing four works re-priced (re-sized against the measured loop, §124: ~8–12 loops per colony across all eight stages, not the ~27 the research pass first proposed); `WORKS ARE A SINK` grows the prereq clauses; `EVERY SINK IS PRICED` rows updated in the same commit | none | ~80 lines + legs | low | PLANNED |
+| 2 | **The ladder stands** — `scope` promoted from the blurbs to a key that `work_stands_in_system` reads; ONE prereq (`repeater` requires `relay`) after the rest died as a price in a gate's clothes; the four re-priced to 11k/17k/28k/45k = 9 loops a colony; `THE WORKS AT THEIR CEILING` prices the channel rather than the menu; `THE LADDER STANDS` is a new leg | none | ~240 lines + 1 leg | low | **BUILT** — §126 |
 | 3 | **EXPANDED VAULTS + THE YARD** — the keyed `warehouse_space_of(key)` accessor (60→120 with the work); a colony `repair_price` on the deep ports' own per-def pattern | none | ~100 lines + legs | medium — STORETEST's bay legs re-derive | PLANNED |
 | 4 | **THE LIGHT + THE ARCHIVE** — a held spill in the colony's system does not expire (extends §109's clock, braids §118's record); the Archive rendered entirely from existing stores, granting nothing | none | ~120 lines + legs | low | PLANNED |
 | 5 | **The measure** — the horizon closed, the sweep read, the sink table re-printed at its new prices | none | docs | low | PLANNED |
@@ -81,6 +81,32 @@ recorded at 2.91 and `STEADY MIDTIER` measures 0.775 — a best-case loop paying
 ~3.8× a steady one. If that spread is real it makes §123's choice to band
 against STEADY load-bearing rather than tidy, and it wants a sentence in commit
 5. Both legs print on every `PACINGTEST` run; read them together.
+
+## What commit 2 changed about commits 3-4
+
+The scope finding is not confined to the works that already exist. **Every new
+work in commits 3-4 must declare a `scope`, and the choice sets its price
+curve**, because a system-scoped work has a hard ceiling of three useful copies
+and a colony-scoped one multiplies by fifteen.
+
+Read against the four planned:
+
+- **EXPANDED VAULTS** (the annex bay 60 → 120) — colony-scoped by construction;
+  it extends a bay keyed to its own colony. Multiplies. Prices like the annex.
+- **THE YARD** (full repair at the colony) — colony-scoped, positional, the dry
+  dock's own shape.
+- **THE LIGHT** (a held spill in this system does not expire) — **system**-scoped
+  by its own wording, so it caps at three and must be priced as one purchase
+  per system rather than per colony. Worth re-reading before it is built: a
+  per-system grant on a per-colony work is exactly what made the relay look
+  cheap.
+- **THE ARCHIVE** (the run's record made into a place) — undecided, and the
+  decision is a design one rather than a pricing one. A record of the whole run
+  displayed at every colony is redundant by definition; displayed at one, it is
+  a destination.
+
+The channel row derives from `scope`, so each of these lands in the sink table
+without an edit — and lands wrong if the scope is wrong.
 
 ## The laws that hold it (all existing, all still asserted)
 
