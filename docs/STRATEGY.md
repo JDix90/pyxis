@@ -6533,7 +6533,15 @@ cross a band rather than a slide outward, and pays a FLAT 0.9 u/s — +56% on th
 speed floor, +15% on the fastest fit. The braid: a filed sheet does not unlock
 the tide, it unlocks the CHART of it, so §137 pays twice. Stands down inside a
 storm (DEFECTS 2b — `apply_tether` re-clamps to the last caller). New tag
-TIDETEST, 10 legs, 82 → 83 runs. **Commit 1a
+TIDETEST, 10 legs, 82 → 83 runs. **Commit 3 BUILT — the horizon closes** —
+§140, the roads: a 26,000 colony work whose reach (`MIN_HYPER_SEPARATION` × 1.5
+= 1,050u, three times the light's and overlapping on purpose) draws every tide
+in it on the chart WITHOUT filing a sheet. Information only — §26 and §51 both
+asserted, including a source read proving `tide.gd` cannot name the work. Its
+manifest is the surveys the road is made of (`chart_quiet` 6 + `chart_fathom` 6,
+a gate on having worked both halves of the middle). `supercell_centre` moved to
+DeepSpace and `supercells_within` added beside it. COLONYTEST 22 → 24, CARTTEST
+23 → 24, no save bump. **Commit 1a
 BUILT** — §138: §137 shipped a parse error, `:=` inferred through an untyped
 node handle, which took CARTTEST to `3 pass 7 err` and every SAVETEST with it.
 Fixed by annotation, and `check_scripts.py` gained **rule 7**
@@ -14504,3 +14512,137 @@ comment says why: an `await` inside a `Callable` makes it a coroutine, and a
 coroutine called without an await fails at **runtime** rather than at parse.
 That is DEFECTS class 10's shape, and this horizon paid for the neighbouring
 class in the commit immediately before this one — §138 was last commit.
+
+
+## 140. The roads (Horizon 14, commit 3)
+
+Home waters, and the commit that closes the horizon. **THE ROADS** — a colony
+work, 26,000, colony-scoped, no prereq. Within `ROADS_RANGE` of the colony that
+raised it, **every tide is drawn on the chart without filing a sheet.**
+
+### Why a colony work is the third answer at all
+
+Every work before this one faces the deep or faces the colony itself. The relay
+and the repeater carry market weather; the Archive files deep counters; the
+vault and the yard serve the hull. **The Light is the only work in the game that
+reaches into the surrounding water, and its reach is 350u.**
+
+The research called this the weakest direction taken alone — colonies are
+already there and the middle is still boring — and the most continuous with what
+had just shipped. Its own sentence for why it belongs anyway:
+
+> *its real value is as the place the other two are spent.*
+
+Which is what it is. **§137 gives an area worth finishing. §139 gives something
+happening in it. §140 is where both accumulate.**
+
+### It grants information and nothing else
+
+That is what makes it legal under both rules the research named, and it is worth
+naming them together because a work that reached into the water could very
+easily have broken either:
+
+- **§26.** Works pay in time, choice, access and information — never credits.
+  The roads pays no credits at any rate.
+- **§51.** Only the player depletes the world. Drawing a tide that was already
+  there mints no coverage, no salvage and no seam.
+
+> **THE ONE THING A PILOT COULD NOT GET WITHOUT FILING EVERY SHEET IN A REGION
+> IS THE SHAPE OF THE WATER. THE ROADS SELLS EXACTLY THAT, FOR ONE COLONY'S
+> REACH, AT A PRICE THAT IS NEVER CHEAPER THAN THE FILING.**
+
+26,000 is nine sheets, and it buys one disc. So it is a convenience in the place
+you live, never a way around the work — which is the same relationship §132's
+Archive has to the counters a pilot already stood at.
+
+Asserted rather than argued: coverage and `sheets_filed` are counted across a
+live purchase, and `tide.gd` is read for the word `roads`. **The water cannot
+know about the work**, because the tide is a pure function and the only way it
+could learn is by naming one.
+
+### The reach is three times the Light's, which is the opposite decision
+
+`LIGHT_AURA_RANGE` is half `MIN_HYPER_SEPARATION` precisely so that **no two
+lights overlap** — a wreck has exactly one owner, and coverage is bought one
+colony at a time. `ROADS_RANGE` is `MIN_HYPER_SEPARATION × 1.5`, and overlap is
+fine here. That is stated in the constant rather than left for a reader to
+assume the invariant was forgotten: a tide drawn twice is drawn once, nothing is
+owned, nothing is consumed, and two colonies close enough to share water
+genuinely do share it.
+
+The sizing argument is arithmetic, not feel. At the Light's 350u a roads would
+chart six blocks, of which two carry water:
+
+> **TWO ARROWS IS NOT A REGION.**
+
+At 1,050u it is about 53 blocks and a dozen to eighteen tides, depending on
+where the colony sits relative to the band-4 floor — and that variation is
+itself a reason to care where you founded. Drawn on the plot as a world-sized
+ring under the colony marker, because a grant whose edge the pilot cannot see is
+a grant they cannot plan with, and the arrows inside it would otherwise read as
+an arbitrary scatter rather than as one colony's water.
+
+### Its manifest is the only one the work is made of
+
+`{"chart_quiet": 6, "chart_fathom": 6}` — twelve space, half §116's starter-hold
+yardstick. Every other manifest in the game measures a **trip** (bulk) or a
+**read** (the Archive's lattice). This one is the thing itself: **a road is
+drawn from surveys, and these are surveys of the two bands the tide runs in.**
+
+It is therefore a gate on having worked *both halves of the middle*, asked once
+at the desk instead of assumed — which is the behaviour this whole horizon is
+trying to reward.
+
+### `supercell_centre` moved, and `supercells_within` is new
+
+Both on `DeepSpace`. The first came off `Tide`, where §139 had put it: it is a
+fact about the **grid**, and the grid lives in `deep_space.gd`. Leaving it on
+the one system that happened to need it first is how a second copy gets written
+by the second system.
+
+`supercells_within` measures **centre to centre**, one rule. The arrow on the
+plot, the tally in the rows and every leg get the same answer from the same
+walk. A rule about overlap instead would have to decide what a corner clipping
+the circle means, and three readers would each decide it.
+
+Its leg walks a deliberately **wider** box by hand and checks that every block
+the hand-walk finds inside the circle came back — because a check that asks the
+function to confirm itself confirms nothing. The colony leg asserts the other
+direction against a live purchase: over-reach charts water nobody bought,
+under-reach silently sells less than the ring on the chart promises.
+
+### Home waters, and the figure that is deliberately absent
+
+The chart's colony rows gain a section per roads: the tides drawn, and the
+sheets filed inside the reach. **No denominator on the sheets**, and that is
+§137's own finding rather than an oversight — a sheet asks for what its block
+actually holds, which is sixteen `plan_cell` walks per block and eight hundred
+to build one row of a panel. A cheaper denominator would be the wrong one:
+"4 OF 53" names a target most of whose blocks hold nothing readable at all.
+
+> **AN IMPOSSIBLE GOAL PRINTED CONFIDENTLY IS WORSE THAN A FIGURE WITH NO GOAL
+> BESIDE IT.**
+
+### The staging lesson, applied rather than relearned
+
+Both colony legs build every gate themselves — the ground sounded, the manifest
+**derived** from the table rather than typed, the hull standing alongside, the
+purse sized off the price. §116's leg left that lesson in writing after a block
+that reset shared state reddened the dock leg eighty lines below it. Here it
+cost nothing to honour, and the second leg orders its own staging carefully too:
+the ground is sounded *before* the coverage baseline is taken, or the leg would
+have measured its own setup as the roads minting a cell.
+
+`mint_raised` is in that leg's verdict for the same class of reason: **a
+purchase that was REFUSED also mints nothing**, and would have passed while
+measuring a work that never went up.
+
+### And the checker earned its keep again
+
+`check_shadow` caught `var got` colliding with a live local 315 lines below, in
+a 30,000-line file, in a leg written this commit. That is rule 4's exact stated
+failure mode — *"the loop and the declaration were two hundred lines apart, both
+correct on their own, and the diff showed only the new one"* — and it would have
+been a parse error taking the whole class registry down. Two commits, two
+catches: §138 wrote rule 7 after a sweep, and rule 4 paid for itself here before
+one started.

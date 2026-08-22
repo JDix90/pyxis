@@ -511,6 +511,45 @@ const COLONY_WORKS := {
 	"archive": {"name": "THE ARCHIVE", "price": 56000, "scope": "system",
 		"goods": {"lattice_data": 4},
 		"blurb": "EVERY DEEP COUNTER YOU HAVE STOOD AT IN THIS SYSTEM, KEPT"},
+	# §140. THE ROADS -- Horizon 14 commit 3, and the one that makes a colony a
+	# CENTRE rather than a destination. Every work before it faces the deep or
+	# faces the colony itself; the light is the only one that reaches into the
+	# water at all, and its reach is 350u. This one is about the water.
+	#
+	# WHAT IT GRANTS IS INFORMATION AND NOTHING ELSE, which is what makes it
+	# legal under both of the rules the horizon's research named. §26: works pay
+	# in time, choice, access and information -- never credits, and the roads
+	# pays no credits at any rate. §51: only the player depletes the world, and
+	# drawing a tide that was already there mints no coverage, no salvage and no
+	# seam. The one thing a pilot could not previously get without filing every
+	# sheet in a region is the SHAPE of the water, and this sells exactly that,
+	# for one colony's reach, at a price that is never cheaper than the filing.
+	#
+	# COLONY-SCOPED, obviously: a system-scoped roads would chart every band at
+	# once and the whole point is that it charts YOURS.
+	#
+	# NO PREREQ, §126's test honestly applied. The gate is legal when the thing
+	# it demands is the thing being improved; the roads improves nothing that
+	# stands, so it stands alone the way the mast, the dock, the annex and the
+	# light do.
+	#
+	# ITS MANIFEST IS THE READINGS THEMSELVES, and it is the only manifest in
+	# the game the work is literally made of: a road is drawn from surveys, and
+	# these are surveys of the two bands the tide runs in. Twelve space, half
+	# §116's starter-hold yardstick, and a gate on having worked BOTH halves of
+	# the middle -- which is the behaviour this whole horizon is trying to
+	# reward, asked for once at the desk instead of assumed.
+	#
+	# AND BOTH ARE `no_retail`, which is what makes that a real gate rather than
+	# a shopping list: chart data cannot be bought at any counter in the game,
+	# only surveyed. Every other manifest can be topped up with credits at the
+	# nearest port; this one can only be flown for. Stated here because it is a
+	# property of the GOODS rather than of the work, and a future retune that
+	# made survey data purchasable would quietly turn this gate back into a
+	# price -- §72 read backwards, which is the mistake §126 named.
+	"roads": {"name": "THE ROADS", "price": 26000, "scope": "colony",
+		"goods": {"chart_quiet": 6, "chart_fathom": 6},
+		"blurb": "THE WATER OFF THIS COLONY IS CHARTED — ITS TIDES DRAWN WITHOUT FILING A SHEET"},
 }
 const DOCK_AURA_RANGE := 30.0
 const DOCK_AURA_MULT := 2.0
@@ -543,6 +582,27 @@ const YARD_AURA_MULT := 6.0
 # which is the same thing the dock's aura buys and the whole of what a colony is
 # supposed to become.
 const LIGHT_AURA_RANGE := SystemDB.MIN_HYPER_SEPARATION * 0.5
+# §140, THE ROADS. Derived from the same one distance the world guarantees, and
+# THREE TIMES the light's, which is the opposite decision to the light's own and
+# taken for the light's own stated reason: these auras answer different
+# questions. The light asks "did you die inside this colony's reach", so it must
+# never overlap another -- a wreck has exactly one owner. The roads asks "is
+# this your water", and water is a REGION rather than a yard: a colony whose
+# roads reached 350u would chart six blocks, of which two carry a tide, and two
+# arrows is not a region.
+#
+# OVERLAP IS THEREFORE FINE HERE, and it is worth saying why rather than
+# letting a reader assume the light's invariant was forgotten. A tide drawn
+# twice is drawn once; nothing is owned, nothing is consumed, and two colonies
+# close enough to share water genuinely do share it.
+#
+# At 1,050u this covers about 53 blocks. For a colony sitting well inside the
+# tide bands that is roughly 18 carrying water; for one near the band-4 floor,
+# whose disc reaches inward past 1,100u into water that has none, nearer a
+# dozen. Either way it is a DISC OF ARROWS around your own colony, which is the
+# whole feature -- and the variation is itself a reason to care where you
+# founded.
+const ROADS_RANGE := SystemDB.MIN_HYPER_SEPARATION * 1.5
 
 const REQ_MAX_OPEN := 3
 # Five played minutes. Long enough that ordering is a decision made on the way

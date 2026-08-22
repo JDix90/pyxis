@@ -725,9 +725,15 @@ func _draw_plot() -> void:
 	#     colour so it reads as a property OF the water rather than a thing
 	#     standing in it -- §30's rule, with the SHAPE (an arrow, the only
 	#     directional mark on this plot) carrying the distinction.
+	#     §140 gave the layer a SECOND source. A block is drawn if its sheet is
+	#     filed OR it lies inside a colony's ROADS reach -- collected into one
+	#     set first rather than drawn from two loops, so a block that is both
+	#     (the ordinary case near a developed colony) is drawn once and the two
+	#     sources cannot double-ink each other.
 	var sheet_prefix := _selected + ":"
 	var sc_span := float(DeepSpace.SUPERCELL) * DeepSpace.CELL
 	var sc_px := sc_span * scale
+	var known := {}
 	for sh_v in GameState.sheets_filed:
 		var sh := String(sh_v)
 		if not sh.begins_with(sheet_prefix):
@@ -735,12 +741,23 @@ func _draw_plot() -> void:
 		var sbits := sh.split(":")
 		if sbits.size() != 3:
 			continue
-		var ssx := int(sbits[1])
-		var ssz := int(sbits[2])
+		known[Vector2i(int(sbits[1]), int(sbits[2]))] = true
+	for rc_v in GameState.colonies_in(_selected):
+		var rc: Dictionary = rc_v
+		if not GameState.has_work(String(rc["key"]), "roads"):
+			continue
+		for rb_v in DeepSpace.supercells_within(float(rc["x"]), float(rc["z"]),
+				GameState.ROADS_RANGE):
+			known[rb_v] = true
+
+	for blk_v in known:
+		var blk: Vector2i = blk_v
+		var ssx := blk.x
+		var ssz := blk.y
 		var flow := Tide.set_at(_selected, ssx, ssz)
 		if flow == Vector2.ZERO:
 			continue
-		var wc := Tide.supercell_centre(ssx, ssz)
+		var wc := DeepSpace.supercell_centre(ssx, ssz)
 		var arrow_mid := to_plot.call(Vector3(wc.x, 0.0, wc.y)) as Vector2
 		if arrow_mid.x < -sc_px or arrow_mid.x > size.x + sc_px \
 				or arrow_mid.y < -sc_px or arrow_mid.y > size.y + sc_px:
@@ -887,6 +904,15 @@ func _draw_plot() -> void:
 	for co_v in GameState.colonies_in(_selected):
 		var co: Dictionary = co_v
 		var cp2 := to_plot.call(Vector3(float(co["x"]), 0.0, float(co["z"]))) as Vector2
+		# §140. THE ROADS' REACH, drawn UNDER the marker as a world-sized ring,
+		# because a grant with an edge the pilot cannot see is a grant they
+		# cannot plan with -- and the arrows inside it would otherwise read as
+		# an arbitrary scatter rather than as one colony's water. World-sized
+		# (it scales with zoom) where the marker is screen-fixed, which is §30's
+		# rule doing the separating: the two only ever move apart.
+		if GameState.has_work(String(co["key"]), "roads"):
+			_plot.draw_arc(cp2, GameState.ROADS_RANGE * scale, 0.0, TAU, 64,
+				Color(accent.r, accent.g, accent.b, 0.22), 1.0, true)
 		_plot.draw_rect(Rect2(cp2 - Vector2(4.0, 4.0), Vector2(8.0, 8.0)),
 			Color(accent.r, accent.g, accent.b, 0.28), true)
 		_plot.draw_rect(Rect2(cp2 - Vector2(4.0, 4.0), Vector2(8.0, 8.0)),
@@ -1509,6 +1535,58 @@ func _refresh_colonies() -> void:
 			frow.add_theme_font_size_override("font_size", 10)
 			frow.add_theme_color_override("font_color", Palette.AMBER_DIM)
 			_colony_rows.add_child(frow)
+
+	# §140, THE ROADS. One row per colony that raised one, and the two figures
+	# are what the work is FOR: the water it draws, and the work already done in
+	# it. Absent rather than refused when nothing has one, the Archive's rule
+	# one section up.
+	#
+	# NO DENOMINATOR ON THE SHEETS, and that omission is §137's finding rather
+	# than an oversight. A sheet asks for what its block actually HOLDS, which
+	# means walking sixteen cells of plan_cell per block -- eight hundred calls
+	# to build one row of a panel -- and a cheaper denominator would be the
+	# wrong one: "4 OF 53" would name a target most of whose blocks hold nothing
+	# readable at all. An impossible goal printed confidently is worse than a
+	# figure with no goal beside it.
+	var roads_rows: Array = []
+	for rw_v in GameState.colonies_in(_selected):
+		var rw: Dictionary = rw_v
+		if not GameState.has_work(String(rw["key"]), "roads"):
+			continue
+		var reach: Array = DeepSpace.supercells_within(
+			float(rw["x"]), float(rw["z"]), GameState.ROADS_RANGE)
+		var drawn_n := 0
+		var filed_n := 0
+		for rb_v in reach:
+			var rb: Vector2i = rb_v
+			if Tide.set_at(_selected, rb.x, rb.y) != Vector2.ZERO:
+				drawn_n += 1
+			if GameState.sheets_filed.has(DeepSpace.sheet_key(_selected, rb.x, rb.y)):
+				filed_n += 1
+		# NAMED THE WAY THE JUMP ROW NAMES IT. colonies_in returns {key, x, z}
+		# and no name at all, so a label invented here would be the only place
+		# in the game a colony is called something else -- the designation comes
+		# off the key through SystemDB, exactly as the row that jumps to it does.
+		var rparts := String(rw["key"]).split(":")
+		var ridx: int = int(String(rparts[1])) if rparts.size() == 2 else 0
+		roads_rows.append({"name": SystemDB.hyper_designation(_selected, ridx),
+			"drawn": drawn_n, "filed": filed_n})
+	if not roads_rows.is_empty():
+		var rhead := Label.new()
+		rhead.text = "HOME WATERS — CHARTED %du OFF EACH ROADS" % int(GameState.ROADS_RANGE)
+		rhead.add_theme_font_size_override("font_size", 10)
+		rhead.add_theme_color_override("font_color", Palette.GOLD)
+		_colony_rows.add_child(rhead)
+		for rr_v in roads_rows:
+			var rr: Dictionary = rr_v
+			var rrow := Label.new()
+			rrow.text = "   %s  ·  %d TIDE%s DRAWN  ·  %d SHEET%s FILED IN REACH" % [
+				String(rr["name"]), int(rr["drawn"]),
+				"" if int(rr["drawn"]) == 1 else "S", int(rr["filed"]),
+				"" if int(rr["filed"]) == 1 else "S"]
+			rrow.add_theme_font_size_override("font_size", 10)
+			rrow.add_theme_color_override("font_color", Palette.AMBER_DIM)
+			_colony_rows.add_child(rrow)
 
 	# §112, FILING t3. THE HELD CELL IS AN ANCHOR: the nearest few cells the
 	# network holds, as jump rows on the beacon jump's own fee and its own cap.

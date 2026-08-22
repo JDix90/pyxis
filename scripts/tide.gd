@@ -124,14 +124,6 @@ var _set := Vector2.ZERO
 var _riding := false
 
 
-static func supercell_centre(sx: int, sz: int) -> Vector2:
-	# The middle of the 4x4 block in world XZ. Derived from DeepSpace's own two
-	# constants rather than restated, so a change to either moves the water with
-	# the grid instead of silently misaligning it.
-	var span := float(DeepSpace.SUPERCELL) * DeepSpace.CELL
-	return Vector2(float(sx) * span + span * 0.5, float(sz) * span + span * 0.5)
-
-
 static func band_hand(id: String, band: int) -> float:
 	# Which way round the water goes in this band -- ONE fact per band, not one
 	# per block. It is what a pilot can learn without filing anything, and it is
@@ -151,7 +143,7 @@ static func set_at(id: String, sx: int, sz: int) -> Vector2:
 	# from a stream none of them share -- so adding the tide cannot move a rock,
 	# and WORLD_FINGERPRINT_BEFORE_SEAMS is untouched by construction rather
 	# than by measurement.
-	var centre := supercell_centre(sx, sz)
+	var centre := DeepSpace.supercell_centre(sx, sz)
 	if centre.length() < 0.001:
 		return Vector2.ZERO
 	# THE BAND GATE LIVES HERE AND NOWHERE ELSE, which is why _physics_process

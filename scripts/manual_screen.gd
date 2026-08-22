@@ -300,7 +300,7 @@ func _build_hud() -> void:
 	# tables that decide them, so a retune moves the manual with the feature.
 	# The line the player actually needs is the LAST one -- the water is free
 	# and it never costs, which is the only fact that changes how you fly.
-	_body.add_child(_legend(Palette.band_color(Tide.BAND_LO), "TIDE", "A standing set of water in %s and %s. Fly with it and it carries you %.1f faster; cross it or fight it and it does nothing at all. It runs across the depth, never out — and a block whose SHEET you have filed keeps its arrow on the chart." % [
+	_body.add_child(_legend(Palette.band_color(Tide.BAND_LO), "TIDE", "A standing set of water in %s and %s. Fly with it and it carries you %.1f faster; cross it or fight it and it does nothing at all. It runs across the depth, never out — and its arrow stays on your chart for any block whose SHEET you filed, or any water inside a colony's ROADS." % [
 		String(DeepSpace.BAND_NAMES[Tide.BAND_LO]), String(DeepSpace.BAND_NAMES[Tide.BAND_HI]), Tide.DRIFT]))
 	_body.add_child(_legend(Palette.HULL, "ODDITY", "Something only this system has, standing in its own bands. One will talk to you, one will burn you, one will give you a bearing for nothing."))
 	_body.add_child(_back())

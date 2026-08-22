@@ -11,7 +11,7 @@ owner's call, with **`RICHER OUTWARD` never broken** — also the owner's call.
 |---|---|---|
 | 1 | **The sheet** — reward area rather than depth | **BUILT** — §137 |
 | 2 | **The tide** — weather that gives, in the middle bands, through `apply_tether`'s own door | **BUILT** — §139 |
-| 3 | **Home waters** — colony works that reach into the band around them | PLANNED |
+| 3 | **The roads** — home waters: the one work that reaches into the band around it | **BUILT** — §140 |
 
 ## Commit 1 — the sheet
 
@@ -132,4 +132,64 @@ and a fact about the region forever.
 | the bearing is the chart's own up | `set_deg` and the plot disagreeing about which way is north |
 | the cockpit names the set | the suffix in the wrong branch, or an unpadded bearing |
 | derived weather | a log, a ledger or a save appearing in `tide.gd` |
+
+
+## Commit 3 — the roads
+
+**THE ROADS** — a colony work, 26,000, colony-scoped, no prereq. Within
+`ROADS_RANGE` of the colony that raised it, **every tide is drawn on the chart
+without filing a sheet.**
+
+### Why this is the direction's answer
+
+Every work before it faces the deep or faces the colony itself. The Light is the
+only one that reaches into the water at all, and its reach is 350u. The research
+called this the weakest direction alone and the most continuous with what
+shipped — *"its real value is as the place the other two are spent"*. That is
+exactly what it is: **the sheet gives an area worth finishing, the tide gives
+something happening in it, and the roads is where both accumulate.**
+
+### It grants information and nothing else
+
+Which is what makes it legal under both rules the research named:
+
+- **§26** — works pay in time, choice, access and information, never credits.
+  The roads pays no credits at any rate.
+- **§51** — only the player depletes the world. Drawing a tide that was already
+  there mints no coverage, no salvage, no seam. Asserted across a live purchase,
+  and `tide.gd` is read for the word `roads` to prove the water cannot know.
+
+The one thing a pilot could not previously get without filing every sheet in a
+region is the **shape of the water**. The roads sells exactly that, for one
+colony's reach, at a price that is never cheaper than the filing: 26,000 is nine
+sheets, and it buys one disc.
+
+### The reach is three times the Light's, and that is the opposite decision
+
+The Light's radius is half `MIN_HYPER_SEPARATION` so **no two lights overlap** —
+a wreck has exactly one owner. The roads is `MIN_HYPER_SEPARATION × 1.5` =
+1,050u, and overlap is fine: a tide drawn twice is drawn once, nothing is owned,
+nothing is consumed, and two colonies close enough to share water genuinely do.
+
+At 350u a roads would chart six blocks, two of them carrying water. **Two arrows
+is not a region.** At 1,050u it is about 53 blocks and a dozen to eighteen
+tides — a disc of arrows around your own colony, drawn under the marker as a
+world-sized ring so the grant has a visible edge.
+
+### Home waters
+
+The chart's colony rows gain a section per roads: the tides drawn, and the
+sheets filed inside the reach. **No denominator on the sheets** — §137 proved a
+sheet asks for what its block actually holds, which is sixteen `plan_cell` walks
+per block, and a cheaper denominator would name a target most of whose blocks
+hold nothing readable. An impossible goal printed confidently is worse than a
+figure with no goal beside it.
+
+### Legs (COLONYTEST 22 → 24, CARTTEST 23 → 24)
+
+| leg | what would make it red |
+|---|---|
+| the roads draws water no sheet has | the reach adding nothing to the filed sheets, or returning a block outside itself |
+| the roads mints nothing | a coverage cell, a filed sheet, or `tide.gd` learning the word |
+| a reach is a block list, and it is complete | a block inside the circle the helper did not return |
 

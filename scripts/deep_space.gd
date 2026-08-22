@@ -1462,6 +1462,39 @@ static func supercell_of(cx: int, cz: int) -> Vector2i:
 	return Vector2i(floori(float(cx) / float(SUPERCELL)), floori(float(cz) / float(SUPERCELL)))
 
 
+static func supercell_centre(sx: int, sz: int) -> Vector2:
+	# The middle of a 4x4 block in world XZ. Vector2 rather than cell_centre's
+	# Vector3 on purpose: cell_centre feeds world PLACEMENT and needs a height,
+	# while every reader of this one -- the tide's set, the roads' reach, the
+	# chart's arrow -- works in the plane and would only throw the y away.
+	#
+	# §140 moved it here from Tide. It is a fact about the GRID, and the grid
+	# lives in this file; leaving it on the one system that happened to need it
+	# first is how a second copy gets written by the second.
+	var span := float(SUPERCELL) * CELL
+	return Vector2(float(sx) * span + span * 0.5, float(sz) * span + span * 0.5)
+
+
+static func supercells_within(x: float, z: float, radius: float) -> Array:
+	# §140, THE ROADS' REACH, as a block list. Measured CENTRE to centre, one
+	# rule: a block is in reach or it is not, and the arrow on the chart, the
+	# tally in the rows and any leg that asks all get the same answer from the
+	# same walk. A rule about overlap instead would have to decide what a corner
+	# clipping the circle means, and three readers would each decide it.
+	#
+	# Bounded by the box the circle sits in rather than swept: at the roads'
+	# 1,050u that is nine blocks square, and the alternative is a walk whose
+	# cost depends on how far from the origin the colony happens to sit.
+	var span := float(SUPERCELL) * CELL
+	var out: Array = []
+	for sx in range(floori((x - radius) / span), floori((x + radius) / span) + 1):
+		for sz in range(floori((z - radius) / span), floori((z + radius) / span) + 1):
+			var c := supercell_centre(sx, sz)
+			if Vector2(c.x - x, c.y - z).length() <= radius:
+				out.append(Vector2i(sx, sz))
+	return out
+
+
 static func sheet_key(id: String, sx: int, sz: int) -> String:
 	# §137. "system:sx:sz" -- THREE parts, deliberately the same shape as a deep
 	# bay key, because §127 found what happens when a two-part key meets a

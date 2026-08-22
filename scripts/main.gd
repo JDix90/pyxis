@@ -7933,6 +7933,41 @@ func _run_cart_test() -> void:
 		GameState.note_sheet_filed(DeepSpace.sheet_key(system_id, i, 0), 4, 500.0)
 	var kept_far := GameState.sheets_filed.has(far_key)
 	var capped_n := GameState.sheets_filed_in(system_id)
+	# §140. A REACH IS A BLOCK LIST, AND THE LIST IS COMPLETE. The roads' whole
+	# grant is "these blocks", so the function that answers it has to be exact in
+	# BOTH directions -- over-reach charts water nobody bought, under-reach
+	# silently sells less than the ring on the chart promises. The colony leg
+	# asserts the first half against a live purchase; this asserts the second
+	# against the grid, by walking a deliberately WIDER box by hand and checking
+	# that every block the hand-walk finds inside the circle came back.
+	#
+	# Hand-walked rather than derived from the same helper, which is the point:
+	# a check that asks the function to confirm itself confirms nothing.
+	var reach_r := 900.0
+	var reach_x := 1700.0
+	var reach_z := -400.0
+	var reach_got: Dictionary = {}
+	for rg_v in DeepSpace.supercells_within(reach_x, reach_z, reach_r):
+		reach_got[rg_v] = true
+	var reach_span := float(DeepSpace.SUPERCELL) * DeepSpace.CELL
+	var reach_box := int(ceilf(reach_r / reach_span)) + 3
+	var missed := 0
+	var inside := 0
+	for rx in range(int(reach_x / reach_span) - reach_box,
+			int(reach_x / reach_span) + reach_box + 1):
+		for rz in range(int(reach_z / reach_span) - reach_box,
+				int(reach_z / reach_span) + reach_box + 1):
+			var rcen := DeepSpace.supercell_centre(rx, rz)
+			if Vector2(rcen.x - reach_x, rcen.y - reach_z).length() > reach_r:
+				continue
+			inside += 1
+			if not reach_got.has(Vector2i(rx, rz)):
+				missed += 1
+	print("[cart] A REACH IS A BLOCK LIST, AND IT IS COMPLETE %d block(s) returned for a %.0fu circle, %d found inside it by hand, %d missed -> %s" % [
+		reach_got.size(), reach_r, inside, missed,
+		"PASS" if inside > 0 and missed == 0 and reach_got.size() == inside
+			else "FAIL"])
+
 	print("[cart] THE SHEET'S PREMIUM IS PAID ONCE first file=%s, a second refuses=%s; %d sheet(s) against a cap of %d, the far one kept=%s -> %s" % [
 		str(first_file), str(not second_file), capped_n, GameState.SHEET_CAP,
 		str(kept_far),
@@ -27834,6 +27869,101 @@ func _run_colony_test() -> void:
 		str(near_aura), str(far_aura),
 		"PASS" if near_aura and not far_aura else "FAIL"])
 
+	# §140. THE ROADS DRAWS WATER NO SHEET HAS, which is the whole grant stated
+	# as a set relation: what the chart knows is the FILED SHEETS union the
+	# ROADS REACHES, and the roads has to add something to that union or it is
+	# 26,000 for a ring on a map.
+	#
+	# BUILT FROM THE SAME TWO CALLS THE CHART MAKES, deliberately -- the plot
+	# collects `known` from sheets_filed and supercells_within and then asks
+	# set_at per block, and this asks the identical pair. A leg that re-derived
+	# the reach with its own arithmetic would agree with itself and not with the
+	# picture.
+	#
+	# IT STAGES EVERY GATE ITSELF, which is §116's own lesson written into the
+	# leg that came after it: the ground sounded, the manifest DERIVED from the
+	# table rather than typed, the hull standing alongside, the purse sized off
+	# the price. A leg that inherits any of those measures whichever earlier
+	# block last happened to set them.
+	GameState.sheets_filed = {}
+	var roads_at := Vector3(2200.0, 0.0, 0.0)
+	GameState.claim_colony("pyx01:6", roads_at.x, roads_at.z)
+	var roads_cell := DeepSpace.cell_of(roads_at)
+	GameState.note_survey_worked(DeepSpace.cell_key("pyx01", roads_cell.x,
+		roads_cell.y))
+	if not GameState.has_work("pyx01:6", "roads"):
+		GameState.cargo = {}
+		var rwant: Dictionary = (GameState.COLONY_WORKS["roads"]
+			as Dictionary).get("goods", {})
+		for rg_v in rwant:
+			GameState.cargo[String(rg_v)] = int(rwant[rg_v])
+		if wplayer != null:
+			wplayer.global_position = roads_at
+		GameState.salvage = works_want * 2
+		buy_colony_work("pyx01:6", "roads")
+	var roads_up := GameState.has_work("pyx01:6", "roads")
+	var roads_reach: Array = DeepSpace.supercells_within(2200.0, 0.0,
+		GameState.ROADS_RANGE)
+	var roads_tides := 0
+	var roads_unfiled := 0
+	var reach_bad := ""
+	for rb_v in roads_reach:
+		var rb: Vector2i = rb_v
+		# EVERY BLOCK IT RETURNS IS ACTUALLY IN REACH. The picture is drawn from
+		# this list, so a list that over-reaches would chart water a pilot never
+		# bought and nothing else would notice.
+		var rc := DeepSpace.supercell_centre(rb.x, rb.y)
+		if Vector2(rc.x - 2200.0, rc.y).length() > GameState.ROADS_RANGE + 0.001:
+			reach_bad = "block (%d,%d) is outside the reach" % [rb.x, rb.y]
+		if Tide.set_at("pyx01", rb.x, rb.y) == Vector2.ZERO:
+			continue
+		roads_tides += 1
+		if not GameState.sheets_filed.has(DeepSpace.sheet_key("pyx01", rb.x, rb.y)):
+			roads_unfiled += 1
+	print("[colony] THE ROADS DRAWS WATER NO SHEET HAS raised=%s, %d block(s) in a %du reach, %d carrying water, %d of them with no sheet filed, %s -> %s" % [
+		str(roads_up), roads_reach.size(), int(GameState.ROADS_RANGE),
+		roads_tides, roads_unfiled,
+		reach_bad if reach_bad != "" else "every block returned is inside it",
+		"PASS" if roads_up and reach_bad == "" and roads_unfiled > 0 else "FAIL"])
+
+	# AND IT MINTS NOTHING, which is §51 and §26 asked as one question. The
+	# roads pays in INFORMATION: it may not add a surveyed cell, may not file a
+	# sheet, and may not touch the water the hull feels. The first two are
+	# measured across the purchase; the third is read off the SOURCE, because
+	# the tide is a pure function and the only way it could learn about a work
+	# is by naming one.
+	var mint_at := Vector3(2600.0, 0.0, 600.0)
+	GameState.claim_colony("pyx01:4", mint_at.x, mint_at.z)
+	var mint_cell := DeepSpace.cell_of(mint_at)
+	# SOUNDED BEFORE THE COUNT IS TAKEN, not after: note_survey_worked adds a
+	# coverage entry, and taking the baseline first would have measured the
+	# leg's own staging as the roads minting a cell.
+	GameState.note_survey_worked(DeepSpace.cell_key("pyx01", mint_cell.x,
+		mint_cell.y))
+	GameState.cargo = {}
+	var mwant: Dictionary = (GameState.COLONY_WORKS["roads"]
+		as Dictionary).get("goods", {})
+	for mg_v in mwant:
+		GameState.cargo[String(mg_v)] = int(mwant[mg_v])
+	if wplayer != null:
+		wplayer.global_position = mint_at
+	GameState.salvage = works_want * 2
+	var mint_cov := GameState.survey_coverage.size()
+	var mint_sheets := GameState.sheets_filed.size()
+	var mint_raised := buy_colony_work("pyx01:4", "roads")
+	var minted := GameState.survey_coverage.size() != mint_cov \
+		or GameState.sheets_filed.size() != mint_sheets
+	var tide_src_c := FileAccess.get_file_as_string("res://scripts/tide.gd")
+	var tide_knows := tide_src_c.contains("roads") or tide_src_c.contains("ROADS")
+	# `mint_raised` is in the verdict on purpose: a purchase that was REFUSED
+	# also mints nothing, and would pass this leg while measuring a work that
+	# never went up.
+	print("[colony] THE ROADS MINTS NOTHING raised=%s; coverage %d->%d, sheets %d->%d across it; tide.gd names the work=%s (%d chars read) -> %s" % [
+		str(mint_raised), mint_cov, GameState.survey_coverage.size(), mint_sheets,
+		GameState.sheets_filed.size(), str(tide_knows), tide_src_c.length(),
+		"PASS" if mint_raised and not minted and not tide_knows
+			and tide_src_c.length() > 0 else "FAIL"])
+
 	# §127. THE YARD DEEPENS THE SAME AURA. Four things, and the third is the
 	# one an ordering mistake would break silently: a yard colony ALSO has a
 	# dock (the prereq), so a multiplier asked in the wrong order would cap every
@@ -30511,7 +30641,7 @@ func _run_tide_test() -> void:
 	var n_tide := 0
 	for sx in range(-reach, reach + 1):
 		for sz in range(-reach, reach + 1):
-			var centre := Tide.supercell_centre(sx, sz)
+			var centre := DeepSpace.supercell_centre(sx, sz)
 			var b := DeepSpace.band_of(centre.length())
 			var v := Tide.set_at(system_id, sx, sz)
 			if Tide.band_carries(b):
@@ -30609,7 +30739,7 @@ func _run_tide_test() -> void:
 		str(not elsewhere.is_equal_approx(pure_a)),
 		"PASS" if pure_a != Vector2.ZERO and pure_a.is_equal_approx(pure_b)
 			else "FAIL"])
-	var centre2 := Tide.supercell_centre(block.x, block.y)
+	var centre2 := DeepSpace.supercell_centre(block.x, block.y)
 	var stand := Vector3(centre2.x, 0.0, centre2.y)
 	var along := Vector3(flow.x, 0.0, flow.y)
 	var across := Vector3(-flow.y, 0.0, flow.x)
