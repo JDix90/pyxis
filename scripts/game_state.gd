@@ -470,6 +470,38 @@ const COLONY_WORKS := {
 	"light": {"name": "THE LIGHT", "price": 22000, "scope": "colony",
 		"goods": {"volatiles": 10},
 		"blurb": "WHAT LIES ADRIFT INSIDE THIS COLONY'S REACH, NOBODY ELSE TAKES"},
+	# §132. THE ARCHIVE, reshaped. Its first draft displayed the run's record and
+	# died on contact with `PILOT'S LEDGER` and `CAPTAIN'S LOG`, which show that
+	# free (§128). This one files the thing the game has never remembered: the
+	# deep counters this pilot has actually stood at. `stations_seen` fills
+	# whether or not an archive stands, so the work buys ACCESS to a file the
+	# pilot already wrote -- which is exactly the sense in which a record is not
+	# a purchase.
+	#
+	# SYSTEM-SCOPED, like the other two information works, because the chart it
+	# draws on is one system at a time. Three useful copies, priced at the top of
+	# that family: it is the work that makes the Fathoms somewhere a pilot lives
+	# rather than somewhere they sweep, and §130 is what makes it worth having --
+	# the deepest counters are now the likeliest thing out there, and this is
+	# what stops finding one being a thing you have to do twice.
+	#
+	# AND NO PREREQ, which is §126's test honestly applied rather than argued
+	# around. The repeater is the obvious candidate -- deep information, same
+	# chart section -- but an archive works perfectly well without deep market
+	# weather, so demanding one would force 45,000 of purchase a pilot may not
+	# want. That is a price in a gate's clothes, and the test says no.
+	#
+	# ITS MANIFEST IS A COMPONENT, the first in the game, and the fiction was
+	# written two years before the work: a Data Lattice is "one layer of an
+	# archive core, prised out intact". Every other manifest is bulk and measures
+	# a TRIP (§116's yardstick); this one measures a READ, so the gate is
+	# ARCHEOLOGY's own output and the only work in the game that asks what you
+	# have understood rather than what you have hauled. `NO ORDER WITHOUT THE
+	# READ` already means a pilot cannot order one without having read one, so
+	# the desk is an alternative to the salvage and never a way around it.
+	"archive": {"name": "THE ARCHIVE", "price": 56000, "scope": "system",
+		"goods": {"lattice_data": 4},
+		"blurb": "EVERY DEEP COUNTER YOU HAVE STOOD AT IN THIS SYSTEM, KEPT"},
 }
 const DOCK_AURA_RANGE := 30.0
 const DOCK_AURA_MULT := 2.0
@@ -643,6 +675,39 @@ var deep_logs := {}
 # most PER_SYSTEM per system, so this is bounded at fifteen entries across the
 # whole game. Asserted against the generator rather than hoped.
 var marks_seen := {}
+# §132 (THE ARCHIVE). DEEP COUNTERS THIS PILOT HAS STOOD AT, keyed by the bay
+# key DeepSpace sets ("system:cx:cz") -> the cell's depth. structures_seen's
+# shape one shelf further out again, and for the reason its comment already
+# gives: "the search stays hard; the answer stops evaporating."
+#
+# IT IS THE ONE FOUND PLACE THE GAME DID NOT REMEMBER. A hyper-structure is in
+# structures_seen, a sounding mark in marks_seen, an unsounded fragment in
+# deep_logs -- but a pilot who found the Far Lantern at 6,200u, bought what they
+# could afford and flew home had no record of it at all, and the only counter
+# selling a Reactor Mk V went back to being a 13.5%-per-cell search.
+#
+# FILLED WHETHER OR NOT AN ARCHIVE STANDS, and that is the whole of "a record is
+# not a purchase": the finding is the pilot's, done before any work was raised.
+# What the work buys is ACCESS to the file (§26's currency), never the facts in
+# it -- so an archive raised late still reads everything its system already
+# knows, and nothing it does not.
+#
+# THE DEPTH IS STORED RATHER THAN DERIVED, which is §39's rule paying a small
+# price: this autoload references no world class, so it cannot ask DeepSpace
+# where a cell is. Main hands it the depth, exactly as it hands claim_colony an
+# x and a z.
+#
+# AND IT NEEDS A CAP, unlike every store above it. structures_seen, marks_seen
+# and deep_logs are all generator-bounded -- at most fifteen, fifteen and four
+# across the whole game. Deep counters are rolled PER CELL out of an expanse
+# with no edge, so this one is bounded by nothing at all and would grow for as
+# long as somebody kept flying.
+var stations_seen := {}
+# Per system, and the eviction is the feature rather than a compromise: when the
+# file is full the SHALLOWEST entry goes. An archive of the deep that forgets
+# the near stuff first is the record a pilot actually wants, and it means the
+# cap can never cost them the Lantern to keep a Relay.
+const ARCHIVE_CAP := 12
 # v26 (§106). THE NURSERY, HELD. Keyed by MARK key ("system:index") and kept in
 # its OWN store rather than in `colonies`, which the research pass found is not
 # a choice but a requirement:
@@ -757,6 +822,8 @@ var warehouse := {}
 # key: a cap that VARIES turns storage capacity into a thing you shop for and
 # compare across stations, which is a second budget with its own shopping trip —
 # and 9 rule 1 allows exactly one.
+#
+# [TASTE, §131] -- and §127 amended it, which is what a TASTE refusal is for.
 #
 # §127 AMENDS THAT, AND THE BOUNDARY THAT SURVIVES IS THE WHOLE OF IT. The
 # refusal above names its mechanism exactly: a cap authored PER STATION is a
@@ -1537,6 +1604,7 @@ func reset_to_starter() -> void:
 	structures_seen = {}
 	deep_logs = {}
 	marks_seen = {}
+	stations_seen = {}
 	nursery = {}
 	apex_intel = {}
 	beacons = {}
@@ -3918,6 +3986,82 @@ func work_stands_in_system(system_id: String, work: String) -> bool:
 	return false
 
 
+func note_station_seen(bay_key: String, depth: float) -> bool:
+	# §132. True the first time a counter is filed. Bay keys are "system:cx:cz"
+	# -- three parts -- so a charted port id (no colon) and a colony key (two)
+	# are both refused here rather than quietly filed as deep counters.
+	var parts := bay_key.split(":")
+	if parts.size() != 3 or not is_finite(depth):
+		return false
+	if stations_seen.has(bay_key):
+		return false
+	stations_seen[bay_key] = maxf(depth, 0.0)
+	_evict_shallowest(String(parts[0]))
+	note_log("COUNTER FILED — %s" % bay_key)
+	_queue_save()
+	return true
+
+
+func _evict_shallowest(system_id: String) -> void:
+	# §132. The cap is per SYSTEM, so a pilot who works one Pyx hard cannot
+	# crowd out another's file. Walked rather than sorted: twelve entries make a
+	# sort a ceremony, and the loop below is the same shape _load_warehouse's
+	# over-capacity trimmer uses -- shed one, re-measure, shed again.
+	while true:
+		var mine: Array = []
+		for k_v in stations_seen:
+			if String(k_v).begins_with(system_id + ":"):
+				mine.append(String(k_v))
+		if mine.size() <= ARCHIVE_CAP:
+			return
+		var shallowest := String(mine[0])
+		for k2_v in mine:
+			if float(stations_seen[k2_v]) < float(stations_seen[shallowest]):
+				shallowest = String(k2_v)
+		stations_seen.erase(shallowest)
+
+
+func stations_filed_in(system_id: String) -> Array:
+	# §132. [{key, depth}] for one system, DEEPEST FIRST -- the order the file is
+	# for. Pure and exposed so the chart can draw it and a leg can ask without
+	# opening a panel, work_delivery_met's own split.
+	var out: Array = []
+	for k_v in stations_seen:
+		var k := String(k_v)
+		if k.begins_with(system_id + ":"):
+			out.append({"key": k, "depth": float(stations_seen[k])})
+	out.sort_custom(func(a, b): return float(a["depth"]) > float(b["depth"]))
+	return out
+
+
+func _load_stations_seen(saved: Dictionary) -> void:
+	# §132. Validated the way marks_seen is, and RIDES v28 WITH NO BUMP --
+	# defaults-not-branches: a file written before this existed has no key, gets
+	# {}, and loads as a pilot who has filed nothing. True of every pilot before
+	# the Archive.
+	stations_seen = {}
+	var systems: Dictionary = {}
+	for k_v in saved:
+		var k := String(k_v)
+		var parts := k.split(":")
+		if parts.size() != 3:
+			continue                       # 1. a deep bay key or nothing
+		if not SystemDB.exists(String(parts[0])):
+			continue                       # 2. naming a system this build has
+		if not parts[1].lstrip("-").is_valid_int() \
+				or not parts[2].lstrip("-").is_valid_int():
+			continue                       # 3. on real cell coordinates
+		var d := float(saved[k_v])
+		if not is_finite(d) or d < 0.0:
+			continue                       # 4. at a depth that is a number
+		stations_seen[k] = d
+		systems[String(parts[0])] = true
+	# 5. And the cap holds on the way IN as well as on the way out -- a
+	#    hand-edited save must not hand anybody a forty-entry file.
+	for sid_v in systems:
+		_evict_shallowest(String(sid_v))
+
+
 func work_prereq_missing(key: String, work: String) -> String:
 	# §126. The work this one requires and this colony does not have, or "".
 	# Pure and exposed for the same two reasons work_delivery_met is: the chart
@@ -4536,6 +4680,7 @@ func save_dict() -> Dictionary:
 		"structures_seen": structures_seen,
 		"deep_logs": deep_logs,
 		"marks_seen": marks_seen,
+		"stations_seen": stations_seen,
 		"nursery": nursery,
 		"apex_intel": apex_intel,
 		"beacons": beacons,
@@ -4926,6 +5071,7 @@ func load_game() -> bool:
 	# 98. Rides v25 with no bump: a file from either earlier v25 commit has no
 	# key, gets {}, and loads as a pilot who has read no marks.
 	_load_marks_seen(data.get("marks_seen", {}))
+	_load_stations_seen(data.get("stations_seen", {}))
 	# v26. Defaults-not-branches, the standing rule: a v25 file has no key, gets
 	# {}, and loads as a pilot who never took the ground -- true of every pilot
 	# before the nursery existed.

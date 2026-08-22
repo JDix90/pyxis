@@ -6493,6 +6493,7 @@ and commits 1–4 were re-sized against the measurement before they were built.
 | 4 | THE LIGHT + THE ARCHIVE | none | **BUILT (half)** — §128; THE LIGHT ships at a radius derived from `MIN_HYPER_SEPARATION` so no two overlap. THE ARCHIVE died: `PILOT'S LEDGER` (§111) and `CAPTAIN'S LOG` (§118) already show the run's record free, so it was a paywall in front of a free screen |
 | 5 | the measure | none | **BUILT** — §129; the figure is **836 across 82 MEASURED** at `3a56e85`, green. The exempt channel row now prints its ratio to the catalogue, and the section's own expected figure (828) was wrong because it rested on §122's 824 — a number measured on a tree that printed a FAIL |
 | — | **from playtest, after the close**: the deep archetype pool is cumulative, so a uniform draw made the deepest counters rarer the further out a pilot flew (14.3% at band 6 against 33% at band 2); pyx01 could not be fixed with data because it is the fingerprint control | none | **BUILT** — §130; a derived default tilts the pick from band 4 outward, which is the first band the fingerprint's window cannot reach |
+| — | **THE ARCHIVE, reinstated and reshaped** (§131: the kill was not the assistant's call). Deep counters docked at are the one found place the game never remembered; the work buys reading the file, never the facts in it | none | **BUILT** — §132; system-scoped, 56,000, the first component manifest in the game, and the first store that needed a cap |
 
 ### Built, despite what the docs said
 
@@ -13725,3 +13726,180 @@ shape that would close it without inventing debt or goods-as-price is to spend
 the unpaid remainder against the **spill's claim clock**, which is a mechanic
 that already exists and which §128's LIGHT already protects. Recorded in §64 as
 open rather than built at the end of a horizon that has closed.
+
+## 131. A refusal is a price, not a veto
+
+A process section rather than a code one, written because the assistant got this
+wrong four times in one horizon and the owner had to say so.
+
+### What happened
+
+`THE ARCHIVE` was **explicitly approved** — an `AskUserQuestion` put to the
+owner, answered *"Allow it — a record is not a purchase."* Four commits later
+§128 killed it and wrote *"the code is what refused it."*
+
+That framing was wrong twice. §111's comment — *"there is nothing on this page
+to press"* — is an argument for why a shared ledger page survives §19's
+no-bookkeeping-screens rule. **It says nothing about colony works and nothing
+about paying for records.** The real argument was a design judgement (*the
+information is already free, so a paid copy grants nothing*), and citing §111
+dressed that judgement in an authority it did not have.
+
+Three more the same horizon, all decided without asking: `REQ_MULT` (§125), the
+`requires` staging (§126), and THE YARD as a paid repair (§127). Each kill was
+argued and each may even have been right. **None of them was the assistant's to
+make alone.**
+
+### The line
+
+The opening brief for Horizon 11 said *"kill ideas freely when the code refuses
+them"*, and that stands — for **ideas the assistant proposed**. It was never
+meant to cover **changes the owner asked for**.
+
+> **A REFUSAL IS A PRICE, NOT A VETO.** A comment refusing something is a past
+> decision, not a law of physics, and it never outranks a live one. When an
+> explicitly requested change meets a written refusal, the refusal is **costed
+> and put back to the owner** — what breaks, what amending it costs, what the
+> alternatives are — and never reported as a kill.
+>
+> Two things may still die without asking: a change that would **corrupt saves
+> or soft-lock the game**, and an idea the assistant proposed itself.
+
+### And a refusal says which kind it is
+
+The root of the error is that all refusals were read as the same weight. They
+are three different things, and only the first is not negotiable:
+
+| marker | what it means | who owns it |
+|---|---|---|
+| `PHYSICS` | breaks correctness — data loss, a soft-lock, a control that cannot move | nobody; it is a fact |
+| `COSTED` | breakable, and the price is nameable and payable | the owner, once the assistant prices it |
+| `TASTE` | a past design decision, written down | **the owner, always** |
+
+Read against this horizon: the tug's refusal to fail for want of credits is
+`PHYSICS` (there is no other exit from a shield-zero hull). pyx01's ban on
+`station_weights` is `COSTED` (it moves a recorded hash — §130 paid it by
+finding a band the hash cannot reach). *"Works pay in time, never credits"*,
+*"NOT prestige purchases"* and §111's page are all `TASTE`.
+
+**New refusals state their marker at the site.** Retrofitting every existing one
+is not worth a horizon; the ones an argument actually leans on get labelled when
+it leans on them.
+
+### Why this is the same defect as §124, one layer up
+
+§124's rule is *a number in prose states what produced it*, and its companion
+from §129 is *an instrument is worth building and it is not a reason to stop
+reading*. This is the third of the family:
+
+> **A RULE STATES WHAT IT WAS DECIDED ABOUT.** §111's comment was written about
+> skill screens and was applied, two horizons later, to a colony work — a
+> different context, never re-examined. A refusal carried into a context it was
+> not written for is an unattributed claim, exactly like a figure carried into a
+> document that never measured it.
+
+The repo's refusals have no expiry and no review. This section is the review.
+
+## 132. The Archive, reshaped (Horizon 12, after the close)
+
+§128 killed THE ARCHIVE and §131 records why that was not the assistant's call.
+This is the version built after the owner reinstated it — and it is a different
+work, because four commits happened in between.
+
+### What the first draft got wrong, restated honestly
+
+It displayed **the run's record**, which `PILOT'S LEDGER` (§111) and
+`CAPTAIN'S LOG` (§118) already show free on the pause menu. That was a real
+objection and it is unchanged. What was wrong was the conclusion: *the idea is
+dead* rather than *this shape of it is, and here is what it costs to reshape*.
+
+### The gap this one fills, and it was sitting in plain sight
+
+The game remembers every found place **except one**:
+
+| store | what it keeps | bound |
+|---|---|---|
+| `structures_seen` | hyper-structures found | 15, generator-bounded |
+| `marks_seen` | sounding marks resolved | 15, generator-bounded |
+| `deep_logs` | unsounded fragments read | 4, generator-bounded |
+| **nothing** | **deep counters docked at** | **—** |
+
+`structures_seen`'s own comment writes the principle: *"The search stays hard;
+the answer stops evaporating."* Deep counters were the one found place where the
+answer evaporated. A pilot who reached the Far Lantern at 6,200u — **the only
+counter in the game selling a Reactor Mk V** — bought what they could afford,
+flew home, and had no record of where it was. Next session it went back to being
+a 13.5%-per-cell search.
+
+That is the other half of what the playtester reported (§130). §130 made the
+deep counters *findable*; this makes them **re-findable**.
+
+### It buys access, never facts
+
+`stations_seen` fills **whether or not an archive stands**. The finding is the
+pilot's, done before any work was raised; what the work buys is reading the file
+back on the chart. That is precisely the sense in which *a record is not a
+purchase* — and it is why an archive raised late still reads everything its
+system already knows, and nothing it does not.
+
+An archive that granted knowledge rather than access would be intel for money,
+which §72 already refused and which the hunt desks already occupy.
+`THE ARCHIVE KEEPS WHAT YOU FOUND` asserts the file is byte-identical across the
+purchase.
+
+### Its shape, against what the horizon built
+
+| | |
+|---|---|
+| **scope** | `system` — the chart draws one system, so the other two information works are system-scoped for the same reason |
+| **requires** | **nothing**, and that is §126's test honestly applied |
+| **price** | **56,000** — 4.98 loops, the top of the information family |
+| **manifest** | **4 Data Lattices** — the first component manifest in the game |
+
+**No prereq, argued rather than assumed.** The repeater is the obvious candidate
+— deep information, same chart section — but an archive works perfectly well
+without deep market weather, so demanding one would force 45,000 of purchase a
+pilot may not want. §126's own test calls that a price in a gate's clothes, and
+it applies here even though the conclusion is inconvenient.
+
+**The manifest is a read, not a trip.** Every other work's goods are bulk and
+measure a dedicated run (§116's yardstick, twelve alloys being a starter hold).
+A Data Lattice is *"one layer of an archive core, prised out intact"* — written
+two years before the work that needed it. So the Archive is the one work gated
+on **ARCHEOLOGY's own output**: what you have understood rather than what you
+have hauled. `NO ORDER WITHOUT THE READ` already means a pilot cannot order one
+without having read one, so the desk is an alternative to the salvage and never
+a way around it.
+
+**The cap is the first one this repo has had to think about.** The three stores
+above are generator-bounded — fifteen, fifteen and four across the whole game.
+Deep counters are rolled per cell out of an expanse with no edge, so this store
+is bounded by nothing. `ARCHIVE_CAP` is 12 per system and **the eviction is the
+feature**: when the file is full the **shallowest** entry goes. An archive of the
+deep that forgets the near stuff first is the file a pilot actually wants, and it
+means the cap can never cost them the Lantern to keep a Relay.
+
+**No save bump.** `stations_seen` is a new key with a defaults-based load
+(`marks_seen`'s own precedent) — a v28 file has no key, gets `{}`, and loads as
+a pilot who has filed nothing, which was true of every pilot before this.
+
+### Where the works stand now
+
+| | credits | loops | wall |
+|---|---|---|---|
+| one colony's eight | 252,000 | 22.4 | 3.0 h |
+| the channel at its ceiling | 2,436,000 | 217 | 28.9 h |
+| the yard catalogue | 1,106,200 | 98 | 13.1 h |
+
+The menu is 4.4× under the catalogue, so the ceiling law keeps its teeth where
+it means them; the channel is 2.20× the ship and exempt for §127's reason.
+
+### And one fixture that would have gone green for the wrong reason
+
+Clause 5 asks whether the work gates *access* — so it must run where no archive
+stands. Written against pyx01 it would have read `true` before the purchase,
+because `WORKS ARE A SINK` raises every work on pyx01:7 eighty lines above it.
+It runs in pyx02, through the **store** half, because what is being tested is
+access and the journey is `THE TRIP IS THE COST`'s business one leg down. Sixth
+instance of the same defect this horizon, and the sixth caught by re-reading
+rather than by a run.

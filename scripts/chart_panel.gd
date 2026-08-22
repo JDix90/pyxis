@@ -1405,6 +1405,51 @@ func _refresh_colonies() -> void:
 	if has_relay or has_repeater:
 		_build_weather_rows(has_relay, has_repeater)
 
+	# §132, THE ARCHIVE. Every deep counter this pilot has stood at in this
+	# system, deepest first. Behind the work by ACCESS rather than by fact: the
+	# file fills whether or not an archive stands, and this is the only place it
+	# can be read.
+	#
+	# ABSENT RATHER THAN REFUSED when the work is not raised, the anchor rows'
+	# own rule one section down -- §58 covers verbs a pilot can reach, and a
+	# section for a work they have not bought is not one of them. The colony rows
+	# above already name THE ARCHIVE and its price, which is where a pilot learns
+	# it exists.
+	if GameState.work_stands_in_system(_selected, "archive"):
+		var filed: Array = GameState.stations_filed_in(_selected)
+		var fhead := Label.new()
+		# THE COUNT IS THE HEADER, and an empty file says so rather than
+		# printing a blank section -- the title screen's own rule.
+		fhead.text = "THE ARCHIVE — %d COUNTER%s FILED IN THIS SYSTEM" % [
+			filed.size(), "" if filed.size() == 1 else "S"] if not filed.is_empty() \
+			else "THE ARCHIVE — NOTHING FILED OUT THERE YET"
+		fhead.add_theme_font_size_override("font_size", 10)
+		fhead.add_theme_color_override("font_color", Palette.GOLD)
+		_colony_rows.add_child(fhead)
+		for f_v in filed:
+			var f: Dictionary = f_v
+			var bits := String(f["key"]).split(":")
+			if bits.size() != 3:
+				continue
+			var fcell := Vector2i(int(String(bits[1])), int(String(bits[2])))
+			var fplan: Dictionary = {}
+			if main.deep_space != null:
+				fplan = main.deep_space.plan_cell(fcell.x, fcell.y).get("station", {})
+			# THE NAME COMES FROM THE GENERATOR, not from the file. The expanse
+			# is a pure function (17), so the archetype at a cell is re-derived
+			# rather than stored -- a name written into the save is a name that
+			# can disagree with the world the next time somebody tunes a weight.
+			var fname := "A COUNTER"
+			if not fplan.is_empty():
+				fname = String(DeepPortDB.by_id(
+					String(fplan["archetype"])).get("name", fname))
+			var frow := Label.new()
+			frow.text = "   %s  ·  %du  ·  %s" % [fname, int(f["depth"]),
+				DeepSpace.band_name_in(_selected, float(f["depth"]))]
+			frow.add_theme_font_size_override("font_size", 10)
+			frow.add_theme_color_override("font_color", Palette.AMBER_DIM)
+			_colony_rows.add_child(frow)
+
 	# §112, FILING t3. THE HELD CELL IS AN ANCHOR: the nearest few cells the
 	# network holds, as jump rows on the beacon jump's own fee and its own cap.
 	# Below the tier the section simply is not here -- the ledger names the

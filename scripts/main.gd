@@ -1951,10 +1951,11 @@ func charge_rescue(at: Vector3) -> int:
 	var fee := rescue_fee(deep_space.depth_at(at))
 	if fee <= 0:
 		return 0
-	# THE TUG TAKES WHAT YOU HAVE AND NEVER REFUSES. A rescue that could fail for
-	# want of credits is a soft-lock with a story attached -- there is no other
-	# way out of a shield-zero ship -- and a debt is a second currency the game
-	# does not have. So it bills what is in the account and writes the rest off.
+	# THE TUG TAKES WHAT YOU HAVE AND NEVER REFUSES. [PHYSICS, §131] A rescue
+	# that could fail for want of credits is a soft-lock with a story attached --
+	# there is no other way out of a shield-zero ship. The write-off half is
+	# [TASTE]: a debt is a second currency the game does not have, and §64 carries
+	# the open question of what a broke pilot should pay instead.
 	var paid := mini(fee, GameState.salvage)
 	if paid > 0:
 		GameState.spend_salvage(paid)
@@ -4889,6 +4890,13 @@ func _complete_dock(port: Port) -> void:
 	port.set_docked_visual(true)
 	player.dock_to(port.dock_point)
 	GameState.set_docked(port.port_id)
+	# §132. THE FILE IS WRITTEN ON ARRIVAL, and only for a deep counter: bay_key
+	# is set by DeepSpace and by nothing else, which is _live_deep_counters' own
+	# tell for "not the charted port". Filed whether or not an archive stands
+	# anywhere -- the finding is the pilot's, and the work buys reading it back.
+	if port.bay_key != "" and deep_space != null:
+		GameState.note_station_seen(port.bay_key,
+			deep_space.depth_at(port.global_position))
 
 	# A BERTH IS WHERE BURNED SECTIONS COME BACK. This is the entire cost side of
 	# the diversion mechanic: power traded away in a fight stays traded until the
@@ -27288,6 +27296,66 @@ func _run_colony_test() -> void:
 		str(mast), str(freed), str(order_ok), str(legacy_kept),
 		"PASS" if barred and barred_free and prereq_named and mast and freed
 			and order_ok and legacy_kept else "FAIL"])
+
+	# §132. THE ARCHIVE KEEPS WHAT YOU FOUND, and the clauses are the five ways
+	# this could be wrong rather than five ways of asking whether it works.
+	GameState.stations_seen = {}
+	# 1. THE FILE FILLS WITHOUT THE WORK. The finding is the pilot's and the work
+	#    buys reading it back; one that only recorded after purchase would be
+	#    selling the finding instead of the file, which is the version §128
+	#    killed wearing a different hat.
+	var filed_deep := GameState.note_station_seen("pyx01:9:9", 6000.0)
+	var filed_near := GameState.note_station_seen("pyx01:2:0", 900.0)
+	var refiled := GameState.note_station_seen("pyx01:9:9", 6000.0)
+	# 2. AND ONLY A DEEP BAY KEY. A charted port id carries no colon and a colony
+	#    key carries one; a check that only looked FOR a colon would file both,
+	#    which is the defect §127 found in `_bay_key_is_real` from the other end.
+	var not_a_port := not GameState.note_station_seen("anchor", 100.0)
+	var not_a_colony := not GameState.note_station_seen("pyx01:7", 100.0)
+	# 3. DEEPEST FIRST, which is the order the file exists to be read in.
+	var arch_rows := GameState.stations_filed_in("pyx01")
+	var ordered := arch_rows.size() == 2 \
+		and String((arch_rows[0] as Dictionary)["key"]) == "pyx01:9:9"
+	# 4. AND THE CAP EVICTS THE SHALLOWEST. Overfilled with MID-depth entries so
+	#    a cap that dropped the oldest or the newest would still land on twelve
+	#    and quietly lose the 6,000u counter this whole work exists for.
+	for i in range(GameState.ARCHIVE_CAP + 4):
+		GameState.note_station_seen("pyx01:%d:5" % i, 1000.0 + float(i))
+	var capped := GameState.stations_filed_in("pyx01")
+	var kept_deep := GameState.stations_seen.has("pyx01:9:9")
+	var dropped_shallow := not GameState.stations_seen.has("pyx01:2:0")
+	# 5. THE WORK GATES ACCESS, NOT FACTS. Raised AFTER everything above was
+	#    filed, and the file must be byte-identical across the purchase -- an
+	#    archive that granted knowledge rather than access would be intel for
+	#    money, which is a different game and one §72 already refused.
+	#
+	#    IN PYX-02, because `WORKS ARE A SINK` raised every work on pyx01:7
+	#    eighty lines above -- including this one. Asked there, `read_before`
+	#    would already be true and the clause would assert nothing, which is the
+	#    same shape as §127's own clause 4 and the reason that one moved too.
+	#    Through the STORE half: what is being tested is access, and the journey
+	#    is `THE TRIP IS THE COST`'s business one leg down.
+	GameState.note_station_seen("pyx02:4:4", 3000.0)
+	var before_buy := str(GameState.stations_seen)
+	var read_before := GameState.work_stands_in_system("pyx02", "archive")
+	GameState.cargo = {}
+	var awant: Dictionary = (GameState.COLONY_WORKS["archive"]
+		as Dictionary).get("goods", {})
+	for ag_v in awant:
+		GameState.cargo[String(ag_v)] = int(awant[ag_v])
+	GameState.salvage = works_want * 2
+	GameState.buy_colony_work("pyx02:4", "archive")
+	var read_after := GameState.work_stands_in_system("pyx02", "archive")
+	var file_untouched := str(GameState.stations_seen) == before_buy
+	print("[colony] THE ARCHIVE KEEPS WHAT YOU FOUND filed without the work=%s/%s (a re-file is not a second entry=%s); a port id and a colony key both refused=%s/%s; deepest first=%s; %d filed against a cap of %d, the 6,000u counter kept=%s and the shallowest dropped=%s; readable %s->%s across the purchase with the file unchanged=%s -> %s" % [
+		str(filed_deep), str(filed_near), str(not refiled),
+		str(not_a_port), str(not_a_colony), str(ordered),
+		capped.size(), GameState.ARCHIVE_CAP, str(kept_deep), str(dropped_shallow),
+		str(read_before), str(read_after), str(file_untouched),
+		"PASS" if filed_deep and filed_near and not refiled and not_a_port
+			and not_a_colony and ordered and capped.size() == GameState.ARCHIVE_CAP
+			and kept_deep and dropped_shallow and not read_before and read_after
+			and file_untouched else "FAIL"])
 
 	# §116. THE TRIP IS THE COST, and this is the leg that says the gate is a
 	# JOURNEY and not just a manifest. Three refusals, each isolated: the goods
