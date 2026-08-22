@@ -222,7 +222,9 @@ func hold_begin() -> void:
 		# leave, what fits comes back out. One verb, and the prompt names which
 		# way it will run before the hold starts -- a gesture that guesses is
 		# the affordance problem §88 documents. Everything else -- the bonded
-		# set, the 60-space bay, NO WORMHOLE by key -- is the warehouse's own
+		# set, the bay's cap (60, or 120 with §127's EXPANDED VAULTS -- asked of
+		# warehouse_space_of, never of the constant), NO WORMHOLE by key -- is the
+		# warehouse's own
 		# law, reused: can_store == no_retail holds here exactly as at a dock,
 		# so the annex can never become the timed-arbitrage shelf STORETEST
 		# closed.
@@ -278,7 +280,7 @@ func hold_tick(delta: float) -> void:
 func _annex_transfer() -> void:
 	# Storables aboard go IN; with nothing to leave, what fits comes OUT. Counts
 	# are reported in the toast because a silent bay is a bug report -- and the
-	# whole transfer is the warehouse's own API, so every bound (60 space, the
+	# whole transfer is the warehouse's own API, so every bound (the keyed cap, the
 	# bonded set, partial moves) is enforced where it always was.
 	_holding = false
 	_annex_hold = false

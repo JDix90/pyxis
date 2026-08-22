@@ -144,6 +144,14 @@ so under-counting makes each one stricter and still passing. An error that only
 ever tightens a green test is invisible by construction. **Two numbers for the
 same thing are a defect even while both are green.**
 
+**And a sixth, from Horizon 12: a fixture holding a number typed beside the
+thing it pays for.** `WORKS ARE A SINK` set `salvage = 30000` against a colony
+ladder that totalled 28,000. Re-pricing it to 101,000 would have reddened the
+leg with *"a work refused"* — a **pricing change reported as a mechanism
+failure**, which is worse than a plain red because it sends the next reader to
+the wrong file entirely. Every fixture purse in that test is now derived from
+the prices it pays (§126).
+
 **Covered by:** `run_harness.sh --counts` (runs) and `--legs` (assertions), both
 derived, neither needing the Godot binary; `tree_id` on every mode so a figure
 carries its provenance; and `THE DEATH PRICE SITS IN ITS BAND`, which is what
@@ -151,6 +159,35 @@ turning a prose figure into an assertion buys. **If a number describes the code,
 derive it or do not write it — say which code, and say whether it was measured,
 derived or estimated.** A table that mixes the three without labels is drift with
 a plausible surface.
+
+---
+
+## 5b. A validity rule strict enough to be wrong
+
+**What happens.** A loader validates a key against one format, a second format
+arrives later, and the loader silently deletes the data rather than crashing on
+it. A crash would have been found in a day.
+
+**Instance.** `_bay_key_is_real` split a bay key on `:` and demanded **three**
+parts, because a deep bay is a cell `system:x:y`. The BONDED ANNEX (§112) stores
+under a colony key — `system:index`, **two** parts. Every annex bay was dropped
+on every load for two horizons, and everything a pilot stowed in one vanished.
+§16's *"nothing may vanish"*, broken by a function whose own comment calls the
+warehouse *"the one save field that arrives with no structure guaranteeing
+itself."*
+
+Nothing could catch it. The loader is *supposed* to drop keys that fail
+validation — that is its job — so the deletion looked exactly like the feature
+working. It was found by §127 asking whether it was safe to double that bay.
+
+**The rule.** **A validity test deletes; write the weakest one that is still
+true.** The fix asks only that the colony exists, not that it has an annex: a
+work cannot be un-built, so a bay without one is unreachable rather than
+illegal. And **a loader that discards should say how much** — a silent drop and
+a correct load are the same shape from outside.
+
+**Covered by:** `THE VAULT SURVIVES ITS OWN LOADER` (COLONYTEST), which stows a
+full bay and reloads it.
 
 ---
 

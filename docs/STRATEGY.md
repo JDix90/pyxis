@@ -6488,7 +6488,7 @@ and commits 1–4 are re-sized against the measurement before they are built.
 | — | the measurement: `RESCUE_FEE_FAR` 13,000→4,500, four documents of estimates corrected, and `_pacing_catalog_cost` given the `BERTHS` dict it had been missing since v24 | none | **BUILT** — §124; the band went red on its first sweep, which is the leg doing its job on the commit that added it — and the catalogue defect went the other way, a leg wrong where the prose was right |
 | 1 | the wider margin: REQ_MULT 5→8, jumps revisited | none | **BUILT as its opposite** — §125; both halves died on research (the jumps clear by 2–4.5×, and the order desk is a convenience whose free competitor is the core loop), and the leg turned out to print the bias-free ceiling while asserting the bias-inclusive one. `REQ_MULT` stays at 5.0; the margin is now reported |
 | 2 | the ladder stands: `requires` staging, the four works re-priced | none | **BUILT** — §126; scope became data, the staging shrank to one prereq (the rest would have been a price in a gate's clothes), and the channel is 76% of the yard |
-| 3 | EXPANDED VAULTS + THE YARD | none | **PLANNED** — re-sized against 11,236 |
+| 3 | EXPANDED VAULTS + THE YARD | none | **BUILT** — §127; both upgrade a rung rather than adding one, and the research found the annex bay has been deleted on every load since §112 |
 | 4 | THE LIGHT + THE ARCHIVE | none | **PLANNED** |
 | 5 | the measure | none | **PLANNED** |
 
@@ -13226,3 +13226,128 @@ And `A WORK IS DECLARED AFTER WHAT IT REQUIRES` is asserted rather than assumed.
 This leg and the chart both walk `COLONY_WORKS` in declaration order, so a work
 declared before its prerequisite would fail here as a pricing bug and show a
 pilot a rung above its own prerequisite there.
+
+## 127. The vault and the yard (Horizon 12, commit 3)
+
+Two works, and **both upgrade a rung rather than adding one** — which is what
+makes their prereqs legal under §126's test. That test asks whether a gate
+forces a purchase you did not want; here the thing required *is* the thing being
+improved. A pilot who wants the vault wants the annex by definition.
+
+| work | scope | requires | price | loops |
+|---|---|---|---|---|
+| EXPANDED VAULTS | colony | `annex` | **39,000** | 3.47 |
+| THE YARD | colony | `dock` | **34,000** | 3.03 |
+
+One colony's full six is now **174,000 — 15.5 loops, about two hours**, and
+6.4× under the yard catalogue. The channel at its ceiling is 1,938,000.
+
+### The refusal on `WAREHOUSE_SPACE`, and the boundary that survives
+
+`WAREHOUSE_SPACE`'s own comment refused exactly what EXPANDED VAULTS proposes:
+
+> *"Never a port-def key: a cap that VARIES turns storage capacity into a thing
+> you shop for and compare across stations, which is a second budget with its
+> own shopping trip — and 9 rule 1 allows exactly one."*
+
+The refusal names its mechanism precisely, and that is what lets it be amended
+rather than contradicted: **a cap authored per station is a thing you shop for.**
+A vault is not authored and cannot be shopped for — it is a work the pilot
+raised, at a colony the pilot founded, and every charted and deep counter in the
+game is still exactly 60. *"Identical at every station"* stays literally true.
+
+So the narrower line does the same job: **A CAP NEVER VARIES BY PORT DEF.**
+`CAP` still sweeps every def and archetype for a `warehouse_space` key and
+reddens on the first one.
+
+### The bug the research found: the annex has been eating cargo since §112
+
+Asking whether it was safe to *double* the annex bay turned up the reason
+doubling it would have sold nothing.
+
+`_bay_key_is_real` splits a bay key on `:` and — for anything containing one —
+demanded **three** parts, because a deep bay is a cell key `system:x:y`. **A
+colony key is two:** `claim_key()` returns `colony_key(system_id, index)`, which
+is `"pyx01:9"`.
+
+So `parts.size() != 3` returned false, `_load_warehouse` dropped the key, and
+**everything a pilot ever stowed in a bonded annex vanished on the next load.**
+§16's *"nothing may vanish"*, broken silently for two horizons, in the one save
+field the function's own comment calls *"the one save field that arrives with no
+structure guaranteeing itself."*
+
+The fix is the weaker test on purpose: a two-part key is real if the colony
+exists. **Not** "and it has an annex" — a work cannot be un-built, so a bay
+without one is unreachable rather than illegal, and a validity rule strict
+enough to be wrong is precisely how this function got here.
+
+### And the keyed cap makes the loader order-critical
+
+`_load_warehouse`'s over-capacity trimmer sheds cheapest-first so a reload is
+idempotent. It now asks `warehouse_space_of`, which asks `has_work` — so if
+`colony_works` were ever loaded **after** `_load_warehouse`, a vaulted annex
+holding 120 space would be trimmed against 60 and **sixty space of a pilot's
+goods would be deleted on load.**
+
+It is safe only because `load_game` populates colonies at 4891, works at 4898,
+and calls `_load_warehouse` at 4917. That is luck until it is written down — and
+the comment beside the works loader records this repo already shipping one
+load-order defect of exactly this shape. `THE VAULT SURVIVES ITS OWN LOADER`
+asserts it, so a reorder reddens instead of eating cargo.
+
+### THE YARD is six, and six is derived
+
+A hundred points of shield at the base 6/s is 16.7 seconds. The dry dock halves
+that to 8.3. **Six times takes it to 2.8 — under `SHIELD_CALM_DELAY`'s four
+seconds**, at which point the regen is no longer the wait and the calm delay is.
+Past six the multiplier buys nothing, because what remains is a combat rule
+rather than a repair one. The leg asserts it reaches that point, so a regen
+retune that made six too slow reddens.
+
+**It is not a paid instant repair**, and the three reasons compound. A meter
+would make it the only work with one; it would break §26 (works pay in time,
+choice, access and information — *never* credits); and it would land on a price
+`PACINGTEST` is structurally blind to, since the measured loop runs
+`invulnerable` and never pays a repair — §123's own recorded reason for leaving
+`REPAIR_FULL_PRICE` alone. The one-time price **is** the cost, and what it buys
+is the end of the wait at a place the pilot made.
+
+`repair_aura_mult_at` asks about the yard **first**, and that ordering is
+load-bearing: a yard colony also has a dock, so the other order would cap every
+yard in the game at the dock's two and nothing would ever say so.
+
+### §126 fed the wrong kind of row to the ceiling law
+
+`THE CATALOGUE IS THE LONGEST PRICE` means *no purchase costs more than the
+ship*. Every row in that table is what **one** pilot pays for one thing or one
+menu — except the channel row §126 added, which is what **fifteen colonies**
+would cost if somebody developed all of them. Handing a completionist aggregate
+to that law compares two different kinds of number, and it came due one commit
+later: these two works put the channel at **1.75× the catalogue.**
+
+**The red would have been the wrong answer**, and that is a decision rather than
+a convenience. Capping the works channel below the yard re-creates the exact
+condition §114 was written about — money buys place, a bit, and then nothing
+again. A terminal sink has to be able to outlast the ship or it is not terminal.
+
+So the law is sharpened from *nothing* to **no single decision**: the ship stays
+the spine, no one choice a pilot makes costs more than it, and completionism
+across a map is allowed to be longer. The exemption is a flag the row declares
+(`over_exempt`), not a name match, and the count is **printed** — a law with a
+quiet exception is a law nobody can audit.
+
+### Two more fixtures that would have gone green for the wrong reason
+
+- **`WORKS ARE A SINK` assigned each manifest over the last** instead of summing
+  them. Invisible while exactly one work had goods; THE YARD is the second and
+  wants alloys too, so the repeater's twelve would have been clobbered by the
+  yard's twenty, the repeater would have eaten them, and the yard would have
+  refused a hold eight short — a green leg turning red on a data addition it
+  should not care about.
+- **The vault leg fills a bay to its cap to prove it can**, and
+  `THE ANNEX IS BONDED` stows into that very key twenty lines below. It puts the
+  bay back. Same blast-radius rule the delivery leg states.
+
+**No save bump.** `scope`, `requires` and the two new works are const data;
+`warehouse`'s shape is untouched; and the bay-key fix makes the loader *keep*
+data it was discarding, which no save needs migrating for.

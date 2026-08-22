@@ -172,9 +172,9 @@ service, every price a gate-plus-price where the goods are the gate:
 |---|---|---|---|
 | 1–3 | the existing RELAY / DRY DOCK / ANNEX, re-priced | info/time/access | prices move, mechanics stand |
 | 4 | DEEP REPEATER (§116), re-priced | information | stands |
-| 5 | **EXPANDED VAULTS** — the annex bay 60 → 120 | access | keyed accessor for `WAREHOUSE_SPACE`; STORETEST legs derive from it |
-| 6 | **THE YARD** — full repair service at the colony, per-def priced like a deep port | time | `repair_price` on the colony, the deep ports' own pattern |
-| 7 | **THE LIGHT** — a held spill in this system does not expire | time | extends §109's claim clock; braids §118's record |
+| 5 | **EXPANDED VAULTS** — the annex bay 60 → 120 | access | BUILT §127; `warehouse_space_of` keyed, and the annex bay-key bug fixed |
+| 6 | **THE YARD** — the dry dock's aura deepened to 6× (*not a paid repair — §26, and §123's band-blindness*) | time | BUILT §127; `repair_aura_mult_at` |
+| 7 | **THE LIGHT** — a spill inside this colony's reach does not expire (*reworded from "this system" — §127's scope finding; system-scope caps at three*) | time | extends §109's claim clock at a colony aura, `work_aura_at`'s walk |
 | 8 | **THE ARCHIVE** — the run's record, made into a place | record | fully derived; renders fragments read, legends resolved, names met; grants nothing |
 
 Prices are the spec's to derive, and **the sizing below is re-derived against

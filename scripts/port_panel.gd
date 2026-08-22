@@ -620,11 +620,15 @@ func _build_storage() -> void:
 	var key := _bay_key()
 	var used := GameState.warehouse_used(key)
 
+	# §127. THE HEADER READS THE KEYED CAP. A counter is always 60; a vaulted
+	# annex is 120, and a header still printing 60 over a bay the pilot paid to
+	# double would be the affordance saying the purchase did not happen.
+	var cap := GameState.warehouse_space_of(key)
 	var head := Label.new()
-	head.text = "BONDED STORE  %d / %d" % [used, GameState.WAREHOUSE_SPACE]
+	head.text = "BONDED STORE  %d / %d" % [used, cap]
 	head.add_theme_font_size_override("font_size", 15)
 	head.add_theme_color_override("font_color",
-		Palette.THREAT if used >= GameState.WAREHOUSE_SPACE else Palette.GOLD)
+		Palette.THREAT if used >= cap else Palette.GOLD)
 	_body.add_child(head)
 
 	var note := Label.new()

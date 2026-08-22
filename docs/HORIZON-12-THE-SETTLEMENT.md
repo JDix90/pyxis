@@ -35,7 +35,7 @@ seven ideas died (research §6).
 | 0 | **The death price** — rescue decoupled from the jump ramp onto its own constants; the band leg `THE DEATH PRICE SITS IN ITS BAND` (measured-steady fraction ∈ [0.30, 0.50]); repair recorded as band-blind, and found never to have been involuntary at all | none | ~60 lines + 2 legs | medium — the numbers everyone feels | **BUILT** — §123, corrected by §124 |
 | 1 | **The margin the line did not report** — both specced halves died on research; `THE ORDER DESK IS NOT A PRINTER` now reports the thinnest per-good margin (1.124) instead of the bias-free ceiling it was printing while asserting something else. `REQ_MULT` stays 5.0 | none | ~30 lines, no new leg | low | **BUILT** — §125 |
 | 2 | **The ladder stands** — `scope` promoted from the blurbs to a key that `work_stands_in_system` reads; ONE prereq (`repeater` requires `relay`) after the rest died as a price in a gate's clothes; the four re-priced to 11k/17k/28k/45k = 9 loops a colony; `THE WORKS AT THEIR CEILING` prices the channel rather than the menu; `THE LADDER STANDS` is a new leg | none | ~240 lines + 1 leg | low | **BUILT** — §126 |
-| 3 | **EXPANDED VAULTS + THE YARD** — the keyed `warehouse_space_of(key)` accessor (60→120 with the work); a colony `repair_price` on the deep ports' own per-def pattern | none | ~100 lines + legs | medium — STORETEST's bay legs re-derive | PLANNED |
+| 3 | **EXPANDED VAULTS + THE YARD** — the keyed `warehouse_space_of(key)` accessor (60→120 with the work) and `WAREHOUSE_SPACE`'s refusal narrowed to "never by port def"; THE YARD deepens the dry dock's own aura to 6× rather than selling a paid repair (§26); `_bay_key_is_real` fixed after two horizons of deleting annex bays on load | none | ~330 lines + 2 legs | medium | **BUILT** — §127 |
 | 4 | **THE LIGHT + THE ARCHIVE** — a held spill in the colony's system does not expire (extends §109's clock, braids §118's record); the Archive rendered entirely from existing stores, granting nothing | none | ~120 lines + legs | low | PLANNED |
 | 5 | **The measure** — the horizon closed, the sweep read, the sink table re-printed at its new prices | none | docs | low | PLANNED |
 
@@ -95,11 +95,14 @@ Read against the four planned:
   it extends a bay keyed to its own colony. Multiplies. Prices like the annex.
 - **THE YARD** (full repair at the colony) — colony-scoped, positional, the dry
   dock's own shape.
-- **THE LIGHT** (a held spill in this system does not expire) — **system**-scoped
-  by its own wording, so it caps at three and must be priced as one purchase
-  per system rather than per colony. Worth re-reading before it is built: a
-  per-system grant on a per-colony work is exactly what made the relay look
-  cheap.
+- **THE LIGHT** — **reworded to a per-colony grant** (decided 2026-08-22). It
+  read *"a held spill in this **system** does not expire"*, which caps at three
+  useful copies and would have repeated the relay's mistake. It now reads *"a
+  spill inside this colony's reach does not expire"*: an aura at the colony,
+  the dry dock's own shape and `work_aura_at`'s own walk, at a radius of its
+  own rather than `DOCK_AURA_RANGE`'s thirty — a lamp burning at the colony,
+  and what lies inside its light nobody takes. Colony-scoped, multiplies by
+  fifteen, and positional like the dock and the yard.
 - **THE ARCHIVE** (the run's record made into a place) — undecided, and the
   decision is a design one rather than a pricing one. A record of the whole run
   displayed at every colony is redundant by definition; displayed at one, it is

@@ -8478,8 +8478,13 @@ func _run_store_test() -> void:
 		"PASS" if used_with_bay == 0 and value_with_bay == 0 \
 			and sig_carried > 1.0 and is_equal_approx(sig_stored, 1.0) else "FAIL"])
 
-	# 8. One cap, everywhere, never a port-def key. A cap that VARIES makes
-	#    capacity a thing you shop for, which is a second budget (9 rule 1).
+	# 8. NEVER A PORT-DEF KEY, which §127 narrowed this to from "one cap,
+	#    everywhere". A cap authored per station is a thing you SHOP for, and
+	#    that is the second budget 9 rule 1 forbids. A cap a pilot RAISES at a
+	#    colony they founded is not shoppable and not authored, so EXPANDED
+	#    VAULTS passes over this law rather than through it -- and every charted
+	#    and deep counter in the game is still exactly 60, which is what this
+	#    sweep still proves.
 	var carries_key := ""
 	for pid_v in SystemDB.port_ids():
 		if SystemDB.port_def_by_id(String(pid_v)).has("warehouse_space"):
@@ -13662,8 +13667,27 @@ func _run_pacing_test() -> void:
 			else max_colonies
 		channel_total += int((GameState.COLONY_WORKS[w3] as Dictionary)
 			.get("price", 0)) * copies
+	# §127. AND IT IS REPORTED RATHER THAN BOUNDED, which §126 got wrong by one
+	# commit. Every other row in this table is what ONE pilot pays for one thing
+	# or one menu; this row is what FIFTEEN COLONIES would cost if somebody
+	# developed every one of them. Handing a completionist aggregate to a law
+	# that means "no purchase costs more than the ship" compares two different
+	# kinds of number, and it came due immediately: the two works §127 adds put
+	# the channel at 1.75x the catalogue.
+	#
+	# THE RED WOULD HAVE BEEN THE WRONG ANSWER, and that is the decision rather
+	# than a convenience. Capping the works channel below the yard re-creates
+	# the exact condition §114 was written about -- money buys place, a bit, and
+	# then nothing again. A terminal sink has to be able to outlast the ship or
+	# it is not terminal. The ship stays the SPINE (no single decision a pilot
+	# makes costs more than it, which is what the law still asserts, one colony
+	# at a time), and completionism across a map is allowed to be longer.
+	#
+	# `over_exempt` is the flag, not a name match: the law reads the row's own
+	# declaration, so a future aggregate row is exempted by saying so rather than
+	# by a string somebody has to remember to add to a list.
 	sink_rows.append({"name": "the works, every useful copy",
-		"cost": float(channel_total), "forced": false})
+		"cost": float(channel_total), "forced": false, "over_exempt": true})
 	# The dearest component the order desk will ever quote, derived rather than
 	# named: a later component priced above lens_unsounded moves this row.
 	var req_max := 0
@@ -13751,18 +13775,28 @@ func _run_pacing_test() -> void:
 		"" if unpriced.is_empty() else (" (%s)" % ", ".join(PackedStringArray(unpriced))),
 		"PASS" if unpriced.is_empty() else "FAIL"])
 
-	# 2. The catalogue is what a run is FOR, so nothing may cost more than it.
-	#    True today by a wide margin; it goes red the moment somebody prices a
-	#    work or an order above the entire yard, which is the one direction a
-	#    re-pricing could overshoot without anybody noticing.
+	# 2. The catalogue is what a run is FOR, so no single DECISION may cost more
+	#    than it. It goes red the moment somebody prices a work or an order
+	#    above the entire yard, which is the one direction a re-pricing could
+	#    overshoot without anybody noticing.
+	#
+	#    §127 SHARPENS "NOTHING" TO "NO DECISION". A row flagged `over_exempt`
+	#    is an aggregate across places rather than a price a pilot pays at one
+	#    of them; see the works channel row for the argument. The exemption is
+	#    counted and printed, never silent -- a law with a quiet exception is a
+	#    law nobody can audit.
 	var over: Array = []
+	var exempt := 0
 	for row3_v in sink_rows:
 		var row3: Dictionary = row3_v
+		if bool(row3.get("over_exempt", false)):
+			exempt += 1
+			continue
 		if String(row3["name"]) != CATALOGUE_ROW \
 				and float(row3["cost"]) > float(catalog):
 			over.append(String(row3["name"]))
-	print("[pacing] THE CATALOGUE IS THE LONGEST PRICE catalogue %s, %d sink(s) above it%s -> %s" % [
-		_comma_int(catalog), over.size(),
+	print("[pacing] THE CATALOGUE IS THE LONGEST PRICE catalogue %s, %d aggregate row(s) exempt, %d priced sink(s) above it%s -> %s" % [
+		_comma_int(catalog), exempt, over.size(),
 		"" if over.is_empty() else (" (%s)" % ", ".join(PackedStringArray(over))),
 		"PASS" if over.is_empty() else "FAIL"])
 
@@ -26963,12 +26997,19 @@ func _run_colony_test() -> void:
 	var wplayer: PlayerShip = get_tree().get_first_node_in_group("player")
 	if wplayer != null:
 		wplayer.global_position = Vector3(2000.0, 0.0, 0.0)
+	# §127. SUMMED, NOT OVERWRITTEN. This loop assigned each manifest over the
+	# last, which was invisible while exactly one work had goods. THE YARD is
+	# the second, and it wants alloys too -- so the repeater's twelve would have
+	# been clobbered by the yard's twenty, the repeater would have eaten them,
+	# and the yard would have refused a hold eight short. A green leg turning
+	# red on a data addition it should not care about.
 	GameState.cargo = {}
 	for wneed_v in GameState.COLONY_WORKS:
 		var wneed: Dictionary = (GameState.COLONY_WORKS[wneed_v]
 			as Dictionary).get("goods", {})
 		for g3_v in wneed:
-			GameState.cargo[String(g3_v)] = int(wneed[g3_v])
+			var g3 := String(g3_v)
+			GameState.cargo[g3] = int(GameState.cargo.get(g3, 0)) + int(wneed[g3_v])
 	var stats_before := GameState.stats.duplicate(true)
 	var spent_total := 0
 	var works_ok := true
@@ -27213,8 +27254,86 @@ func _run_colony_test() -> void:
 		str(near_aura), str(far_aura),
 		"PASS" if near_aura and not far_aura else "FAIL"])
 
+	# §127. THE YARD DEEPENS THE SAME AURA. Four things, and the third is the
+	# one an ordering mistake would break silently: a yard colony ALSO has a
+	# dock (the prereq), so a multiplier asked in the wrong order would cap every
+	# yard in the game at the dock's two and nothing would ever say so.
+	#
+	# And the fourth is the reason the constant is six rather than a feeling:
+	# past the point where regen takes less than SHIELD_CALM_DELAY, the
+	# multiplier buys nothing at all, because what is left to wait for is a
+	# combat rule. Reported as a measurement, asserted as the LAW that the yard
+	# reaches it -- so a regen retune that made six too slow reddens here.
+	if not GameState.has_work("pyx01:7", "yard"):
+		GameState.cargo = {}
+		var ywant: Dictionary = (GameState.COLONY_WORKS["yard"]
+			as Dictionary).get("goods", {})
+		for yg_v in ywant:
+			GameState.cargo[String(yg_v)] = int(ywant[yg_v])
+		if wplayer != null:
+			wplayer.global_position = Vector3(2000.0, 0.0, 0.0)
+		GameState.salvage = works_want * 2
+		buy_colony_work("pyx01:7", "yard")
+	var yard_mult := GameState.repair_aura_mult_at(2000.0, 0.0)
+	var off_mult := GameState.repair_aura_mult_at(2000.0, 500.0)
+	# A dock WITHOUT a yard still reads two: pyx01:9 got a relay and a repeater
+	# in the ladder leg and no dock at all, so this builds the one it measures.
+	if not GameState.has_work("pyx01:9", "dock"):
+		GameState.salvage = works_want * 2
+		GameState.buy_colony_work("pyx01:9", "dock")
+	var dock_only := GameState.repair_aura_mult_at(2400.0, 0.0)
+	var regen := float(GameState.stats.get("shield_regen", 6.0))
+	var full_at_yard := 100.0 / maxf(regen * GameState.YARD_AURA_MULT, 0.001)
+	print("[colony] THE YARD MENDS FASTER THAN THE WAIT alongside=%.1fx, 500u off=%.1fx, a dock with no yard=%.1fx; 100 shield at %.0f/s takes %.1fs against a %.1fs calm delay -> %s" % [
+		yard_mult, off_mult, dock_only, regen, full_at_yard,
+		PlayerShip.SHIELD_CALM_DELAY,
+		"PASS" if is_equal_approx(yard_mult, GameState.YARD_AURA_MULT)
+			and is_equal_approx(off_mult, 1.0)
+			and is_equal_approx(dock_only, GameState.DOCK_AURA_MULT)
+			and full_at_yard < PlayerShip.SHIELD_CALM_DELAY else "FAIL"])
+
+	# §127. THE VAULT SURVIVES ITS OWN LOADER, and it is two findings in one leg
+	# because the second is what made the first worth asserting.
+	#
+	# 1. THE ANNEX BAY HAS BEEN DELETED ON EVERY LOAD SINCE §112.
+	#    `_bay_key_is_real` split a key on ":" and demanded THREE parts (a deep
+	#    cell); a colony key has TWO, so the loader dropped it and everything a
+	#    pilot stowed in an annex vanished. Found by asking whether it was safe
+	#    to double that bay.
+	# 2. AND THE KEYED CAP MAKES THE LOADER ORDER-CRITICAL. The over-capacity
+	#    trimmer now asks `warehouse_space_of`, which asks `has_work` -- so
+	#    `colony_works` loaded AFTER `_load_warehouse` would trim a 120-space
+	#    vault against 60 and delete sixty space of goods. It is safe only
+	#    because load_game populates colonies and works immediately before, and
+	#    this asserts that rather than trusting it.
+	GameState.warehouse = {}
+	GameState.salvage = works_want * 2
+	if not GameState.has_work("pyx01:7", "vaults"):
+		GameState.buy_colony_work("pyx01:7", "vaults")
+	var vault_cap := GameState.warehouse_space_of("pyx01:7")
+	var counter_cap := GameState.warehouse_space_of("anchor")
+	# A full vault, in the one good the bonded set and the space maths agree on.
+	var vault_units := vault_cap / maxi(CommodityDB.space_of("plate_ablative"), 1)
+	var saved_bay := {"pyx01:7": {"plate_ablative": vault_units}}
+	GameState._load_warehouse(saved_bay)
+	var vault_kept := GameState.warehouse_used("pyx01:7")
+	# AND A COUNTER IS STILL SIXTY. The amendment is that a cap varies by a WORK,
+	# never by a port def, so an unvaulted key reading anything but 60 is the
+	# refusal this replaced coming back.
+	print("[colony] THE VAULT SURVIVES ITS OWN LOADER vault %d vs counter %d; %d space stowed reloads as %d; an annex key is a real bay=%s -> %s" % [
+		vault_cap, counter_cap, vault_cap, vault_kept,
+		str(GameState.warehouse.has("pyx01:7")),
+		"PASS" if vault_cap == GameState.WAREHOUSE_SPACE_VAULTED
+			and counter_cap == GameState.WAREHOUSE_SPACE
+			and vault_kept == vault_cap else "FAIL"])
+	# AND IT PUTS THE BAY BACK. `THE ANNEX IS BONDED` stows into this very key
+	# twenty lines below, and a bay left full at its cap would refuse it -- the
+	# blast-radius rule the delivery leg states, owed by the leg that fills a
+	# vault to the brim to prove it can.
+	GameState.warehouse = {}
+
 	# THE ANNEX IS THE WAREHOUSE'S OWN LAW. Storables in, the bonded set only,
-	# and back out -- through store_cargo/withdraw_cargo, so the 60-space bay
+	# and back out -- through store_cargo/withdraw_cargo, so the bay's cap
 	# and can_store == no_retail hold here exactly as at a dock.
 	GameState.cargo = {}
 	GameState.load_cargo("plate_ablative", 3)

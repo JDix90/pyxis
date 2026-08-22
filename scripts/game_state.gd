@@ -444,9 +444,39 @@ const COLONY_WORKS := {
 	"repeater": {"name": "DEEP REPEATER", "price": 45000, "scope": "system",
 		"goods": {"alloys": 12}, "requires": "relay",
 		"blurb": "THE CHART CARRIES THE DEEP STATIONS' WEATHER, THE WAY THE RELAY CARRIES THE CHART'S"},
+	# §127. BOTH OF THESE UPGRADE A RUNG RATHER THAN ADDING ONE, which is what
+	# makes their prereqs legal under §126's test. That test asks whether the
+	# gate forces a purchase you did not want; here the thing required IS the
+	# thing being improved, so a pilot who wants the vault wants the annex by
+	# definition and a pilot who wants the yard wants the dock.
+	#
+	# It is also why neither obsoletes what it stands on. The vault does not
+	# replace the annex's bay, it doubles it; the yard does not replace the
+	# dock's aura, it deepens the same one.
+	"vaults": {"name": "EXPANDED VAULTS", "price": 39000, "scope": "colony",
+		"requires": "annex",
+		"blurb": "THE BONDED BAY AT THIS COLONY HOLDS TWICE WHAT ANY COUNTER WILL"},
+	"yard": {"name": "THE YARD", "price": 34000, "scope": "colony",
+		"goods": {"alloys": 20, "isotopes": 8}, "requires": "dock",
+		"blurb": "ALONGSIDE THIS COLONY YOUR SHIELD MENDS FASTER THAN IT CAN BE WAITED FOR"},
 }
 const DOCK_AURA_RANGE := 30.0
 const DOCK_AURA_MULT := 2.0
+# §127, THE YARD. Six rather than two, and the figure is DERIVED from the thing
+# it competes with rather than chosen for feel. A hundred points of shield at
+# the base 6/s is 16.7 seconds; the dock halves that to 8.3; six times takes it
+# to 2.8 -- under SHIELD_CALM_DELAY's four seconds, at which point the REGEN IS
+# NO LONGER THE WAIT and the calm delay is. Past six the multiplier buys
+# nothing, because what is left is a combat rule rather than a repair one.
+#
+# That is also why the yard is not a paid instant repair. Charging per use would
+# put a meter on the one work that has one, break §26 (works pay in time,
+# choice, access and information -- never credits), and land on a price
+# PACINGTEST is structurally blind to: the measured loop runs `invulnerable` and
+# never pays a repair, which is §123's own recorded reason for leaving
+# REPAIR_FULL_PRICE alone. The one-time price IS the cost, and what it buys is
+# the end of the wait at a place the pilot made.
+const YARD_AURA_MULT := 6.0
 
 const REQ_MAX_OPEN := 3
 # Five played minutes. Long enough that ordering is a decision made on the way
@@ -702,7 +732,20 @@ var warehouse := {}
 # key: a cap that VARIES turns storage capacity into a thing you shop for and
 # compare across stations, which is a second budget with its own shopping trip —
 # and 9 rule 1 allows exactly one.
+#
+# §127 AMENDS THAT, AND THE BOUNDARY THAT SURVIVES IS THE WHOLE OF IT. The
+# refusal above names its mechanism exactly: a cap authored PER STATION is a
+# thing you shop for. EXPANDED VAULTS is not authored and cannot be shopped for
+# — it is a work the pilot RAISED, at a colony the pilot FOUNDED, and every
+# charted and deep station in the game is still 60. "Identical at every station"
+# stays literally true; what varies is a place you made, which is what this
+# horizon is about.
+#
+# So the line that replaces the refusal is narrower than it and does the same
+# job: A CAP NEVER VARIES BY PORT DEF. `CAP` still sweeps every def and every
+# archetype for a `warehouse_space` key and reddens on the first one.
 const WAREHOUSE_SPACE := 60
+const WAREHOUSE_SPACE_VAULTED := 120
 var market_events: Array = []  # [{kind, port, good, mult, remaining}]
 
 # v5: front door and first run.
@@ -2922,10 +2965,22 @@ func _load_warehouse(saved: Dictionary) -> void:
 	# Over-capacity bays shed cheapest-first, so a reload is idempotent. Same
 	# posture as a fit over its power budget falling back to STARTER_FIT: 16
 	# refuses an invalid state rather than tolerating it.
+	# §127. AND IT READS THE KEYED CAP, WHICH MAKES THIS BLOCK LOAD-ORDER
+	# CRITICAL. `warehouse_space_of` asks `has_work`, so if `colony_works` were
+	# ever loaded AFTER this, a vaulted annex holding 120 space would be trimmed
+	# against 60 and SIXTY SPACE OF A PILOT'S GOODS WOULD BE DELETED on load --
+	# 16's "nothing may vanish", broken silently and permanently.
+	#
+	# It is safe today because load_game populates colony_works immediately
+	# before calling _load_warehouse, and that is luck until it is written down:
+	# the comment beside colony_works' own loader records this repo already
+	# shipping one load-order defect of exactly this shape. `THE VAULT SURVIVES
+	# ITS OWN LOADER` is the assertion, so a reorder reddens instead of eating
+	# cargo.
 	for key in warehouse.keys():
 		for g_v in _stashable_order():
 			var g := String(g_v)
-			while warehouse_used(String(key)) > WAREHOUSE_SPACE \
+			while warehouse_used(String(key)) > warehouse_space_of(String(key)) \
 					and warehouse_count(String(key), g) > 0:
 				var bay2: Dictionary = warehouse[key]
 				bay2[g] = int(bay2[g]) - 1
@@ -2946,6 +3001,23 @@ func _bay_key_is_real(key: String) -> bool:
 		var pdef := SystemDB.port_def_by_id(key)
 		return not pdef.is_empty() and port_has_bay(pdef)
 	var parts := key.split(":")
+	# §127. A COLONY KEY IS TWO PARTS, AND THIS FUNCTION HAS BEEN DELETING THEM
+	# SINCE §112. The BONDED ANNEX stores under `claim_key()` -- colony_key's
+	# "system:index", TWO segments -- and every branch below assumed a `:` meant
+	# a deep cell's "system:x:y". So `parts.size() != 3` returned false, the
+	# loader dropped the key, and everything a pilot ever stowed in an annex
+	# vanished on the next load. 16's "nothing may vanish", broken silently for
+	# two horizons, and found by §127 asking whether it was safe to DOUBLE that
+	# bay: doubling a bay whose contents evaporate would have sold nothing.
+	#
+	# THE COLONY EXISTING IS THE WHOLE TEST, deliberately weaker than "and it has
+	# an annex". A work cannot be un-built, so a bay without one is unreachable
+	# rather than illegal -- and a validity rule strict enough to be wrong is how
+	# this function got here. The place must exist; that is what the deep branch
+	# below asks too.
+	if parts.size() == 2:
+		return parts[1].lstrip("-").is_valid_int() \
+			and colonies.has(key)
 	if parts.size() != 3:
 		return false
 	if not SystemDB.exists(parts[0]):
@@ -3001,8 +3073,18 @@ func warehouse_used(key: String) -> int:
 	return used
 
 
+func warehouse_space_of(key: String) -> int:
+	# §127. THE ONE PLACE THE CAP IS DECIDED. A bay key is a port id, a deep
+	# cell, or a COLONY key -- and only the last can carry a work. Asked of
+	# has_work directly rather than of the key's shape, so a key format that
+	# changes cannot make this quietly answer 60 for a vault somebody paid for.
+	if has_work(key, "vaults"):
+		return WAREHOUSE_SPACE_VAULTED
+	return WAREHOUSE_SPACE
+
+
 func warehouse_free(key: String) -> int:
-	return maxi(0, WAREHOUSE_SPACE - warehouse_used(key))
+	return maxi(0, warehouse_space_of(key) - warehouse_used(key))
 
 
 func warehouse_count(key: String, good: String) -> int:
@@ -3867,20 +3949,38 @@ func buy_colony_work(key: String, work: String) -> bool:
 	return true
 
 
-func dock_aura_at(x: float, z: float) -> bool:
-	# §112, THE DRY DOCK. True within DOCK_AURA_RANGE of any owned colony that
-	# built one, in the current system. TIME, not power: out of combat the
-	# shield mends free anyway -- alongside your own yard it mends at twice the
-	# pace, and in combat this reads false by the caller's own calm-delay gate.
+func work_aura_at(x: float, z: float, work: String) -> bool:
+	# §127. dock_aura_at's walk, keyed by work, because the yard needs the same
+	# question asked about a different key and a second copy of this loop is the
+	# defect §126 removed from the chart.
 	for c_v in colonies_in(current_system):
 		var c: Dictionary = c_v
-		if not has_work(String(c["key"]), "dock"):
+		if not has_work(String(c["key"]), work):
 			continue
 		var dx := float(c["x"]) - x
 		var dz := float(c["z"]) - z
 		if sqrt(dx * dx + dz * dz) <= DOCK_AURA_RANGE:
 			return true
 	return false
+
+
+func repair_aura_mult_at(x: float, z: float) -> float:
+	# §127. THE DEEPER YARD WINS, and it is asked first because a yard REQUIRES a
+	# dock: every yard colony also answers dock_aura_at true, so asking in the
+	# other order would cap every yard in the game at the dock's two.
+	if work_aura_at(x, z, "yard"):
+		return YARD_AURA_MULT
+	if work_aura_at(x, z, "dock"):
+		return DOCK_AURA_MULT
+	return 1.0
+
+
+func dock_aura_at(x: float, z: float) -> bool:
+	# §112, THE DRY DOCK. True within DOCK_AURA_RANGE of any owned colony that
+	# built one, in the current system. TIME, not power: out of combat the
+	# shield mends free anyway -- alongside your own yard it mends at twice the
+	# pace, and in combat this reads false by the caller's own calm-delay gate.
+	return work_aura_at(x, z, "dock")
 
 
 func note_read(component: String) -> void:
