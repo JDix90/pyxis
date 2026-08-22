@@ -6495,6 +6495,21 @@ and commits 1–4 were re-sized against the measurement before they were built.
 | — | **from playtest, after the close**: the deep archetype pool is cumulative, so a uniform draw made the deepest counters rarer the further out a pilot flew (14.3% at band 6 against 33% at band 2); pyx01 could not be fixed with data because it is the fingerprint control | none | **BUILT** — §130; a derived default tilts the pick from band 4 outward, which is the first band the fingerprint's window cannot reach |
 | — | **THE ARCHIVE, reinstated and reshaped** (§131: the kill was not the assistant's call). Deep counters docked at are the one found place the game never remembered; the work buys reading the file, never the facts in it | none | **BUILT** — §132; system-scoped, 56,000, the first component manifest in the game, and the first store that needed a cap |
 
+**Horizon 13 — the induction** (opened 2026-08-22; researched in
+`docs/HORIZON-13-RESEARCH.md`; **nothing built**). The commission: a lore-heavy
+cinematic introduction for new pilots — the war, the derelicts, the Authority's
+control — taking a supplied reference video's grammar (light narrates, one
+subject per shot, a founding myth in four beats). The research pass's finding:
+**the story is already shipped** in `UnsoundedSite.FRAGMENTS`, the beacon
+plates and the band-name arcs, so the intro is designed as **the Authority's
+own induction film** — partial, euphemistic, and quietly wrong, with every
+redaction a hook the deep later answers. Four decisions taken at the fork:
+Authority-briefing narrator; the cause (deep time) is shown, with §6 of the
+research doc splitting fact-for-the-intro from consequence-for-the-vault;
+in-engine hybrid (prerendered died COSTED); first boot + replayable, one
+`seen_induction` key riding v28. Draft beat copy awaits the owner's read —
+the `UNSOUNDED-FRAGMENTS-DRAFT` ritual — before any spec or code.
+
 ### Built, despite what the docs said
 
 `HORIZON-3-COMMISSION.md` — **built**, and recorded as §28. `commission_db.gd`
