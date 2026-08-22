@@ -1,6 +1,7 @@
 # Horizon 12 — THE SETTLEMENT
 
-Opened 2026-08-21. Six commits. **No save bump** — v28 rides throughout
+Opened 2026-08-21, **closed 2026-08-22**. Six commits, all built (§123–§129).
+**No save bump** — v28 rode throughout, as planned
 (Finding 5: staging is additive data, the vaults are a keyed accessor, the
 Archive is fully derived). Research: `docs/HORIZON-12-RESEARCH.md`.
 
@@ -37,7 +38,7 @@ seven ideas died (research §6).
 | 2 | **The ladder stands** — `scope` promoted from the blurbs to a key that `work_stands_in_system` reads; ONE prereq (`repeater` requires `relay`) after the rest died as a price in a gate's clothes; the four re-priced to 11k/17k/28k/45k = 9 loops a colony; `THE WORKS AT THEIR CEILING` prices the channel rather than the menu; `THE LADDER STANDS` is a new leg | none | ~240 lines + 1 leg | low | **BUILT** — §126 |
 | 3 | **EXPANDED VAULTS + THE YARD** — the keyed `warehouse_space_of(key)` accessor (60→120 with the work) and `WAREHOUSE_SPACE`'s refusal narrowed to "never by port def"; THE YARD deepens the dry dock's own aura to 6× rather than selling a paid repair (§26); `_bay_key_is_real` fixed after two horizons of deleting annex bays on load | none | ~330 lines + 2 legs | medium | **BUILT** — §127 |
 | 4 | **THE LIGHT** — a spill inside the colony's 350u reach holds its clock; the radius is half `MIN_HYPER_SEPARATION`, so no two lights overlap. **THE ARCHIVE cut**: `PILOT'S LEDGER` (§111) and `CAPTAIN'S LOG` (§118) already render the run's record free, so it was a paywall in front of a free screen | none | ~90 lines + 1 leg | low | **BUILT** — §128 |
-| 5 | **The measure** — the horizon closed, the sweep read, the sink table re-printed at its new prices | none | docs | low | PLANNED |
+| 5 | **The measure** — the horizon closed and the sweep read; the exempt channel row now prints its ratio to the catalogue, so the horizon's largest bet is on screen every sweep rather than in a document | none | docs + 1 report line | low | **BUILT** — §129 |
 
 ## What commit 0 changed about this horizon
 

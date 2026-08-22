@@ -13851,9 +13851,19 @@ func _run_pacing_test() -> void:
 	for row_v in sink_rows:
 		var row: Dictionary = row_v
 		var loops := float(row["cost"]) / maxf(steady, 1.0)
+		# §129. AN EXEMPT ROW SAYS WHAT IT IS EXEMPT AGAINST. `THE CATALOGUE IS
+		# THE LONGEST PRICE` skips these (§127), so the one number that would
+		# have caught an aggregate running away is the one nothing prints. This
+		# horizon's largest untested bet is that the works channel SHOULD outrun
+		# the ship; the bet is now on screen every sweep instead of living in a
+		# document, which is §124's rule turned on the decision that used it.
+		var tail := "   (cannot be declined)" if bool(row["forced"]) else ""
+		if bool(row.get("over_exempt", false)):
+			tail = "   = %.2fx the catalogue (exempt: an aggregate, not a price)" \
+				% (float(row["cost"]) / maxf(float(catalog), 1.0))
 		print("[pacing]   %-28s %10s   %7.3f loops   %8.0f s%s" % [
 			String(row["name"]), _comma_int(int(row["cost"])), loops,
-			loops * loop_secs, "   (cannot be declined)" if bool(row["forced"]) else ""])
+			loops * loop_secs, tail])
 
 	# 1. Every row read a live number. A zero means the constant or the port-def
 	#    key it derives from has moved, been renamed, or gone -- at which point

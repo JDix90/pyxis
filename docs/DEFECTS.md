@@ -58,6 +58,17 @@ get a clean slate, and `THE DOCK IS TIME, NOT POWER` measured that store
 something that was not wrong with the dock. Caught by the sweep, which is the
 system working, but the lesson is cheaper than the sweep.
 
+*Five at once, in one horizon, and none of them by a sweep.* Horizon 12's
+re-pricing (§126–§128) put five fixtures a re-read caught before a run did: a
+purse typed beside the prices it paid; a manifest loop that assigned each work's
+goods over the last instead of summing them; three refusal clauses that would
+have passed off a newly-added prereq while the gate they are named for went
+untested; an orphan-state clause that would have read its grant off a colony
+eighty lines above; and a leg filling a bay to its cap twenty lines above the leg
+that stows into that same key. **The tell in every one is the same question:
+*what else could make this pass?*** Ask it of a green assertion, not only of a
+red one.
+
 **Covered by:** nothing mechanical, and the cure is the same in both directions
 — **state the dependency at the site, or remove it.** A loader goes immediately
 after what it validates against. A harness block claims its own ground instead

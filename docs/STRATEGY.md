@@ -6457,7 +6457,8 @@ which is derivable because it is an existential over a store that only grows.
 
 **Horizon 12 — the settlement** (opened 2026-08-21, the evening Horizon 11
 merged; researched in `docs/HORIZON-12-RESEARCH.md`, specced in
-`docs/HORIZON-12-THE-SETTLEMENT.md`). Six commits, **none built**. The
+`docs/HORIZON-12-THE-SETTLEMENT.md`). Six commits, **all built** (§123–§129,
+closed 2026-08-22, no save bump — v28 throughout). The
 commission: raise the sinks so they bite, and answer *what is a late-game
 pilot's money for*. The research pass's answer: **money converts into place**
 — the network takes no credits (§96, settled), so the works ladder is where
@@ -6480,17 +6481,17 @@ status); and the spec followed a research pass.
 a third of the estimate, and 0.775 of a mid-tier module against a legal band of
 [0.60, 3.00]. The game earns near the **floor** of the band it asserts, so every
 sink is already three times deeper in loop-minutes than the commission assumed,
-and commits 1–4 are re-sized against the measurement before they are built.
+and commits 1–4 were re-sized against the measurement before they were built.
 
 | # | what | save | status |
 |---|---|---|---|
 | 0 | the death price: rescue on its own constants, banded [0.30, 0.50] of measured steady; repair recorded as band-blind | none | **BUILT** — §123; repair turned out never to have been involuntary, and the ceiling law was sampled rather than total |
 | — | the measurement: `RESCUE_FEE_FAR` 13,000→4,500, four documents of estimates corrected, and `_pacing_catalog_cost` given the `BERTHS` dict it had been missing since v24 | none | **BUILT** — §124; the band went red on its first sweep, which is the leg doing its job on the commit that added it — and the catalogue defect went the other way, a leg wrong where the prose was right |
 | 1 | the wider margin: REQ_MULT 5→8, jumps revisited | none | **BUILT as its opposite** — §125; both halves died on research (the jumps clear by 2–4.5×, and the order desk is a convenience whose free competitor is the core loop), and the leg turned out to print the bias-free ceiling while asserting the bias-inclusive one. `REQ_MULT` stays at 5.0; the margin is now reported |
-| 2 | the ladder stands: `requires` staging, the four works re-priced | none | **BUILT** — §126; scope became data, the staging shrank to one prereq (the rest would have been a price in a gate's clothes), and the channel is 76% of the yard |
+| 2 | the ladder stands: `requires` staging, the four works re-priced | none | **BUILT** — §126; scope became data, the staging shrank to one prereq (the rest would have been a price in a gate's clothes), and the channel reached 76% of the yard at that commit (205% once §127 and §128 landed) |
 | 3 | EXPANDED VAULTS + THE YARD | none | **BUILT** — §127; both upgrade a rung rather than adding one, and the research found the annex bay has been deleted on every load since §112 |
 | 4 | THE LIGHT + THE ARCHIVE | none | **BUILT (half)** — §128; THE LIGHT ships at a radius derived from `MIN_HYPER_SEPARATION` so no two overlap. THE ARCHIVE died: `PILOT'S LEDGER` (§111) and `CAPTAIN'S LOG` (§118) already show the run's record free, so it was a paywall in front of a free screen |
-| 5 | the measure | none | **PLANNED** |
+| 5 | the measure | none | **BUILT** — §129; the horizon closed and the sweep read, and the exempt channel row now prints its ratio to the catalogue so the horizon's largest bet is on screen rather than in a document |
 
 ### Built, despite what the docs said
 
@@ -13450,3 +13451,128 @@ The channel is **2.05× the ship**, exempt from the ceiling law by §127's
 ship, and completionism across a map is allowed to outlast it. One colony's full
 ladder is 5.6× under the catalogue, so the law still has its teeth in the place
 it means them.
+
+## 129. The measure (Horizon 12 closes)
+
+Horizon 12, commit 5 — written the way §113 and §122 were: **before the sweep
+that judges it**, because its job is to say what that sweep means rather than to
+report it.
+
+### What this horizon did to the economy, in one paragraph
+
+Every sink price in the game moved except two, and **not one yield did.**
+The deepest rescue went 1,869 → 4,500; the colony ladder went 28,000 → 196,000
+and grew from four works to seven. Repair and the jump fees were left alone with
+their reasons recorded (§123, §125). Nothing touched earning, so
+`STEADY MIDTIER` should read **0.775** exactly as it read at the horizon's
+first commit, and a red there is a regression rather than a re-derivation.
+`SAVE_VERSION` is still **28**: seven sections and six commits on one save shape.
+
+### The horizon's own finding, and it arrived in the wrong order
+
+The commission was two sentences — *raise the sinks so they bite*, and *what is
+a late-game pilot's money for*. The research pass answered the second from the
+code (**money converts into place**; §96 already settled that the network takes
+goods and never credits), and then the **answer to the second changed the
+first**, three times, each time downward and each time for a different reason:
+
+1. **§124 — the loop was a third of what four documents said.** So the sinks
+   already bit three times harder than the commission assumed, and the raise
+   shrank before a price moved.
+2. **§125 — the smallest lever was aimed the wrong way.** `REQ_MULT` prices a
+   convenience whose free competitor is the core loop, so raising it bites the
+   pilot who cannot yet afford to fly for the part and not the one this horizon
+   is about.
+3. **§126 — half the ladder caps at three copies.** A system-scoped work has one
+   useful copy per authored system, so raising its price does not deepen the
+   sink; it makes the three copies anybody would buy dearer. The re-pricing had
+   to be *shaped* rather than *scaled*.
+
+> **A sink is not deepened by its price alone. It is deepened by its price times
+> the number of times anybody would pay it.** §126's scope key is that sentence
+> made into data.
+
+What came out the other side: the works channel went from **174,000 — 16% of
+the ship — to 2,268,000, 205% of it.** The terminal sink now outlasts the yard,
+which is the answer to the second sentence stated as arithmetic.
+
+### No two findings came from the same instrument
+
+That is the observation worth keeping, and it is an argument against trusting
+any single one of them:
+
+| finding | what found it |
+|---|---|
+| the loop is 11,236, not ~34,000 | a **leg going red** on the commit that added it |
+| the catalogue is 1,106,200, not the leg's 846,200 | a **hand derivation** done for an unrelated reason |
+| the order desk prints a ceiling it does not assert | **reading the leg** rather than running it |
+| the annex has deleted every bay since §112 | **asking whether a change was safe** |
+| THE ARCHIVE has nothing to grant | **reading a UI file** written two horizons ago |
+
+The instrument caught one of the five. Two were caught by arithmetic nobody was
+asked to do, and two by reading code that was not the code being changed.
+§124's rule — *a number in prose states what produced it* — has a companion the
+horizon earned the hard way: **an instrument is worth building and it is not a
+reason to stop reading.**
+
+### What the tooling found, and what it cost
+
+Two defects were found **by** the instruments (§124's red, and the same section's
+under-counted catalogue). Three were found by reading. And **five fixtures would
+have gone green for the wrong reason**, every one of them caught on an
+adversarial re-read of a diff rather than by a run:
+
+- `WORKS ARE A SINK` held a purse typed beside the prices it paid, and summed
+  nothing — it assigned each work's manifest over the last.
+- `THE TRIP IS THE COST` would have passed all three refusal clauses off the new
+  ladder while the gate it is named for went untested.
+- `THE LADDER STANDS`' orphan clause would have read its grant off a colony
+  eighty lines above.
+- The vault leg fills a bay to its cap twenty lines above the leg that stows
+  into that same key.
+- `NOTHING IS TAKEN UNDER THE LIGHT` reads the first adrift cube, so one
+  survivor from a leg above would have decided it.
+
+All five are one defect wearing five coats — **an assertion satisfied by state
+it did not set** — and `DEFECTS.md` class 2 now carries the horizon's instances.
+Class 5 gained two more, and a new class **5b** was written: *a validity rule
+strict enough to be wrong*, which is how a loader deletes data for two horizons
+without a single red.
+
+### What this horizon leaves open, stated rather than implied
+
+- **The channel at 2.05× the ship is a bet, and it is untested by play.** It is
+  deliberate (§127: a terminal sink has to outlast the ship or it is not
+  terminal), it is now printed on every sweep beside its ratio, and nothing has
+  played an hour against it.
+- **`MIDTIER` 2.91 against `STEADY MIDTIER` 0.775 is a spread of ~3.8×.** Both
+  print on every `PACINGTEST` run and nobody has read them together. If the
+  spread is real it makes §123's choice to band against STEADY load-bearing
+  rather than tidy.
+- **The order desk's margin is 1.124.** One authored component bias at that
+  value turns it into a printer. The number is on screen now (§125); the
+  decision to leave `REQ_MULT` at 5.0 rides on somebody reading it.
+- **THE LIGHT's 350u has never met a real death site.** The radius is derived
+  and the non-overlap invariant is asserted; whether deaths actually happen
+  inside it is a play question.
+- **H10's prestige amendment is on the books with nothing using it.** *"A record
+  is not a purchase"* was granted for THE ARCHIVE and THE ARCHIVE died. The
+  permission stands unspent, which is worth knowing before the next thing
+  reaches for it.
+- **§64's ALLIED-splash question**, open since 2026-08-06, and **the four legacy
+  deepenings (5c)**, deferred since §111. Neither moved.
+
+### The horizon, remembered
+
+Seven sections across six commits and **no save bump at all**. Two works were
+added, two upgraded, one killed, and one commit shipped as its own opposite.
+
+The deaths are the output, as they were last horizon: a margin raise that was
+aimed at the wrong pilot, a staging plan that would have forced nine useless
+masts, a repair meter that would have broken §26 and hidden inside a band the
+instrument cannot see, and an archive that turned out to be a paywall in front
+of a page from §111.
+
+And the number the whole horizon turns on was wrong on the day it opened. The
+leg that caught it was written in the same commit that shipped it, six hours
+earlier, by somebody who did not know they were building it for that.
