@@ -155,6 +155,14 @@ so under-counting makes each one stricter and still passing. An error that only
 ever tightens a green test is invisible by construction. **Two numbers for the
 same thing are a defect even while both are green.**
 
+**And a seventh, the one that closed Horizon 12: a sweep total recorded from a
+RED tree.** §122 wrote down "824 across 82" as the horizon's figure. It was
+measured at `2f309ed`, which printed **one FAIL**, and nobody re-recorded it
+after the fixes made it green. Seven sections later §129 built its own expected
+total on it and was off by eight. The rule: **a measured figure carries the tree
+that produced it, or it is an estimate with a decimal point** — and a sweep with
+a FAIL in it produces no total worth keeping.
+
 **And a sixth, from Horizon 12: a fixture holding a number typed beside the
 thing it pays for.** `WORKS ARE A SINK` set `salvage = 30000` against a colony
 ladder that totalled 28,000. Re-pricing it to 101,000 would have reddened the

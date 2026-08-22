@@ -6390,7 +6390,7 @@ the deaths are listed in the research doc's §5 and the survivors are below:
 | 7 | the prompt holds its refusals: `prompt(text, hold_s := 0.0)` appended-optional, and the label wraps | rides v28 | **BUILT** — §121; adding the lock nearly converted a once-ever bark from deferred to spent |
 | 8 | the eleventh: an all-ladders capstone derived from both table families, one broadcast, a visible count | rides v28 | **BUILT** — §119; derived from the tables so 5c can land on either side of it |
 | — | the one that could not fail: TITLETEST gets the four assertions it was printing in prose | none | **BUILT** — §120; found by commit 1's own `--legs` on its first execution |
-| 9 | the measure: the horizon closed and the sweep read | none | **BUILT** — §122; the figure is 824 across 82 MEASURED, and 831 is arithmetic until a full sweep prints it |
+| 9 | the measure: the horizon closed and the sweep read | none | **BUILT** — §122; the figure recorded here was 824 across 82, and §129 found it was measured at `2f309ed` — a tree printing one FAIL, never re-recorded after the fixes made it green. Treat it as the reading of a red tree, not the horizon's total |
 
 **The finding that set the order, and it is a measurement rather than a
 feeling.** This project has an income instrument and has never had a wealth
@@ -6491,7 +6491,7 @@ and commits 1–4 were re-sized against the measurement before they were built.
 | 2 | the ladder stands: `requires` staging, the four works re-priced | none | **BUILT** — §126; scope became data, the staging shrank to one prereq (the rest would have been a price in a gate's clothes), and the channel reached 76% of the yard at that commit (205% once §127 and §128 landed) |
 | 3 | EXPANDED VAULTS + THE YARD | none | **BUILT** — §127; both upgrade a rung rather than adding one, and the research found the annex bay has been deleted on every load since §112 |
 | 4 | THE LIGHT + THE ARCHIVE | none | **BUILT (half)** — §128; THE LIGHT ships at a radius derived from `MIN_HYPER_SEPARATION` so no two overlap. THE ARCHIVE died: `PILOT'S LEDGER` (§111) and `CAPTAIN'S LOG` (§118) already show the run's record free, so it was a paywall in front of a free screen |
-| 5 | the measure | none | **BUILT** — §129; the horizon closed and the sweep read, and the exempt channel row now prints its ratio to the catalogue so the horizon's largest bet is on screen rather than in a document |
+| 5 | the measure | none | **BUILT** — §129; the figure is **836 across 82 MEASURED** at `3a56e85`, green. The exempt channel row now prints its ratio to the catalogue, and the section's own expected figure (828) was wrong because it rested on §122's 824 — a number measured on a tree that printed a FAIL |
 
 ### Built, despite what the docs said
 
@@ -13561,6 +13561,33 @@ without a single red.
   reaches for it.
 - **§64's ALLIED-splash question**, open since 2026-08-06, and **the four legacy
   deepenings (5c)**, deferred since §111. Neither moved.
+
+### And the closing figure was wrong before the sweep printed it
+
+This section was written expecting **828**. The sweep printed **836 across 82,
+0 FAIL, save intact** (`3a56e85`). The gap is not a surprise in the code; it is
+the horizon's own defect landing on the horizon's own closing section.
+
+The arithmetic was `824 + 4`. The **+4** is right and was verified by deriving
+the leg counts from both trees and diffing them: Horizon 12 moved exactly two
+tags — `COLONYTEST` 18 → 21 and `SPILLTEST` 12 → 13 — and every other tag's
+`GATE`, `COND`, `LOOP` and `PROSE` count is byte-identical across the horizon.
+
+The **824** is the wrong half. It was measured at `2f309ed`, a tree that printed
+**one FAIL**, and it was recorded in §122 as the horizon's figure and then
+carried into this one as though it described a green tree. Nobody re-recorded
+the number after the fixes that made it green.
+
+> **A measured figure carries the tree that produced it, or it is an estimate
+> with a decimal point.** §124's rule, owed by the section that closes the
+> horizon §124 is in.
+
+So the figure that goes in the box is the one the sweep printed: **836 across
+82**, at `3a56e85`, green. The static ceiling behind it is `GATE 777 + COND 6 +
+LOOP 7 + SAVETEST 45 = 835`, and 836 means one conditional or loop leg fires
+once more than its static site — which is precisely what `--legs` documents
+those two columns to do (*"fire zero-to-many, reported only"*). The instrument
+was right; the prose beside it was not, for the third time in seven sections.
 
 ### The horizon, remembered
 
