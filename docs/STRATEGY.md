@@ -6525,7 +6525,14 @@ researched in `docs/HORIZON-14-RESEARCH.md`, specced in
 `docs/HORIZON-14-THE-MIDDLE.md`; **commit 1 BUILT** — §137, the sheet: reward
 for area rather than depth, on `SUPERCELL`'s existing grain, with a **flat**
 premium so it is worth proportionally most where income is lowest.
-`RICHER OUTWARD` untouched. CARTTEST 21 → 23, no save bump). The
+`RICHER OUTWARD` untouched. CARTTEST 21 → 23, no save bump. **Commit 1a
+BUILT** — §138: §137 shipped a parse error, `:=` inferred through an untyped
+node handle, which took CARTTEST to `3 pass 7 err` and every SAVETEST with it.
+Fixed by annotation, and `check_scripts.py` gained **rule 7**
+(`check_handle_infer`) — the fourth form of DEFECTS class 1 and the first the
+checker could not see. Its own first draft returned green against the broken
+tree, §77's shape exactly; both halves red-verified before the section was
+written). The
 commission: 1,000–5,000u is boring, and the only motivation out there is to go
 further. The pass's measurement says why — **every per-band table in the game
 is monotone in depth**, with no exception across stations, hulks, loot, salvage
@@ -14255,3 +14262,89 @@ looks like from the cockpit.
 
 Silent on the last reading, because the completion toast is already speaking and
 two messages for one act is the double-report §120 found in a print line.
+
+
+## 138. Inference through a handle (Horizon 14, commit 1a)
+
+§137 went out at 71/0 on the static checker and broke the build. Two lines:
+
+    var main := get_tree().get_first_node_in_group("main")
+    var want := main.deep_space.sheet_readings(sc.x, sc.y)
+    var have := main.deep_space.sheet_read(sc.x, sc.y)
+
+    Parse Error: Cannot infer the type of "want" variable because the
+    value doesn't have a set type.
+    Compile Error: Failed to compile depended scripts.
+
+CARTTEST reported `3 pass 0 fail 7 err` and `SHORT: 3 verdict(s), at least 23
+expected`, and the cascade took every SAVETEST mode with it.
+
+### Why it reads as correct code
+
+`sheet_readings()` is declared `-> int`. `sheet_read()` is declared `-> int`.
+The call site names two typed functions and assigns their results — there is
+nothing at that line to look at. The type is lost one step **earlier**:
+`get_first_node_in_group` returns `Node`, `Node` has no `deep_space`, so
+`main.deep_space` is a Variant, and a call **through** a Variant has no return
+type at all regardless of what the callee declares.
+
+The same two lines inside `main.gd` compile, because there `deep_space` is a
+typed member of the class rather than a property fished off a handle. So *"the
+identical code works over there"* is not evidence — it is the trap.
+
+> **A DECLARED RETURN TYPE IS NOT A TYPE AT THE CALL SITE. THE RECEIVER
+> DECIDES.**
+
+### The fix, and the other fix
+
+`var want: int = ...` — annotate, because the local is where the type is
+missing. The alternative is to cast the handle: `get_first_node_in_group(
+"camera_rig") as CameraRig`, which is what `main.gd:18377` already does and why
+`var tapped_a := rig_m._select(at_px)` two hundred lines below it is legal.
+Either is correct. Annotating was chosen here because one line needs it, and
+casting `main` would assert a `class_name` that `main.gd` does not have.
+
+### Rule 7, and the first draft of it that could not fail
+
+This is the **fourth** form of one defect (DEFECTS class 1): untyped globals
+(§77), untyped consts (§106), untyped consts in a leaf (§111), and now untyped
+node handles. Rules 5 and 6 cover the first three. `check_scripts.py` returned
+71/0 here because neither looks at a property chain, so the one instrument this
+repo has without a binary watched it go past.
+
+`check_handle_infer` collects locals assigned from an **uncast** node lookup —
+`get_first_node_in_group`, `get_node`, `get_node_or_null`, `find_child`,
+`get_parent`, or an explicit `: Node =` — and flags `:=` off any member of one
+that `Node` does not itself declare.
+
+**The first draft returned green against the tree that was on fire**, and the
+reason is §77's shape exactly. It asked *is this member declared by some class
+in the project index?*, reasoning that a project member reached through a
+`Node` must be a Variant. But `build_index` skips files with no `class_name`,
+and `main.gd` — 29,000 lines, the class nearly every handle in this game points
+at — has none. `deep_space` was not in the index, so the rule conceded it, so
+the rule reported zero problems against the two lines it was written for.
+
+The fix was to **invert the question**: concede the short list of members `Node`
+genuinely declares and report everything else.
+
+> **A CHECK THAT ASKS "IS THIS KNOWN-BAD?" FAILS OPEN. ONE THAT ASKS "IS THIS
+> KNOWN-GOOD?" FAILS CLOSED.** The first is a green that measured nothing; the
+> second costs an annotation when it is wrong.
+
+`NODE_MEMBERS` is therefore fifteen names long and **currently unexercised** —
+no line in this project reaches a real `Node` member off a handle with `:=`.
+It is stated so the first legitimate one costs a word instead of a rule.
+
+The `as` guard is load-bearing in the other direction: without it the rule
+reported `main.gd:18397` and `:18417`, two lines that compile perfectly well,
+and §77's other lesson is that a checker which cries wolf is a checker nobody
+runs.
+
+### Red-verified, which is the only reason it is here
+
+Against the §137 tree the rule reports exactly two lines and exits 1. Against
+the fixed tree it reports zero, and the whole check is 71 files / 0 problems.
+Both halves were measured before this section was written — rules 5 and 6 were
+red-verified too, and the first draft of this one is the demonstration of why
+that step is not optional.

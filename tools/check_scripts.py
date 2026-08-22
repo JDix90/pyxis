@@ -303,6 +303,84 @@ def check_container_infer(path: str, consts):
     return out
 
 
+# ----------------------------------------------------------- node handles ---
+
+# A local that holds a bare, uncast Node. Every one of these lookups returns
+# `Node` -- not the concrete class -- so the parser knows only what Node
+# declares, and any member this project added is a Variant through it.
+NODE_HANDLE = re.compile(
+    r'^\t*var\s+([A-Za-z_]\w*)\s*(?::=\s*(?:get_tree\(\)\.)?'
+    r'(?:get_first_node_in_group|get_node|get_node_or_null|find_child'
+    r'|get_parent)\s*\('
+    r'|:\s*Node\s*=)')
+
+# Members Node itself declares, so a `:=` off them infers a real type. Conceded
+# on TYPE grounds rather than call-site grounds -- unlike ENGINE_STATICS below,
+# this project currently has no line that needs any of them, and the list is
+# here so the first legitimate one costs a word instead of a rule. Everything
+# not named here is reported, which is the right way round: the false positive
+# costs an annotation, the false negative costs a sweep.
+NODE_MEMBERS = {
+    "name", "owner", "visible", "position", "global_position", "get_parent",
+    "get_child", "get_child_count", "get_index", "get_path", "has_method",
+    "has_node", "is_inside_tree", "is_in_group", "get_class",
+}
+
+HANDLE_READ = re.compile(
+    r'^\s*var\s+[A-Za-z_]\w*\s*:=\s*([A-Za-z_]\w*)\.([A-Za-z_]\w*)')
+
+
+def check_handle_infer(path: str):
+    """`var x := <node handle>.<project member>` -- the same parse error again.
+
+    THE SEVENTH RULE, and the FOURTH form of one defect, which is the number
+    worth pausing on. Rules five and six catch inference off an untyped global
+    and off an untyped const. This catches inference off an untyped NODE, and
+    it reads more innocently than either:
+
+        var main := get_tree().get_first_node_in_group("main")
+        var want := main.deep_space.sheet_readings(sc.x, sc.y)
+
+    `sheet_readings()` is declared `-> int`. The call site looks typed. But
+    `get_first_node_in_group` returns Node, Node has no `deep_space`, so
+    `main.deep_space` is a Variant and a call through a Variant has no return
+    type at all -- "Cannot infer the type of \"want\"". The identical line in
+    main.gd compiles, because there `deep_space` is a typed member of the
+    class rather than a property fished off a handle.
+
+    It cost a sweep. survey_mast.gd is a leaf, so §137 passed this checker at
+    71/0, passed the main.gd pre-flight, and then failed at load with the
+    harness printing three cheerful PASS lines before the cascade -- the exact
+    failure shape rule six was written for, one substitution along.
+
+    A cast is the other fix and is not flagged: `get_first_node_in_group(...)
+    as CameraRig` supplies the type, so members resolve normally and
+    `var tapped := rig._select(px)` is legal. That guard is load-bearing --
+    without it this rule reported two lines in main.gd that compile fine, and
+    a checker that cries wolf is a checker nobody runs.
+    """
+    out = []
+    handles = set()
+    for lineno, line in enumerate(open(path, encoding="utf-8"), 1):
+        code = line.split("#", 1)[0]
+        m = NODE_HANDLE.match(code)
+        # `as SomeClass` is the cast that supplies the type -- the same
+        # concession `int(ceil(...))` gets from rule five.
+        if m and " as " not in code:
+            handles.add(m.group(1))
+        if not handles:
+            continue
+        d = HANDLE_READ.match(code)
+        if not d or d.group(1) not in handles or d.group(2) in NODE_MEMBERS:
+            continue
+        out.append((lineno, "`:=` cannot infer through `%s`, which holds a "
+                    "bare Node -- `.%s` is a Variant. Declare the local's "
+                    "type (`var x: int = ...`) or cast the handle "
+                    "(`... as SomeClass`)" % (d.group(1), d.group(2)),
+                    line.rstrip()))
+    return out
+
+
 def check_shadow(path: str):
     """A `for` variable OR a `var` colliding with a local that is still in scope.
 
@@ -473,6 +551,7 @@ def main(argv):
         for lineno, why, text in check_indent(path) + check_duplicates(path) + \
                 check_shadow(path) + check_infer(path) + \
                 check_container_infer(path, consts) + \
+                check_handle_infer(path) + \
                 check_refs(path, members, parent, home):
             rel = os.path.relpath(path, root)
             print("%s:%d: %s\n    %s" % (rel, lineno, why, text[:88]))

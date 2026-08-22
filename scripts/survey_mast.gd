@@ -341,9 +341,12 @@ func _complete() -> void:
 		# Read AFTER note_surveyed, so it counts the reading just taken. Silent
 		# on the last one: the completion toast is already saying it, and two
 		# messages for one act is the double-report §120 found in a print line.
+		# Annotated, not inferred: `main` is an untyped Node, so `main.deep_space`
+		# is a Variant and a call through it has no return type the parser can
+		# see -- `:=` off that chain is a parse error, not a warning. §138.
 		var sc := DeepSpace.supercell_of(cell.x, cell.y)
-		var want := main.deep_space.sheet_readings(sc.x, sc.y)
-		var have := main.deep_space.sheet_read(sc.x, sc.y)
+		var want: int = main.deep_space.sheet_readings(sc.x, sc.y)
+		var have: int = main.deep_space.sheet_read(sc.x, sc.y)
 		if hud and want > 1 and have < want:
 			hud.show_toast("SHEET %d OF %d IN THIS BLOCK" % [have, want],
 				Palette.AMBER)

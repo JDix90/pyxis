@@ -22,18 +22,49 @@ fails to compile, every class that names it fails behind it, and the report is
 `Could not parse global class "DeepSpace"` plus a few hundred cascade lines in
 files nobody touched.
 
-**Three forms, each found the hard way.** Bare math globals (§77), untyped
-containers indexed (§106, in an autoload — loud), and the same in a **leaf**
+**Four forms, each found the hard way.** Bare math globals (§77), untyped
+containers indexed (§106, in an autoload — loud), the same in a **leaf**
 class (§111, quiet: `survey_mast.gd` took `deep_space`, `system_db`,
 `game_state` and the audio autoload down behind it, the pre-flight passed
 because `main.gd` parses fine alone, and the sweep died at `SurveyMast.new()`
-with "Nonexistent function 'new' in base 'GDScript'").
+with "Nonexistent function 'new' in base 'GDScript'"), and inference through an
+untyped **node handle** (§138 — `survey_mast.gd` again, same leaf, same
+cascade, one substitution along).
 
-**Covered by:** `check_scripts.py` rules 4 (`check_infer`) and 6
-(`check_container_infer`). Rule 6 collects every `const NAME := [` or `{` the
-project declares and flags `:=` off a lookup into one, indexing **and** `.get()`
-— so it is exact rather than heuristic, and a typed `Array[String]` is never
-reported. Both forms were red-verified. Also `run_harness.sh --parse`.
+**The fourth form is the one that reads as typed code.**
+
+    var main := get_tree().get_first_node_in_group("main")
+    var want := main.deep_space.sheet_readings(sc.x, sc.y)
+
+`sheet_readings()` is declared `-> int`; the call site looks fully typed. But
+the lookup returns `Node`, `Node` has no `deep_space`, so `main.deep_space` is
+a Variant and a call **through** a Variant has no return type at all. The
+identical line inside `main.gd` compiles, because there `deep_space` is a typed
+member of the class rather than a property fished off a handle — so "it works
+elsewhere" is not evidence here.
+
+**Covered by:** `check_scripts.py` rules 5 (`check_infer`), 6
+(`check_container_infer`) and 7 (`check_handle_infer`). Rule 6 collects every
+`const NAME := [` or `{` the project declares and flags `:=` off a lookup into
+one, indexing **and** `.get()` — so it is exact rather than heuristic, and a
+typed `Array[String]` is never reported. Rule 7 collects locals assigned from
+an **uncast** node lookup and flags `:=` off any member of one that `Node` does
+not itself declare; `... as CameraRig` supplies the type and is not flagged,
+which is load-bearing — without that guard the rule reported two lines in
+`main.gd` that compile fine. All three forms were red-verified: rule 7 reports
+exactly the two §137 lines against the broken tree and 0 against the fixed one.
+Also `run_harness.sh --parse`.
+
+**The first draft of rule 7 could not fail, and the reason is §77's shape
+exactly.** It asked whether the member was declared by some class in the
+project index, reasoning that a project member off a `Node` must be Variant.
+But `build_index` skips files without a `class_name`, and `main.gd` — 29,000
+lines, the class every handle in the game points at — has none, so
+`deep_space` was not in the index and the rule returned green against the tree
+that was on fire. The fix was to invert the test: concede the short list of
+members `Node` genuinely declares and report everything else. **A checker that
+asks "is this known-bad?" fails open; one that asks "is this known-good?" fails
+closed.** Rules 5, 6 and 7 all now ask the second question.
 
 ---
 
