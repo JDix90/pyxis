@@ -112,6 +112,7 @@ const HARNESS_VARS := [
 	"PYXIS_STORETEST",
 	"PYXIS_STORMTEST",
 	"PYXIS_STREAMTEST",
+	"PYXIS_TIDETEST",
 	"PYXIS_TITLETEST",
 	"PYXIS_TORPTEST",
 	"PYXIS_TUTORIALTEST",
@@ -447,6 +448,9 @@ var contracts: Contracts
 
 var system_root: Node3D
 var deep_space: DeepSpace
+# §139. Rebuilt with the system exactly as DeepSpace is, and for the same
+# reason: it reads the expanse, so it cannot outlive one.
+var tide: Tide = null
 # Sticky across _load_system. Harnesses that assert against a hand-placed world
 # turn this off the same way they pin `_wave_timer`; the game never touches it.
 var _deep_generation := true
@@ -1069,6 +1073,14 @@ func _ready() -> void:
 		_load_system(GameState.current_system)
 		_enter_playing()
 		_run_stream_test()
+		return
+
+	if OS.get_environment("PYXIS_TIDETEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_tide_test()
 		return
 
 	if OS.get_environment("PYXIS_ACCESSTEST") != "":
@@ -2621,6 +2633,14 @@ func _load_system(id: String) -> void:
 		# node from the second warp onward -- the shape `_build_beacons` two
 		# lines up already works around.
 		deep_space.sheet_completed.connect(_on_sheet_completed)
+	# §139. THE TIDE, spawned with the expanse it reads. Identity is set BEFORE
+	# add_child -- every spawner's contract here -- so _physics_process can
+	# never run one frame against an unnamed system, which would resolve the
+	# whole middle to "no tide" and cache it.
+	tide = Tide.new()
+	tide.system_id = id
+	tide.deep = deep_space
+	system_root.add_child(tide)
 	# A new system is a new expanse, so its beacons are unheard again.
 	_broadcast_band = 0
 
@@ -3056,8 +3076,13 @@ func _process(delta: float) -> void:
 			_carrier_wash = washed
 		# v21: named the way THIS Pyx names it. band_name stays the default and
 		# the fallback, so a system with no authored names reads exactly as before.
+		# §139. A FIFTH APPENDED-OPTIONAL, §108's discipline: a reshaped signature
+		# is a wrong arity, and a wrong arity is a parse error the static checker
+		# cannot see. -1 is "no tide", which is what every caller that does not
+		# pass it means.
 		hud.set_deep_tag(DeepSpace.band_name_in(system_id, depth) if depth > 0.0 else "", depth,
-			_carrier_wash, storm_has_player())
+			_carrier_wash, storm_has_player(),
+			tide.riding_deg() if is_instance_valid(tide) else -1)
 	# The score's second axis, fed from the same poll that already drives the
 	# wayfinding label and the beacons. Music smooths it internally, so this is a
 	# raw value every frame rather than something this function has to rate-limit.
@@ -30451,5 +30476,247 @@ func _run_storm_test() -> void:
 		GameState.SAVE_VERSION,
 		"PASS" if after_load == 0 and live_storms.is_empty() and not logs and not save_leak
 			and GameState.SAVE_VERSION >= 20 and storm_src.length() > 0 else "FAIL"])
+
+	get_tree().quit()
+
+
+# --- the tide ----------------------------------------------------------------
+
+func _run_tide_test() -> void:
+	# §139. A SUITE OF ITS OWN, for STORMTEST's stated reason: the derivation is
+	# a data suite but the promise is a PHYSICS one, and the whole design rests
+	# on what the tether channel does with a hull that is not agreeing with the
+	# water. That cannot be asserted off a table.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	await get_tree().create_timer(0.4).timeout
+	_wave_timer = 1.0e9
+	_rift_timer = 1.0e9
+	_storm_timer = 1.0e9
+	player.invulnerable = true
+
+	# --- the derivation ------------------------------------------------------
+	# Swept over every supercell the middle bands can hold. The window is
+	# derived from the band edge rather than typed: band 5 ends at 5,200 and a
+	# supercell is 256u, so 22 blocks clears it with room, and a retune of
+	# either constant widens this sweep instead of silently under-sampling it.
+	var bounds := SystemDB.bounds_of(system_id)
+	var span := float(DeepSpace.SUPERCELL) * DeepSpace.CELL
+	var reach := int(ceilf((float(DeepSpace.BAND_EDGES[DeepSpace.BAND_EDGES.size() - 1])
+		+ bounds) / span)) + 2
+	var worst_along := 0.0
+	var hands := {}
+	var hand_bad := ""
+	var band_bad := ""
+	var n_mid := 0
+	var n_tide := 0
+	for sx in range(-reach, reach + 1):
+		for sz in range(-reach, reach + 1):
+			var centre := Tide.supercell_centre(sx, sz)
+			var b := DeepSpace.band_of(centre.length())
+			var v := Tide.set_at(system_id, sx, sz)
+			if Tide.band_carries(b):
+				n_mid += 1
+			elif v != Vector2.ZERO:
+				band_bad = "band %d carried a tide" % b
+			if v == Vector2.ZERO:
+				continue
+			n_tide += 1
+			# THE ONE THAT MATTERS. Depth is radius out here, so the outward
+			# normal IS the depth gradient: a tide with a large component along
+			# it would be a slide outward, which is the complaint this horizon
+			# opened on rather than an answer to it.
+			var out := centre.normalized()
+			worst_along = maxf(worst_along, absf(out.dot(v)))
+			# Cross product in the plane. Its SIGN is which way round the water
+			# goes, and the twist is bounded well under 90 degrees precisely so
+			# that the sign cannot flip inside a band.
+			var hand := signf(out.x * v.y - out.y * v.x)
+			if hands.has(b) and absf(float(hands[b]) - hand) > 0.001:
+				hand_bad = "band %d runs both ways" % b
+			hands[b] = hand
+
+	var twist_ceiling := sin(deg_to_rad(Tide.TWIST_DEG))
+	print("[tide] THE TIDE RUNS ACROSS THE DEPTH, NEVER ALONG IT worst |along the gradient| %.3f against a %.0f° twist ceiling of %.3f, over %d block(s) -> %s" % [
+		worst_along, Tide.TWIST_DEG, twist_ceiling, n_tide,
+		"PASS" if n_tide > 0 and worst_along <= twist_ceiling + 0.001 else "FAIL"])
+
+	print("[tide] AND IT GOES ONE WAY ROUND IN A BAND %d band(s) carry water, %s -> %s" % [
+		hands.size(), hand_bad if hand_bad != "" else "each turns one way only",
+		"PASS" if hand_bad == "" and hands.size() == Tide.BAND_HI - Tide.BAND_LO + 1
+			else "FAIL"])
+
+	# THE MIDDLE ONLY, and asserted from both ends: nothing outside bands 4-5
+	# carries water, and the bands that do are the bands the constants name.
+	# Band 6 already has weather and the complaint was 1,000 to 5,000 -- a tide
+	# everywhere would be a global speed buff wearing a bearing.
+	var carried_bands: Array = hands.keys()
+	carried_bands.sort()
+	print("[tide] IT LIVES ONLY IN THE MIDDLE bands %s carry it, %s -> %s" % [
+		str(carried_bands), band_bad if band_bad != "" else "nothing outside them does",
+		"PASS" if band_bad == "" and carried_bands == [Tide.BAND_LO, Tide.BAND_HI]
+			else "FAIL"])
+
+	# THE DENSITY IS WHAT THE CONSTANT SAYS. Measured over the whole middle
+	# rather than sampled, so this is the real fraction and not an estimate --
+	# and it is the number that decides how often a crossing meets water, which
+	# is the difference between a feature and a rumour.
+	var density := float(n_tide) / maxf(float(n_mid), 1.0)
+	# Tolerance 0.05, which is deliberately loose. Around 1,240 middle blocks put
+	# one sigma at 0.013, so a 0.03 window would be 2.2 sigma -- a leg that goes
+	# red on one seed in forty for being CORRECT. What this is here to catch is
+	# a constant that stopped meaning what it says, not the uniformity of
+	# randf().
+	print("[tide] ONE BLOCK IN THREE CARRIES WATER measured %.3f of %d middle block(s) against DENSITY %.2f -> %s" % [
+		density, n_mid, Tide.DENSITY,
+		"PASS" if absf(density - Tide.DENSITY) < 0.05 else "FAIL"])
+
+	# --- the promise ---------------------------------------------------------
+	# Find real water on the axis to stand in. Searched rather than assumed: at
+	# DENSITY 0.34 a hard-coded block would be a coin flip against the seed --
+	# and every clause below is asserted against water that is actually there,
+	# which a fixed block could not promise.
+	# Swept in two dimensions rather than along one row: a single row through the
+	# middle offers about sixteen blocks, and at DENSITY 0.34 that is a one-in-
+	# six-hundred chance of finding nothing and failing three legs for a reason
+	# that has nothing to do with what they measure. Five rows makes it nil.
+	var block := Vector2i(0, 0)
+	var flow := Vector2.ZERO
+	for sz in [0, 1, -1, 2, -2]:
+		for sx in range(1, reach + 1):
+			var v := Tide.set_at(system_id, sx, int(sz))
+			if v != Vector2.ZERO:
+				block = Vector2i(sx, int(sz))
+				flow = v
+				break
+		if flow != Vector2.ZERO:
+			break
+
+	# DERIVED, SALTED AND PURE, and asserted on the found block rather than a
+	# typed-in one: two thirds of blocks answer ZERO, and ZERO twice is a
+	# purity leg that agrees with itself about nothing. Two calls to the same
+	# block agree ACROSS an interleaved call to another, which is the clause
+	# that would catch a shared RNG.
+	#
+	# The fingerprint is protected by construction rather than by this leg:
+	# set_at hashes its own key, and WORLD_FINGERPRINT_BEFORE_SEAMS covers
+	# plan_cell's rolls, which this never enters.
+	var pure_a := Tide.set_at(system_id, block.x, block.y)
+	var _other := Tide.set_at(system_id, block.x + 3, block.y + 11)
+	var pure_b := Tide.set_at(system_id, block.x, block.y)
+	var elsewhere := Tide.set_at("pyx-not-a-system", block.x, block.y)
+	print("[tide] THE WATER IS DERIVED, NOT ROLLED block (%d,%d) twice=%s across another call, set %.3f,%.3f, another system differs=%s -> %s" % [
+		block.x, block.y, str(pure_a.is_equal_approx(pure_b)), pure_a.x, pure_a.y,
+		str(not elsewhere.is_equal_approx(pure_a)),
+		"PASS" if pure_a != Vector2.ZERO and pure_a.is_equal_approx(pure_b)
+			else "FAIL"])
+	var centre2 := Tide.supercell_centre(block.x, block.y)
+	var stand := Vector3(centre2.x, 0.0, centre2.y)
+	var along := Vector3(flow.x, 0.0, flow.y)
+	var across := Vector3(-flow.y, 0.0, flow.x)
+
+	# Held in the block rather than flown through it, and velocity written each
+	# frame rather than commanded: what is being measured is the channel, and a
+	# hull that flew out of a 256u block mid-measurement would be measuring the
+	# neighbouring block's emptiness instead. STORMTEST reads _tether_vel the
+	# same way and for the same reason -- it is the only place the answer is.
+	#
+	# Written as a plain loop rather than a lambda on purpose: an `await` inside
+	# a Callable makes it a coroutine, and a coroutine called without an await
+	# fails at RUNTIME rather than at parse -- which is DEFECTS class 10's
+	# shape, a wrong call form the static checker cannot see, and this file has
+	# already paid for that once this horizon.
+	var rode: Array = []
+	for heading_v in [along, -along, across]:
+		var heading: Vector3 = heading_v
+		player.teleport_to(stand)
+		player.clear_tether()
+		player.has_move_target = false
+		# 120 frames is two seconds. PUSH is 0.62 u/s/s against a DRIFT of 0.9,
+		# so terminal arrives at 1.45s -- the margin is there so this measures
+		# the CLAMP rather than the ramp, and a slower push goes red instead of
+		# reading low.
+		for f in range(120):
+			player.global_position = stand
+			player.velocity = heading * 3.0
+			await get_tree().physics_frame
+		rode.append((player._tether_vel as Vector3).length())
+
+	var with_it := float(rode[0])
+	var against_it := float(rode[1])
+	var athwart := float(rode[2])
+
+	# THE WHOLE PROMISE, IN THREE NUMBERS. Riding pays the flat drift; crossing
+	# and fighting pay nothing at all. There is no escape arithmetic in this
+	# suite because there is nothing to escape -- the tide has no way to reach
+	# the channel unless the hull is already agreeing with it.
+	print("[tide] IT GIVES AND IT NEVER TAKES riding %.3f (DRIFT %.2f), athwart %.3f, against %.3f -> %s" % [
+		with_it, Tide.DRIFT, athwart, against_it,
+		"PASS" if absf(with_it - Tide.DRIFT) < 0.05 and athwart < 0.05
+			and against_it < 0.05 else "FAIL"])
+
+	# AND IT STANDS DOWN INSIDE A STORM. DEFECTS class 2b: apply_tether
+	# re-clamps to the LAST caller's cap, so two drivers in one frame settle the
+	# question by node order. Asserted with a real storm on top of real water,
+	# because the guard reads the storm GROUP and a mocked flag would not.
+	var storm := Storm.new()
+	system_root.add_child(storm)
+	# Half a pull radius off, not on top: at zero distance _pull returns early
+	# and _tick_eye starts an EMP and a damage clock, so a storm parked on the
+	# hull would be measuring the eye rather than the contention this leg is
+	# about.
+	storm.global_position = stand + Vector3(Storm.PULL_RADIUS * 0.5, 0.0, 0.0)
+	player.teleport_to(stand)
+	player.clear_tether()
+	player.has_move_target = false
+	for f in range(30):
+		player.global_position = stand
+		player.velocity = along * 3.0
+		await get_tree().physics_frame
+	var yielded: int = tide.riding_deg() if tide != null else -1
+	var storm_holds := storm.has_player(player)
+	storm.queue_free()
+	await get_tree().process_frame
+	print("[tide] IT STANDS DOWN INSIDE A STORM storm holds the hull=%s, tide reports %d (-1 is stood down) -> %s" % [
+		str(storm_holds), yielded,
+		"PASS" if storm_holds and yielded < 0 else "FAIL"])
+
+	# --- the two instruments -------------------------------------------------
+	# ONE VECTOR, TWO READOUTS. The cockpit suffix and the chart arrow both come
+	# off set_at, so the only way they can disagree is if the bearing helper
+	# does -- which is what this measures, against a set whose answer is known
+	# by construction.
+	var north := Tide.set_deg(Vector2(0.0, -1.0))
+	var east := Tide.set_deg(Vector2(1.0, 0.0))
+	var south := Tide.set_deg(Vector2(0.0, 1.0))
+	var west := Tide.set_deg(Vector2(-1.0, 0.0))
+	var none := Tide.set_deg(Vector2.ZERO)
+	print("[tide] THE BEARING IS THE CHART'S OWN UP -Z=%d +X=%d +Z=%d -X=%d, no water=%d -> %s" % [
+		north, east, south, west, none,
+		"PASS" if north == 0 and east == 90 and south == 180 and west == 270
+			and none == -1 else "FAIL"])
+
+	# AND THE COCKPIT SAYS IT. Zero-padded, because a bearing is three digits or
+	# it is not a bearing -- and read off the live label rather than off the
+	# format string, so a suffix appended in the wrong branch goes red.
+	hud.set_deep_tag("THE QUIET", 2000.0, false, false, 43)
+	var lit := hud._system_label.text
+	hud.set_deep_tag("THE QUIET", 2000.0, false, false, -1)
+	var dark := hud._system_label.text
+	print("[tide] THE COCKPIT NAMES THE SET lit=\"%s\", stood down=\"%s\" -> %s" % [
+		lit, dark,
+		"PASS" if lit.contains("TIDE SET 043") and not dark.contains("TIDE")
+			else "FAIL"])
+
+	# AND IT COSTS THE SAVE NOTHING. The tide is a pure function of a key it
+	# hashes itself, so there is no store to write and no version to move --
+	# read off the SOURCE, the way STORMTEST proves the same thing about weather
+	# that already shipped.
+	var tide_src := FileAccess.get_file_as_string("res://scripts/tide.gd")
+	var writes := tide_src.contains("GameState.note_log(") \
+		or tide_src.contains("GameState.note_ledger(") \
+		or tide_src.contains("_queue_save(") or tide_src.contains("save_game(")
+	print("[tide] THE TIDE IS DERIVED WEATHER tide.gd logs or saves=%s, %d character(s) read, format still v%d -> %s" % [
+		str(writes), tide_src.length(), GameState.SAVE_VERSION,
+		"PASS" if not writes and tide_src.length() > 0 else "FAIL"])
 
 	get_tree().quit()

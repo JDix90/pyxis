@@ -585,6 +585,9 @@ var _deep_band := ""
 var _deep_out := 0.0
 var _deep_wash := false
 var _deep_caught := false
+# §139. -1 is no tide. Part of the early-out above, or a hull riding one would
+# rebuild this label sixty times a second for a string that never changed.
+var _deep_tide := -1
 var _gain_timer: SceneTreeTimer = null
 
 
@@ -1478,20 +1481,24 @@ func set_system_tag(text: String) -> void:
 
 
 func set_deep_tag(band_name: String, out_distance: float, wash := false,
-		caught := false) -> void:
+		caught := false, tide_deg := -1) -> void:
 	# band_name "" means inside the charted system, where this whole readout
 	# collapses back to exactly the string it has always shown.
 	#
 	# `caught` is a FOURTH OPTIONAL param rather than a reshaped signature, so
 	# the one production caller and the one harness caller that do not pass it
-	# are untouched by construction.
+	# are untouched by construction. §139 appended a FIFTH the same way, and the
+	# discipline is §108's: a reshaped signature is a wrong arity, and a wrong
+	# arity is a parse error the static checker cannot see.
 	if band_name == _deep_band and absf(out_distance - _deep_out) < 1.0 \
-			and wash == _deep_wash and caught == _deep_caught:
+			and wash == _deep_wash and caught == _deep_caught \
+			and tide_deg == _deep_tide:
 		return
 	_deep_band = band_name
 	_deep_out = out_distance
 	_deep_wash = wash
 	_deep_caught = caught
+	_deep_tide = tide_deg
 	_apply_system_tag()
 
 
@@ -1531,6 +1538,18 @@ func _apply_system_tag() -> void:
 		# boundary sits outside the radar cutoff it precedes -- it can never be
 		# more precise than the instrument it is announcing.
 		_system_label.text += " · JAMMED — SOMETHING IS CLOSE"
+	if _deep_tide >= 0:
+		# §139. THE ONE SUFFIX THAT IS A BEARING, and the exception is the
+		# point: the jam and the storm say HERE and never THAT WAY because they
+		# are threats, and a threat that leaks a direction is a threat the
+		# player did not have to find. A tide is the opposite kind of fact --
+		# the thing the middle bands were missing is something worth KNOWING
+		# about a place, so its whole value is the direction.
+		#
+		# It sits before the storm suffix rather than after because the two can
+		# never both be lit: the tide bands stop at 5,200 and stand down inside
+		# a pull radius besides.
+		_system_label.text += Tide.COPY["tag"] % _deep_tide
 	if _deep_caught:
 		# v20. The same grammatical shape as the jam above — state, em-dash,
 		# consequence — and the same HERE-never-THAT-WAY rule: byte-identical at

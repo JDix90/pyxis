@@ -6525,7 +6525,15 @@ researched in `docs/HORIZON-14-RESEARCH.md`, specced in
 `docs/HORIZON-14-THE-MIDDLE.md`; **commit 1 BUILT** — §137, the sheet: reward
 for area rather than depth, on `SUPERCELL`'s existing grain, with a **flat**
 premium so it is worth proportionally most where income is lowest.
-`RICHER OUTWARD` untouched. CARTTEST 21 → 23, no save bump. **Commit 1a
+`RICHER OUTWARD` untouched. CARTTEST 21 → 23, no save bump. **Commit 2 BUILT**
+— §139, the tide: a standing set of water per supercell across bands 4–5,
+derived on its own salted stream (no store, no save bump, no fingerprint), which
+pushes only a hull ALREADY agreeing with it, runs TANGENTIAL so it is a reason to
+cross a band rather than a slide outward, and pays a FLAT 0.9 u/s — +56% on the
+speed floor, +15% on the fastest fit. The braid: a filed sheet does not unlock
+the tide, it unlocks the CHART of it, so §137 pays twice. Stands down inside a
+storm (DEFECTS 2b — `apply_tether` re-clamps to the last caller). New tag
+TIDETEST, 10 legs, 82 → 83 runs. **Commit 1a
 BUILT** — §138: §137 shipped a parse error, `:=` inferred through an untyped
 node handle, which took CARTTEST to `3 pass 7 err` and every SAVETEST with it.
 Fixed by annotation, and `check_scripts.py` gained **rule 7**
@@ -6544,7 +6552,10 @@ cause (earliest claim at the band-4 floor is ~18.8 hours of play), and
 landmarks must not start paying out (`TASTE`, refused in writing, and the
 reason is right). Diagnosis: **the expanse is a gradient, not a geography** —
 the middle has scattered destinations and nothing that happens, accumulates, or
-rewards knowing it. Three directions researched as one horizon at the owner's
+rewards knowing it. OPEN after §139: whether the tide should ever TURN — route
+knowledge with a timetable in it is a second dimension the chart cannot draw
+today, and it was refused for that reason rather than for cost. Three directions
+researched as one horizon at the owner's
 call — reward area (the sheet, on `SUPERCELL`'s existing 4×4 grain, so a
 completed sheet always contains exactly one landmark and the landmark names it
 without paying), weather that gives rather than takes, and colony works that
@@ -14348,3 +14359,148 @@ the fixed tree it reports zero, and the whole check is 71 files / 0 problems.
 Both halves were measured before this section was written — rules 5 and 6 were
 red-verified too, and the first draft of this one is the demonstration of why
 that step is not optional.
+
+
+## 139. The tide (Horizon 14, commit 2)
+
+Weather in the middle bands, and the first thing in this game that only ever
+**gives**.
+
+A **standing set of water**, one per `SUPERCELL` across THE QUIET and THE
+FATHOMS, derived rather than stored: a pure function of `(system, supercell)`
+drawing its own salted stream, so it costs no save key, no world-gen change and
+no fingerprint. Roughly one block in three carries one.
+
+### The research's strongest single argument, answered
+
+§2 of the research pass: **the only environmental system in the game starts at
+exactly the depth the complaint stops at.** `Storm.band_floor()` is 5,200u and
+the boredom is 1,000–5,000. So the middle got weather — and the shape had to be
+the storm's mirror, because the middle does not need another thing that takes.
+
+### It cannot slow you, push you off course, or cage you
+
+Structural rather than tuned. The push is scaled by how well the hull's own
+heading **already** agrees with the set — a dot product clamped at zero — so
+crossing a tide gets nothing and fighting one gets nothing.
+
+There is no escape guarantee anywhere in `tide.gd`, and that absence is the
+design rather than an oversight: §40's promise exists because a storm can hold
+you, and nothing here can.
+
+> **A STORM IS A THING YOU PREPARED FOR. A TIDE IS A THING YOU FOUND.**
+
+### It runs across the depth, never along it
+
+The set is tangential to the system centre, twisted up to `TWIST_DEG`. That is
+the feature rather than the flavour, and it is the sentence the whole horizon
+turns on:
+
+> **A RADIAL TIDE WOULD BE A SLIDE OUTWARD — WHICH IS MORE OF THE COMPLAINT,
+> NOT AN ANSWER TO IT.** A tangential one is a reason to move ACROSS a band.
+
+Depth is radius out here, so the outward normal *is* the depth gradient and its
+perpendicular is the direction that costs nothing in depth. The feature is two
+lines of arithmetic, and TIDETEST asserts the ceiling directly: no set anywhere
+in the sweep leans further off tangential than `sin(35°)`.
+
+### The drift is flat, which is §137's trick a second time
+
+`DRIFT := 0.9` u/s everywhere, against a drive ladder that only rises: **+56%**
+on the 1.6 `max_speed` floor, about **+15%** on the fastest legal fit. The water
+is worth most to the pilot who has least.
+
+`RICHER OUTWARD` is untouched, and did not have to bend: the tide pays in
+**time**, and it pays the same everywhere it exists. Two commits into this
+horizon, the middle has been given a counter-gradient twice without one value
+table moving.
+
+### The braid: what a filed sheet unlocks is the CHART, not the tide
+
+The water moves whether or not you have worked the block — the motes show it,
+the cockpit tag names it — so a tide is always discoverable by flying into one.
+What §137's sheet buys is the tide **drawn**, permanently, so the next crossing
+can be planned instead of stumbled into.
+
+The research asked whether a current should be *learned* or *shown*, and called
+learned stronger and shown kinder. This answers **both, in that order** — and it
+makes the sheet pay twice: a premium once, and a fact about the region forever.
+
+Iterated over `sheets_filed` rather than over supercells, which is both cheap
+(§137 caps the store at 24 a system) and exactly the right loop: **the knowledge
+IS the store**, so a block that is not in it cannot be drawn by accident.
+
+### One vector, three instruments
+
+The push the hull feels, the bearing in the cockpit suffix and the arrow on the
+chart all come off the same `set_at` return. §120's rule about one act speaking
+once, applied to three readers instead of two messages — the only way they can
+disagree is if `set_deg` does, and that has a leg of its own.
+
+The band gate lives inside `set_at` for the same reason, and `_physics_process`
+has **none** — which is worth stating, because the obvious optimisation is to
+bail early on the hull's own depth. That test would have a slightly different
+edge from this one: `set_at` gates on the **block's** radius, the early-out
+would gate on the **ship's**, and the chart would then draw arrows for the outer
+sliver of a block the hull is not actually pushed in. DEFECTS class 2b in its
+quietest form — **two readers of one fact, each with its own copy of the rule.**
+The cache asks `set_at` once per 256 units, which is cheap enough that the
+early-out was never worth a second edge.
+
+### It stands down inside a storm, and that is a defect class rather than etiquette
+
+`apply_tether` re-clamps `_tether_vel` to the **last** caller's cap. A tide
+feeding the channel in the same frame as a storm's pull would overwrite the
+storm's cap with its own and the answer would be settled by node order — DEFECTS
+class 2b exactly. So the tide stands down inside any storm's pull radius,
+checked against the `storm` group rather than through `main`: a guarantee that
+rests on another file's bookkeeping is one refactor from being untrue.
+
+Standing down is a *cease to drive*, never a `clear_tether()` — zeroing a shared
+channel on the way out would cancel the storm's own pull the moment the two
+overlapped.
+
+### What it does not do
+
+It pays no credits, ever — §67's landmark rule one system along. It calls
+`note_log` and `note_ledger` exactly zero times, §53's rule, asserted off the
+source the way STORMTEST asserts it of weather that already shipped.
+
+**And it does not turn.** A tide on a clock would make route knowledge into
+route-AND-timetable knowledge, which is a second dimension the chart has no way
+to draw and the player has no way to check. Standing, it is a fact about a
+PLACE — which is the only kind of fact a filed sheet can remember, and the braid
+depends on that. §64 carries the question of whether it ever should.
+
+### The one suffix that is a bearing
+
+The cockpit tag's other two suffixes say HERE and never THAT WAY, because a jam
+and a storm are threats and a threat that leaks a direction is a threat the
+pilot did not have to find. The tide is the opposite kind of fact: **the thing
+the middle bands were missing is something worth knowing about a place**, so its
+whole value is the direction. Stated in §139 rather than left as an apparent
+inconsistency with §14's rule.
+
+Fed through a **fifth appended-optional** parameter, §108's discipline: a
+reshaped signature is a wrong arity, and a wrong arity is a parse error the
+static checker cannot see. Both existing callers are untouched by construction.
+
+### TIDETEST, and why it is a suite of its own
+
+Ten legs, a new tag, 82 → 83 runs. STORMTEST's stated reason: the derivation is
+a data suite, but the **promise** is a physics one, and what the tether channel
+does with a hull that is not agreeing with the water cannot be asserted off a
+table. The three-number leg is the design:
+
+    riding 0.900 (DRIFT 0.90), athwart 0.000, against 0.000
+
+The density leg's tolerance is deliberately loose at 0.05. About 1,240 middle
+blocks put one sigma at 0.013, so a 0.03 window is 2.2 sigma — **a leg that goes
+red on one seed in forty for being correct.** What it is there to catch is a
+constant that stopped meaning what it says, not the uniformity of `randf()`.
+
+The measurement loop is written out rather than lifted into a lambda, and the
+comment says why: an `await` inside a `Callable` makes it a coroutine, and a
+coroutine called without an await fails at **runtime** rather than at parse.
+That is DEFECTS class 10's shape, and this horizon paid for the neighbouring
+class in the commit immediately before this one — §138 was last commit.

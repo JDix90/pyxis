@@ -227,6 +227,21 @@ tween writes every frame and a container sorts only when asked. A column of
 copy collapses onto one corner. Live in `CAPTAIN'S LOG` since §118 and shipped
 in the induction (§136).
 
+**The standing instance to watch for.** `PlayerShip._tether_vel` is the game's
+one shared write channel: `apply_tether` re-clamps it to the **last** caller's
+cap, so any two mechanisms driving it in one frame settle the question by node
+order. §139 is the first time two could — the tide stands down inside a storm's
+pull radius for exactly this reason, and standing down is a *cease to drive*
+rather than a `clear_tether()`, because zeroing a shared channel on the way out
+is the same defect pointed the other way. **Anything new that calls
+`apply_tether` owes this list an answer about who yields.**
+
+A quieter form of the same shape is two readers of one fact, each carrying its
+own copy of the rule. §139 refused an obvious early-out for that reason: the
+band gate is inside `Tide.set_at` and nowhere else, because a second gate on the
+hull's depth would have had a different edge from the one on the block's radius,
+and the chart would have drawn arrows for water the hull is not pushed in.
+
 **Why it hides.** Each half is individually correct and individually testable.
 The container lays out properly; the tween tweens properly. **No instrument in
 this repo watches one system fight another**, and both screenshots that found

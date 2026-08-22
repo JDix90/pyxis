@@ -709,6 +709,66 @@ func _draw_plot() -> void:
 			_plot.draw_arc(centre, HELD_RING_PX, 0.0, TAU, 14,
 				Color(cc.r, cc.g, cc.b, 0.85), 1.0, true)
 
+	# 0c. WHERE THE WATER RUNS (§139). One arrow per FILED SHEET, and the filing
+	#     is the whole gate: the tide moves whether or not you have worked the
+	#     block -- the motes show it and the cockpit tag names it -- but it is
+	#     only DRAWN on a block whose sheet is in. A tide you have not worked
+	#     for is a thing you can find; one you have is a thing you can plan
+	#     with, and that difference is what makes §137's sheet pay twice.
+	#
+	#     Iterated over sheets_filed rather than over supercells, which is both
+	#     cheap (§137 caps the store at 24 per system) and exactly the right
+	#     loop: the knowledge IS the store, so a block that is not in it cannot
+	#     be drawn by accident.
+	#
+	#     World-sized like the coverage squares under it, and drawn in the band
+	#     colour so it reads as a property OF the water rather than a thing
+	#     standing in it -- §30's rule, with the SHAPE (an arrow, the only
+	#     directional mark on this plot) carrying the distinction.
+	var sheet_prefix := _selected + ":"
+	var sc_span := float(DeepSpace.SUPERCELL) * DeepSpace.CELL
+	var sc_px := sc_span * scale
+	for sh_v in GameState.sheets_filed:
+		var sh := String(sh_v)
+		if not sh.begins_with(sheet_prefix):
+			continue
+		var sbits := sh.split(":")
+		if sbits.size() != 3:
+			continue
+		var ssx := int(sbits[1])
+		var ssz := int(sbits[2])
+		var flow := Tide.set_at(_selected, ssx, ssz)
+		if flow == Vector2.ZERO:
+			continue
+		var wc := Tide.supercell_centre(ssx, ssz)
+		var arrow_mid := to_plot.call(Vector3(wc.x, 0.0, wc.y)) as Vector2
+		if arrow_mid.x < -sc_px or arrow_mid.x > size.x + sc_px \
+				or arrow_mid.y < -sc_px or arrow_mid.y > size.y + sc_px:
+			continue
+		# The set is already a world-XZ vector and to_plot maps world XZ to plot
+		# XY unrotated, so it is drawn AS IT IS. The arrow, the cockpit bearing
+		# and the push the hull feels all come off this one vector.
+		var reach := flow * sc_px * 0.34
+		# The COLOUR takes the plot's own depth convention -- bounds subtracted,
+		# exactly as the coverage squares under it do -- while PRESENCE came
+		# from set_at, which works in raw radius. The two disagree only for a
+		# block sitting within 40u of a band edge, and only about which of two
+		# adjacent band colours to ink it: matching the squares it is drawn on
+		# top of is worth more here than matching the function that placed it.
+		var tband := DeepSpace.band_of(maxf(wc.length() - bounds, 0.0))
+		var tc := Palette.band_color(tband)
+		var ink := Color(tc.r, tc.g, tc.b, 0.55)
+		var head := arrow_mid + reach
+		_plot.draw_line(arrow_mid - reach, head, ink, 1.0, true)
+		# Two strokes, not a filled triangle: at the zoom this plot spends most
+		# of its life at the whole arrow is a dozen pixels, where a polygon is a
+		# blob and two lines are still legibly an arrow.
+		var barb := sc_px * 0.13
+		_plot.draw_line(head, head - flow.rotated(deg_to_rad(28.0)) * barb,
+			ink, 1.0, true)
+		_plot.draw_line(head, head - flow.rotated(deg_to_rad(-28.0)) * barb,
+			ink, 1.0, true)
+
 	# 1. The charted volume you started from, for scale.
 	_plot.draw_arc(mid, bounds * scale, 0.0, TAU, 48,
 		Color(Palette.TEAL.r, Palette.TEAL.g, Palette.TEAL.b, 0.35), 1.0, true)

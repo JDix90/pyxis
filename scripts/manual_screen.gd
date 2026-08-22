@@ -295,6 +295,13 @@ func _build_hud() -> void:
 	_body.add_child(_legend(Palette.GOLD, "GHOST", "Where your readings agree the engine is. It is a guess, and it moves as you gather more."))
 	_body.add_child(_legend(Palette.GOLD, "BEACON", "A waypoint you dropped. %d in stock; hold on one to take it back." % GameState.BEACON_STOCK))
 	_body.add_child(_legend(Palette.band_color(DeepSpace.BAND_NAMES.size() - 1), "STORM", "Weather in the deepest band. It pulls you in and it kills drives. Fly around it, or carry a Thermal Sink through it."))
+	# §139. Derived from the constants rather than typed: the bands the water
+	# runs in, the drift it pays and the name of each band all come from the
+	# tables that decide them, so a retune moves the manual with the feature.
+	# The line the player actually needs is the LAST one -- the water is free
+	# and it never costs, which is the only fact that changes how you fly.
+	_body.add_child(_legend(Palette.band_color(Tide.BAND_LO), "TIDE", "A standing set of water in %s and %s. Fly with it and it carries you %.1f faster; cross it or fight it and it does nothing at all. It runs across the depth, never out — and a block whose SHEET you have filed keeps its arrow on the chart." % [
+		String(DeepSpace.BAND_NAMES[Tide.BAND_LO]), String(DeepSpace.BAND_NAMES[Tide.BAND_HI]), Tide.DRIFT]))
 	_body.add_child(_legend(Palette.HULL, "ODDITY", "Something only this system has, standing in its own bands. One will talk to you, one will burn you, one will give you a bearing for nothing."))
 	_body.add_child(_back())
 
