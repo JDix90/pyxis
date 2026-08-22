@@ -459,6 +459,17 @@ const COLONY_WORKS := {
 	"yard": {"name": "THE YARD", "price": 34000, "scope": "colony",
 		"goods": {"alloys": 20, "isotopes": 8}, "requires": "dock",
 		"blurb": "ALONGSIDE THIS COLONY YOUR SHIELD MENDS FASTER THAN IT CAN BE WAITED FOR"},
+	# §128. NO PREREQ, and that is the §126 test answered rather than skipped: a
+	# gate is legal when the thing it demands is the thing being improved, and
+	# this improves nothing that stands. It is a new grant, so it stands alone
+	# like the mast, the dock and the annex do.
+	#
+	# PRICED BELOW THE YARD because it is situational where the yard is not. The
+	# yard removes a wait after every fight; the light saves a hold only when a
+	# death happens inside its reach. Two loops against the yard's three.
+	"light": {"name": "THE LIGHT", "price": 22000, "scope": "colony",
+		"goods": {"volatiles": 10},
+		"blurb": "WHAT LIES ADRIFT INSIDE THIS COLONY'S REACH, NOBODY ELSE TAKES"},
 }
 const DOCK_AURA_RANGE := 30.0
 const DOCK_AURA_MULT := 2.0
@@ -477,6 +488,20 @@ const DOCK_AURA_MULT := 2.0
 # REPAIR_FULL_PRICE alone. The one-time price IS the cost, and what it buys is
 # the end of the wait at a place the pilot made.
 const YARD_AURA_MULT := 6.0
+# §128, THE LIGHT. Its own radius, and it is DERIVED from the one distance the
+# world already guarantees: SystemDB.MIN_HYPER_SEPARATION is how far apart any
+# two structures must stand, so half of it is the largest reach a light can have
+# and still never overlap another. NO TWO LIGHTS OVERLAP is the invariant, and
+# it is what stops a pilot blanketing a system by founding colonies in a huddle
+# -- each light is its own place, and coverage is bought one colony at a time.
+#
+# Deliberately far wider than DOCK_AURA_RANGE's thirty, because these two auras
+# answer different questions. The dock asks "are you parked at the yard"; the
+# light asks "did you die within this colony's reach", and a death happens where
+# the fight was. At 350u it is a reason to work the ground near your own colony,
+# which is the same thing the dock's aura buys and the whole of what a colony is
+# supposed to become.
+const LIGHT_AURA_RANGE := SystemDB.MIN_HYPER_SEPARATION * 0.5
 
 const REQ_MAX_OPEN := 3
 # Five played minutes. Long enough that ordering is a decision made on the way
@@ -3949,7 +3974,14 @@ func buy_colony_work(key: String, work: String) -> bool:
 	return true
 
 
-func work_aura_at(x: float, z: float, work: String) -> bool:
+func light_aura_at(x: float, z: float) -> bool:
+	# §128. The radius is bound HERE, once. work_aura_at defaults to the dock's
+	# thirty, so a caller that passed the work and forgot the range would get a
+	# light with a twelfth of its reach and no error anywhere.
+	return work_aura_at(x, z, "light", LIGHT_AURA_RANGE)
+
+
+func work_aura_at(x: float, z: float, work: String, radius := DOCK_AURA_RANGE) -> bool:
 	# §127. dock_aura_at's walk, keyed by work, because the yard needs the same
 	# question asked about a different key and a second copy of this loop is the
 	# defect §126 removed from the chart.
@@ -3959,7 +3991,7 @@ func work_aura_at(x: float, z: float, work: String) -> bool:
 			continue
 		var dx := float(c["x"]) - x
 		var dz := float(c["z"]) - z
-		if sqrt(dx * dx + dz * dz) <= DOCK_AURA_RANGE:
+		if sqrt(dx * dx + dz * dz) <= radius:
 			return true
 	return false
 

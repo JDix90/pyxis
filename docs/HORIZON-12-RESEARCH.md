@@ -174,8 +174,8 @@ service, every price a gate-plus-price where the goods are the gate:
 | 4 | DEEP REPEATER (§116), re-priced | information | stands |
 | 5 | **EXPANDED VAULTS** — the annex bay 60 → 120 | access | BUILT §127; `warehouse_space_of` keyed, and the annex bay-key bug fixed |
 | 6 | **THE YARD** — the dry dock's aura deepened to 6× (*not a paid repair — §26, and §123's band-blindness*) | time | BUILT §127; `repair_aura_mult_at` |
-| 7 | **THE LIGHT** — a spill inside this colony's reach does not expire (*reworded from "this system" — §127's scope finding; system-scope caps at three*) | time | extends §109's claim clock at a colony aura, `work_aura_at`'s walk |
-| 8 | **THE ARCHIVE** — the run's record, made into a place | record | fully derived; renders fragments read, legends resolved, names met; grants nothing |
+| 7 | **THE LIGHT** — a spill inside this colony's 350u reach holds its clock | time | BUILT §128; radius = half `MIN_HYPER_SEPARATION`, so no two overlap |
+| ~~8~~ | ~~**THE ARCHIVE**~~ — **CUT (§128)**. `PILOT'S LEDGER` (§111) and `CAPTAIN'S LOG` (§118) already render the run's record free on the pause menu; the work would have been a paywall in front of a free screen, plus a flight to reach it | — | the permission held (*"a record is not a purchase"*); the thing turned out not to exist |
 
 Prices are the spec's to derive, and **the sizing below is re-derived against
 the measured loop** (§124) rather than the estimate this section first carried.

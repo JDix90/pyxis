@@ -6489,7 +6489,7 @@ and commits 1–4 are re-sized against the measurement before they are built.
 | 1 | the wider margin: REQ_MULT 5→8, jumps revisited | none | **BUILT as its opposite** — §125; both halves died on research (the jumps clear by 2–4.5×, and the order desk is a convenience whose free competitor is the core loop), and the leg turned out to print the bias-free ceiling while asserting the bias-inclusive one. `REQ_MULT` stays at 5.0; the margin is now reported |
 | 2 | the ladder stands: `requires` staging, the four works re-priced | none | **BUILT** — §126; scope became data, the staging shrank to one prereq (the rest would have been a price in a gate's clothes), and the channel is 76% of the yard |
 | 3 | EXPANDED VAULTS + THE YARD | none | **BUILT** — §127; both upgrade a rung rather than adding one, and the research found the annex bay has been deleted on every load since §112 |
-| 4 | THE LIGHT + THE ARCHIVE | none | **PLANNED** |
+| 4 | THE LIGHT + THE ARCHIVE | none | **BUILT (half)** — §128; THE LIGHT ships at a radius derived from `MIN_HYPER_SEPARATION` so no two overlap. THE ARCHIVE died: `PILOT'S LEDGER` (§111) and `CAPTAIN'S LOG` (§118) already show the run's record free, so it was a paywall in front of a free screen |
 | 5 | the measure | none | **PLANNED** |
 
 ### Built, despite what the docs said
@@ -13351,3 +13351,102 @@ quiet exception is a law nobody can audit.
 **No save bump.** `scope`, `requires` and the two new works are const data;
 `warehouse`'s shape is untouched; and the bay-key fix makes the loader *keep*
 data it was discarding, which no save needs migrating for.
+
+## 128. The light, and the archive that was already free (Horizon 12, commit 4)
+
+Commit 4 was specced as two works. One shipped. The other died to a screen that
+has existed since §111.
+
+### THE LIGHT
+
+*"What lies adrift inside this colony's reach, nobody else takes."* 22,000,
+colony-scoped, no prereq, a manifest of ten volatiles. Two loops, priced below
+the yard because it is situational where the yard is not: the yard removes a
+wait after every fight, the light saves a hold only when a death happens inside
+its reach.
+
+**Reworded from "this system" before it was built** (decided 2026-08-22). It
+would have capped at three useful copies and repeated the relay's mistake — the
+scope finding from §126 catching a work one commit before it shipped, which is
+what a finding is for.
+
+**The radius is derived, and it buys an invariant.**
+`SystemDB.MIN_HYPER_SEPARATION` is how far apart any two structures must stand.
+Half of it — **350u** — is the largest reach a light can have and still never
+overlap another. `NO TWO LIGHTS OVERLAP` is the assertion, and it is what stops
+a pilot blanketing a system by founding colonies in a huddle. Coverage is bought
+one colony at a time.
+
+It is deliberately far wider than `DOCK_AURA_RANGE`'s thirty, because the two
+auras ask different questions. The dock asks *are you parked at the yard*; the
+light asks *did you die within this colony's reach* — and a death happens where
+the fight was. At 350u it is a reason to work the ground near your own colony,
+which is the same thing the dock's aura buys and the whole of what a colony is
+meant to become.
+
+**The clock stops; the claim is not cancelled.** A pilot who tows a spill out
+from under the light is back on the deadline they had, with the seconds they had
+left. What the work buys is that this ground is *watched*, not that this cargo
+is immortal.
+
+**Asked of the spill, never of the ship.** The pilot is by construction
+somewhere else while that clock runs — §118's whole argument — so reading the
+player's position would fire the grant exactly when it is not needed and never
+when it is.
+
+**And it says so once.** The alternative is silence: the thirty-second warning
+simply never arriving, which from the cockpit is indistinguishable from the
+clock still running. §88, applied to a grant rather than a verb.
+
+### THE ARCHIVE dies, and the code is what refused it
+
+The horizon opened by *allowing* it: **"a record is not a purchase"** narrowly
+amended H10's prestige refusal, on the grounds that displaying what was already
+done is not status. The permission held. The thing turned out not to exist.
+
+**The run's record is already displayed, free, on the pause menu**, on two pages
+built for exactly this:
+
+- **`PILOT'S LEDGER`** (§111) — *"WHAT YOU HAVE DONE, AND WHAT IT OPENED.
+  NOTHING HERE IS SPENT."* Eleven ladders, every skill line, and §119's capstone
+  count.
+- **`CAPTAIN'S LOG`** (§118) — the last ten things that happened, plus the
+  running total of what was claimed off you.
+
+So THE ARCHIVE was never "a record made into a place." It was **a paywall in
+front of a free screen, plus a flight to reach it** — a purchase and a trip
+charged for information the game already gives away. §26 says works pay in
+information; a second copy of a page you already have is not information.
+
+§111's own comment is the refusal, written two horizons early:
+
+> *"What is here is a RECORD — eleven one-line statements of what this pilot has
+> done and what it opened — and it exists because eleven of them cannot live on
+> the root page... **There is nothing on this page to press.** That is the
+> difference, and it is the whole of it."*
+
+An Archive has something to press: a price.
+
+**Two reshapes were weighed and both fail.** A version showing what is *left*
+rather than what is done contradicts §19's bookkeeping refusal harder than the
+ledger does, and this game deliberately hides what it hides. A purely visual
+monument grants nothing in any §26 currency and nobody else can see it — which
+is not a record, it is decor, and the H10 amendment does not reach it.
+
+The ladder ends at **seven works**, and that is the right number rather than a
+shortfall.
+
+### Where the works stand at the end of the building
+
+| | credits | loops | wall |
+|---|---|---|---|
+| one colony's seven | 196,000 | 17.4 | 140 min |
+| four colonies fully developed | 728,000 | 65 | 8.6 h |
+| the channel at its ceiling | 2,268,000 | 202 | 26.9 h |
+| the yard catalogue | 1,106,200 | 98 | 13.1 h |
+
+The channel is **2.05× the ship**, exempt from the ceiling law by §127's
+`over_exempt` flag and for §127's reason: no single decision costs more than the
+ship, and completionism across a map is allowed to outlast it. One colony's full
+ladder is 5.6× under the catalogue, so the law still has its teeth in the place
+it means them.

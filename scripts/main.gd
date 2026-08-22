@@ -1922,6 +1922,8 @@ const SPILL_CLAIM_WARN := 30.0
 # Seconds left before somebody else takes what you dropped. 0 = nothing adrift.
 var _spill_claim_left := 0.0
 var _spill_warned := false
+# §128. Said once per spill, cleared everywhere _spill_warned is.
+var _spill_lit := false
 
 
 func rescue_fee(depth: float) -> int:
@@ -1974,6 +1976,28 @@ func _tick_spill_claim(delta: float) -> void:
 		# Recovered, or abandoned by a warp. Either way the clock is not running.
 		_spill_claim_left = 0.0
 		_spill_warned = false
+		_spill_lit = false
+		return
+	# §128, THE LIGHT. The clock STOPS rather than the claim being cancelled, and
+	# the difference matters: a pilot who tows a spill out from under the light
+	# is back on the deadline they had, with the seconds they had left. Nothing
+	# is granted permanently -- what the work buys is that this ground is watched.
+	#
+	# ASKED OF THE SPILL, NOT THE SHIP. The pilot is by construction somewhere
+	# else while this runs (§118's whole argument), so reading the player's
+	# position would make the grant fire exactly when it is not needed and never
+	# when it is.
+	if GameState.light_aura_at((adrift[0] as Node3D).global_position.x,
+			(adrift[0] as Node3D).global_position.z):
+		# AND IT SAYS SO ONCE, §88: a grant a pilot cannot perceive is one they
+		# cannot decide with, and the alternative here is SILENCE -- the 30s
+		# warning simply never arriving, which is indistinguishable from the
+		# clock still running.
+		if not _spill_lit:
+			_spill_lit = true
+			if hud:
+				hud.show_toast("UNDER THE LIGHT — NOTHING OUT THERE TAKES IT",
+					Palette.TEAL)
 		return
 	_spill_claim_left -= delta
 	if not _spill_warned and _spill_claim_left <= SPILL_CLAIM_WARN:
@@ -2012,6 +2036,7 @@ func _tick_spill_claim(delta: float) -> void:
 		c.queue_free()
 	_spill_claim_left = 0.0
 	_spill_warned = false
+	_spill_lit = false
 	FX.flash(system_root, where, Palette.THREAT, 3.0, 0.4)
 	if hud:
 		# WHAT AND WHERE, not just that it happened (§58's copy rule applied to
@@ -2411,6 +2436,7 @@ func _load_system(id: String) -> void:
 	# down, or the next spill inherits a deadline that already half expired.
 	_spill_claim_left = 0.0
 	_spill_warned = false
+	_spill_lit = false
 
 	# Boss state never survives a system change: a DAMAGED engine resets to full on
 	# warp or reload, because retreating costs tempo and never salvage. Clearing
@@ -5288,6 +5314,7 @@ func spill_unread(at: Vector3) -> int:
 		# rather than stacking a second deadline -- there is only ever one pile.
 		_spill_claim_left = spill_claim_seconds(deep_space.depth_at(at))
 		_spill_warned = false
+		_spill_lit = false
 		if hud:
 			hud.show_toast("HOLD BREACHED — %d UNREAD ADRIFT, %d MIN" % [
 				spilled, maxi(1, int(round(_spill_claim_left / 60.0)))],
@@ -8308,9 +8335,76 @@ func _run_spill_test() -> void:
 		"PASS" if near_ttl >= SPILL_CLAIM_BASE and mid_ttl > near_ttl
 			and far_ttl > mid_ttl else "FAIL"])
 
+	# §128. NOTHING IS TAKEN UNDER THE LIGHT, and it is asserted in BOTH
+	# directions because a grant that always granted is the same useless thing as
+	# a gate that always refused (`NO ORDER WITHOUT THE READ`'s posture, and
+	# `THE LADDER STANDS`').
+	#
+	# The clock is driven rather than waited out -- this file's own technique
+	# three legs up, and for the same reason: 180 seconds of harness time to
+	# prove a branch is off is 180 seconds nobody will spend.
+	# A CLEAN SITE FIRST. `_tick_spill_claim` reads adrift[0]'s position -- the
+	# same cube the claim itself reports from -- so one survivor from a leg above,
+	# sitting outside the light, would decide this test. The legs above end at
+	# zero today; that is a fact about them, not a precondition this one stated.
+	for stale in _spill_cubes():
+		stale.queue_free()
+	await get_tree().physics_frame
+	GameState.colonies = {}
+	GameState.colony_works = {}
+	var lit_at := Vector3(600.0, 0.0, 0.0)
+	GameState.claim_colony("pyx01:5", lit_at.x, lit_at.z)
+	GameState.colony_works["pyx01:5"] = ["light"]
+	# 1. THE RULE FUNCTION, at the boundary rather than at the middle: a radius
+	#    read as a diameter, or the dock's thirty leaking in through
+	#    work_aura_at's default, both pass a test taken at the centre.
+	var lit_here := GameState.light_aura_at(lit_at.x, lit_at.z)
+	var lit_inside := GameState.light_aura_at(
+		lit_at.x + GameState.LIGHT_AURA_RANGE - 1.0, lit_at.z)
+	var lit_outside := GameState.light_aura_at(
+		lit_at.x + GameState.LIGHT_AURA_RANGE + 1.0, lit_at.z)
+	# 2. NO TWO LIGHTS OVERLAP. The radius is derived from the separation the
+	#    generator guarantees, so this is the invariant that derivation exists
+	#    for -- and it reddens if either constant moves alone.
+	var no_overlap := GameState.LIGHT_AURA_RANGE * 2.0 <= SystemDB.MIN_HYPER_SEPARATION
+	# 3. THE CLOCK STOPS INSIDE IT. A real spill, at the colony, ticked hard.
+	var player_l: PlayerShip = get_tree().get_first_node_in_group("player")
+	if player_l != null:
+		player_l.global_position = lit_at
+	GameState.cargo = {}
+	GameState.load_cargo("salvage_quiet", 4)
+	spill_unread(lit_at)
+	await get_tree().physics_frame
+	var lit_spilled := _spill_cubes().size()
+	_spill_claim_left = 5.0
+	_spill_lit = false
+	for i in range(6):
+		_tick_spill_claim(10.0)
+	await get_tree().physics_frame
+	var lit_left := _spill_claim_left
+	var lit_alive := _spill_cubes().size()
+	var lit_told := _spill_lit
+	# 4. AND IT RUNS AGAIN OUTSIDE IT. Same spill, same clock, the light moved
+	#    off it -- so the only thing that changed is the one thing being tested.
+	GameState.colony_works["pyx01:5"] = []
+	_spill_claim_left = 5.0
+	_tick_spill_claim(10.0)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var unlit_alive := _spill_cubes().size()
+	print("[spill] NOTHING IS TAKEN UNDER THE LIGHT reach %.0fu (half the %.0fu structures must stand apart, so no two overlap=%s); at the colony=%s, a unit inside=%s, a unit outside=%s; %d crate(s) held %.0fs of clock through 60s of ticks and %d survived (told once=%s); light off, %d left -> %s" % [
+		GameState.LIGHT_AURA_RANGE, SystemDB.MIN_HYPER_SEPARATION, str(no_overlap),
+		str(lit_here), str(lit_inside), str(lit_outside),
+		lit_spilled, lit_left, lit_alive, str(lit_told), unlit_alive,
+		"PASS" if no_overlap and lit_here and lit_inside and not lit_outside
+			and lit_spilled > 0 and is_equal_approx(lit_left, 5.0)
+			and lit_alive == lit_spilled and lit_told and unlit_alive == 0
+			else "FAIL"])
+
 	GameState.salvage = 5000
 	_spill_claim_left = 0.0
 	_spill_warned = false
+	_spill_lit = false
 	get_tree().quit()
 
 
