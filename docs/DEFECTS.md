@@ -124,10 +124,33 @@ unattributed, which in a repo with two live trees is the same failure wearing a
 different coat. `--counts`, `--legs` and the sweep summary now all print
 `branch @ sha`.
 
+**And a fifth, the worst of them: an ESTIMATE wearing a measurement's
+clothes.** §114 published a table of sinks whose `credits` column was derived
+from live constants and whose `loops` column was that column divided by a steady
+loop somebody had guessed. The two columns looked identical. The guess was
+~34,000; `PACINGTEST` prints 11,236, and it had been printing it on every sweep
+for a week. The figure travelled through four documents and became the premise
+of a whole horizon's commission before §123 converted one sentence of it into an
+assertion and the leg went red on its first run (§124). Three companion figures
+travelled with it, each one line of arithmetic away from being right.
+
+**And a sixth, which is the fifth's mirror: the LEG was the wrong one.** Two
+figures for the module catalogue — 1,106,200 in the docs, 846,200 from
+`_pacing_catalog_cost` — coexisted for a week and were never compared, because
+nothing is built to compare a number to another statement of itself. The leg was
+missing `ModuleDB.BERTHS`, 23% of everything a run can buy, and it *could not*
+go red over it: the catalogue is the denominator of both assertions that use it,
+so under-counting makes each one stricter and still passing. An error that only
+ever tightens a green test is invisible by construction. **Two numbers for the
+same thing are a defect even while both are green.**
+
 **Covered by:** `run_harness.sh --counts` (runs) and `--legs` (assertions), both
-derived, neither needing the Godot binary; and `tree_id` on every mode so a
-figure carries its provenance. **If a number describes the code, derive it or do
-not write it — and say which code.**
+derived, neither needing the Godot binary; `tree_id` on every mode so a figure
+carries its provenance; and `THE DEATH PRICE SITS IN ITS BAND`, which is what
+turning a prose figure into an assertion buys. **If a number describes the code,
+derive it or do not write it — say which code, and say whether it was measured,
+derived or estimated.** A table that mixes the three without labels is drift with
+a plausible surface.
 
 ---
 

@@ -6396,14 +6396,17 @@ the deaths are listed in the research doc's §5 and the survivors are below:
 feeling.** This project has an income instrument and has never had a wealth
 one. `PACINGTEST` measures earning rate against a mid-tier module and asserts a
 band; **nothing anywhere measures a balance or a sink**, and `DEFAULT_LEDGER`'s
-seven keys contain no credit figure. Converted against a steady loop of roughly
-34,000: the module catalogue is ~1.1M (**~4.3 hours**) and *everything else in
-the game together* is about 300,000 — colony works ≤270k, a requisition ≤4,500,
-a full repair 1,400, and the deepest possible tug's fee 1,870, which is
-**twenty-six seconds of income**. Even at the pacing band's floor the deepest
-rescue is a fifth of one loop. So §64's own question — does a mid-game pilot
-ever feel poor again — has an answer: not after the catalogue, and Horizon 10
-moved that by about an hour. The cause is one sentence, and it is the rule
+seven keys contain no credit figure. Against the loop the sweep actually
+measures — **11,236 credits per eight minutes**, and every figure this block
+first carried was an estimate (§124) — the yard catalogue is 1,106,200: **98
+loops, thirteen hours**. *Everything else in the game together* is roughly
+435,000, under half of it: colony works 28,000 a colony (252k–420k across a
+run's three to five structures per system), a requisition ≤4,500, a full repair
+1,400, and the deepest possible tug's fee 1,869, which is **eighty seconds of
+income**.
+Even at the pacing band's floor the deepest rescue is a fifth of one loop. So
+§64's own question — does a mid-game pilot ever feel poor again — has an answer:
+not after the catalogue, and Horizon 10 moved that by about an hour.
 commit 0 writes: **every price in this game is anchored to another price, and no
 price is anchored to the loop.**
 
@@ -6465,19 +6468,27 @@ repair costs** (the measured loop is invulnerable), so the bite lands on the
 rescue and the repair is recorded as band-blind rather than silently re-priced.
 
 Four decisions settled before code (2026-08-21): the bite is **firm** (rescue
-at 0.3–0.5 of a measured steady loop at the far marks, against 0.055 today);
+at 0.3–0.5 of a measured steady loop at the far marks, against 0.166 today);
 the re-priced sinks get a **measured band** so the drift §114 documented
 cannot recur; **THE ARCHIVE is allowed** — a colony work displaying the run's
 record, narrowly amending H10's "NOT prestige purchases" (the boundary held:
 status for money stays refused; a record of what was already done is not
 status); and the spec followed a research pass.
 
+**And the first sweep of the horizon corrected the horizon's own premise.**
+§124: steady is **11,236**, not the ~34,000 four documents had been carrying —
+a third of the estimate, and 0.775 of a mid-tier module against a legal band of
+[0.60, 3.00]. The game earns near the **floor** of the band it asserts, so every
+sink is already three times deeper in loop-minutes than the commission assumed,
+and commits 1–4 are re-sized against the measurement before they are built.
+
 | # | what | save | status |
 |---|---|---|---|
 | 0 | the death price: rescue on its own constants, banded [0.30, 0.50] of measured steady; repair recorded as band-blind | none | **BUILT** — §123; repair turned out never to have been involuntary, and the ceiling law was sampled rather than total |
-| 1 | the wider margin: REQ_MULT 5→8, jumps revisited | none | **PLANNED** |
-| 2 | the ladder stands: `requires` staging, the four works re-priced | none | **PLANNED** |
-| 3 | EXPANDED VAULTS + THE YARD | none | **PLANNED** |
+| — | the measurement: `RESCUE_FEE_FAR` 13,000→4,500, four documents of estimates corrected, and `_pacing_catalog_cost` given the `BERTHS` dict it had been missing since v24 | none | **BUILT** — §124; the band went red on its first sweep, which is the leg doing its job on the commit that added it — and the catalogue defect went the other way, a leg wrong where the prose was right |
+| 1 | the wider margin: REQ_MULT 5→8, jumps revisited | none | **PLANNED** — re-sized against 11,236 |
+| 2 | the ladder stands: `requires` staging, the four works re-priced | none | **PLANNED** — re-sized against 11,236 |
+| 3 | EXPANDED VAULTS + THE YARD | none | **PLANNED** — re-sized against 11,236 |
 | 4 | THE LIGHT + THE ARCHIVE | none | **PLANNED** |
 | 5 | the measure | none | **PLANNED** |
 
@@ -11940,28 +11951,36 @@ either, so the outflow side of the economy, which is what the whole of Horizon
 Converted against the loop this function already measures, the shipped
 constants read:
 
-| sink | credits | loops |
-|---|---|---|
-| the module catalogue | ~919,000 | ~27 |
-| every colony work on one colony | 18,000 | 0.53 |
+| sink | credits | loops | wall |
+|---|---|---|---|
+| the yard catalogue | 1,106,200 | 98.5 | 13.1 h |
+| every colony work on one colony | 18,000 | 1.60 | 12.8 min |
+| the wager, a full streak | 5,250 | 0.467 | 3.7 min |
+| a requisition, dearest part | 4,500 | 0.400 | 3.2 min |
+| **the tug, at the far marks** | 1,869 | **0.166** | **80 s** |
+| **repair to full** | 1,400 | **0.125** | **60 s** |
+| the sharpest bearing sold | 900 | 0.080 | 38 s |
+| paint | 800 | 0.071 | 34 s |
+| a beacon jump at its cap, a colony jump, a rumour | 500 | 0.044 | 21 s |
 
-*(§116 adds a fourth work and moves that row to 28,000 / ~0.82 loops. The leg
-derives it from `COLONY_WORKS` and needs no edit; this table is the reading
-taken the day the block shipped, and it is corrected here rather than left to
-disagree with the sweep.)*
-| the wager, a full streak | 5,250 | 0.15 |
-| a requisition, dearest part | 4,500 | 0.13 |
-| **the tug, at the far marks** | 1,869 | **0.055** |
-| **repair to full** | 1,400 | **0.041** |
-| the sharpest bearing sold | 900 | 0.026 |
-| paint | 800 | 0.024 |
-| a beacon jump at its cap, a colony jump, a rumour | 500 | 0.015 |
+*(**Three corrections; two are prose catching up to the leg and one is the
+reverse.** The loop column was first published against an ESTIMATED steady loop
+of ~34,000, so every ratio above is three times what this section shipped
+claiming. The catalogue row said ~919,000 for a leg that summed 846,200 for a
+yard that actually costs 1,106,200 — three different numbers, none of which had
+been compared to the others; §124 fixed the leg (it was missing `BERTHS`) and
+this row now carries what it will print. §116 later adds a fourth colony work, moving that row
+to 28,000 / 2.49 loops / 20 min, and §123 re-prices the tug to 4,500 / 0.400 /
+3.2 min and corrects `repair to full` out of the forced set entirely. Every row
+derives from live constants, so the leg needed no edit for any of it. Only this
+table did.)*
 
-The two in bold are the only charges a pilot cannot decline. **The deepest
-possible rescue in the game is twenty-six seconds of standard-loop income**,
-and a full repair is twenty. Even against the pacing band's *floor* — the
-poorest economy this project asserts as legal — the deepest rescue is a fifth
-of one loop.
+The two in bold are the charges §114 shipped calling undeclinable; §123 finds
+that repair is not one, because it competes with a free wait. **The deepest
+possible rescue in the game is eighty seconds of standard-loop income**, and a
+full repair is sixty. Even against the pacing band's *floor* — the poorest
+economy this project asserts as legal — the deepest rescue is a fifth of one
+loop.
 
 ### The rule, and it is §11's missing half
 
@@ -12631,11 +12650,12 @@ what it read.
 
 This project has measured **earning rate** since §41 and has never measured a
 **sink**. Converted against the loop `PACINGTEST` already computes, the deepest
-possible rescue in the game is twenty-six seconds of standard-loop income and a
-full repair is twenty; every voluntary sink together is under an hour against a
-catalogue that takes four. §109's tug is priced at exactly twice the beacon
+possible rescue in the game is eighty seconds of standard-loop income and a full
+repair is sixty; every voluntary sink outside the yard together is under half a
+catalogue that takes thirteen hours. §109's tug is priced at exactly twice the beacon
 jump, which is right, and anchored to a number that was itself never anchored to
-anything.
+anything. *(Figures corrected in §124. This paragraph shipped carrying an
+estimated loop — in the commit whose entire subject is that estimates drift.)*
 
 > **A sink's price is stated in loop-minutes** — §11's missing half.
 
@@ -12738,10 +12758,11 @@ with three commands that need no binary and one gate that did not exist.
 
 ## 123. The death price (Horizon 12, commit 0)
 
-§114 measured the deepest possible rescue in the game at **twenty-six seconds**
-of standard-loop income and deliberately asserted no target, because the
-decision belonged to a later horizon taken with the table in hand. This is that
-horizon and that decision.
+§114 measured the deepest possible rescue in the game at **eighty seconds** of
+standard-loop income and deliberately asserted no target, because the decision
+belonged to a later horizon taken with the table in hand. This is that horizon
+and that decision — and the constant it first shipped was wrong by a **factor of
+three**, caught by its own new leg on the first sweep that ran it (§124).
 
 ### Its own constants, and the anchor that was never there
 
@@ -12752,8 +12773,8 @@ been anchored to anything either.** §114 named that defect; this is its last
 site.
 
 The fee now has its own two constants expressing loop-fraction intent — ~240
-just past the chart edge, ~2,200 at a shallow deep death, ~7,600 at the band-6
-floor, **13,000 at the far marks**.
+just past the chart edge, ~900 at a shallow deep death, ~2,700 at the band-6
+floor, **4,500 at the far marks**.
 
 ### It clamps now, which reverses §109 rather than forgetting it
 
@@ -12768,17 +12789,17 @@ all. The ramp measures the flight home, and past the marks there is nothing out
 there the tug could have been called to.
 
 It also makes §114's ceiling law **total rather than sampled**. Unclamped, a fee
-rising forever crosses one measured loop somewhere past ~24,000u — true of a
+rising forever crosses one measured loop somewhere past ~60,800u — true of a
 pilot who flew into empty space, invisible to a leg that prices one depth, and a
 promise quietly broken out where nobody looks. `NOTHING INVOLUNTARY EXCEEDS A
-LOOP` now prices the fee at **ten times** the marks, and
-`THE RESCUE COSTS MORE THAN THE JUMP` grew a clause asserting the ramp really
-does stop.
+LOOP` now prices the fee at **ten times** the marks — 90,000u, comfortably past
+that crossing — and `THE RESCUE COSTS MORE THAN THE JUMP` grew a clause
+asserting the ramp really does stop.
 
 ### The band is the point, not the raise
 
 A one-time raise is a nudge that expires. Yields move, the loop grows, and the
-death price silently becomes twenty-six seconds again with nothing to notice —
+death price silently becomes eighty seconds again with nothing to notice —
 which is precisely how it got there the first time.
 
 > `THE DEATH PRICE SITS IN ITS BAND` — the deepest rescue, as a fraction of the
@@ -12816,3 +12837,165 @@ exactly one row, and the law means what its name says.
 
 Both are recorded at the row rather than in this section alone, because the next
 person to reach for the obvious knob will be looking at the table.
+
+## 124. A third of the number in the document (Horizon 12, commit 0b)
+
+§123 shipped `RESCUE_FEE_FAR := 13000` and a band asserting the deepest rescue
+sits in `[0.30, 0.50]` of the loop `PACINGTEST` measures. The first sweep that
+ran it printed:
+
+```
+NOTHING INVOLUNTARY EXCEEDS A LOOP one loop is 11,236, the deepest forced
+  charge anywhere is 13,000, 2 above it -> FAIL
+THE DEATH PRICE SITS IN ITS BAND deepest rescue 13,000 is 1.157 of a steady
+  loop (11,236) vs [0.30, 0.50] -> FAIL
+```
+
+**The loop is 11,236. Every document in this horizon had been written against
+~32,500–34,000.** The constant was not slightly wrong; it was three times the
+whole loop, and both of §123's own new legs caught it on their first execution.
+
+### The mistake, named precisely
+
+It is `DEFECTS.md` class 5 — *a measurement presented without saying what
+produced it* — committed **inside the section whose entire subject is that
+estimated numbers drift**. §114's table has a `loops` column. Nobody ever ran
+the leg and read what it printed; the column was arithmetic over a steady loop
+somebody had guessed, published in a table whose neighbours were all derived
+from live constants, and it looked exactly like the derived ones.
+
+Four figures travelled that way, through `HORIZON-11-RESEARCH.md`,
+`HORIZON-11-THE-RECKONING.md`, §64, §114, §122 and §123:
+
+| figure | written | actual | how the actual was got |
+|---|---|---|---|
+| steady loop | ~32,500–34,000 | **11,236** | `PACINGTEST` printed it |
+| the yard catalogue | ~919,000 in §114, ~1.1M in §64 | **1,106,200** | summing `MODULES` + `REACTOR_TIERS` + `BERTHS` |
+| deepest rescue, as time | twenty-six seconds | **eighty seconds** | 1,869 ÷ 11,236 × 480 s |
+| where an unclamped fee crosses a loop | ~24,000u | **~60,800u** | solving 240 + 0.181·d = 11,236 |
+
+Not one of the four was hard to obtain. Three are one line of arithmetic over
+constants that were already open in the editor, and the fourth was being printed
+by a leg on every sweep for a week.
+
+### And the second row is the one worth stopping on: the leg was wrong
+
+Re-deriving the catalogue by hand produced **846,200** — and the docs said
+**1,106,200**. Two numbers that had coexisted for a week, neither ever compared
+to the other. The docs were right.
+
+`_pacing_catalog_cost` sums `ModuleDB.MODULES` and `ModuleDB.REACTOR_TIERS`.
+`ModuleDB.BERTHS` — three one-way credit purchases at the yard, 260,000
+together, **23% of everything a run can buy** — has been outside it since v24
+shipped them. And the print line describing it had gone stale a second time in
+the same sentence: *"every module and both reactor upgrades"* says **both**, and
+`REACTOR_TIERS` has held four purchasable tiers since the Mk IV and the Mk V.
+The sink row said *"the module catalogue"*, which was true of what the function
+summed. Neither line said *the yard*, and the number was read as though they
+had — class 5 twice in one `print`, at the site the whole ledger is read from.
+
+**Nothing could ever have gone red over it**, and that is the structural part.
+The catalogue appears in exactly two assertions and it is the **denominator** of
+both:
+
+- `CEILING` asserts `earned / catalog ≤ 0.15`. An under-counted catalogue makes
+  the ratio **larger** — a stricter test that passes anyway.
+- `THE CATALOGUE IS THE LONGEST PRICE` asserts no sink exceeds it. An
+  under-counted catalogue makes the bar **lower** — also stricter, also passing.
+
+An error that only ever tightens a passing test is invisible by construction, in
+both directions it is checked. It took a hand derivation done for an unrelated
+reason to see it.
+
+Fixed in the same commit: the function sums all three dicts, the print line says
+*"every module, every reactor tier and all three berths"*, and the sink row is
+renamed **the yard catalogue** — via a local `const` rather than a string typed
+at both the row and the law that must exclude the row from its own comparison,
+which was one rename away from a law quietly comparing the catalogue to itself.
+
+The consequence runs the other way from everything else here: the road is
+**98 loops, thirteen hours**, not the 75 the hand derivation produced or the 27
+§114 published. The finding gets stronger a second time.
+
+### What the error did to the argument, which is the interesting part
+
+**It strengthened it in one direction and weakened it in another, and both
+matter to the horizon this opens.**
+
+Stronger: the catalogue is **98 loops, thirteen hours**, not the ~27 loops §114
+claimed. The finding that started Horizon 11 — *this project has an income
+instrument and has never had a wealth one* — is more true than the section
+arguing it, and the yard is a longer road than anybody had written down.
+
+Weaker: the commission for Horizon 12 was *raise the sinks so they bite*, sized
+against a loop three times too fast. **Every sink already bites three times
+harder than the plan assumed.** A colony's four works are 2.5 loops, not 0.8; a
+full ladder across a run's structures is three to five **hours**, not the one
+to one-and-a-half the plan was written against. The re-pricing that commits 1–4
+were going to perform is therefore far smaller than specced, and the deepest line
+in
+the research doc — a works ladder at "~300k+ per colony" — is **3.6 hours for a
+single colony and forty-three hours to finish everywhere**. It is deleted rather
+than trimmed.
+
+And one thing neither: the measured loop is **0.775 of a mid-tier module**
+against `PACING_MIN_MODULES` 0.60 and `PACING_MAX_MODULES` 3.00. The game earns
+near the **floor** of the band it declares legal, with the ceiling almost four
+times the measurement. That is legal and always was — but it means any sink
+priced as a flat constant against today's rate is up to 4× too cheap for an
+economy this project would still call in-band. **§123's shape — a ratio to a
+measured loop, not a number — is the only shape a sink price should take here**,
+and that is now a rule rather than a preference for the one it was built for.
+
+### The fix, and why it is one constant
+
+`RESCUE_FEE_FAR` 13,000 → **4,500**: 0.400 of the measured loop, the exact
+middle of the band, and inside `NOTHING INVOLUNTARY EXCEEDS A LOOP` by a factor
+of two and a half. `RESCUE_FEE_EDGE` does not move. No leg changed, no law
+changed, no save shape moved. That is what §123's own comment promised — *"a red
+here is one constant moving, not a crisis"* — being true the first time it was
+tested, which was six hours after it was written.
+
+The ramp now reads ~240 just past the chart edge, ~900 at a shallow deep death,
+~2,700 at the band-6 floor, 4,500 at the marks and flat beyond them.
+
+### The rule this earns
+
+> **A NUMBER IN PROSE STATES WHAT PRODUCED IT.** A figure derived from live
+> constants says so; a figure a leg printed says which leg; a figure somebody
+> estimated says *estimated* in the sentence that carries it. A table mixing the
+> three without labels is four documents of drift with a plausible surface.
+
+And the berth row earns the rule's other half, which is why it is *state what
+produced it* rather than *trust the leg*:
+
+> **TWO NUMBERS FOR THE SAME THING ARE A DEFECT EVEN WHILE BOTH ARE GREEN.**
+> 1,106,200 and 846,200 sat in the same repo for a week describing the same
+> yard. Nothing compared them, because nothing was built to: an assertion checks
+> a number against a *bound*, never against another statement of itself.
+
+`DEFECTS.md` class 5 is extended with this instance, which is its worst: the
+class was written about *test output* that did not attribute itself, and this is
+the same failure in the architectural record, where nothing runs and nothing
+goes red. The instrument caught the estimate — but only because §123 happened to
+convert one prose figure into an assertion, and it did not catch the leg at all;
+a hand derivation did, by accident, while checking something else. **Every other
+number in this document is still unchecked**, and the only defence is the two
+rules above.
+
+### What this says about the horizon's method
+
+The research pass for Horizon 12 was run, argued, decided and specced across six
+commits' worth of documents on top of a number that had never been read. Nothing
+in that process was designed to catch it: the pass reads *code*, and the wrong
+figure was in *prose*, restated so often it had the texture of a measurement.
+
+The thing that caught it was a leg that turned a sentence into arithmetic the
+harness could run. That is the whole argument for §114 and §123, made
+retroactively and at this repo's own expense: **the assertions found the error in
+the document that specified them.**
+
+The honest coda is that they only found one of the two. The estimate died to a
+leg; the leg's own under-count died to somebody adding up a data file by hand
+because a different number had just been proven wrong. An instrument is worth
+building and it is not a reason to stop reading.

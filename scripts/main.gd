@@ -1860,16 +1860,24 @@ const BEACON_JUMP_MIN_FEE := 120
 #
 # §123 RE-PRICES IT AND CUTS IT LOOSE. The original walked beacon_jump_fee's own
 # ramp at twice the price, which put the deepest possible death at 1,869 --
-# TWENTY-SIX SECONDS of standard-loop income (§114's table). The arithmetic was
-# right and the anchor was not: the jump's own fee had never been anchored to
-# anything either, so the death price was a multiple of a guess. That is exactly
-# the defect §114 named, and this is its last site.
+# EIGHTY SECONDS of standard-loop income against the loop the sweep actually
+# measures. The arithmetic was right and the anchor was not: the jump's own fee
+# had never been anchored to anything either, so the death price was a multiple
+# of a guess. That is exactly the defect §114 named, and this is its last site.
 #
 # ITS OWN CONSTANTS NOW, and they express loop-fraction intent rather than a
-# multiple of a neighbour. ~240 just past the chart edge, ~2,300 at a shallow
-# deep death, ~7,700 at the band-6 floor, RESCUE_FEE_FAR at the marks.
+# multiple of a neighbour. ~240 just past the chart edge, ~900 at a shallow deep
+# death, ~2,700 at the band-6 floor, RESCUE_FEE_FAR at the marks.
+#
+# AND THE FAR CONSTANT IS DERIVED FROM A MEASUREMENT RATHER THAN A FEELING,
+# which the first draft of this line is the argument for. It shipped at 13,000
+# against an ESTIMATED steady loop of ~32,500 -- a figure carried through four
+# documents and never once measured. The sweep put the loop at 11,236, a THIRD
+# of the estimate, and both new legs went red on the first run exactly as the
+# band was built to. 4,500 is 0.40 of the measured loop: mid-band, and inside
+# the ceiling by a factor of two and a half.
 const RESCUE_FEE_EDGE := 240
-const RESCUE_FEE_FAR := 13000
+const RESCUE_FEE_FAR := 4500
 
 # AND IT CLAMPS AT THE FAR MARKS, which reverses §109's decision rather than
 # forgetting it. §109 refused beacon_jump_fee's clamp because that one sits at
@@ -1881,7 +1889,7 @@ const RESCUE_FEE_FAR := 13000
 # nothing out there the tug could have been called to.
 #
 # It also makes §114's ceiling law TOTAL rather than sampled. Unclamped, a fee
-# rising forever crosses one measured loop somewhere past ~24,000u -- true of a
+# rising forever crosses one measured loop somewhere past ~60,800u -- true of a
 # pilot who flew into empty space, invisible to a leg that checks one depth, and
 # a promise ("an involuntary charge larger than a loop deletes the session
 # before it") quietly broken out where nobody looks.
@@ -1893,7 +1901,7 @@ const RESCUE_FEE_FAR := 13000
 #
 # THE BAND IS THE POINT OF THE RE-PRICING. A one-time raise is a nudge that
 # expires: yields move, the loop grows, and the death price silently becomes
-# twenty-six seconds again with nothing to notice. So the deepest fee is pinned
+# eighty seconds again with nothing to notice. So the deepest fee is pinned
 # to a FRACTION of the loop PACINGTEST measures, income's own instrument shape
 # -- an authored constant, a measured ratio, and a red when they drift apart.
 # THE DEATH PRICE SITS IN ITS BAND is the leg.
@@ -13375,7 +13383,7 @@ func _run_pacing_test() -> void:
 	print("[pacing] starter fit: dps %.0f  hold %d  salvage_mult %.2f  system loot_mult %.2f" % [
 		float(GameState.stats.get("dps", 0.0)), GameState.cargo_capacity(),
 		float(GameState.stats.get("salvage_mult", 1.0)), loot_mult()])
-	print("[pacing] catalog: every module + both reactor upgrades = %d" % catalog)
+	print("[pacing] catalog: every module, every reactor tier and all three berths = %d" % catalog)
 
 	var per_swarm := await _pacing_kill_yield("swarm", 6)
 	var per_sentry := await _pacing_kill_yield("sentry", 3)
@@ -13574,7 +13582,12 @@ func _run_pacing_test() -> void:
 	# typed twice -- which is what makes `EVERY SINK IS PRICED` able to notice a
 	# constant that moved or a key that was renamed.
 	var sink_rows: Array = []
-	sink_rows.append({"name": "the module catalogue", "cost": float(catalog),
+	# NAMED ONCE. The ceiling law below has to exclude this row from its own
+	# comparison, and a string typed at both sites is a rename away from a law
+	# that silently compares the catalogue to itself -- the class of defect this
+	# whole block was built to stop being possible.
+	const CATALOGUE_ROW := "the yard catalogue"
+	sink_rows.append({"name": CATALOGUE_ROW, "cost": float(catalog),
 		"forced": false})
 	var works_total := 0
 	for w_v in GameState.COLONY_WORKS:
@@ -13675,7 +13688,7 @@ func _run_pacing_test() -> void:
 	var over: Array = []
 	for row3_v in sink_rows:
 		var row3: Dictionary = row3_v
-		if String(row3["name"]) != "the module catalogue" \
+		if String(row3["name"]) != CATALOGUE_ROW \
 				and float(row3["cost"]) > float(catalog):
 			over.append(String(row3["name"]))
 	print("[pacing] THE CATALOGUE IS THE LONGEST PRICE catalogue %s, %d sink(s) above it%s -> %s" % [
@@ -13711,7 +13724,7 @@ func _run_pacing_test() -> void:
 
 	# §123. THE DEATH PRICE SITS IN ITS BAND, and this is the re-pricing made
 	# into a LAW rather than a nudge. §114 measured the deepest possible rescue
-	# at twenty-six seconds of loop income and deliberately asserted no target,
+	# at eighty seconds of loop income and deliberately asserted no target,
 	# because the decision belonged to a later horizon taken with the table in
 	# hand. This is that horizon and that decision: the fee is pinned to a
 	# FRACTION of the loop PACINGTEST measures, so a yield retune that quietly
@@ -13761,11 +13774,28 @@ func _pacing_describe(profile: Dictionary) -> String:
 
 
 func _pacing_catalog_cost() -> int:
+	# EVERYTHING A RUN CAN BUY FOR THE SHIP, and §124 adds the third dict it had
+	# been missing since v24. This summed MODULES and REACTOR_TIERS only, while
+	# ModuleDB.BERTHS holds 260,000 of one-way credit purchases at the yard --
+	# 23% of the road, invisible to `CEILING`, to `THE CATALOGUE IS THE LONGEST
+	# PRICE`, and to the "sessions to the full catalog" line that has been
+	# printing on every sweep since. Both assertions get LOOSER with a bigger
+	# denominator, which is why nothing ever went red over it: an under-count
+	# here is a silent one in both directions it is checked.
+	#
+	# Found by re-deriving §114's table by hand after the loop measurement
+	# landed -- the docs said 1,106,200 (the whole file) and the leg said 846,200
+	# (two of its three dicts), and neither had ever been compared to the other.
+	# THE PROSE WAS RIGHT AND THE INSTRUMENT WAS WRONG, which is the one outcome
+	# §124's own rule does not predict and the reason the rule is "say what
+	# produced it" rather than "trust the leg".
 	var total := 0
 	for id in ModuleDB.MODULES:
 		total += int((ModuleDB.MODULES[id] as Dictionary).get("price", 0))
 	for tier in ModuleDB.REACTOR_TIERS:
 		total += int((tier as Dictionary).get("price", 0))
+	for b_id in ModuleDB.BERTHS:
+		total += int((ModuleDB.BERTHS[b_id] as Dictionary).get("price", 0))
 	return total
 
 

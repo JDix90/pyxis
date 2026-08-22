@@ -34,19 +34,33 @@ economy — the thing Horizon 10 was *about* — is unmeasured by construction.
 `MIDTIER` at 2.91 × 14,500 = **~42,200 per best-case 8-minute loop**;
 `STEADY` (the same loop less one derelict and two surveys) is lower, and the
 horizon doc's own `~1.1M catalogue` against the recorded steady catalog ratio
-of 0.031 puts it near **~34,000 per loop**. Take the conservative figure. Every
-credit sink in the shipped game, converted:
+of 0.031 suggested ~34,000 per loop. **That estimate was wrong by a factor of
+three — the first sweep to measure it read 11,236** (STRATEGY §124), which
+makes every ratio below roughly three times too generous and the finding itself
+stronger, not weaker. Corrected in the table.
 
-| sink | credits | loops | wall clock at ~34k/loop |
+Worth flagging for the next sweep to read rather than asserting here: a
+best-case 2.91 against a measured steady of **0.775 modules per loop** is a
+spread of ~3.8×, which makes §123's decision to band the death price against
+STEADY rather than the best case load-bearing rather than tidy. Every credit
+sink in the shipped game, converted:
+
+| sink | credits | loops | wall clock at the measured 11,236/loop |
 |---|---|---|---|
-| the full module catalogue | ~1,100,000 | ~32 | **~4.3 hours** |
-| all colony works, every colony (15 × 18,000) | ≤270,000 | ~7.9 | ~63 min |
-| three requisitions at the dearest component (900 × 5) | 13,500 | 0.40 | ~3.2 min |
-| repair to full (`REPAIR_FULL_PRICE`) | 1,400 | 0.041 | **~20 s** |
-| **the tug at the far marks** (`rescue_fee`, deepest) | 1,870 | 0.055 | **~26 s** |
-| a beacon jump at its depth cap | 500 | 0.015 | ~7 s |
-| the tug at the chart edge | 240 | 0.007 | ~3 s |
-| a rumour at the desk | ~400 | 0.012 | ~6 s |
+| the full yard catalogue (modules + reactors + berths) | 1,106,200 | 98.5 | **~13 hours** |
+| all colony works, every colony (15 × 18,000) | ≤270,000 | 24.0 | ~3.2 hours |
+| three requisitions at the dearest component (900 × 5) | 13,500 | 1.20 | ~9.6 min |
+| repair to full (`REPAIR_FULL_PRICE`) | 1,400 | 0.125 | **~60 s** |
+| **the tug at the far marks** (`rescue_fee`, deepest) | 1,870 | 0.166 | **~80 s** |
+| a beacon jump at its depth cap | 500 | 0.045 | ~21 s |
+| the tug at the chart edge | 240 | 0.021 | ~10 s |
+| a rumour at the desk | ~400 | 0.036 | ~17 s |
+
+*(Every `loops` and `wall clock` cell above was first published against an
+estimated ~34,000/loop and is three times what this pass shipped claiming — and
+the catalogue row is the one figure the leg itself had wrong, not the prose:
+`_pacing_catalog_cost` was missing `ModuleDB.BERTHS`. Both recorded in STRATEGY
+§124.)*
 
 Even at the band's **floor** — 0.60 × 14,500 = 8,700 per loop, the poorest
 legal economy this project asserts — the deepest possible rescue is 21% of one
@@ -62,7 +76,7 @@ as the catalogue is unbought — about four hours — and after that the entire
 remaining sink inventory in the game is ~300k, roughly **nine loops, about
 seventy minutes**, spread across a run of tens of hours. Horizon 10 did not
 fail to move this; it moved it by about an hour, which is a rounding error
-against 4.3 hours of catalogue and an unbounded run past it.
+against thirteen hours of catalogue and an unbounded run past it.
 
 The rescue fee is the sharpest case and the reason is structural. §109 priced
 it at **2× the beacon jump** — deliberately, and the arithmetic is sound. But

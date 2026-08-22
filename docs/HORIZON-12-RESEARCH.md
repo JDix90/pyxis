@@ -1,5 +1,16 @@
 # Horizon 12 — the research pass
 
+> **CORRECTION, 2026-08-21 (§124).** This document was written against an
+> **estimated** steady loop of ~32,500–34,000 credits per eight minutes.
+> `PACINGTEST` measures **11,236** — a third of it — and the yard catalogue is
+> **1,106,200 / 98 loops / 13 hours**, not the ~27 loops §114 published (the leg
+> was reading 846,200, missing `ModuleDB.BERTHS`; fixed in the same pass). Every
+> credit figure below is re-derived; the ones that moved are marked. The
+> commission's premise survives but shrinks: **every sink already bites three
+> times harder than this pass assumed**, so the re-pricing is much smaller than
+> specced and the works ladder is re-sized rather than trimmed.
+
+
 Opened 2026-08-21, the evening Horizon 11 merged (§114–§122, 824 across 82
 measured). The commission is two sentences from the owner:
 
@@ -64,9 +75,11 @@ money that now hurts to lose has somewhere meaningful to go).
 
 ## 2. The four decisions, taken before any code (2026-08-21)
 
-1. **The bite is FIRM: 0.3–0.5 of a steady loop at the far marks** (~10–17k
-   against today's 1,869). The fee still ramps from ~free at the chart edge;
-   this sets the maximum, at the deepest place a pilot can die.
+1. **The bite is FIRM: 0.3–0.5 of a steady loop at the far marks**
+   (**~3,400–5,600** against today's 1,869 — see the correction banner; this
+   line first read "~10–17k" against a loop three times too fast). The fee still
+   ramps from ~free at the chart edge; this sets the maximum, at the deepest
+   place a pilot can die.
 2. **The re-priced sinks get a measured BAND**, income's own instrument shape:
    an authored constant, a measured ratio, a red when they drift apart. The
    re-pricing becomes a law rather than a one-time nudge — the exact drift §114
@@ -164,10 +177,27 @@ service, every price a gate-plus-price where the goods are the gate:
 | 7 | **THE LIGHT** — a held spill in this system does not expire | time | extends §109's claim clock; braids §118's record |
 | 8 | **THE ARCHIVE** — the run's record, made into a place | record | fully derived; renders fragments read, legends resolved, names met; grants nothing |
 
-Prices are the spec's to derive (steeply staged; per-colony total on the order
-of 300k+, well under `THE CATALOGUE IS THE LONGEST PRICE`). Across 9–15
-claimable structures the ladder is a multi-million voluntary sink — the actual
-answer to where late-game money goes.
+Prices are the spec's to derive, and **the sizing below is re-derived against
+the measured loop** (§124) rather than the estimate this section first carried.
+
+| ladder, per colony | credits | loops | wall | ×12 colonies |
+|---|---|---|---|---|
+| today (four works) | 28,000 | 2.5 | 20 min | 4.0 h |
+| **proposed (eight works, staged)** | **~90,000–135,000** | **8–12** | **65–95 min** | **13–19 h** |
+| the estimate this doc shipped | ~300,000+ | 27+ | 3.6 h+ | **43 h+** — deleted |
+
+The target is *one colony fully developed ≈ one long session*. A pilot who
+adopts three colonies spends 24–36 loops on them — about a third of the yard's
+**1,106,200 / 98 loops / 13 hours** — and a completionist who develops all
+twelve spends 13–19 hours, comparable to the yard and entirely optional. That is
+the right shape for a terminal sink: it is never the road, and it is always
+longer than what is left of the road. Every individual row stays far under
+`THE CATALOGUE IS THE LONGEST PRICE`, which compares *one colony's* total.
+
+**Stated as fractions, not constants** (§124's rule): the four existing works
+re-price to ~3 loops together, the four new ones to ~6, and the spec derives
+credits from whatever `PACINGTEST` measures at the time rather than from these
+figures.
 
 **One DEFECTS-class note, stated now:** §114's `EVERY SINK IS PRICED` walks an
 **authored** list. Every new work and every new fee must be added to it in the
@@ -177,11 +207,11 @@ same commit, or the instrument reports a world it no longer describes.
 
 | sink | today | proposed | law that holds it |
 |---|---|---|---|
-| rescue at far marks | 1,869 | **~12,000–14,000** (own constants) | new BAND: measured-steady fraction ∈ [0.30, 0.50]; ceiling law unchanged |
+| rescue at far marks | 1,869 | **4,500** — BUILT (§123/§124); this row first read "~12,000–14,000" | new BAND: measured-steady fraction ∈ [0.30, 0.50]; ceiling law unchanged |
 | repair full | 1,400 | ≤2,800, possibly untouched | Finding 1 recorded as the reason |
 | requisitions `REQ_MULT` | 5.0× | ~8.0× | widens the anti-printer margin *and* deepens the sink |
 | colony/beacon jumps | 120–500 | modest or untouched | rescue must still exceed the jump everywhere |
-| works ladder | 28k/colony | ~300k+/colony staged | catalogue stays the longest price |
+| works ladder | 28k/colony | **~90k–135k/colony** staged (was "~300k+", §124) | catalogue stays the longest price |
 | the wager | stakes ≤4,000 | optional deep table, 16,000 stake | odds printed, streak-capped, EV-negative as ever |
 
 ## 6. What this pass killed
