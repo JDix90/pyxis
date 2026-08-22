@@ -3082,7 +3082,8 @@ func _process(delta: float) -> void:
 		# pass it means.
 		hud.set_deep_tag(DeepSpace.band_name_in(system_id, depth) if depth > 0.0 else "", depth,
 			_carrier_wash, storm_has_player(),
-			tide.riding_deg() if is_instance_valid(tide) else -1)
+			tide.tide_deg() if is_instance_valid(tide) else -1,
+			tide.is_riding() if is_instance_valid(tide) else false)
 	# The score's second axis, fed from the same poll that already drives the
 	# wayfinding label and the beacons. Music smooths it internally, so this is a
 	# raw value every frame rather than something this function has to rate-limit.
@@ -30965,7 +30966,8 @@ func _run_tide_test() -> void:
 		player.global_position = stand
 		player.velocity = along * 3.0
 		await get_tree().physics_frame
-	var yielded: int = tide.riding_deg() if tide != null else -1
+	var yielded: int = (tide.tide_deg() if tide.is_riding() else -1) \
+		if tide != null else -1
 	var storm_holds := storm.has_player(player)
 	storm.queue_free()
 	await get_tree().process_frame
@@ -30991,14 +30993,43 @@ func _run_tide_test() -> void:
 	# AND THE COCKPIT SAYS IT. Zero-padded, because a bearing is three digits or
 	# it is not a bearing -- and read off the live label rather than off the
 	# format string, so a suffix appended in the wrong branch goes red.
-	hud.set_deep_tag("THE QUIET", 2000.0, false, false, 43)
+	hud.set_deep_tag("THE QUIET", 2000.0, false, false, 43, true)
 	var lit := hud._system_label.text
-	hud.set_deep_tag("THE QUIET", 2000.0, false, false, -1)
+	hud.set_deep_tag("THE QUIET", 2000.0, false, false, 43, false)
+	var near := hud._system_label.text
+	hud.set_deep_tag("THE QUIET", 2000.0, false, false, -1, false)
 	var dark := hud._system_label.text
-	print("[tide] THE COCKPIT NAMES THE SET lit=\"%s\", stood down=\"%s\" -> %s" % [
-		lit, dark,
-		"PASS" if lit.contains("TIDE SET 043") and not dark.contains("TIDE")
-			else "FAIL"])
+	# §143. THREE STATES, and the middle one is the fix. A cockpit that only
+	# spoke while riding taught a playtester that the tide vanishes when you
+	# stop -- so PRESENT has to read differently from RIDING and both have to
+	# read differently from nothing at all.
+	print("[tide] THE COCKPIT NAMES THE SET riding=\"%s\", present=\"%s\", no water=\"%s\" -> %s" % [
+		lit, near, dark,
+		"PASS" if lit.contains("TIDE 043") and near.contains("TIDE 043")
+			and lit != near and not dark.contains("TIDE") else "FAIL"])
+
+	# §143. AND THE WATER CAN ACTUALLY BE SEEN, which is the leg this suite
+	# should have had from the day it shipped. TIDETEST went 10 for 10 while the
+	# tide's entire visual tell was a CPUParticles3D with no mesh on it: every
+	# leg measured the derivation or the physics, and NOTHING IN THIS REPO CAN
+	# SEE A RENDERER. This is as close as a headless run gets -- the three
+	# properties whose absence means "draws nothing", plus the emission rate,
+	# which was 2.6 a second and needed no renderer to be wrong either.
+	var mote_ok := false
+	var mote_rate := 0.0
+	var mote_has_mesh := false
+	var mote_has_mat := false
+	if tide != null:
+		var mn := tide._motes as CPUParticles3D
+		if mn != null:
+			mote_has_mesh = mn.mesh != null
+			mote_has_mat = mn.mesh != null and mn.mesh.material != null
+			mote_rate = float(mn.amount) / maxf(mn.lifetime, 0.001)
+			mote_ok = mote_has_mesh and mote_has_mat and mote_rate >= 20.0 \
+				and mn.emission_box_extents.x > 0.0
+	print("[tide] AND THE WATER CAN BE SEEN motes carry a mesh=%s and a material=%s, emitting %.1f a second (a null mesh draws nothing, and the first version managed 2.6) -> %s" % [
+		str(mote_has_mesh), str(mote_has_mat), mote_rate,
+		"PASS" if mote_ok else "FAIL"])
 
 	# AND IT COSTS THE SAVE NOTHING. The tide is a pure function of a key it
 	# hashes itself, so there is no store to write and no version to move --

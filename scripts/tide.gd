@@ -100,12 +100,59 @@ const PUSH := 0.62
 const UNDER_WAY := 0.6
 
 # --- what it looks like ------------------------------------------------------
-const MOTE_BOX := 120.0
-const MOTE_COUNT := 70
-const MOTE_SPEED := 9.0
+# §143. THE FIRST VERSION OF THIS COULD NOT DRAW A SINGLE PIXEL, and the three
+# reasons are worth keeping because each one alone was enough.
+#
+# 1. NO MESH AND NO MATERIAL. CPUParticles3D.mesh defaults to null and a null
+#    mesh renders nothing; `color` only tints a material that is not there.
+#    Every working particle system in this project -- FX.burst, FX.vortex --
+#    builds a BoxMesh with Palette.emissive on it and assigns it. This did not,
+#    and neither does storm.gd, which has had invisible motes since v20 and got
+#    away with it because a storm also has an eye, arms, a ring and a shockwave
+#    to be seen by. THE TIDE HAD ONLY THE MOTES.
+#
+# 2. THE RATE WAS 2.6 A SECOND. lifetime was (box * 2) / speed = 26.7s against
+#    an amount of 70, and a particle system's emission rate is amount/lifetime.
+#    Even drawable, that is a speck every third of a second.
+#
+# 3. THE BOX WAS TEN TIMES THE VIEW. 240 units across, while the lens sees
+#    about 21 down its long axis at the default zoom -- so ~99% of what it
+#    emitted was off screen before the other two problems got to it.
+#
+# The count and the lifetime are now stated as themselves and the RATE is
+# derived from them, because the rate is the thing that has to be right.
+const MOTE_COUNT := 140
+const MOTE_LIFE := 3.2
+# Sized against the LENS, not against the world, and re-sized as the lens
+# changes: §142 opened the zoom range from under fourfold to thirteenfold, so a
+# fixed box would be either a postage stamp at 80 or a waste of fill at 6. 1.1x
+# the zoom covers the tall axis of a 55-degree lens with margin for a turned or
+# panned view.
+const MOTE_BOX_PER_ZOOM := 1.1
+const MOTE_BOX_MIN := 12.0
+const MOTE_BOX_MAX := 96.0
+# Re-dressing a particle system is not free, so the box only follows the zoom in
+# steps. An eighth is under the threshold at which a density change is visible.
+const MOTE_ZOOM_STEP := 0.125
+# Present versus riding, in the water rather than in a word. The tide is there
+# either way; when it is carrying you, it moves faster and burns brighter.
+const MOTE_SPEED_NEAR := 6.0
+const MOTE_SPEED_RIDING := 13.0
+const MOTE_DIM := 0.34
+const MOTE_LIT := 0.85
 
 const COPY := {
-	"tag": " · TIDE SET %03d",
+	# §143. TWO STATES, and the shorter one is the DEFAULT -- the old line only
+	# ever appeared while riding, so a pilot who stopped, or turned, or simply
+	# finished a move order watched it vanish and reported the tide as
+	# disappearing off their sensors. It had not: they had stopped using it.
+	#
+	# "SET" came off the front rather than being kept for symmetry. The number
+	# IS the set, the manual says so, and the line it sits on already carries a
+	# system, a band glyph, a band name, a range and sometimes a jam -- every
+	# character here is one closer to a readout that does not fit.
+	"tag": " · TIDE %03d",
+	"riding": " · TIDE %03d ▸",
 }
 
 
@@ -122,6 +169,21 @@ var _reduced := false
 var _block := Vector2i(1 << 30, 1 << 30)
 var _set := Vector2.ZERO
 var _riding := false
+# §143. PRESENT is not RIDING, and the cockpit now says which. `_set` alone
+# cannot answer it: it is a cache of the block's water and survives a stand-down
+# (docked, or inside a storm), so a readout driven off it would announce a tide
+# to a hull sitting in a dock.
+var _present := false
+# What the motes were last dressed FOR. Re-dressing rebuilds a material, so it
+# happens when one of these three actually moves rather than every frame.
+var _dressed_riding := false
+var _dressed_band := -1
+# The set is tracked alongside the other two, and it is the one a reader misses:
+# crossing from one block of water into another can leave the band and the
+# riding state untouched while the DIRECTION changes completely, which would
+# have left the motes streaming the old way with nothing to say so.
+var _dressed_set := Vector2.ZERO
+var _mote_zoom := 0.0
 
 
 static func band_hand(id: String, band: int) -> float:
@@ -206,24 +268,51 @@ func _build_motes() -> void:
 	_motes.amount = MOTE_COUNT
 	_motes.local_coords = false
 	_motes.emitting = false
-	_motes.lifetime = (MOTE_BOX * 2.0) / MOTE_SPEED
+	_motes.lifetime = MOTE_LIFE
 	_motes.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	_motes.emission_box_extents = Vector3(MOTE_BOX, 6.0, MOTE_BOX)
 	_motes.gravity = Vector3.ZERO
-	_motes.spread = 4.0
-	_motes.initial_velocity_min = MOTE_SPEED * 0.7
-	_motes.initial_velocity_max = MOTE_SPEED * 1.3
-	_motes.scale_amount_min = 0.35
-	_motes.scale_amount_max = 0.9
+	_motes.spread = 3.0
+	_motes.scale_amount_min = 0.7
+	_motes.scale_amount_max = 1.5
+	# ALIGNED TO THE FLOW. A mote that is a cube says "dust"; one stretched
+	# along its own velocity says "current", which is the entire thing this
+	# effect has to communicate before any text does.
+	_motes.particle_flag_align_y = true
+	var mote_mesh := BoxMesh.new()
+	mote_mesh.size = Vector3(0.07, 0.62, 0.07)
+	# THE LINE THAT WAS MISSING. FX.burst and FX.vortex both build exactly this
+	# -- a BoxMesh carrying Palette.emissive -- and a CPUParticles3D without one
+	# draws nothing at all. The material is rebuilt in _dress_motes with the
+	# band's colour; this is the shape, and the shape is what makes it visible.
+	mote_mesh.material = Palette.emissive(Palette.TEAL, 2.2)
+	_motes.mesh = mote_mesh
+	_set_mote_box(_zoom_now())
 	add_child(_motes)
 
 
-func riding_deg() -> int:
-	# -1 when the tide is not paying. Read by the HUD tag, which is why it
-	# reports RIDING rather than PRESENT: the readout is the confirmation that
-	# the water is doing something for you, and a line that stayed lit while a
-	# ship crossed a tide sideways would be saying the opposite of the truth.
-	return set_deg(_set) if _riding else -1
+func _zoom_now() -> float:
+	var rig := get_tree().get_first_node_in_group("camera_rig") as CameraRig
+	return rig.zoom if rig != null else 20.0
+
+
+func _set_mote_box(z: float) -> void:
+	var half := clampf(z * MOTE_BOX_PER_ZOOM, MOTE_BOX_MIN, MOTE_BOX_MAX)
+	_motes.emission_box_extents = Vector3(half, 4.0, half)
+	_mote_zoom = z
+
+
+func tide_deg() -> int:
+	# §143. THE SET UNDERFOOT, riding or not, and -1 for no water. This used to
+	# answer only while riding, which is why a playtester reported the tide
+	# "quickly disappearing from sensors": finishing a move order drops the hull
+	# under UNDER_WAY, `_riding` goes false, and the line went dark. Nothing had
+	# disappeared -- they had stopped using it, and the cockpit could not tell
+	# those two apart.
+	return set_deg(_set) if _present else -1
+
+
+func is_riding() -> bool:
+	return _riding
 
 
 func _physics_process(delta: float) -> void:
@@ -257,48 +346,77 @@ func _physics_process(delta: float) -> void:
 	var at := player.global_position
 	var cell := DeepSpace.cell_of(at)
 	var sc := DeepSpace.supercell_of(cell.x, cell.y)
+	var band := DeepSpace.band_of(deep.depth_at(at))
 	if sc != _block:
 		_block = sc
 		_set = set_at(system_id, sc.x, sc.y)
-		_aim_motes(DeepSpace.band_of(deep.depth_at(at)))
 
 	if _set == Vector2.ZERO:
 		_stand_down()
 		return
 
+	_present = true
 	global_position = at
 	if _motes != null:
 		_motes.emitting = true
+		# THE BOX FOLLOWS THE LENS, in steps. §142 made the zoom range
+		# thirteenfold, so a fixed emission volume is either a postage stamp
+		# pinned to the middle of a wide view or fill nobody sees.
+		var z := _zoom_now()
+		if absf(z - _mote_zoom) > _mote_zoom * MOTE_ZOOM_STEP:
+			_set_mote_box(z)
 
 	# THE ALIGNMENT GATE, and the whole promise in one clamp. velocity rather
 	# than facing: a hull that has been spun round by an EMP is not under way,
 	# whatever it is pointing at.
 	var vel := player.velocity
 	vel.y = 0.0
-	if vel.length() < UNDER_WAY:
-		_riding = false
+	var align := 0.0
+	if vel.length() >= UNDER_WAY:
+		align = vel.normalized().dot(Vector3(_set.x, 0.0, _set.y))
+	_riding = align > 0.0
+	# ONE PLACE DECIDES AND ONE PLACE DRESSES. The riding branch used to return
+	# early from three places, so a look that depended on it had three exits to
+	# be updated from and would have been forgotten at one of them.
+	if _riding != _dressed_riding or band != _dressed_band \
+			or not _set.is_equal_approx(_dressed_set):
+		_dress_motes(band)
+	if not _riding:
 		return
-	var align := vel.normalized().dot(Vector3(_set.x, 0.0, _set.y))
-	if align <= 0.0:
-		_riding = false
-		return
-
-	_riding = true
 	# EVERY PHYSICS FRAME, never a poll: TETHER_RELEASE_DECAY bleeds the channel
 	# to zero in about a third of a second, so a throttled feed is a sawtooth
 	# the player feels as stutter. The storm's own note, and the same door.
 	player.apply_tether(Vector3(_set.x, 0.0, _set.y), PUSH, DRIFT * align, delta)
 
 
-func _aim_motes(band: int) -> void:
+func _dress_motes(band: int) -> void:
+	# Everything the look depends on, in one place, called when any of the three
+	# things it depends on moves -- the set, the riding state, or the zoom.
+	# Three separate update paths writing the same node is DEFECTS 2b waiting to
+	# happen, and a particle system is exactly the kind of object where the last
+	# writer wins silently.
 	if _motes == null:
 		return
 	if _set == Vector2.ZERO:
 		_motes.emitting = false
 		return
 	_motes.direction = Vector3(_set.x, 0.0, _set.y)
+	var speed := MOTE_SPEED_RIDING if _riding else MOTE_SPEED_NEAR
+	_motes.initial_velocity_min = speed * 0.8
+	_motes.initial_velocity_max = speed * 1.25
 	var c := Palette.band_color(band)
-	_motes.color = Color(c.r, c.g, c.b, 0.5)
+	var a := MOTE_LIT if _riding else MOTE_DIM
+	_motes.color = Color(c.r, c.g, c.b, a)
+	var mm := _motes.mesh as BoxMesh
+	if mm != null:
+		# Rebuilt rather than tinted in place: the mesh is this node's own and
+		# nothing else reads it, and an emissive material's energy is the half
+		# that actually carries "brighter" on an unshaded surface.
+		mm.material = Palette.emissive(Color(c.r, c.g, c.b, a),
+			3.0 if _riding else 1.6)
+	_dressed_riding = _riding
+	_dressed_band = band
+	_dressed_set = _set
 
 
 func _stand_down() -> void:
@@ -307,5 +425,6 @@ func _stand_down() -> void:
 	# to drive is enough -- _tick_tether bleeds what this file put there and
 	# nothing it did not.
 	_riding = false
+	_present = false
 	if _motes != null:
 		_motes.emitting = false

@@ -588,6 +588,10 @@ var _deep_caught := false
 # §139. -1 is no tide. Part of the early-out above, or a hull riding one would
 # rebuild this label sixty times a second for a string that never changed.
 var _deep_tide := -1
+# §143. And whether it is carrying you, which is a different fact from whether
+# it is there -- the readout used to conflate them and a playtester read the
+# result as the tide vanishing.
+var _deep_riding := false
 var _gain_timer: SceneTreeTimer = null
 
 
@@ -1481,7 +1485,7 @@ func set_system_tag(text: String) -> void:
 
 
 func set_deep_tag(band_name: String, out_distance: float, wash := false,
-		caught := false, tide_deg := -1) -> void:
+		caught := false, tide_deg := -1, tide_riding := false) -> void:
 	# band_name "" means inside the charted system, where this whole readout
 	# collapses back to exactly the string it has always shown.
 	#
@@ -1492,13 +1496,14 @@ func set_deep_tag(band_name: String, out_distance: float, wash := false,
 	# arity is a parse error the static checker cannot see.
 	if band_name == _deep_band and absf(out_distance - _deep_out) < 1.0 \
 			and wash == _deep_wash and caught == _deep_caught \
-			and tide_deg == _deep_tide:
+			and tide_deg == _deep_tide and tide_riding == _deep_riding:
 		return
 	_deep_band = band_name
 	_deep_out = out_distance
 	_deep_wash = wash
 	_deep_caught = caught
 	_deep_tide = tide_deg
+	_deep_riding = tide_riding
 	_apply_system_tag()
 
 
@@ -1549,7 +1554,12 @@ func _apply_system_tag() -> void:
 		# It sits before the storm suffix rather than after because the two can
 		# never both be lit: the tide bands stop at 5,200 and stand down inside
 		# a pull radius besides.
-		_system_label.text += Tide.COPY["tag"] % _deep_tide
+		# §143. TWO STATES. Present is the quiet one and riding adds a mark, so
+		# a pilot who stops mid-tide watches the line CHANGE rather than
+		# disappear -- and the difference between "there is water here" and
+		# "it is carrying me" is a thing the cockpit can now say.
+		_system_label.text += String(Tide.COPY["riding" if _deep_riding
+			else "tag"]) % _deep_tide
 	if _deep_caught:
 		# v20. The same grammatical shape as the jam above — state, em-dash,
 		# consequence — and the same HERE-never-THAT-WAY rule: byte-identical at

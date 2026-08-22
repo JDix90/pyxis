@@ -6537,7 +6537,14 @@ The radar and `_pick` followed for free (both unproject through the live lens);
 the chart stays WORLD-aligned by decision, and its orientation comment was
 amended rather than left resting on an assumption the code stopped supporting.
 FEELTEST 13 → 17. Rule 7 cried wolf on this commit's own legs and was scoped to
-the function to fix it. **OPEN**: nothing auto-levels the view on warp or dock —
+the function to fix it. **And §143, the water you could not see**: §139's tide
+shipped with its entire visual tell unable to render — a `CPUParticles3D` with
+no mesh (draws nothing), at 2.6 particles a second, in a box ten times the view
+— and TIDETEST was 10 for 10 throughout, because nothing here can see a
+renderer. `storm.gd` had the same defect since v20. Fixed in both, plus
+`check_scripts.py` rule 8 and a TIDETEST leg asserting the mesh, the material
+and the rate. The cockpit now separates PRESENT from RIDING, which is the other
+half of the same report. **OPEN**: nothing auto-levels the view on warp or dock —
 `level_view()` is public and unwired for that.
 
 **Horizon 14 — the middle** (opened 2026-08-22 after a play session;
@@ -14856,3 +14863,91 @@ a later function reusing a poisoned name.
 
 > **A CHECKER EARNS ITS KEEP IN BOTH DIRECTIONS, AND THOSE ARE TWO SEPARATE
 > RED-VERIFICATIONS.** §138 did the first and called it done.
+
+
+## 143. The water you could not see (playtest fix)
+
+> *"I found a Tide set but could not determine any effect and it quickly
+> disappeared from my sensors. There was no visual feedback related to the tide
+> that I could identify."*
+
+There was none to identify. §139 shipped a system whose entire visual tell was a
+`CPUParticles3D` that could not draw a pixel, and **TIDETEST passed 10 for 10
+the whole time.**
+
+### Three reasons, any one of them sufficient
+
+1. **No mesh, no material.** `CPUParticles3D.mesh` defaults to null and a null
+   mesh renders nothing; `color` only tints a material that is not there. Every
+   working particle system in this project — `FX.burst`, `FX.vortex` — builds a
+   `BoxMesh` carrying `Palette.emissive` and assigns it. This did not.
+2. **The rate was 2.6 a second.** `lifetime` was derived as `(box * 2) / speed`
+   = 26.7s against an `amount` of 70, and a particle system's emission rate is
+   `amount / lifetime`. Even drawable, that is a speck every third of a second.
+3. **The box was ten times the view.** 240 units across, while the lens sees
+   about 21 down its long axis at the default zoom — so ~99% of what it emitted
+   was off screen before the other two problems got to it.
+
+### It had already shipped once
+
+`storm.gd` built the eye's motes the same way in **v20** and got away with it for
+four horizons, because a storm also has an eye, arms, a ring and a shockwave to
+be seen by. The tide had **only** the motes, which is exactly why the tide is
+what finally reported it. Both are fixed here.
+
+### Why ten green legs saw none of it
+
+Every one of them measured the derivation — purity, density, the tangential
+bound — or the physics, in that three-number leg the design is proud of.
+
+> **NOTHING IN THIS REPO CAN SEE A RENDERER.** §129's observation, arriving
+> somewhere new: a harness that measures the mechanism will go green on a
+> feature nobody can see.
+
+So the fix is not only paint. `check_scripts.py` gains **rule 8**
+(`check_particles`): every `CPUParticles3D.new()` must be handed a `.mesh` in
+the same function. Red-verified against both shipped forms — the `var` one and
+the member one — and silent across all 72 files. It is the first rule in that
+file that is **not** a parse error, and the footer that told every reader "each
+of these is a parse error" had to be corrected rather than left to send the next
+person hunting a syntax mistake that is not there.
+
+`AND THE WATER CAN BE SEEN` joins TIDETEST: the mesh, the material, and the
+**rate**, because 2.6 a second needed no renderer to be wrong either.
+
+### The quieter half of the same report
+
+*"it quickly disappeared from my sensors."* It had not. The cockpit suffix only
+lit while `_riding`, which needs the hull under way **and** aligned — so
+finishing a move order dropped the ship under `UNDER_WAY` and the line went
+dark. The readout conflated two different facts, and the player read the result
+exactly as it behaved.
+
+> **THERE IS WATER HERE** and **IT IS CARRYING ME** are two facts. A readout
+> that says only the second teaches the player that the first is unreliable.
+
+`tide_deg()` now answers whenever water is underfoot and `is_riding()` is asked
+separately, through a sixth appended-optional on `set_deep_tag` (§108). The tag
+reads `· TIDE 043` present and `· TIDE 043 ▸` riding — and "SET" came off the
+front rather than being kept for symmetry, because that line already carries a
+system, a band glyph, a band name, a range and sometimes a jam, and every
+character is one closer to a readout that does not fit.
+
+`_present` is a flag rather than a test on `_set`, because `_set` is a cache
+that survives a stand-down: driven off it, a hull sitting in a dock would be
+told there was a tide under it.
+
+### And the look now says which state it is in
+
+Present, the motes are dim and slow; riding, they are brighter and half again
+as fast. Same node, one dressing function, called when the set, the band or the
+riding state actually changes — three update paths writing one particle system
+is DEFECTS 2b waiting to happen, and a particle system is exactly the kind of
+object where the last writer wins in silence.
+
+The motes are stretched along their own velocity (`particle_flag_align_y` with a
+Y-elongated box), because **a mote that is a cube says dust and one that is a
+streak says current** — which is the whole thing this effect has to communicate
+before any text does. And the emission box now follows the lens in eighths,
+which §142 made necessary: with a thirteenfold zoom range, a fixed box is either
+a postage stamp in a wide view or fill nobody sees.

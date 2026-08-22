@@ -389,6 +389,53 @@ the surface a player actually touches.
 
 ---
 
+## 9b. A system with no tell
+
+**What happens.** The mechanism is correct, asserted, and shipping. Its only
+way of announcing itself to the player cannot render. Class 9's sibling: there
+the verb has no affordance, here the *system* has no evidence.
+
+**Instance (§143).** A playtester found a tide, read the cockpit line, and
+reported *"could not determine any effect ... no visual feedback related to the
+tide that I could identify."* There was none to identify. The tide's entire
+visual tell was a `CPUParticles3D` with **no mesh and no material** — a null
+mesh renders nothing, and `color` only tints a material that is not there.
+Three independent reasons it was invisible, any one of them sufficient:
+
+| | |
+|---|---|
+| no mesh, no material | draws nothing at all |
+| `amount 70 / lifetime 26.7s` | **2.6 particles a second** |
+| a 240u emission box | the lens sees ~21u; ~99% off screen |
+
+**It had already shipped once.** `storm.gd` built the eye's motes the same way
+in v20 and went unnoticed for four horizons, because a storm also has an eye,
+arms, a ring and a shockwave to be seen by. The tide had only the motes, which
+is why the tide is what reported it.
+
+**Why the legs were green.** TIDETEST was **10 for 10**. Every leg measured the
+derivation (purity, density, the tangential bound) or the physics (the three-way
+riding/athwart/against measurement). **No instrument in this repo can see a
+renderer** — §129's observation, arriving somewhere new.
+
+**And a second, quieter half of the same report.** *"it quickly disappeared from
+my sensors."* It had not. The cockpit suffix only lit while `_riding`, which
+requires the hull to be under way and aligned — so finishing a move order made
+the line vanish. The readout conflated *there is water here* with *it is
+carrying me*, and the player correctly read the result as the tide going away.
+
+**Covered by:** `check_scripts.py` rule 8 (`check_particles`) — every
+`CPUParticles3D.new()` must be given a `.mesh` in the same function, red-verified
+against both shipped forms. Plus `AND THE WATER CAN BE SEEN` in TIDETEST, which
+asserts the mesh, the material and the emission **rate**, since 2.6 a second
+needed no renderer to be wrong. Rule 8 is the first rule in that file that is
+not a parse error, and the footer had to be corrected to stop calling it one.
+
+> **A HARNESS THAT MEASURES THE MECHANISM WILL GO GREEN ON A FEATURE NOBODY CAN
+> SEE. ASSERT THE TELL, NOT ONLY THE RULE.**
+
+---
+
 ## 10. A wrong arity, invisible without the binary
 
 **What happens.** There is no Godot binary in the authoring environment. A

@@ -451,6 +451,70 @@ def check_shadow(path: str):
     return bad
 
 
+# ------------------------------------------------------------- particles ---
+
+PARTICLES_NEW = re.compile(
+    r'^\s*(?:var\s+)?([A-Za-z_]\w*)\s*:?=\s*CPUParticles3D\.new\s*\(')
+
+
+def check_particles(path: str):
+    """A CPUParticles3D that is never given a mesh -- it draws NOTHING.
+
+    THE EIGHTH RULE, and the first that is not a parse error. Everything above
+    stops the tree from compiling; this stops a feature from being visible,
+    which is worse in one specific way: the harness goes green.
+
+    CPUParticles3D.mesh defaults to null and a null mesh renders nothing.
+    `color` only tints a material, so setting it on a meshless system does
+    nothing either -- and the code reads perfectly: amount, lifetime, emission
+    shape, velocities, colour, add_child, emitting. Every property a particle
+    system has, and no particles.
+
+    It shipped TWICE. storm.gd built the eye's motes this way in v20 and got
+    away with it for four horizons because a storm also has an eye, arms, a
+    ring and a shockwave to be seen by. §139's tide had ONLY the motes, so when
+    a playtester reported "no visual feedback related to the tide that I could
+    identify", there was none to identify: TIDETEST was 10 for 10 against a
+    feature that could not draw a pixel.
+
+    NOTHING IN THIS REPO CAN SEE A RENDERER, which is why this is static and
+    why it is worth the file it costs. FX.burst and FX.vortex both build a
+    BoxMesh carrying Palette.emissive and assign it; this asks every other
+    construction site to do the same.
+
+    Scoped to the function, `check_shadow`'s discipline and the one rule 7 had
+    to be taught. A system built in one function and meshed in another would be
+    reported, and the answer to that is to mesh it where it is built -- every
+    site in this project does.
+    """
+    out = []
+    pending = {}          # name -> lineno of the .new()
+    lines = open(path, encoding="utf-8").readlines()
+
+    def flush():
+        for name, lineno in pending.items():
+            out.append((lineno, "CPUParticles3D `%s` is never given a .mesh "
+                        "-- a null mesh draws NOTHING, however many other "
+                        "properties are set (see FX.burst)" % name, ""))
+        pending.clear()
+
+    for lineno, line in enumerate(lines, 1):
+        if FUNC.match(line):
+            flush()
+        code = line.split("#", 1)[0]
+        m = PARTICLES_NEW.match(code)
+        if m:
+            pending[m.group(1)] = lineno
+            continue
+        for name in list(pending):
+            if re.search(r'\b' + re.escape(name) + r'\.mesh\s*=', code):
+                del pending[name]
+    flush()
+    for i, (lineno, why, _t) in enumerate(out):
+        out[i] = (lineno, why, lines[lineno - 1].rstrip())
+    return out
+
+
 # -------------------------------------------------------------- reference ---
 
 # Reachable through any class name without being declared anywhere in this
@@ -566,7 +630,7 @@ def main(argv):
         for lineno, why, text in check_indent(path) + check_duplicates(path) + \
                 check_shadow(path) + check_infer(path) + \
                 check_container_infer(path, consts) + \
-                check_handle_infer(path) + \
+                check_handle_infer(path) + check_particles(path) + \
                 check_refs(path, members, parent, home):
             rel = os.path.relpath(path, root)
             print("%s:%d: %s\n    %s" % (rel, lineno, why, text[:88]))
@@ -574,9 +638,16 @@ def main(argv):
 
     print("--- %d file(s) checked, %d problem(s)" % (len(targets), found))
     if found:
-        print("Each of these is a parse error. Godot reports them as "
+        # §143 MADE THIS LINE A LIE AND THEN FIXED IT. Rules 1-7 are all parse
+        # errors; rule 8 is a RENDER failure -- the tree compiles perfectly and
+        # a feature is simply invisible. A footer that called it a parse error
+        # would send the next reader looking for a syntax mistake that is not
+        # there, which is DEFECTS class 7 committed by the tool that exists to
+        # catch things like it.
+        print("Most of these are parse errors: Godot reports them as "
               "'Could not parse global class' plus a few hundred lines of "
-              "cascade, so fix them here.")
+              "cascade, so fix them here. A `.mesh` report is not -- that one "
+              "compiles fine and draws nothing.")
     return 1 if found else 0
 
 
