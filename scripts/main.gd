@@ -706,7 +706,10 @@ func _ready() -> void:
 	add_child(induction)
 	induction.finished.connect(_on_induction_finished)
 	title_screen.new_game_pressed.connect(_on_new_survey)
-	title_screen.induction_pressed.connect(func() -> void: induction.open(true))
+	title_screen.induction_pressed.connect(func() -> void:
+		# §135. The door steps aside for its own film and comes back after.
+		title_screen.set_chrome_visible(false)
+		induction.open(true))
 	title_screen.continue_pressed.connect(continue_game)
 	# Picking a pilot IS continuing: GameState.switch_profile has already loaded
 	# that run (or laid down a starter one) by the time the signal fires, so this
@@ -2284,6 +2287,11 @@ func _on_induction_finished(replay: bool) -> void:
 	# was watched or skipped -- SKIP is an answer, not an accident, and asking
 	# again would be the §58 problem inverted (a refusal re-asked is a nag).
 	if replay:
+		# §135. RESTORED HERE AND NOWHERE ELSE. `_finish` is the film's only
+		# exit -- tap-through and SKIP both land in it -- so one restore covers
+		# every way out, and a second one somewhere else would be a second
+		# thing to keep in step.
+		title_screen.set_chrome_visible(true)
 		return
 	GameState.set_setting("seen_induction", true)
 	start_new_game()
@@ -14717,6 +14725,30 @@ func _run_title_test() -> void:
 		lines_seen, Induction.BEATS.size(), tightest,
 		stack_bad if stack_bad != "" else "every line has height and clears the one above it",
 		"PASS" if stack_bad == "" and lines_seen > 0 else "FAIL"])
+
+	# 10. §135. THE REPLAY HIDES THE DOOR, in both directions and through the
+	#     SIGNAL rather than by calling the scene -- what is being asserted is
+	#     that the wiring restores the furniture, and a leg that hid and showed
+	#     it by hand would assert only that two setters work.
+	#
+	#     The layer's own `visible` is checked to STAY TRUE throughout: the
+	#     title is still open behind the film, and conflating "drawn" with
+	#     "open" is the defect this API was shaped to avoid.
+	var door_before := title_screen.chrome_visible()
+	title_screen.induction_pressed.emit()
+	await get_tree().process_frame
+	var door_during := title_screen.chrome_visible()
+	var open_during := title_screen.visible
+	var idx_guard := 0
+	while induction.is_running() and idx_guard < 12:
+		idx_guard += 1
+		induction.advance_beat()
+		await get_tree().process_frame
+	var door_after := title_screen.chrome_visible()
+	print("[title] THE REPLAY HIDES THE DOOR chrome %s -> %s -> %s, and the title stayed open behind it=%s -> %s" % [
+		str(door_before), str(door_during), str(door_after), str(open_during),
+		"PASS" if door_before and not door_during and door_after
+			and open_during else "FAIL"])
 
 	# 4. NEW SURVEY HANDS OVER TO THE TUTORIAL. Four clauses, and the last is the
 	#    one with history: start_new_game calls tutorial.arm() BEFORE _load_system

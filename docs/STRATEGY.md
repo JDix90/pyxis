@@ -6497,12 +6497,14 @@ and commits 1–4 were re-sized against the measurement before they were built.
 
 **Horizon 13 — the induction** (opened 2026-08-22; researched in
 `docs/HORIZON-13-RESEARCH.md`; specced in `docs/HORIZON-13-THE-INDUCTION.md`;
-**commits 1–2 BUILT** — §133 (the copy approved and shipped verbatim,
-TITLETEST 4 → 8) and §134 (the copy column had zero height and every beat drew
-its lines on one baseline — found by a playtest screenshot, not by a leg;
-`THE COPY DOES NOT STACK` now asserts the laid-out rects). TITLETEST 4 → 9, no
-save shape change. Open: a music treatment, and what the live system behind the
-scrim contributes — the title's own dial reads through it at 0.93). The commission: a lore-heavy
+**commits 1–3 BUILT** — §133 (the copy approved and shipped verbatim),
+§134 (the copy column had zero height and every beat drew its lines on one
+baseline — found by a playtest screenshot, not by a leg) and §135 (the replay
+hid the door: the title's compass, taglines and buttons had been reading
+through the scrim on the replay path). TITLETEST 4 → 10, no save shape change.
+Open: a music treatment, and whether the live 3D system behind the scrim should
+recede — §135 measured it as the world rather than the menu, and `SCRIM_BASE`'s
+alpha is the one constant if it should). The commission: a lore-heavy
 cinematic introduction for new pilots — the war, the derelicts, the Authority's
 control — taking a supplied reference video's grammar (light narrates, one
 subject per shot, a founding myth in four beats). The research pass's finding:
@@ -14038,3 +14040,52 @@ different places — a leg (§133's own arithmetic), a hand transcription (§130
 distribution), and **a pair of screenshots** — which is §129's observation
 holding one horizon later: no two findings came from the same instrument, and
 the eye is one of the instruments.
+
+
+## 135. The door steps aside (Horizon 13, commit 3)
+
+The induction replays **on top of an open title** — the manual's contract, so
+rewatching the briefing is not a decision to start playing. The cost of that
+contract, unnoticed until §134's screenshots prompted a look: the compass rose,
+the title, the taglines and five buttons all read through a 0.93 scrim. A menu
+behind a briefing, with controls a player can see and cannot reach.
+
+`TitleScreen.set_chrome_visible()` hides `_root` and `_scrim` for the duration
+of a replay, and Main restores them in `_on_induction_finished`.
+
+**The layer's own `visible` is deliberately not touched.** That flag is a
+*state* — `_choose` writes it and `THE ATTRACT SCREEN IS INERT` reads it, both
+meaning *is the door open*. Borrowing it to also mean *is the door drawn* would
+make one word answer two questions, which is the shape of defect §120 found in
+a print line. So `THE REPLAY HIDES THE DOOR` asserts both: the furniture goes
+and comes back, **and the title stays open behind it the whole time.**
+
+Restored in exactly one place. `_finish` is the film's only exit — tap-through
+and SKIP both land there — so one restore covers every way out, and a second
+would be a second thing to keep in step.
+
+### And what this does not fix, measured rather than assumed
+
+The large ellipse and crossing lines in §134's screenshots are **not the
+compass**, and the arithmetic says so plainly:
+
+| element | radius at the 1580×1345 window |
+|---|---|
+| the title's compass arc | **129px** — a 300×300 clamped square control, circular |
+| the induction's own chart ring | **188px** — the inner circle in the shot |
+| the ellipse in the screenshot | **~500 × 430px, elliptical** |
+
+An ellipse five hundred pixels across cannot come from a three-hundred-pixel
+square, and a circular arc does not project to an ellipse in a 2D `Control`.
+That backdrop is the **live 3D system** drifting in ATTRACT — a ring seen at an
+angle — which is the title screen's own philosophy showing through exactly as
+designed, one layer deeper than intended.
+
+So this commit fixes the **replay** path, which was genuinely broken and had
+never been looked at. It will not change what those screenshots show, because
+`_choose` had already hidden the title before the film opened on that path. If
+the live system should recede too, that is one constant — `SCRIM_BASE`'s alpha
+— and a separate decision.
+
+Recorded this way round because the alternative was to ship the fix, let the
+owner run it, and have them find the ellipse still there.

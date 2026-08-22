@@ -37,7 +37,7 @@ carried in a `const BEATS` table the harness walks without a viewport.
   right treatment is its own decision; the film plays over whatever the title
   was playing. Recorded open in §64.
 
-## The legs (TITLETEST 4 → 9; runs stay 82)
+## The legs (TITLETEST 4 → 10; runs stay 82)
 
 1. `THE BEAT TABLE IS WELL-FORMED` — five beats, durations 6–20s, total 40–90s,
    line lengths bounded.
@@ -76,3 +76,23 @@ wrong.
    own laid-out rectangles, and the leg walks all five beats asserting every
    line has real height and clears the one above it. A screenshot cannot be a
    verdict; a `Rect2` can.
+
+
+## Commit 3 — §135, the door steps aside
+
+The replay opens on top of an open title, so the compass, taglines and five
+buttons were reading through the scrim. `set_chrome_visible()` hides the
+furniture for the duration and Main restores it on `finished` — in exactly one
+place, because `_finish` is the film's only exit.
+
+The layer's own `visible` stays true throughout: it means *is the door open*,
+and making it also mean *is the door drawn* would give one word two jobs.
+
+6. `THE REPLAY HIDES THE DOOR` — driven through the signal, not the setters,
+   so what is asserted is the wiring; checks the chrome goes and returns, and
+   that the title stayed open behind it.
+
+**Measured, not assumed:** the large ellipse in the §134 screenshots is the live
+3D system, not the compass — 129px of circular compass arc cannot produce a
+~500×430 ellipse. This commit fixes the replay path; the backdrop on the first-
+boot path is `SCRIM_BASE`'s alpha and a separate decision.
