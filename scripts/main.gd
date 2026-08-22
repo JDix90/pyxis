@@ -467,6 +467,7 @@ var docked_port: Port = null
 
 var state: int = State.ATTRACT
 var title_screen: TitleScreen
+var induction: Induction
 var tutorial: Tutorial
 
 var _event_roll_timer := Market.EVENT_ROLL_INTERVAL
@@ -697,7 +698,15 @@ func _ready() -> void:
 
 	title_screen = TitleScreen.new()
 	add_child(title_screen)
-	title_screen.new_game_pressed.connect(start_new_game)
+	# §133. NEW SURVEY routes through the induction exactly once per DEVICE
+	# (a preference, not a save key -- new pilots are not new people). The film
+	# owns no state: the seen flag is written HERE, on the finished signal, so
+	# skipping at any beat and watching to the end leave identical saves.
+	induction = Induction.new()
+	add_child(induction)
+	induction.finished.connect(_on_induction_finished)
+	title_screen.new_game_pressed.connect(_on_new_survey)
+	title_screen.induction_pressed.connect(func() -> void: induction.open(true))
 	title_screen.continue_pressed.connect(continue_game)
 	# Picking a pilot IS continuing: GameState.switch_profile has already loaded
 	# that run (or laid down a starter one) by the time the signal fires, so this
@@ -2260,6 +2269,24 @@ func spawn_sentries() -> void:
 	# garrison is the engine's sentries AND the Cordon's pickets — one call,
 	# because they are one list (SystemBuilder.build_garrison).
 	SystemBuilder.build_garrison(system_def, system_root, system_id)
+
+
+func _on_new_survey() -> void:
+	if bool(GameState.setting("seen_induction")):
+		start_new_game()
+		return
+	induction.open(false)
+
+
+func _on_induction_finished(replay: bool) -> void:
+	# A replay returns to the title it opened over; the first showing marks the
+	# device and starts the run it was standing in for. Marked whether the film
+	# was watched or skipped -- SKIP is an answer, not an accident, and asking
+	# again would be the §58 problem inverted (a refusal re-asked is a nag).
+	if replay:
+		return
+	GameState.set_setting("seen_induction", true)
+	start_new_game()
 
 
 func start_new_game() -> void:
@@ -14547,6 +14574,104 @@ func _run_title_test() -> void:
 	var moved := before.distance_to(player.global_position)
 	print("[title] INPUT IS LOCKED BEHIND THE MENU a held bearing moved the ship %.2fu over 1s, allowed %.2fu -> %s" % [
 		moved, TITLE_DRIFT_MAX, "PASS" if moved <= TITLE_DRIFT_MAX else "FAIL"])
+
+	# §133. THE INDUCTION, four legs, run while the title is still up because
+	# the film lives in front of it and leg 4 below starts the game for good.
+
+	# 5. THE BEAT TABLE IS WELL-FORMED. The film is data so this can be asked
+	#    without a viewport: five beats, bounded durations, a total a thumb can
+	#    sit through, and no line past what the copy column wraps cleanly.
+	var beats_ok := Induction.BEATS.size() == 5
+	var total_dur := 0.0
+	var longest_line := 0
+	for b_v in Induction.BEATS:
+		var b: Dictionary = b_v
+		var d := float(b["dur"])
+		total_dur += d
+		if d < 6.0 or d > 20.0:
+			beats_ok = false
+		if (b["lines"] as Array).is_empty():
+			beats_ok = false
+		for ln_v in (b["lines"] as Array):
+			longest_line = maxi(longest_line, String(ln_v).length())
+	print("[title] THE BEAT TABLE IS WELL-FORMED %d beats, %.0fs total (40-90), longest line %d chars -> %s" % [
+		Induction.BEATS.size(), total_dur, longest_line,
+		"PASS" if beats_ok and total_dur >= 40.0 and total_dur <= 90.0
+			and longest_line <= 170 else "FAIL"])
+
+	# 6. THE INDUCTION QUOTES NO FRAGMENT -- AND QUOTES THE DIRECTIVE EXACTLY.
+	#    Both directions of the copy rule, derived from the sources rather than
+	#    remembered: the unsounded structures' sentences exist only at the
+	#    structures, so no beat line may contain one and no fragment may
+	#    contain a beat line; and the ONE allowed quotation -- Directive 9's
+	#    public clause, the text the Authority itself published on the beacon
+	#    plates -- must appear VERBATIM, because a paraphrased legal text is a
+	#    second version of the law.
+	var frag_hit := ""
+	for b2_v in Induction.BEATS:
+		for ln2_v in ((b2_v as Dictionary)["lines"] as Array):
+			var line := String(ln2_v)
+			for kind_v in UnsoundedSite.FRAGMENTS:
+				for f_v in (UnsoundedSite.FRAGMENTS[kind_v] as Array):
+					var frag := String(f_v)
+					if line.contains(frag) or frag.contains(line):
+						frag_hit = "%s <-> %s" % [String(kind_v), line.left(40)]
+	var clause := String((Beacon.DIRECTIVE_PAGES[0]
+		as Dictionary)["clause"]).to_upper()
+	var quoted := false
+	for b3_v in Induction.BEATS:
+		for ln3_v in ((b3_v as Dictionary)["lines"] as Array):
+			if String(ln3_v).contains(clause):
+				quoted = true
+	var frag_count := 0
+	for kc_v in UnsoundedSite.FRAGMENTS:
+		frag_count += (UnsoundedSite.FRAGMENTS[kc_v] as Array).size()
+	print("[title] THE INDUCTION QUOTES NO FRAGMENT %d fragment sentences checked, collision: %s; the one public clause quoted verbatim=%s -> %s" % [
+		frag_count, frag_hit if frag_hit != "" else "none",
+		str(quoted), "PASS" if frag_hit == "" and quoted else "FAIL"])
+
+	# 7. SKIP LEAVES NO TRACE. The scene owns no state by design; this is the
+	#    leg that keeps it true after somebody adds a feature to it. Walked in
+	#    REPLAY mode so the finished signal does not start a game, snapshotted
+	#    across everything a cutscene could plausibly touch.
+	var snap := str([GameState.salvage, GameState.cargo, GameState.ledger,
+		GameState.tutorial_step, GameState.colonies, GameState.skills,
+		GameState.stations_seen])
+	var walked := 0
+	induction.open(true)
+	while induction.is_running() and walked < 12:
+		if shots != "" and induction.beat_index() >= 0:
+			await _shot(shots, "induction_b%d.png" % induction.beat_index())
+		walked += 1
+		induction.advance_beat()
+		await get_tree().process_frame
+	var trace_ok := snap == str([GameState.salvage, GameState.cargo,
+		GameState.ledger, GameState.tutorial_step, GameState.colonies,
+		GameState.skills, GameState.stations_seen])
+	print("[title] SKIP LEAVES NO TRACE %d beat(s) walked to the end, closed=%s, state byte-identical=%s -> %s" % [
+		walked, str(not induction.is_running()), str(trace_ok),
+		"PASS" if not induction.is_running() and trace_ok
+			and walked == Induction.BEATS.size() else "FAIL"])
+
+	# 8. REDUCE MOTION HAS A PATH. The flag on, the film still opens, advances
+	#    and closes -- UIKit's own rule that the accommodation is the end state,
+	#    not a variant that can rot separately. Restored after, because a leg
+	#    that edits a DEVICE preference and keeps it is class 2 with a file.
+	var rm_was := bool(GameState.setting("reduce_motion"))
+	GameState.set_setting("reduce_motion", true)
+	induction.open(true)
+	var rm_guard := 0
+	while induction.is_running() and rm_guard < 12:
+		rm_guard += 1
+		induction.advance_beat()
+		await get_tree().process_frame
+	var rm_done := not induction.is_running()
+	GameState.set_setting("reduce_motion", rm_was)
+	print("[title] REDUCE MOTION HAS A PATH opened, %d advance(s), closed=%s, pref restored=%s -> %s" % [
+		rm_guard, str(rm_done),
+		str(bool(GameState.setting("reduce_motion")) == rm_was),
+		"PASS" if rm_done
+			and bool(GameState.setting("reduce_motion")) == rm_was else "FAIL"])
 
 	# 4. NEW SURVEY HANDS OVER TO THE TUTORIAL. Four clauses, and the last is the
 	#    one with history: start_new_game calls tutorial.arm() BEFORE _load_system

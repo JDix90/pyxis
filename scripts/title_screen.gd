@@ -9,6 +9,10 @@ signal continue_pressed
 # control to the game. The manual opens on top and the title stays exactly where
 # it was, because reading it is not a decision to start playing.
 signal manual_pressed
+# §133. THE INDUCTION, replayed. The manual's own contract: opened on top,
+# through Main (which owns the scene), while the title stays where it is --
+# rewatching the briefing is not a decision to start playing.
+signal induction_pressed
 # A pilot was picked or created, and the run behind it is already loaded. Main
 # treats it exactly like CONTINUE, because that is what it is.
 signal pilot_chosen
@@ -181,6 +185,10 @@ func _build() -> void:
 	var manual_button := _make_button("PILOT'S MANUAL", Palette.TEAL)
 	manual_button.pressed.connect(func() -> void: manual_pressed.emit())
 	_buttons.add_child(manual_button)
+
+	var induction_button := _make_button("THE INDUCTION", Palette.TEAL)
+	induction_button.pressed.connect(func() -> void: induction_pressed.emit())
+	_buttons.add_child(induction_button)
 
 	var pilots_button := _make_button("PILOTS", Palette.AMBER)
 	pilots_button.pressed.connect(func() -> void:

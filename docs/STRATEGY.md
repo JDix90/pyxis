@@ -6496,7 +6496,10 @@ and commits 1–4 were re-sized against the measurement before they were built.
 | — | **THE ARCHIVE, reinstated and reshaped** (§131: the kill was not the assistant's call). Deep counters docked at are the one found place the game never remembered; the work buys reading the file, never the facts in it | none | **BUILT** — §132; system-scoped, 56,000, the first component manifest in the game, and the first store that needed a cap |
 
 **Horizon 13 — the induction** (opened 2026-08-22; researched in
-`docs/HORIZON-13-RESEARCH.md`; **nothing built**). The commission: a lore-heavy
+`docs/HORIZON-13-RESEARCH.md`; specced in `docs/HORIZON-13-THE-INDUCTION.md`;
+**commit 1 BUILT** — §133, the copy approved and shipped verbatim, TITLETEST
+4 → 8, no save shape change. Open: a music treatment, and the tableaux have
+not yet met an eye — the `PYXIS_SHOTS` stills are the loop). The commission: a lore-heavy
 cinematic introduction for new pilots — the war, the derelicts, the Authority's
 control — taking a supplied reference video's grammar (light narrates, one
 subject per shot, a founding myth in four beats). The research pass's finding:
@@ -13918,3 +13921,63 @@ It runs in pyx02, through the **store** half, because what is being tested is
 access and the journey is `THE TRIP IS THE COST`'s business one leg down. Sixth
 instance of the same defect this horizon, and the sixth caught by re-reading
 rather than by a run.
+
+## 133. The induction (Horizon 13, commit 1)
+
+The Authority's briefing film, built to the research pass's approved copy
+(`HORIZON-13-RESEARCH.md`) — five beats, sixty seconds, first boot and
+replayable, skippable from frame one. The war stays one clause deep; the cause
+is stated flat; the cruelty stays at 5,600u. *"ASSETS REMAIN ON STATION."*
+
+### Drawn in chart language, and that is a design decision
+
+The research doc said *"tableaux in the game's own renderer — washes, meshes in
+silhouette"*. What shipped draws the film in the **chart's** language instead:
+cells, rings, clocks, hull silhouettes as flat polygons, over a translucent
+scrim with the live system behind it. Two reasons, in honesty order:
+
+1. **It is more in character.** The Authority's induction film would be
+   diagrams and light — a filing body does not shoot cockpit footage. Beat II's
+   lattice of cells lighting outward and beat III's outer lights going out
+   *are the game's own survey vocabulary*, which is what the film is about.
+2. **It is verifiable without a binary.** A 3D staged scene lit wrong is
+   invisible until the Mac sees it; flat draws over a scrim degrade gracefully
+   and the `PYXIS_SHOTS` stills catch the rest.
+
+The title's written rule — *"the first thing a player sees is the actual game
+rather than a still"* — survives intact: the scrim is at 0.93, and the real sky
+drifts behind every beat.
+
+### The scene owns no state, and the copy rules are legs
+
+`Induction` never writes GameState. The seen flag is a **device preference**
+(`seen_induction` in `DEFAULT_SETTINGS`), written by Main on the `finished`
+signal — a preference rather than a save key because NEW SURVEY resets the
+save, and a returning player starting a second pilot has not un-watched the
+film. Marked on skip as well as on watch: skip is an answer, and asking again
+is a nag.
+
+The research pass's copy rules shipped as assertions rather than memory
+(TITLETEST 4 → 8):
+
+- `THE INDUCTION QUOTES NO FRAGMENT` walks `UnsoundedSite.FRAGMENTS` in both
+  directions — the deep keeps its own sentences — **and** asserts the one
+  allowed quotation, `Beacon.DIRECTIVE_PAGES[0]`'s public clause, appears
+  verbatim: a paraphrased legal text is a second version of the law.
+- `SKIP LEAVES NO TRACE` walks the film to the end and compares the state
+  byte-for-byte.
+- `THE BEAT TABLE IS WELL-FORMED` and `REDUCE MOTION HAS A PATH` bound the
+  table and keep the accommodation a first-class path.
+
+One fixture defect was caught before it shipped, §126's habit: the walk leg
+first expected `BEATS.size() + 1` advances when the arithmetic is
+`BEATS.size()` — a leg that would have gone red on correct behaviour, which is
+the inverse of the horizon's usual defect and just as wrong.
+
+### Left open, stated
+
+- **Music.** The game owns one eight-bar phrase; the film currently plays over
+  whatever the title plays. A treatment is its own decision.
+- **The visuals have not met an eye.** Every leg is green by construction;
+  whether beat III *reads* is a Mac question, and the `PYXIS_SHOTS` stills are
+  the loop for it.

@@ -58,6 +58,11 @@ const DEFAULT_SETTINGS := {
 	# transition in the game to stop moving. Merging the two would silently
 	# reinterpret a preference they already expressed.
 	"reduce_motion": false,
+	# §133. Whether THIS DEVICE has watched the induction. A preference rather
+	# than a save key on purpose: NEW SURVEY resets the save, and a returning
+	# player starting a second pilot has not un-watched the film. Main writes it
+	# on the finished signal; the scene itself owns no state.
+	"seen_induction": false,
 	# OFF by default, and it stays off unless someone deliberately turns it on.
 	# The file never leaves the device and nothing in the game reads it -- see
 	# scripts/telemetry.gd -- but a recorder running because the player never
