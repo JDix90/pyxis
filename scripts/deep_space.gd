@@ -963,8 +963,17 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 			# v19 stage 4: the ONE edit inside plan_cell. The draw is still
 			# rng.randi(), verbatim — the index is derived from the returned
 			# uint32, and with no authored row weighted_index IS the old modulo.
-			var arch: Dictionary = kinds[weighted_index(rng.randi(), kinds.size(),
-				(_deep.get("station_weights", {}) as Dictionary).get(band, []))]
+			# §130. AN AUTHORED ROW WINS; OTHERWISE THE TILT. The row is taken
+			# first and only replaced when it cannot be used -- absent, or the
+			# wrong width, which is the silent case weighted_index's own comment
+			# warns about and which used to fall all the way to a uniform draw.
+			# Below TILT_MIN_BAND distance_weights returns empty and that
+			# uniform draw is exactly what still happens, byte for byte.
+			var st_w: Array = (_deep.get("station_weights", {})
+				as Dictionary).get(band, [])
+			if st_w.size() != kinds.size():
+				st_w = DeepPortDB.distance_weights(band, kinds)
+			var arch: Dictionary = kinds[weighted_index(rng.randi(), kinds.size(), st_w)]
 			var sp := base + Vector3(rng.randf_range(STATION_INSET, CELL - STATION_INSET), 0.0,
 				rng.randf_range(STATION_INSET, CELL - STATION_INSET))
 			if depth_at(sp) >= CONTENT_MIN_DEPTH:

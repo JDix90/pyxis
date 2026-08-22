@@ -11822,6 +11822,58 @@ func _run_station_test() -> void:
 	print("[station] WAGER %.0f%% to double = %.2fx expected, streak capped at %d -> %s" % [
 		PortPanel.GAMBLE_WIN_CHANCE * 100.0, ev, PortPanel.GAMBLE_STREAK_LIMIT,
 		"PASS" if ev < 1.0 and PortPanel.GAMBLE_STREAK_LIMIT > 0 else "FAIL"])
+
+	# §130. THE REWARD FOR DISTANCE IS A BETTER COUNTER, which is `for_band`'s
+	# own promise and was false under the shipped uniform draw: the pool is
+	# CUMULATIVE, so the newest archetype's share fell from 1/3 at band 2 to 1/7
+	# at band 6 and the deepest counters got rarer the further a pilot flew.
+	#
+	# Reported per band as well as asserted, because how MUCH tilt is a design
+	# number and the LAW is only that it points outward -- §114's posture, and
+	# the reason this does not assert a target.
+	var tilt_bad := ""
+	var tilt_line := ""
+	for band in range(DeepPortDB.TILT_MIN_BAND, DeepSpace.BAND_NAMES.size()):
+		var kinds := DeepPortDB.for_band(band)
+		var w := DeepPortDB.distance_weights(band, kinds)
+		if w.size() != kinds.size():
+			tilt_bad = "band %d has no default of its own width" % band
+			continue
+		var total := 0.0
+		for wv in w:
+			total += float(wv)
+		# The deepest tier is the LAST row of a cumulative pool by construction,
+		# and it must be the single likeliest thing out there. Asked of every
+		# other row rather than of the average, which a flat table would pass.
+		var deepest := float(w[w.size() - 1])
+		for i in range(w.size() - 1):
+			if float(w[i]) >= deepest:
+				tilt_bad = "band %d: %s is not below the deepest tier" % [
+					band, String((kinds[i] as Dictionary)["id"])]
+		tilt_line += "b%d %s %.0f%%; " % [band,
+			String((kinds[kinds.size() - 1] as Dictionary)["id"]),
+			deepest / maxf(total, 0.001) * 100.0]
+	print("[station] THE REWARD FOR DISTANCE IS A BETTER COUNTER %s(%s) -> %s" % [
+		tilt_line, tilt_bad if tilt_bad != "" else "every tilted band points outward",
+		"PASS" if tilt_bad == "" else "FAIL"])
+
+	# §130. AND THE TILT CANNOT MOVE THE CONTROL, which is why it starts at band
+	# 4 rather than at band 1. `_world_fingerprint` hashes plan_cell -- station
+	# ARCHETYPE included -- over a fixed window, and that hash was recorded
+	# before seams existed and has held ever since. Re-derived from the same
+	# three constants the window is built from rather than argued in a comment:
+	# the furthest corner it can reach, less the SHALLOWEST authored bounds
+	# (which maximises depth), must land in a band strictly below the tilt.
+	var span_far := float(FINGERPRINT_SPAN + 1) * DeepSpace.CELL
+	var shallowest := 1.0e9
+	for sid_tv in SystemDB.ids():
+		shallowest = minf(shallowest, SystemDB.bounds_of(String(sid_tv)))
+	var window_depth := sqrt(2.0) * span_far - shallowest
+	var window_band := DeepSpace.band_of(window_depth)
+	print("[station] THE TILT CANNOT MOVE THE CONTROL the fingerprint reaches %.0fu at its corner (band %d, %s); the tilt starts at band %d -> %s" % [
+		window_depth, window_band, DeepSpace.BAND_NAMES[window_band],
+		DeepPortDB.TILT_MIN_BAND,
+		"PASS" if window_band < DeepPortDB.TILT_MIN_BAND else "FAIL"])
 	get_tree().quit()
 
 
@@ -22725,6 +22777,15 @@ func _find_world_env(n: Node) -> WorldEnvironment:
 
 # --- mining ------------------------------------------------------------------
 
+# §130. THE WINDOW'S HALF-WIDTH, named because a second reader now needs it.
+# `THE TILT CANNOT MOVE THE CONTROL` derives the deepest point this hash can
+# reach from this constant, DeepSpace.CELL and the shallowest authored bounds,
+# and asserts that it lands in a band below DeepPortDB.TILT_MIN_BAND. Typed
+# twice, that proof would be one edit away from being a story about a window
+# that had moved.
+const FINGERPRINT_SPAN := 5
+
+
 func _world_fingerprint() -> String:
 	# Everything plan_cell produces EXCEPT seams, hashed over a fixed block of
 	# cells. This exists to prove one thing: that appending the seam roll did not
@@ -22738,8 +22799,8 @@ func _world_fingerprint() -> String:
 	# The constant it is compared against was recorded BEFORE seams existed. A
 	# fingerprint taken afterwards would agree with whatever it was given.
 	var acc := ""
-	for cx in range(-5, 6):
-		for cz in range(-5, 6):
+	for cx in range(-FINGERPRINT_SPAN, FINGERPRINT_SPAN + 1):
+		for cz in range(-FINGERPRINT_SPAN, FINGERPRINT_SPAN + 1):
 			var plan := deep_space.plan_cell(cx, cz)
 			acc += "%d,%d|" % [cx, cz]
 			for r_v in (plan["rocks"] as Array):

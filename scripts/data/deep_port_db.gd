@@ -283,6 +283,50 @@ static func is_deep_port(port_id: String) -> bool:
 	return port_id.begins_with("deep_")
 
 
+# §130. WHERE THE TILT STARTS, and it is derived from a control rather than
+# chosen. `_world_fingerprint` hashes plan_cell over cells [-5,5] at CELL 64, so
+# the deepest point it can reach is sqrt(2) x 6 x 64 = 543u, less the shallowest
+# authored bounds (40) = 503u -- inside BAND_EDGES' band 3. Band 4 is therefore
+# the first band whose content can change without retiring a hash that has held
+# since before seams existed, and `THE TILT CANNOT MOVE THE CONTROL` re-derives
+# that rather than trusting this paragraph.
+#
+# It is also, separately, where the problem is acute: under a uniform pick the
+# NEWEST archetype's share is 1/3 at band 2 and 1/7 at band 6, so the reward for
+# distance inverts exactly as a pilot goes further. Both halves are true and the
+# constraint is the binding one -- said in that order because dressing a
+# constraint up as a design reason is how a number stops being checkable.
+const TILT_MIN_BAND := 4
+
+
+static func distance_weights(band: int, kinds: Array) -> Array:
+	# §130. THE DEFAULT PICK, DERIVED FROM THE POOL ITSELF. for_band is
+	# CUMULATIVE -- "every archetype the expanse is deep enough to have built" --
+	# so the pool grows with depth and a uniform draw makes the deepest counter
+	# RARER the further out a pilot flies. That is the opposite of for_band's own
+	# promise one function down ("the reward for distance is a better counter"),
+	# and it is what a playtester found past 5,200u: the Fathoms and the
+	# Unsounded handing out the same band-1 relay as everywhere else.
+	#
+	# Weight by how recently an archetype became available: the shallowest row
+	# keeps 1.0 and each band deeper adds one. At band 6 that is [1,2,2,3,4,5,6]
+	# -- the Far Lantern at 6/23 rather than 1/7, and the Relay at 1/23.
+	#
+	# EMPTY BELOW THE TILT, so weighted_index falls to the shipped modulo and the
+	# world inside the fingerprint's reach is byte-identical. An authored row
+	# still wins everywhere: this is the DEFAULT, not a floor, and pyx02 and
+	# pyx03 keep the accents they author.
+	if band < TILT_MIN_BAND or kinds.is_empty():
+		return []
+	var lowest := 99
+	for k_v in kinds:
+		lowest = mini(lowest, int((k_v as Dictionary).get("min_band", 0)))
+	var out: Array = []
+	for k2_v in kinds:
+		out.append(1.0 + float(int((k2_v as Dictionary).get("min_band", 0)) - lowest))
+	return out
+
+
 static func for_band(band: int) -> Array:
 	# Every archetype the expanse is deep enough to have built. The good ones sit
 	# further out, so the reward for distance is a better counter and not merely a

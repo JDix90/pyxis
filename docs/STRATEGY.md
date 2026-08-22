@@ -6492,6 +6492,7 @@ and commits 1–4 were re-sized against the measurement before they were built.
 | 3 | EXPANDED VAULTS + THE YARD | none | **BUILT** — §127; both upgrade a rung rather than adding one, and the research found the annex bay has been deleted on every load since §112 |
 | 4 | THE LIGHT + THE ARCHIVE | none | **BUILT (half)** — §128; THE LIGHT ships at a radius derived from `MIN_HYPER_SEPARATION` so no two overlap. THE ARCHIVE died: `PILOT'S LEDGER` (§111) and `CAPTAIN'S LOG` (§118) already show the run's record free, so it was a paywall in front of a free screen |
 | 5 | the measure | none | **BUILT** — §129; the figure is **836 across 82 MEASURED** at `3a56e85`, green. The exempt channel row now prints its ratio to the catalogue, and the section's own expected figure (828) was wrong because it rested on §122's 824 — a number measured on a tree that printed a FAIL |
+| — | **from playtest, after the close**: the deep archetype pool is cumulative, so a uniform draw made the deepest counters rarer the further out a pilot flew (14.3% at band 6 against 33% at band 2); pyx01 could not be fixed with data because it is the fingerprint control | none | **BUILT** — §130; a derived default tilts the pick from band 4 outward, which is the first band the fingerprint's window cannot reach |
 
 ### Built, despite what the docs said
 
@@ -13561,6 +13562,16 @@ without a single red.
   reaches for it.
 - **§64's ALLIED-splash question**, open since 2026-08-06, and **the four legacy
   deepenings (5c)**, deferred since §111. Neither moved.
+- **The tug's fee is `min(fee, wallet)`, so a pilot with nothing pays nothing**
+  (§130, from playtest). §123 banded the fee at 0.30–0.50 of a loop; the
+  *effective* band for a broke pilot is zero. Debt, goods-as-fee and refusal are
+  each already refused with reasons at `charge_rescue`; the one shape that would
+  close it without breaking any of them is to spend the unpaid remainder against
+  the spill's claim clock, which already exists and which §128's LIGHT already
+  protects. **Not taken** — it is a design decision, not a defect.
+- **How much tilt a deep band should carry** (§130). The law is that it points
+  outward; the amount is reported per band and nothing asserts a target, so the
+  first play session past 5,200u is the instrument.
 
 ### And the closing figure was wrong before the sweep printed it
 
@@ -13603,3 +13614,114 @@ of a page from §111.
 And the number the whole horizon turns on was wrong on the day it opened. The
 leg that caught it was written in the same commit that shipped it, six hours
 earlier, by somebody who did not know they were building it for that.
+
+## 130. Two from a playtester (Horizon 12, after the close)
+
+Two reports arrived after §129 closed the horizon. One was a real bug with a
+cause nobody had looked for; the other was a question the code had already
+answered in writing, with one residual hole the answer does not cover.
+
+### 1. The deep counters got worse the deeper you flew
+
+> *"Beyond 5000u there's a reversion in the ports available... the player no
+> longer finds the rarest ports, but begins to see the common, low-levelled ones
+> familiar from closer regions. It makes it difficult to expand or improve the
+> ship out in the Fathoms and Unsounded."*
+
+**Confirmed, and the cause is structural rather than a typo.**
+`DeepPortDB.for_band` is **cumulative** — *"every archetype the expanse is deep
+enough to have built"* — so the pool grows with depth:
+
+| band | pool | newest archetype's share, uniform |
+|---|---|---|
+| 2 THE DRIFT | 3 | 33.3% |
+| 3 THE REACHES | 4 | 25.0% |
+| 4 THE QUIET | 5 | 20.0% |
+| 5 THE FATHOMS | 6 | 16.7% |
+| 6 THE UNSOUNDED | 7 | **14.3%** |
+
+**Under a uniform draw the reward for distance is inverted by construction** —
+the newest tier gets rarer the further out you go. That is the exact opposite of
+`for_band`'s own promise three lines above it: *"The good ones sit further out,
+so the reward for distance is a better counter."* Availability delivered on that
+promise; frequency reversed it.
+
+And it lands hardest where it hurts most. The deepest archetypes are not
+flavour: `deep_breakwater` (band 5) is where the **Mk III weapons** are bought,
+and `deep_lantern` (band 6) carries the defensive Mk III line and **the only
+Reactor Mk V in the game**. At band 6's `STATION_CHANCE` of 0.135, a 14.3%
+archetype share put the Far Lantern behind **one cell in fifty-two**.
+
+**Why it was worst in the starting system, and why the obvious fix was refused.**
+`station_weights` exists precisely to tilt this, and pyx02 and pyx03 both author
+it. **pyx01 cannot** — it is the system `_world_fingerprint` hashes, so
+`station_weights` is named in `SHARED_STREAM_KEYS` and forbidden there by
+`IDENTITY IS ADDITIVE`. The fix could not be data in pyx01, and the starting
+system — *"where the tutorial runs and where the manual's first hour sends
+you"*, in that same block's words — was permanently stuck with the uniform draw.
+
+### The fix is a derived default, and it is provably free of the control
+
+`DeepPortDB.distance_weights(band, kinds)` weights each archetype by **how
+recently it became available**: the shallowest row keeps 1.0 and each band
+deeper adds one. An authored row still wins; this is the default, not a floor.
+
+At band 6 that is `[1,2,2,3,4,5,6]` — the Far Lantern at **26.1%** against
+14.3%, and the band-1 Relay down to **4.3%**.
+
+**It starts at band 4, and that number is derived from the control rather than
+chosen.** `_world_fingerprint` hashes `plan_cell` — station archetype included —
+over cells `[-5, 5]` at `CELL` 64. Its furthest corner is
+`√2 × 6 × 64 = 543u`, less the shallowest authored bounds (40) = **503u**, which
+`BAND_EDGES` puts in **band 3**. So band 4 is the first band whose content can
+change without retiring a hash recorded before seams existed.
+`THE TILT CANNOT MOVE THE CONTROL` re-derives all of that from
+`FINGERPRINT_SPAN`, `CELL` and `bounds_of` rather than trusting this paragraph.
+
+Both halves of that are true and **the constraint is the binding one** — said in
+that order, because dressing a constraint up as a design reason is how a number
+stops being checkable.
+
+> `THE REWARD FOR DISTANCE IS A BETTER COUNTER` — at every tilted band, the
+> deepest tier is the single likeliest counter out there. The **law** is that it
+> points outward; **how much** is reported, never asserted (§114's posture).
+
+**What changes in a live save:** station *identities* in pyx01's bands 4–6 only.
+Positions do not move — `weighted_index` consumes the same `rng.randi()` — and
+pyx02 and pyx03 are untouched, because both author rows at every band the tilt
+reaches. It is one constant (`TILT_MIN_BAND`) to revert.
+
+### 2. What happens when the pilot cannot pay the tug
+
+> *"Should the player go into debt? Should the Authority require materials?
+> What if the player refuses?"*
+
+**All three are already refused, in writing, at `charge_rescue`:**
+
+> *"THE TUG TAKES WHAT YOU HAVE AND NEVER REFUSES. A rescue that could fail for
+> want of credits is a soft-lock with a story attached — there is no other way
+> out of a shield-zero ship — and a debt is a second currency the game does not
+> have. So it bills what is in the account and writes the rest off."*
+
+Each option breaks something specific. **Debt** is a second currency, and §123's
+`NOTHING INVOLUNTARY EXCEEDS A LOOP` exists precisely so an undeclinable charge
+cannot delete the session before it — a debt makes the charge exceed the wallet
+*by construction*. **Goods as the fee** would be the first goods-as-price in the
+game; §116 drew that line explicitly (*"THE GOODS ARE A GATE, NOT A PRICE"*).
+**Refusal** is the soft-lock: there is no other exit from a shield-zero hull.
+The toast already says so — the fee prints `(ALL YOU HAD)` when it could not be
+met in full.
+
+**The residual hole the answer does not cover, and it is real:** the write-off
+means the effective fee is `min(fee, wallet)`, so **a pilot with nothing pays
+nothing.** The deep death price is a wealth tax that vanishes for the pilot most
+likely to be dying. §123 banded the fee at 0.30–0.50 of a measured loop; the
+*effective* band for a broke pilot is zero.
+
+Whether that matters is a design question and it is **not** taken here. The
+position and the spill are still the other half of the price (§109, §118), so
+dying broke is not free in the currencies that are not credits — and the one
+shape that would close it without inventing debt or goods-as-price is to spend
+the unpaid remainder against the **spill's claim clock**, which is a mechanic
+that already exists and which §128's LIGHT already protects. Recorded in §64 as
+open rather than built at the end of a horizon that has closed.
