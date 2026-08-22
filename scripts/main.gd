@@ -27522,6 +27522,72 @@ func _run_colony_test() -> void:
 	print("[colony] THE MONUMENT ANSWERS A TAP unclaimed says '%s'; claimed says '%s'; both name themselves and their verb -> %s" % [
 		tap_text, claimed_text, "PASS" if tap_ok else "FAIL"])
 
+	# --- K2. AND THE TAP CAN REACH IT (§141) ---------------------------------
+	# §88 gave the instruments a rung on both tap ladders after a playtest said
+	# "no way to interact". A playtest said it AGAIN, and leg K above stayed
+	# green throughout -- because K calls on_tapped() directly and never asks
+	# whether a finger could have got there. The ladder was never the thing
+	# refusing; _pick was, at sixty pixels around a single anchor point on an
+	# object 140 units across whose centre is off frame at claim range.
+	#
+	# THIS IS THE CLAUSE K WAS MISSING, and it is worth naming as a shape: a leg
+	# that drives a verb through its own function tests the verb, not the reach.
+	# DEFECTS class 9 survived a green assertion for two horizons that way.
+	var rig_h := get_tree().get_first_node_in_group("camera_rig") as CameraRig
+	var hplayer: PlayerShip = get_tree().get_first_node_in_group("player")
+	var span_px := 0.0
+	var off_px := 0.0
+	var wide_hit := false
+	var mon: HyperStructure = open_mon if open_mon != null else claimed_mon
+	if rig_h != null and hplayer != null and mon != null:
+		# Parked at claim range with the leash off, which is the exact geometry
+		# the report came from: standing among the arms with the centre nowhere
+		# near where a finger lands.
+		var was_leash := rig_h.leash_enabled
+		rig_h.leash_enabled = false
+		hplayer.teleport_to(mon.global_position
+			+ Vector3(0.0, 0.0, HyperStructure.CLAIM_RANGE))
+		rig_h.global_position = mon.global_position
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var cam_h := get_viewport().get_camera_3d()
+		var mid_px := cam_h.unproject_position(mon.pick_anchor())
+		var edge_px := cam_h.unproject_position(mon.pick_anchor()
+			+ cam_h.global_transform.basis.x * mon.pick_radius())
+		span_px = mid_px.distance_to(edge_px)
+		# 0.7 of the half-span: comfortably ON the object and comfortably
+		# OUTSIDE the old sixty-pixel circle, so this cannot pass by accident on
+		# a rig that happens to be zoomed out.
+		off_px = span_px * 0.7
+		wide_hit = rig_h._pick(mid_px + Vector2(off_px, 0.0), "hyper") == mon
+		rig_h.leash_enabled = was_leash
+	print("[colony] AND THE TAP CAN REACH IT the instrument covers %.0fpx at claim range; a tap %.0fpx off its centre (against PICK_PX %.0f) lands on it=%s -> %s" % [
+		span_px, off_px, CameraRig.PICK_PX, str(wide_hit),
+		"PASS" if wide_hit and off_px > CameraRig.PICK_PX else "FAIL"])
+
+	# AND NOTHING ELSE WIDENED, which is the clause that protects the rest of
+	# the game rather than this object. A world radius is only safe because both
+	# ladders ask `hyper` near-last, so a contested tap resolves to the smaller,
+	# more specific thing first -- and that argument holds for exactly as long as
+	# `hyper` is the ONLY group claiming one. The moment a second does, the
+	# ordering has to be re-argued, and this is what says so.
+	#
+	# The list IS the ladders' own order, typed out because there is no single
+	# declaration of it to read; a group added to _select and _try_begin_hold
+	# and not to this line is a group this clause does not cover, which is the
+	# §96 lesson (both ladders in the same commit) asked of a third list.
+	var radius_groups: Array = []
+	for grp_v in ["hostiles", "crackable", "mineable", "dockable", "beacon",
+			"hyper", "unsounded", "farmark", "legend"]:
+		var grp := String(grp_v)
+		for gn_v in get_tree().get_nodes_in_group(grp):
+			if (gn_v as Node).has_method("pick_radius") \
+					and not radius_groups.has(grp):
+				radius_groups.append(grp)
+	print("[colony] AND NOTHING ELSE WIDENED %s claim(s) a world pick radius -> %s" % [
+		str(radius_groups) if not radius_groups.is_empty() else "nothing",
+		"PASS" if radius_groups == ["hyper"] else "FAIL"])
+
 	# --- §112. THE SOUNDED GROUND ---------------------------------------------
 
 	# WORKS ARE GATES, AND THE INVESTMENT IS A SINK. One purchase of each work

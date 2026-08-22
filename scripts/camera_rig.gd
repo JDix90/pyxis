@@ -451,8 +451,39 @@ func _pan(relative: Vector2) -> void:
 
 
 func _pick(screen_pos: Vector2, group: String) -> Node3D:
+	# §141. A TAP LANDS ON WHAT THE PLAYER CAN SEE, WHICH USED TO MEAN A POINT.
+	#
+	# This test was PICK_PX around ONE anchor for everything in the game, which
+	# is right for a hulk, a seam, a beacon or a mark -- they are all a few
+	# units across, so a sixty-pixel circle at their centre IS the object. It is
+	# exactly wrong for the biggest object in the game. A hyper-structure spans
+	# 140u; at claim range it fills the view, and its centre is usually off
+	# frame. §88 fixed this object's LADDER after a playtest reported "no way to
+	# interact", and the tap still could not land, because the ladder was never
+	# the thing refusing it.
+	#
+	# So a node may declare a WORLD radius instead of accepting a pixel one, and
+	# the pixels are measured rather than typed: project the anchor, project a
+	# point one radius to the camera's right, and the distance between them is
+	# what that object covers on THIS screen at THIS zoom. Self-correcting, no
+	# magic number, and it means "tap anywhere on the thing" literally.
+	#
+	# FLOORED AT PICK_PX, never below: a structure seen from four thousand units
+	# projects to a couple of pixels, and a big object must not become HARDER to
+	# hit than a small one just because it is far away.
+	#
+	# IT CANNOT STEAL A TAP, and the reason is the ladder rather than care. Both
+	# ladders ask each group in turn and take the first answer, with `hyper`
+	# second-to-last in one and last-but-three in the other -- the ordering
+	# comments there already argue that a contested tap near an instrument
+	# should resolve to the smaller, more specific thing. That ordering is what
+	# makes a wide radius safe here, and it was written two horizons before
+	# anything needed it to be.
 	var best: Node3D = null
-	var best_px := PICK_PX
+	# Starts at infinity rather than at PICK_PX: the limit is now per node, so a
+	# running best that doubled as the threshold would refuse every node whose
+	# own radius is wider than the default before it was ever compared.
+	var best_px := INF
 	for node in get_tree().get_nodes_in_group(group):
 		var n := node as Node3D
 		if not is_instance_valid(n):
@@ -460,8 +491,22 @@ func _pick(screen_pos: Vector2, group: String) -> Node3D:
 		var anchor: Vector3 = n.global_position
 		if n.has_method("pick_anchor"):
 			anchor = n.pick_anchor()
+		# BEHIND THE LENS IS NOT ON THE SCREEN. unproject_position happily
+		# projects a point behind the camera and returns a mirrored one, which
+		# with a radius this wide would answer taps aimed at empty sky on the
+		# opposite side -- a false hit that only appears once the radius is
+		# large enough to reach, i.e. only on the object this commit is for.
+		if _camera.is_position_behind(anchor):
+			continue
+		var lim := PICK_PX
+		if n.has_method("pick_radius"):
+			var edge := anchor + _camera.global_transform.basis.x \
+				* float(n.pick_radius())
+			if not _camera.is_position_behind(edge):
+				lim = maxf(PICK_PX, _camera.unproject_position(anchor)
+					.distance_to(_camera.unproject_position(edge)))
 		var px := _camera.unproject_position(anchor).distance_to(screen_pos)
-		if px < best_px:
+		if px < lim and px < best_px:
 			best_px = px
 			best = n
 	return best

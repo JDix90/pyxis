@@ -6520,6 +6520,17 @@ in-engine hybrid (prerendered died COSTED); first boot + replayable, one
 `seen_induction` key riding v28. Draft beat copy awaits the owner's read —
 the `UNSOUNDED-FRAGMENTS-DRAFT` ritual — before any spec or code.
 
+**Playtest fixes, after Horizon 14** — §141, the reach: a playtester could not
+interact with a hyper structure at all. `CameraRig._pick` was a 60px test around
+ONE anchor for every object in the game, which is right for a hulk and exactly
+wrong for a 140u object whose centre is off frame at claim range. A node may now
+declare a WORLD radius and the pixels are MEASURED against the live camera;
+`hyper` is the only claimant and a leg asserts that, because the ladder's
+near-last ordering is what makes a wide radius safe. §88's own leg stayed green
+throughout — it calls `on_tapped()` directly, so it tested the verb and never
+the reach. COLONYTEST 24 → 26. **OPEN, raised by the same session**: free look —
+the rig is pitch-locked at -55° with no yaw, and its zoom range is 9–34.
+
 **Horizon 14 — the middle** (opened 2026-08-22 after a play session;
 researched in `docs/HORIZON-14-RESEARCH.md`, specced in
 `docs/HORIZON-14-THE-MIDDLE.md`; **commit 1 BUILT** — §137, the sheet: reward
@@ -14646,3 +14657,83 @@ correct on their own, and the diff showed only the new one"* — and it would ha
 been a parse error taking the whole class registry down. Two commits, two
 catches: §138 wrote rule 7 after a sweep, and rule 4 paid for itself here before
 one started.
+
+
+## 141. The reach, not the rung (playtest fix)
+
+A playtester found a hyper structure, stood in it, and could not interact with
+it at all. §88 fixed that same complaint about that same object two horizons
+ago, and its fix was correct and is still working.
+
+### What was actually refusing
+
+Not the ladder. `CameraRig._pick`:
+
+    var px := _camera.unproject_position(anchor).distance_to(screen_pos)
+    if px < best_px:                       # PICK_PX = 60.0
+
+**A sixty-pixel circle around one anchor point, for every object in the game.**
+That is right for a hulk, a seam, a beacon or a mark — each a few units across,
+so the circle IS the object. A hyper structure spans 140u, and its own file says
+it "fills the view at claim range". Its one tappable point is a needle somewhere
+in the middle of a shape that owns the whole screen, and usually off frame
+entirely.
+
+> **A VERB CAN HAVE AN AFFORDANCE AND STILL BE UNREACHABLE. THE RUNG IS NOT THE
+> REACH.**
+
+The ladder's own comment reasons about the structure's size — but for the
+opposite concern, that a contested tap near an instrument should resolve to the
+smaller thing. Half the consequence was thought through and half was not.
+
+### The fix measures pixels rather than choosing them
+
+A node may declare a **world** radius. `_pick` then projects the anchor,
+projects a point one radius to the camera's right, and takes the distance
+between them as that object's limit on **this** screen at **this** zoom.
+Self-correcting, no magic number, and it means "tap anywhere on the thing"
+literally. `HyperStructure.pick_radius()` returns `SILHOUETTE_SPAN * 0.5` — the
+same constant the whole "findable at 1000u" argument is built on, so the tap
+target and the visibility claim cannot drift.
+
+Three details that are not decoration:
+
+- **Floored at `PICK_PX`.** A structure seen from four thousand units projects
+  to two pixels, and a big object must never become *harder* to hit than a small
+  one because it is far away.
+- **`best_px` starts at `INF`.** It used to double as the threshold; with a
+  per-node limit, a running best seeded at `PICK_PX` would refuse every node
+  whose own radius is wider before it was ever compared.
+- **Behind the lens is not on the screen.** `unproject_position` happily
+  projects a point behind the camera and returns a mirrored one. At sixty pixels
+  that never reached anything; at a radius this wide it would answer taps aimed
+  at empty sky on the opposite side. `is_position_behind` guards both the anchor
+  and the edge sample.
+
+### Why a wide radius cannot steal a tap
+
+Because of the ladder, not because of care. Both ladders ask each group in turn
+and take the first answer, with `hyper` near-last in each — and the ordering
+comments there already argue that a contested tap near an instrument should
+resolve to the smaller, more specific thing. **That ordering was written two
+horizons before anything needed it to be load-bearing, and it is what makes this
+safe.**
+
+It holds for exactly as long as `hyper` is the only group claiming a radius, so
+`AND NOTHING ELSE WIDENED` asserts precisely that. The moment a second group
+wants one, the ordering has to be re-argued, and a leg says so.
+
+### The leg that was green the whole time
+
+`THE MONUMENT ANSWERS A TAP` (§88) never wavered — because it calls
+`on_tapped()` **directly**. It tested the verb. Nothing tested whether a finger
+could get there.
+
+> **A LEG THAT DRIVES A VERB THROUGH ITS OWN FUNCTION MEASURES THE FUNCTION.**
+
+DEFECTS class 9 survived a green assertion for two horizons on that seam. `AND
+THE TAP CAN REACH IT` is the missing clause: park at claim range with the leash
+off — the exact geometry of the report — project the object, tap 0.7 of its
+half-span off centre, and assert the pick lands. It also asserts the offset
+exceeded `PICK_PX`, so it cannot pass by accident on a rig that happened to be
+zoomed out.

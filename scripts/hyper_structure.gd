@@ -210,6 +210,15 @@ func pick_anchor() -> Vector3:
 	return global_position
 
 
+func pick_radius() -> float:
+	# §141. HOW MUCH SCREEN THIS THING IS, in world units, so CameraRig._pick
+	# can measure the pixels instead of guessing them. Half the silhouette,
+	# which is the constant the whole "findable at 1000u" argument at the top of
+	# this file is already built on -- so the tap target and the visibility
+	# claim can never drift apart, and a re-scaled instrument moves both at once.
+	return SILHOUETTE_SPAN * 0.5
+
+
 func _player_in_range() -> bool:
 	var p := get_tree().get_first_node_in_group("player")
 	return p != null and global_position.distance_to(p.global_position) <= CLAIM_RANGE

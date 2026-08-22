@@ -347,10 +347,32 @@ the player to use it, so it does not exist.
 that the game never introduced.** The claim hold had been wired since hyper
 structures shipped; the select ladder just never picked `hyper`.
 
+**And the same object again, two horizons later (§141).** A playtest reported
+"completely unable to interact" with a hyper structure — the ladder from §88
+working perfectly, `on_tapped` answering every branch, and the tap still unable
+to land. `CameraRig._pick` was a **60-pixel test around a single anchor point**,
+applied to every object in the game. That is correct for a hulk, a seam, a
+beacon or a mark, all a few units across. It is exactly wrong for a 140-unit
+object whose centre is off frame at claim range.
+
+> **A VERB CAN HAVE AN AFFORDANCE AND STILL BE UNREACHABLE. THE RUNG IS NOT THE
+> REACH.**
+
+**Why the leg did not catch it.** COLONYTEST's `THE MONUMENT ANSWERS A TAP` was
+written for §88 and stayed green throughout, because it calls `on_tapped()`
+**directly**. It tested the verb; nothing tested whether a finger could get
+there. A leg that drives a verb through its own function measures the function.
+`AND THE TAP CAN REACH IT` (§141) is the missing clause: it projects the object,
+taps 0.7 of its half-span off centre, and asserts the pick lands.
+
 **Covered by:** §88 as a rule, and `EVERY RUNG SAYS WHAT IT BOUGHT` for skill
 tiers specifically (a rung with no perk string fails). §111 killed two rungs
-against it before they shipped. **No mechanical check exists for the general
-case** — it is caught by reading the surface a player actually touches.
+against it before they shipped. §141 adds `AND THE TAP CAN REACH IT` plus `AND
+NOTHING ELSE WIDENED`, which asserts that `hyper` is the only group claiming a
+world pick radius — the ladder's near-last ordering is what makes a wide radius
+safe, and that argument holds only while it is the only one. **No mechanical
+check exists for the general case** — it is caught by reading, and by tapping,
+the surface a player actually touches.
 
 ---
 
