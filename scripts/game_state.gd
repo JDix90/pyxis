@@ -97,6 +97,10 @@ const DEFAULT_LEDGER := {
 	# volume, this measures FIRSTS. A new key in this dict needs no save bump:
 	# the load-side merge is defaults-based.
 	"cells_filed": 0,
+	# §137. Sheets completed -- 4x4 blocks whose every readable cell was read.
+	# A new key in this dict needs no save bump: the load-side merge is
+	# defaults-based, which is what the comment above it says and why.
+	"sheets_filed": 0,
 	# §118. THE LEDGER'S FIRST LOSS COLUMN. Every other key here counts
 	# something the pilot DID; this counts something taken off them while they
 	# were somewhere else, and it is the only number in the game that does.
@@ -708,6 +712,25 @@ var marks_seen := {}
 # with no edge, so this one is bounded by nothing at all and would grow for as
 # long as somebody kept flying.
 var stations_seen := {}
+# §137. SHEETS FILED, keyed "system:sx:sz" -> the reading count that completed
+# it. A sheet is a 4x4 block of cells (DeepSpace.SUPERCELL, 256u square) whose
+# every readable cell this pilot has read.
+#
+# ITS OWN STORE, AND IT HAS TO BE. Completion is derivable from coverage --
+# until it is not: `survey_coverage` is a 400-cell WINDOW that evicts, so a
+# sheet finished a thousand cells ago would silently un-finish itself and pay
+# its premium a second time. That is §11's printer with a geometry, and the
+# only defence is to record the sheet as a fact about the SHEET.
+#
+# The value is the reading count rather than `true`, §96's lesson paid forward:
+# a store that holds a literal is a store that costs a version bump the day it
+# needs to hold anything else.
+var sheets_filed := {}
+# §132's cap and §132's eviction, for §132's reason -- sheets are rolled out of
+# an expanse with no edge, so this is bounded by nothing. The DEEPEST are kept:
+# a pilot who fills the file has been working outward, and the shallow sheets
+# are the ones they finished first and care about least.
+const SHEET_CAP := 24
 # Per system, and the eviction is the feature rather than a compromise: when the
 # file is full the SHALLOWEST entry goes. An archive of the deep that forgets
 # the near stuff first is the record a pilot actually wants, and it means the
@@ -1610,6 +1633,7 @@ func reset_to_starter() -> void:
 	deep_logs = {}
 	marks_seen = {}
 	stations_seen = {}
+	sheets_filed = {}
 	nursery = {}
 	apex_intel = {}
 	beacons = {}
@@ -3991,6 +4015,86 @@ func work_stands_in_system(system_id: String, work: String) -> bool:
 	return false
 
 
+func note_sheet_filed(sheet_key: String, readings: int, depth: float) -> bool:
+	# §137. True the FIRST time a sheet is completed, and the caller pays its
+	# premium on true and nothing on false -- `note_survey_filed`'s own contract,
+	# and the reason the premium cannot be farmed by re-reading a cell.
+	var parts := sheet_key.split(":")
+	if parts.size() != 3 or readings <= 0 or not is_finite(depth):
+		return false
+	if sheets_filed.has(sheet_key):
+		return false
+	sheets_filed[sheet_key] = readings
+	_evict_shallowest_sheet(String(parts[0]), depth)
+	note_log("SHEET FILED — %s" % sheet_key)
+	_queue_save()
+	return true
+
+
+func _evict_shallowest_sheet(system_id: String, _depth: float) -> void:
+	# §137. Bounded per SYSTEM, §132's shape. The keys carry supercell
+	# coordinates rather than a depth, so "shallowest" is derived from the key
+	# itself: a supercell's distance from the origin IS its depth, up to the
+	# system's bounds, which every sheet in one system shares.
+	while true:
+		var mine: Array = []
+		for k_v in sheets_filed:
+			if String(k_v).begins_with(system_id + ":"):
+				mine.append(String(k_v))
+		if mine.size() <= SHEET_CAP:
+			return
+		var nearest := String(mine[0])
+		for k2_v in mine:
+			if _sheet_radius(String(k2_v)) < _sheet_radius(nearest):
+				nearest = String(k2_v)
+		sheets_filed.erase(nearest)
+
+
+func _sheet_radius(sheet_key: String) -> float:
+	# Cells from the origin, squared-free and unit-free: only the ORDER matters,
+	# so this never needs to know DeepSpace.CELL and this autoload keeps §39's
+	# rule that it references no world class.
+	var parts := sheet_key.split(":")
+	if parts.size() != 3:
+		return 0.0
+	var sx := float(String(parts[1]).to_int())
+	var sz := float(String(parts[2]).to_int())
+	return sqrt(sx * sx + sz * sz)
+
+
+func sheets_filed_in(system_id: String) -> int:
+	var n := 0
+	for k_v in sheets_filed:
+		if String(k_v).begins_with(system_id + ":"):
+			n += 1
+	return n
+
+
+func _load_sheets_filed(saved: Dictionary) -> void:
+	# §137. Validated the way stations_seen is, and RIDES v28 WITH NO BUMP --
+	# defaults-not-branches: a file written before this existed has no key and
+	# loads as a pilot who has completed nothing, true of every pilot before it.
+	sheets_filed = {}
+	var systems: Dictionary = {}
+	for k_v in saved:
+		var k := String(k_v)
+		var parts := k.split(":")
+		if parts.size() != 3:
+			continue
+		if not SystemDB.exists(String(parts[0])):
+			continue
+		if not parts[1].lstrip("-").is_valid_int() \
+				or not parts[2].lstrip("-").is_valid_int():
+			continue
+		var n := int(saved[k_v])
+		if n <= 0:
+			continue
+		sheets_filed[k] = n
+		systems[String(parts[0])] = true
+	for sid_v in systems:
+		_evict_shallowest_sheet(String(sid_v), 0.0)
+
+
 func note_station_seen(bay_key: String, depth: float) -> bool:
 	# §132. True the first time a counter is filed. Bay keys are "system:cx:cz"
 	# -- three parts -- so a charted port id (no colon) and a colony key (two)
@@ -4686,6 +4790,7 @@ func save_dict() -> Dictionary:
 		"deep_logs": deep_logs,
 		"marks_seen": marks_seen,
 		"stations_seen": stations_seen,
+		"sheets_filed": sheets_filed,
 		"nursery": nursery,
 		"apex_intel": apex_intel,
 		"beacons": beacons,
@@ -5077,6 +5182,7 @@ func load_game() -> bool:
 	# key, gets {}, and loads as a pilot who has read no marks.
 	_load_marks_seen(data.get("marks_seen", {}))
 	_load_stations_seen(data.get("stations_seen", {}))
+	_load_sheets_filed(data.get("sheets_filed", {}))
 	# v26. Defaults-not-branches, the standing rule: a v25 file has no key, gets
 	# {}, and loads as a pilot who never took the ground -- true of every pilot
 	# before the nursery existed.

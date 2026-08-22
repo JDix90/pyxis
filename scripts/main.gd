@@ -1954,6 +1954,48 @@ func spill_claim_seconds(depth: float) -> float:
 	return SPILL_CLAIM_BASE + maxf(depth, 0.0) * SPILL_CLAIM_PER_DEPTH
 
 
+# §137. THE SHEET'S PREMIUM, and FLAT is the whole design rather than a
+# convenience. Every value in this game rises with depth -- salvage grades,
+# chart data, hulk loot, seam yield -- which is why the middle bands are never
+# optimal for anything and why a pilot's only motivation out there is to go
+# further. A premium that ALSO rose would change nothing.
+#
+# Flat, it is proportionally worth most exactly where income is lowest: a
+# quarter of a measured loop next to band-4 chart data, and pocket change next
+# to band-6 salvage. That is a counter-gradient bought without touching one
+# number in one value table -- `RICHER OUTWARD` is asserted twice and stays
+# green, which was the owner's own condition on this horizon.
+#
+# 0.25 of the loop PACINGTEST measures (§124), and priced against it rather
+# than felt: a sheet is roughly five readings inside a 256u block, so this is
+# what a deliberate detour is worth and not what a farm would pay.
+const SHEET_PREMIUM := 2800
+
+
+func _on_sheet_completed(sx: int, sz: int, readings: int) -> void:
+	# §137. The Authority pays for a CHART, not for notes. Scattered cells are
+	# readings; a block with every reading in it is a sheet, and this is the one
+	# place in the game that pays for finishing something rather than for going
+	# further.
+	var key := DeepSpace.sheet_key(system_id, sx, sz)
+	var centre := DeepSpace.cell_centre(
+		sx * DeepSpace.SUPERCELL + DeepSpace.SUPERCELL / 2,
+		sz * DeepSpace.SUPERCELL + DeepSpace.SUPERCELL / 2)
+	var depth := deep_space.depth_at(centre) if deep_space != null else 0.0
+	if not GameState.note_sheet_filed(key, readings, depth):
+		return
+	GameState.add_salvage(SHEET_PREMIUM)
+	GameState.note_ledger("sheets_filed", 1)
+	if hud:
+		hud.set_value(GameState.salvage)
+		# §58 AND §88 IN ONE LINE: names what completed, what it was worth, and
+		# WHERE -- a premium that arrives without saying which block earned it
+		# teaches a pilot nothing about the thing they are meant to repeat.
+		hud.show_toast("SHEET FILED — %s, %d READINGS · %s SALVAGE" % [
+			DeepSpace.band_name_in(system_id, depth), readings,
+			_comma_int(SHEET_PREMIUM)], Palette.GOLD)
+
+
 func charge_rescue(at: Vector3) -> int:
 	# Billed by whoever came and got you. Called from PlayerShip._emergency_warp
 	# beside spill_unread, and living here for the same reason that one does: the
@@ -2574,6 +2616,11 @@ func _load_system(id: String) -> void:
 	# quietly turn the expanse back on underneath its assertions.
 	if deep_space:
 		deep_space.set_generation(_deep_generation)
+		# §137. RE-CONNECTED WITH THE NODE, because DeepSpace is rebuilt with
+		# the system and a connection made once at boot would be to a freed
+		# node from the second warp onward -- the shape `_build_beacons` two
+		# lines up already works around.
+		deep_space.sheet_completed.connect(_on_sheet_completed)
 	# A new system is a new expanse, so its beacons are unheard again.
 	_broadcast_band = 0
 
@@ -7801,6 +7848,72 @@ func _run_cart_test() -> void:
 	print("[cart] THE CHART REMEMBERS surveyed before a rebuild=%s, after=%s, never-surveyed still false=%s (80 reverses 17) -> %s" % [
 		str(before_warp), str(after_warp), str(not never_warp),
 		"PASS" if before_warp and after_warp and not never_warp else "FAIL"])
+
+	# §137. A SHEET IS DERIVED, NOT COUNTED, and the two clauses are the two
+	# ways this could be a lie rather than two ways of asking whether it works.
+	#
+	# 1. THE REQUIREMENT IS WHAT THE BLOCK ACTUALLY HOLDS. A survey mast rides
+	#    on a DERELICT and a berth charts its own cell, so a sheet asking for
+	#    all sixteen cells would be asking for something the generator refuses
+	#    to provide -- barely a third of cells hold anything readable. Walked
+	#    against plan_cell rather than against a table, so a density retune
+	#    moves the requirement instead of breaking it.
+	# 2. AND IT RISES OUTWARD. More hulks and more berths deeper means more
+	#    readings a sheet, so a sheet is MORE work the further out it sits --
+	#    the counter-gradient this whole horizon is built on, and the reason
+	#    RICHER OUTWARD never had to move.
+	var sheet_bad := ""
+	var sheet_line := ""
+	# AN EMPTY BLOCK IS LEGAL, and saying so here is the difference between a
+	# law and a lucky seed. A supercell whose sixteen cells all rolled nothing
+	# asks for nothing, `note_surveyed` refuses to complete it (`want > 0`), and
+	# at band 6's density that is a 1-in-2,500 block rather than an impossible
+	# one. What must hold is that SOME band answers, and that no band ever asks
+	# for more than the block can hold.
+	var any_readings := false
+	for sb in range(3, DeepSpace.BAND_NAMES.size()):
+		# A supercell at this band's floor, on the axis so depth is unambiguous.
+		var lo: float = float(DeepSpace.BAND_EDGES[sb - 1]) \
+			if sb - 1 < DeepSpace.BAND_EDGES.size() else 5200.0
+		var ring := int((SystemDB.bounds_of(system_id) + lo + 200.0) / DeepSpace.CELL)
+		var sc0 := DeepSpace.supercell_of(ring, 0)
+		var want := deep_space.sheet_readings(sc0.x, sc0.y)
+		var have := deep_space.sheet_read(sc0.x, sc0.y)
+		if want < 0 or want > DeepSpace.SUPERCELL * DeepSpace.SUPERCELL:
+			sheet_bad = "band %d asks for %d readings" % [sb, want]
+		if have > want:
+			sheet_bad = "band %d has read %d of %d" % [sb, have, want]
+		if want > 0:
+			any_readings = true
+		sheet_line += "b%d:%d " % [sb, want]
+	print("[cart] A SHEET IS DERIVED, NOT COUNTED %sreadings per sheet (of %d cells), %s -> %s" % [
+		sheet_line, DeepSpace.SUPERCELL * DeepSpace.SUPERCELL,
+		sheet_bad if sheet_bad != "" else "every sheet asks for what its block holds",
+		"PASS" if sheet_bad == "" and any_readings else "FAIL"])
+
+	# §137. THE PREMIUM IS PAID ONCE, which is §11 with a geometry: a sheet
+	# whose completion re-fires on a re-read is a printer a pilot can stand
+	# still in. Driven through the STORE rather than through the world, because
+	# what is being asserted is the once-ever contract and not the survey verb.
+	GameState.sheets_filed = {}
+	var sk := DeepSpace.sheet_key(system_id, 3, 4)
+	var first_file := GameState.note_sheet_filed(sk, 5, 2000.0)
+	var second_file := GameState.note_sheet_filed(sk, 5, 2000.0)
+	# AND THE CAP KEEPS THE DEEPEST. Overfilled with NEAR sheets so a cap that
+	# dropped the oldest or the newest would still land on the right count and
+	# quietly lose the far one this pilot actually worked for.
+	var far_key := DeepSpace.sheet_key(system_id, 400, 400)
+	GameState.note_sheet_filed(far_key, 6, 9000.0)
+	for i in range(GameState.SHEET_CAP + 4):
+		GameState.note_sheet_filed(DeepSpace.sheet_key(system_id, i, 0), 4, 500.0)
+	var kept_far := GameState.sheets_filed.has(far_key)
+	var capped_n := GameState.sheets_filed_in(system_id)
+	print("[cart] THE SHEET'S PREMIUM IS PAID ONCE first file=%s, a second refuses=%s; %d sheet(s) against a cap of %d, the far one kept=%s -> %s" % [
+		str(first_file), str(not second_file), capped_n, GameState.SHEET_CAP,
+		str(kept_far),
+		"PASS" if first_file and not second_file
+			and capped_n == GameState.SHEET_CAP and kept_far else "FAIL"])
+	GameState.sheets_filed = {}
 
 	# 7b. THE STORE IS SYSTEM-QUALIFIED. The old dict keyed on bare Vector2i, so
 	#     pyx01's (7,-3) and pyx02's (7,-3) were one key — persist that and a

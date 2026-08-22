@@ -1,5 +1,10 @@
 class_name DeepSpace
 extends Node3D
+
+# §137. THE SHEET. Emitted when the last reading in a supercell is taken, so
+# Main can pay for it -- this node owns the world and Main owns the rules, the
+# split drop_beacon_here and charge_rescue already use.
+signal sheet_completed(sx: int, sz: int, readings: int)
 # Everything outside the charted system: the endless backdrop, and the distance
 # bands that decide how strange, how dangerous and how rewarding a place is.
 #
@@ -1457,6 +1462,61 @@ static func supercell_of(cx: int, cz: int) -> Vector2i:
 	return Vector2i(floori(float(cx) / float(SUPERCELL)), floori(float(cz) / float(SUPERCELL)))
 
 
+static func sheet_key(id: String, sx: int, sz: int) -> String:
+	# §137. "system:sx:sz" -- THREE parts, deliberately the same shape as a deep
+	# bay key, because §127 found what happens when a two-part key meets a
+	# three-part validator. A sheet key is a cell key one grid up.
+	return "%s:%d:%d" % [id, sx, sz]
+
+
+func sheet_readings(sx: int, sz: int) -> int:
+	# §137. HOW MANY READINGS THIS SHEET HOLDS, derived rather than stored --
+	# the expanse is a pure function (§17), so a supercell's contents are the
+	# same answer forever and cost zero bytes to know.
+	#
+	# A CELL IS READABLE ONLY IF SOMETHING IN IT CAN BE READ, and that is the
+	# finding that shaped this whole feature: a survey mast rides on a DERELICT
+	# and a berth charts itself on docking, so at band 4 barely a third of cells
+	# hold anything at all. "Survey every cell in the block" is not a hard goal,
+	# it is an impossible one -- roughly five of sixteen cells can be read.
+	#
+	# AND IT RISES WITH DEPTH: ~4.0 readings a sheet in the Reaches against
+	# ~6.6 in the Unsounded, because hulks and berths both thicken outward. A
+	# sheet is therefore MORE work the deeper it sits, which is a counter-
+	# gradient bought without moving one number in a value table -- RICHER
+	# OUTWARD is untouched and stays untouched.
+	var n := 0
+	for cx in range(sx * SUPERCELL, sx * SUPERCELL + SUPERCELL):
+		for cz in range(sz * SUPERCELL, sz * SUPERCELL + SUPERCELL):
+			if _cell_is_readable(cx, cz):
+				n += 1
+	return n
+
+
+func sheet_read(sx: int, sz: int) -> int:
+	# §137. How many of them this pilot has taken. The progress half is DERIVED
+	# too -- it is `survey_coverage` filtered to the block, so there is no
+	# progress counter anywhere that could disagree with the coverage store it
+	# is supposed to summarise.
+	var n := 0
+	for cx in range(sx * SUPERCELL, sx * SUPERCELL + SUPERCELL):
+		for cz in range(sz * SUPERCELL, sz * SUPERCELL + SUPERCELL):
+			if _cell_is_readable(cx, cz) and is_surveyed(Vector2i(cx, cz)):
+				n += 1
+	return n
+
+
+func _cell_is_readable(cx: int, cz: int) -> bool:
+	# The two things that grant coverage, asked of the PLAN rather than of the
+	# scene: a hulk (which carries the mast) and a deep berth (which charts its
+	# own cell on the first dock). Asking the plan means a sheet can be counted
+	# from anywhere in the game, including cells the player has never streamed.
+	var plan := plan_cell(cx, cz)
+	if not (plan["hulk"] as Dictionary).is_empty():
+		return true
+	return not (plan["station"] as Dictionary).is_empty()
+
+
 static func landmark_cell(id: String, sx: int, sz: int) -> Vector2i:
 	# Which cell of the supercell carries it. Pure, salted, and independent of
 	# every other roll, so adding or removing landmarks cannot move a rock.
@@ -2166,6 +2226,18 @@ func note_surveyed(key: Vector2i) -> void:
 	if absi(key.x) > 1 << 20 or absi(key.y) > 1 << 20:
 		return
 	GameState.note_survey_worked(cell_key(_id, key.x, key.y))
+	# §137. AND THE SHEET IS CHECKED AT THE ONE DOOR. Three call sites grant
+	# coverage (a mast, a berth, a founded colony) and every one of them comes
+	# through here, so completion is detected once rather than three times --
+	# the shape `mark_skill` uses for the same reason.
+	#
+	# The signal carries the answer rather than Main re-deriving it: a reading
+	# that completes a sheet is a fact this line already knows, and re-asking
+	# would be two walks of sixteen cells to agree with each other.
+	var sc := supercell_of(key.x, key.y)
+	var want := sheet_readings(sc.x, sc.y)
+	if want > 0 and sheet_read(sc.x, sc.y) >= want:
+		sheet_completed.emit(sc.x, sc.y, want)
 
 
 func is_surveyed(key: Vector2i) -> bool:

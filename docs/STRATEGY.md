@@ -6521,7 +6521,11 @@ in-engine hybrid (prerendered died COSTED); first boot + replayable, one
 the `UNSOUNDED-FRAGMENTS-DRAFT` ritual — before any spec or code.
 
 **Horizon 14 — the middle** (opened 2026-08-22 after a play session;
-researched in `docs/HORIZON-14-RESEARCH.md`; **nothing built**). The
+researched in `docs/HORIZON-14-RESEARCH.md`, specced in
+`docs/HORIZON-14-THE-MIDDLE.md`; **commit 1 BUILT** — §137, the sheet: reward
+for area rather than depth, on `SUPERCELL`'s existing grain, with a **flat**
+premium so it is worth proportionally most where income is lowest.
+`RICHER OUTWARD` untouched. CARTTEST 21 → 23, no save bump). The
 commission: 1,000–5,000u is boring, and the only motivation out there is to go
 further. The pass's measurement says why — **every per-band table in the game
 is monotone in depth**, with no exception across stations, hulks, loot, salvage
@@ -14178,3 +14182,76 @@ the contact sheet proved its geometry, and neither could see that a tween was
 overwriting a layout — because **no instrument in this repo watches one system
 fight another.** §129's observation stands at four findings now, and the eye is
 still doing work nothing else does.
+
+
+## 137. The sheet (Horizon 14, commit 1)
+
+The first answer to *"once I'm out there my only motivation is to go further"*,
+and it changes the **shape** of the payoff table rather than any number in it.
+
+A **sheet** is a `SUPERCELL` — a 4×4 block of 64u cells — whose every readable
+cell this pilot has read. Completing one pays a flat premium, once, ever.
+
+### Readable, not every cell — the finding that shaped it
+
+A survey mast rides on a **derelict**; a berth charts its own cell on the first
+dock. So a cell is surveyable only if it rolled a hulk or a station, and at band
+4 that is **31% of cells**. "Survey every cell in the block" is not a hard goal,
+it is an impossible one — the requirement had to be *what the block actually
+holds*, walked against `plan_cell`, or the feature would have shipped unachiev-
+able.
+
+| band | readable | readings per sheet |
+|---|---|---|
+| 3 | 25.1% | ~4.0 |
+| 4 | 31.2% | ~5.0 |
+| 5 | 36.3% | ~5.8 |
+| 6 | 41.2% | ~6.6 |
+
+**A sheet is more work the deeper it sits**, because hulks and berths both
+thicken outward. That is a counter-gradient bought without moving one number in
+one value table — the owner's condition on this horizon was that
+`RICHER OUTWARD` never breaks, and it did not have to.
+
+### The premium is flat, and that is the whole design
+
+`SHEET_PREMIUM := 2800` — a quarter of §124's measured loop — **and it does not
+scale with depth.** Every other value in this game rises outward, which is
+exactly why the middle bands are never optimal for anything. A premium that also
+rose would change nothing. Flat, it is worth proportionally most where income is
+lowest, which is the middle.
+
+> **A COUNTER-GRADIENT NEEDS NO NEW NUMBERS, ONLY A FLAT ONE.** Against a table
+> that rises everywhere, a constant is a slope.
+
+### And the landmark keeps its refusal
+
+`landmarks.gd` refuses to let a landmark pay out: *"an object that pays out
+stops being a landmark and becomes another errand."* Landmarks are placed **one
+per supercell** — so a completed sheet always contains exactly one, and it
+becomes the **name** of the region a pilot finished while paying nothing at all.
+The refusal is honoured rather than amended: it is somewhere to be, and the
+sheet is somewhere you finished.
+
+### Derived twice, stored once
+
+`sheet_readings()` and `sheet_read()` are both walks — against `plan_cell` and
+against `survey_coverage` — so **no progress counter exists that could disagree
+with the store it summarises.** `sheets_filed` is the one thing stored, and it
+has to be: `survey_coverage` is a 400-cell **window** that evicts, so a sheet
+finished a thousand cells ago would silently un-finish itself and pay its
+premium a second time. That is §11's printer with a geometry, and the only
+defence is to record the sheet as a fact about the sheet. Capped at 24 per
+system, §132's shape, evicting the **nearest** — a pilot who fills the file has
+been working outward.
+
+### The line that is actually the feature
+
+The mast prints `SHEET n OF m IN THIS BLOCK` on every reading but the last.
+The premium is the payment; **visible partial progress is the motivation.** A
+pilot who cannot see they are three readings into a block of five has no reason
+to take the fourth, and *"my only motivation is to go further"* is what that
+looks like from the cockpit.
+
+Silent on the last reading, because the completion toast is already speaking and
+two messages for one act is the double-report §120 found in a print line.
