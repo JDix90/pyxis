@@ -6520,6 +6520,27 @@ in-engine hybrid (prerendered died COSTED); first boot + replayable, one
 `seen_induction` key riding v28. Draft beat copy awaits the owner's read —
 the `UNSOUNDED-FRAGMENTS-DRAFT` ritual — before any spec or code.
 
+**Horizon 14 — the middle** (opened 2026-08-22 after a play session;
+researched in `docs/HORIZON-14-RESEARCH.md`; **nothing built**). The
+commission: 1,000–5,000u is boring, and the only motivation out there is to go
+further. The pass's measurement says why — **every per-band table in the game
+is monotone in depth**, with no exception across stations, hulks, loot, salvage
+grades, chart data, seams, debris, packs and traps, so the middle is never
+optimal for anything; and **no new noun appears between band 2 and band 6.**
+`Storm.band_floor()` is 5,200u, so the one environmental system begins exactly
+where the complaint ends. Two theories died in the pass: the Rival is not the
+cause (earliest claim at the band-4 floor is ~18.8 hours of play), and
+landmarks must not start paying out (`TASTE`, refused in writing, and the
+reason is right). Diagnosis: **the expanse is a gradient, not a geography** —
+the middle has scattered destinations and nothing that happens, accumulates, or
+rewards knowing it. Three directions researched as one horizon at the owner's
+call — reward area (the sheet, on `SUPERCELL`'s existing 4×4 grain, so a
+completed sheet always contains exactly one landmark and the landmark names it
+without paying), weather that gives rather than takes, and colony works that
+reach into the water — with **`RICHER OUTWARD` never broken** (owner's
+decision): the middle earns its place through coverage, knowledge and presence,
+and never through a better number.
+
 ### Built, despite what the docs said
 
 `HORIZON-3-COMMISSION.md` — **built**, and recorded as §28. `commission_db.gd`
