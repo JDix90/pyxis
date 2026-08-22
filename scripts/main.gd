@@ -21535,6 +21535,103 @@ func _run_feel_test() -> void:
 	print("[feel] MOTION GATE off:shake+punch silent=%s  on:both fire=%s -> %s" % [
 		str(shake_off), str(shake_on), "PASS" if shake_off and shake_on else "FAIL"])
 
+	# --- 2b. the view turns, and everything downstream of it follows (§142) ---
+	# THE ORBIT IS CLAMPED AND THE YAW WRAPS. Driven with absurd drags, because
+	# the failure this guards is a pitch that walked past the plane the game is
+	# drawn on -- at which point the starfield stops sitting behind anything and
+	# the world reads as a sheet of paper seen edge-on. Asserted against the
+	# constants rather than against numbers typed here, so a re-tuned range moves
+	# the bound with it.
+	rig.level_view()
+	# WAITED ON THE CLOCK, NOT ON A FRAME COUNT. The unwind is exponential in
+	# WALL TIME (that is the whole point of Smoothing), so a fixed number of
+	# process frames measures a different amount of easing on every machine the
+	# harness runs on -- and this suite's own first leg is about exactly that.
+	await get_tree().create_timer(1.0).timeout
+	var start_yaw := rig.view_yaw()
+	var start_pitch := rig.view_pitch()
+	for od in range(40):
+		rig._orbit(Vector2(400.0, 400.0))
+	var pitch_hi := rig.view_pitch()
+	for od2 in range(80):
+		rig._orbit(Vector2(-400.0, -400.0))
+	var pitch_lo := rig.view_pitch()
+	var yaw_sane := rig.view_yaw() >= 0.0 and rig.view_yaw() < 360.0 \
+		and is_finite(rig.view_yaw())
+	print("[feel] THE ORBIT IS CLAMPED pitch drove to %.1f and %.1f inside [%.0f, %.0f]; yaw %.1f wrapped into 0..360=%s (from %.1f/%.1f) -> %s" % [
+		pitch_hi, pitch_lo, CameraRig.PITCH_MIN, CameraRig.PITCH_MAX,
+		rig.view_yaw(), str(yaw_sane), start_yaw, start_pitch,
+		"PASS" if yaw_sane and pitch_hi <= CameraRig.PITCH_MAX + 0.001
+			and pitch_lo >= CameraRig.PITCH_MIN - 0.001
+			and pitch_hi > pitch_lo else "FAIL"])
+
+	# AND THE PAN GOES WHERE THE FINGER GOES. _pan maps screen motion to world
+	# motion, and it was world-space -- indistinguishable from view-space while
+	# the yaw was nailed to zero. Turned a quarter turn, an unrotated pan walks
+	# the camera along the wrong world axis while the player watches it go
+	# diagonally across the screen. Measured as the ANGLE BETWEEN two pans a
+	# quarter turn apart, which is the one number that cannot be right by
+	# accident: it has to be the yaw.
+	rig.level_view()
+	await get_tree().create_timer(1.0).timeout
+	var was_leash_f := rig.leash_enabled
+	rig.leash_enabled = false
+	var pan_from := rig.global_position
+	rig._pan(Vector2(100.0, 0.0))
+	var pan_level := rig.global_position - pan_from
+	rig._orbit(Vector2(-90.0 / CameraRig.ORBIT_YAW_PER_PX, 0.0))
+	pan_from = rig.global_position
+	rig._pan(Vector2(100.0, 0.0))
+	var pan_turned := rig.global_position - pan_from
+	rig.leash_enabled = was_leash_f
+	var pan_deg := rad_to_deg(Vector2(pan_level.x, pan_level.z).angle_to(
+		Vector2(pan_turned.x, pan_turned.z)))
+	print("[feel] AND THE PAN TURNS WITH IT the same drag a quarter turn later moves the rig %.1f° round from where it did before -> %s" % [
+		pan_deg, "PASS" if absf(absf(pan_deg) - 90.0) < 1.0 else "FAIL"])
+
+	# AND LEVELLING PUTS IT BACK. The unwind is the only way home from a turned
+	# view on either device, so a spring that stalled short would strand a
+	# player at an angle with no gesture left. Asserted to land EXACTLY on the
+	# defaults rather than near them: the easing is asymptotic, so "close
+	# enough" is what a snap-to at the end of it is for, and without that snap
+	# the flag would never clear.
+	rig._orbit(Vector2(700.0, 300.0))
+	rig.level_view()
+	# Two seconds against a unwind that reaches its snap threshold in about
+	# 1.1s from the worst turn this leg can produce -- margin, because a leg
+	# that measures an easing has to outlast it on the slowest frame rate the
+	# harness will ever see, not on the one it was written against.
+	await get_tree().create_timer(2.0).timeout
+	var levelled: bool = absf(rig.view_yaw()) < 0.0001 \
+		and absf(rig.view_pitch() - CameraRig.PITCH_DEG) < 0.0001 \
+		and not rig.is_levelling()
+	print("[feel] AND LEVELLING PUTS IT BACK yaw %.4f, pitch %.4f (default %.1f), still unwinding=%s -> %s" % [
+		rig.view_yaw(), rig.view_pitch(), CameraRig.PITCH_DEG,
+		str(rig.is_levelling()), "PASS" if levelled else "FAIL"])
+
+	# AND A TAP STILL LANDS ON A TURNED VIEW, which is the clause that would
+	# catch anything caching a screen position. _pick unprojects through the LIVE
+	# lens, so a turn should cost it nothing -- and §141 has just widened what it
+	# reaches with, off `_camera.global_transform.basis.x`, which is exactly the
+	# vector a yaw moves. Tapped at the projected anchor of a real node, before
+	# and after a turn.
+	var feel_mon: Node3D = get_tree().get_first_node_in_group("hyper")[0] \
+		if not get_tree().get_nodes_in_group("hyper").is_empty() else null
+	var hit_level := false
+	var hit_turned := false
+	if feel_mon != null:
+		var cam_f := get_viewport().get_camera_3d()
+		hit_level = rig._pick(cam_f.unproject_position(feel_mon.global_position),
+			"hyper") == feel_mon
+		rig._orbit(Vector2(-120.0 / CameraRig.ORBIT_YAW_PER_PX, 0.0))
+		await get_tree().process_frame
+		hit_turned = rig._pick(cam_f.unproject_position(feel_mon.global_position),
+			"hyper") == feel_mon
+		rig.level_view()
+	print("[feel] AND A TAP STILL LANDS ON A TURNED VIEW level=%s, a third of a turn round=%s -> %s" % [
+		str(hit_level), str(hit_turned),
+		"PASS" if hit_level and hit_turned else "FAIL"])
+
 	# --- 3. loop lengths, in frames rather than in bytes ----------------------
 	# `data.size() / 2` assumed uncompressed 16-bit frames; the importer writes
 	# QOA. Asserting the two disagree is what keeps this honest: if the import

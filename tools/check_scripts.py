@@ -363,6 +363,21 @@ def check_handle_infer(path: str):
     handles = set()
     for lineno, line in enumerate(open(path, encoding="utf-8"), 1):
         code = line.split("#", 1)[0]
+        # SCOPED TO THE FUNCTION, which check_shadow's `live` has done since it
+        # was written and this rule did not -- so a name used as an untyped
+        # handle anywhere in a file poisoned every later function that reused
+        # it, however that one had declared it.
+        #
+        # IT LAY DORMANT AND THEN CRIED WOLF ON LEGITIMATE CODE. main.gd
+        # declares `var rig := get_tree().get_first_node_in_group(...)` in five
+        # functions and `var rig: CameraRig = ...` in FEELTEST; the rule
+        # reported 0 problems for three commits and then flagged six correct
+        # lines the moment FEELTEST grew a `:=` off its properly typed local.
+        # §77's lesson, collected by the rule written to honour it: a checker
+        # that cries wolf is a checker nobody runs.
+        if FUNC.match(line):
+            handles = set()
+            continue
         m = NODE_HANDLE.match(code)
         # `as SomeClass` is the cast that supplies the type -- the same
         # concession `int(ceil(...))` gets from rule five.

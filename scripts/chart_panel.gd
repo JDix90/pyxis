@@ -590,9 +590,22 @@ func _refresh_plot() -> void:
 
 
 func _draw_plot() -> void:
-	# A TOP-DOWN PICTURE OF ONE SYSTEM'S DEEP, drawn in the same orientation the
-	# radar and the world use (world +x right, world +z down), so a cone that
-	# points down-left here points down-left when you fly it.
+	# A TOP-DOWN PICTURE OF ONE SYSTEM'S DEEP, drawn in WORLD orientation (world
+	# +x right, world +z down) and pinned there.
+	#
+	# §142 MADE THAT A CHOICE RATHER THAN A COINCIDENCE, and the sentence this
+	# comment used to end on is retired with the reason. It said a cone pointing
+	# down-left here points down-left when you fly it -- true only while the
+	# camera could not turn. It can now, so screen-down and world-down are two
+	# different directions, and this plot has to pick one.
+	#
+	# It picks the WORLD, because a map that rotated under the reader would be a
+	# map you cannot remember: the whole value of a chart is that the same
+	# region looks the same every time it is opened. What makes a bearing read
+	# off it flyable is not the screen agreeing -- it is the HDG readout and
+	# this plot's own compass letters (layer 1b), which are the same figures.
+	# The instrument that DOES follow the camera is the radar, and it does so
+	# for free: every marker is unprojected through the live lens.
 	if not _plot_is_useful(_selected):
 		return
 	var s := SystemDB.get_system(_selected)

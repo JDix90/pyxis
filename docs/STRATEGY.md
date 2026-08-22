@@ -6528,8 +6528,17 @@ declare a WORLD radius and the pixels are MEASURED against the live camera;
 `hyper` is the only claimant and a leg asserts that, because the ladder's
 near-last ordering is what makes a wide radius safe. §88's own leg stayed green
 throughout — it calls `on_tapped()` directly, so it tested the verb and never
-the reach. COLONYTEST 24 → 26. **OPEN, raised by the same session**: free look —
-the rig is pitch-locked at -55° with no yaw, and its zoom range is 9–34.
+the reach. COLONYTEST 24 → 26. **And §142, the free look** (same session): drag now TURNS
+the view (yaw free, pitch clamped −82°…−28° so the camera never looks along the
+plane the game is drawn on), zoom widens 9–34 → 6–80, and the pan keeps all its
+machinery — it moved to two fingers and the middle button rather than being
+taken away. `level_view` unwinds it, on a rebindable key and a two-finger tap.
+The radar and `_pick` followed for free (both unproject through the live lens);
+the chart stays WORLD-aligned by decision, and its orientation comment was
+amended rather than left resting on an assumption the code stopped supporting.
+FEELTEST 13 → 17. Rule 7 cried wolf on this commit's own legs and was scoped to
+the function to fix it. **OPEN**: nothing auto-levels the view on warp or dock —
+`level_view()` is public and unwired for that.
 
 **Horizon 14 — the middle** (opened 2026-08-22 after a play session;
 researched in `docs/HORIZON-14-RESEARCH.md`, specced in
@@ -14737,3 +14746,113 @@ off — the exact geometry of the report — project the object, tap 0.7 of its
 half-span off centre, and assert the pick lands. It also asserts the offset
 exceeded `PICK_PX`, so it cannot pass by accident on a rig that happened to be
 zoomed out.
+
+
+## 142. The free look (playtest request)
+
+> *"the player is forced to look at things from a single view and perspective."*
+
+They were. Pitch was a constant, yaw did not exist, and the zoom range was 9 to
+34 — under fourfold. Every object in this game had been seen from the same angle
+at roughly the same size since the rig shipped.
+
+### The turn, and why it needs none of the pan's machinery
+
+The rig's own Y is the yaw, `_pitch_node`'s X is the pitch — the ordinary orbit
+split. What is worth stating is the asymmetry it creates:
+
+> **PANNING CAN STRAND THE SHIP OFF SCREEN. TURNING CANNOT LOSE ANYTHING.**
+
+So the pan has inertia to bleed, a leash to catch it and a follow-lockout to
+yield to it, and the turn is three lines and a clamp. None of that machinery was
+touched — the pan keeps all of it and simply moved to the gesture each device
+family had spare.
+
+### Nothing that worked yesterday stopped working
+
+The gesture a player tries first should do the thing they asked for, so **drag
+turns**. The pan went to two fingers (touch) and the middle button (desktop),
+rather than being taken away. A middle *click* does nothing on purpose: browsers
+bind it to autoscroll on one platform and paste on another, so a verb hung on it
+is a verb some players never get — and this request came from a browser session.
+
+### What the clamps are for
+
+`PITCH_MIN -82`, `PITCH_MAX -28`, and neither is taste. Past about −25 the camera
+looks along the plane this whole game is drawn on: the starfield stops sitting
+behind anything and a flat XZ world reads as a sheet of paper seen edge-on. The
+top end stops short of straight down, where yaw becomes unreadable because
+nothing on screen has a side.
+
+Zoom goes 6 to 80 — thirteenfold, from under four. **The ceiling is legibility,
+not content**: at 80 the lens sees about 83 units down the tall axis and the
+live cell window is 320 units across, so the world does not run out until
+roughly four times further back than this allows. That the limit is a judgement
+is said out loud in the constant, because a number with no derivation behind it
+is one somebody will "fix" later.
+
+### The pan had to be rotated, and that is the one real coupling
+
+`_pan` maps screen motion to world motion. It was world-space, which is
+*indistinguishable* from view-space while the yaw is nailed to zero. Turned a
+quarter turn, an unrotated pan walks the camera sideways in the world while the
+player watches it go diagonally across the screen — the drag stops meaning "move
+what I am looking at" and starts meaning nothing.
+
+Its leg measures the **angle between two identical drags a quarter turn apart**,
+which is the one number that cannot come out right by accident: it has to be the
+yaw.
+
+### What followed for free, and what needed a decision
+
+- **The radar** follows with no change at all — every marker is unprojected
+  through the live lens, so it was always a screen-space instrument and simply
+  had nothing to rotate against before.
+- **`_pick`** likewise, which matters because §141 had just widened its reach
+  using `_camera.global_transform.basis.x` — exactly the vector a yaw moves. A
+  leg taps a real object before and after a third of a turn.
+- **The chart** needed a decision, and the old comment had to go. It claimed a
+  cone pointing down-left on the plot points down-left when you fly it — true
+  only while the camera could not turn. The plot stays **world**-aligned,
+  because a map that rotated under the reader is a map you cannot remember; what
+  makes a bearing off it flyable is the HDG readout and the plot's own compass
+  letters, not the screen agreeing. Left unamended it would have been DEFECTS
+  class 7 — copy resting on an assumption the code stopped supporting.
+
+### The way back
+
+`level_view()` unwinds on the same exponential as everything else in the file,
+yaw going the **short** way round — unwinding 350° the long way is a full spin
+the player did not ask for and cannot stop. Two doors: the `level_view` key
+(rebindable, and added to `REBINDABLE` in the same commit as the action — §96's
+rule, which this project has paid for twice) and a **two-finger tap**, a gesture
+that was previously nothing at all.
+
+Both halves of "tap" are measured rather than assumed: a pinch is a tap only if
+it was brief AND the fingers never travelled, with travel accumulated over the
+whole gesture because a pinch that went out and came back has still moved.
+
+The snap threshold is half a degree, and the reason is in the constant: an
+exponential never arrives, so without one `_levelling` would never clear — and a
+threshold tight enough to *look* rigorous (0.05°) takes half again as long to
+reach from a big turn as one nobody can see the difference of. Its leg waits on
+the **clock**, not on a frame count, because the unwind is exponential in wall
+time and a fixed frame count measures a different amount of easing on every
+machine — which is the thing FEELTEST's own first leg exists to assert.
+
+### And rule 7 cried wolf, on this commit's own code
+
+`check_handle_infer` flagged six lines in the new FEELTEST legs. All six were
+legal: `rig` is `var rig: CameraRig = ...` there. The rule collected its handle
+set **per file and never cleared it**, so `var rig := get_tree()
+.get_first_node_in_group(...)` in five earlier functions poisoned every later
+one that reused the name.
+
+Fixed by scoping the set to the function — which `check_shadow`'s `live` has
+done since the day it was written. Rule 7 borrowed that rule's shape and not its
+scoping. Red-verified in both directions against a synthetic file: it still
+flags the untyped-handle defect, and stays silent on a typed local, a cast, and
+a later function reusing a poisoned name.
+
+> **A CHECKER EARNS ITS KEEP IN BOTH DIRECTIONS, AND THOSE ARE TWO SEPARATE
+> RED-VERIFICATIONS.** §138 did the first and called it done.

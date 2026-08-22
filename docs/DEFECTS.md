@@ -55,6 +55,19 @@ which is load-bearing — without that guard the rule reported two lines in
 exactly the two §137 lines against the broken tree and 0 against the fixed one.
 Also `run_harness.sh --parse`.
 
+**And rule 7 cried wolf three commits later, which is the other half of the same
+lesson.** Its handle set was collected per FILE and never cleared, so a name
+used as an untyped handle anywhere poisoned every later function that reused it,
+however that one had declared it. `main.gd` declares `var rig :=
+get_tree().get_first_node_in_group(...)` in five functions and `var rig:
+CameraRig = ...` in FEELTEST; the rule reported 0 problems for three commits and
+then flagged six perfectly legal lines the moment FEELTEST grew a `:=` off its
+properly typed local. Fixed by scoping the set to the function, which
+`check_shadow`'s `live` had done since the day it was written — the rule
+borrowed that rule's shape and not its scoping. **A checker earns its keep in
+both directions: it has to catch the real one and stay silent on the rest, and
+those are two separate red-verifications.**
+
 **The first draft of rule 7 could not fail, and the reason is §77's shape
 exactly.** It asked whether the member was declared by some class in the
 project index, reasoning that a project member off a `Node` must be Variant.

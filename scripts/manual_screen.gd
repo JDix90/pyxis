@@ -224,6 +224,12 @@ func _build_flying() -> void:
 		_body.add_child(_row("TAP A BEARING", "Fly there."))
 		_body.add_child(_row("TAP A CONTACT", "Engage it. Your mounts fire on the locked target by themselves."))
 		_body.add_child(_row("TAP OVERCHARGE", "Discharge your fitted core."))
+		# §142. THE VIEW, on the touch page. Listed with the flying verbs rather
+		# than in a settings corner because turning the camera IS a flying verb
+		# now -- a pilot who cannot see round a hull cannot judge an approach.
+		_body.add_child(_row("DRAG", "Turn the view. The ship stays at the centre of it."))
+		_body.add_child(_row("PINCH", "Zoom. Two fingers also drag the view off the ship."))
+		_body.add_child(_row("TWO-FINGER TAP", "Put the view back the way it started."))
 	else:
 		# ASKED OF THE INPUT MAP, not typed. Every key on this page used to be a
 		# hand-written literal -- "W A S D", "SPACE", "I" -- which was false for
@@ -242,6 +248,10 @@ func _build_flying() -> void:
 			"Open the manifest. The same sheet the HOLD readout opens, and it works in flight."))
 		_body.add_child(_row(GameState.binding_name("chart"),
 			"Open the chart. Shut while docked and during an apex fight, exactly like the button."))
+		_body.add_child(_row("DRAG", "Turn the view. The ship stays at the centre of it."))
+		_body.add_child(_row("WHEEL", "Zoom. The middle button drags the view off the ship."))
+		_body.add_child(_row(GameState.binding_name("level_view"),
+			"Put the view back the way it started."))
 		_body.add_child(_row(GameState.binding_name("drop_beacon"),
 			"Drop a beacon where you are standing. Deep space only, %d in stock, and holding on one takes it back." % GameState.BEACON_STOCK))
 		# v21. The two verbs the chart adds to a beacon, taught beside the one

@@ -1494,7 +1494,14 @@ func shake_enabled() -> bool:
 # omission cannot survive a sweep either -- but the conflict loop is the reason
 # that assertion is worth having.
 const REBINDABLE := ["move_up", "move_down", "move_left", "move_right",
-	"ability", "cycle_target", "toggle_hold", "chart", "drop_beacon", "pause"]
+	"ability", "cycle_target", "toggle_hold", "chart", "drop_beacon", "pause",
+	# §142. THE VIEW KEY IS REBINDABLE LIKE EVERY OTHER, and it is listed in the
+	# same commit that added the action -- §96's rule, which this project has
+	# paid for twice: a verb wired into one list and not its sibling is a verb
+	# half the players cannot reach. Here the second list is the settings page,
+	# and the manual reads binding_name off the live InputMap either way, so all
+	# three agree by construction.
+	"level_view"]
 
 
 func _live_keys(action: String) -> Array:
