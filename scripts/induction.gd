@@ -60,6 +60,8 @@ const BEATS := [
 ]
 
 const COPY_WIDTH := 640.0        # the prompt label's own width (§121)
+const COPY_TOP := 0.62           # where the copy sits, as a fraction of height
+const COPY_BOTTOM_MARGIN := 48.0 # room the column keeps below itself
 const TAP_GUARD := 0.4           # seconds before a tap can advance -- the tap
                                  # that opened the menu must not eat beat one
 const REDUCED_DUR_MULT := 0.5
@@ -118,10 +120,24 @@ func _build() -> void:
 	_lines_box.add_theme_constant_override("separation", 10)
 	_lines_box.anchor_left = 0.5
 	_lines_box.anchor_right = 0.5
-	_lines_box.anchor_top = 0.62
-	_lines_box.anchor_bottom = 0.62
 	_lines_box.offset_left = -COPY_WIDTH * 0.5
 	_lines_box.offset_right = COPY_WIDTH * 0.5
+	# §134. THE COLUMN NEEDS A HEIGHT, and the first draft did not give it one.
+	# It anchored top AND bottom at COPY_TOP with no offsets, which is a rect
+	# ZERO PIXELS TALL -- and a Container hands its children the rect it has, so
+	# Godot squashed four sentences onto one baseline and the film printed its
+	# copy over itself. Nothing went red: every leg above asks what the film
+	# SAYS, and none of them asks where it puts it.
+	#
+	# Anchored to the bottom instead, with a margin, so the box has real room
+	# and the VBox lays out downward from COPY_TOP the way it always meant to.
+	_lines_box.anchor_top = COPY_TOP
+	_lines_box.anchor_bottom = 1.0
+	_lines_box.offset_bottom = -COPY_BOTTOM_MARGIN
+	# TOP-ALIGNED IN THAT ROOM. With height to spare a VBox would otherwise be
+	# free to distribute it; the copy starts at COPY_TOP and grows down, which
+	# is what every beat's composition was drawn around.
+	_lines_box.alignment = BoxContainer.ALIGNMENT_BEGIN
 	_root.add_child(_lines_box)
 
 	# §88: the exit is a control on screen, never a secret gesture. A tap
@@ -171,7 +187,12 @@ func _advance() -> void:
 		_finish()
 		return
 	_t = 0.0
+	# REMOVED BEFORE FREED. queue_free defers to the end of the frame, so a
+	# reader asking get_children() in between would see the previous beat's
+	# lines as well as this one's -- which is exactly what `THE COPY DOES NOT
+	# STACK` counts, and it would report an overlap that is really a ghost.
 	for c in _lines_box.get_children():
+		_lines_box.remove_child(c)
 		c.queue_free()
 	var lines: Array = (BEATS[_beat] as Dictionary)["lines"]
 	var labels: Array = []
@@ -188,6 +209,22 @@ func _advance() -> void:
 		labels.append(l)
 	UIKit.reveal_list(labels, _reduced)
 	_canvas.queue_redraw()
+
+
+func copy_rects() -> Array:
+	# §134. The copy AS LAID OUT -- [{y, h, text}] in screen space, deepest
+	# reason first: a leg cannot look at a screenshot, so the only way "the
+	# lines do not stack" becomes checkable is for the scene to hand over the
+	# rects the engine actually produced. Global rather than local, so a future
+	# change to where the column is parented cannot make an overlap look fine.
+	var out: Array = []
+	for c in _lines_box.get_children():
+		var l := c as Label
+		if l == null:
+			continue
+		var r := l.get_global_rect()
+		out.append({"y": r.position.y, "h": r.size.y, "text": l.text})
+	return out
 
 
 func _finish() -> void:

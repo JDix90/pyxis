@@ -37,7 +37,7 @@ carried in a `const BEATS` table the harness walks without a viewport.
   right treatment is its own decision; the film plays over whatever the title
   was playing. Recorded open in §64.
 
-## The four legs (TITLETEST 4 → 8; runs stay 82)
+## The legs (TITLETEST 4 → 9; runs stay 82)
 
 1. `THE BEAT TABLE IS WELL-FORMED` — five beats, durations 6–20s, total 40–90s,
    line lengths bounded.
@@ -57,3 +57,22 @@ carried in a `const BEATS` table the harness walks without a viewport.
 - No prerendered video (COSTED and declined at the fork).
 - No new music cue (open).
 - No quotation of any fragment — the deep keeps its own sentences.
+
+
+## Commit 2 — §134, the column with no height
+
+A playtest screenshot found every beat drawing its lines on one baseline: the
+copy column was anchored top and bottom at the same fraction with no offsets, a
+rect zero pixels tall, and a `Container` hands its children the rect it has.
+Fixed by anchoring the box to the bottom with a margin and pinning it to
+`ALIGNMENT_BEGIN`.
+
+Nine legs were green through it because **every one of them asks what the film
+says and none asked where it puts it**. The published contact sheet missed it
+for a sharper reason: it transcribed the *draw calls*, and the drawing was never
+wrong.
+
+5. `THE COPY DOES NOT STACK` — the scene exposes `copy_rects()`, the engine's
+   own laid-out rectangles, and the leg walks all five beats asserting every
+   line has real height and clears the one above it. A screenshot cannot be a
+   verdict; a `Rect2` can.

@@ -6497,9 +6497,12 @@ and commits 1–4 were re-sized against the measurement before they were built.
 
 **Horizon 13 — the induction** (opened 2026-08-22; researched in
 `docs/HORIZON-13-RESEARCH.md`; specced in `docs/HORIZON-13-THE-INDUCTION.md`;
-**commit 1 BUILT** — §133, the copy approved and shipped verbatim, TITLETEST
-4 → 8, no save shape change. Open: a music treatment, and the tableaux have
-not yet met an eye — the `PYXIS_SHOTS` stills are the loop). The commission: a lore-heavy
+**commits 1–2 BUILT** — §133 (the copy approved and shipped verbatim,
+TITLETEST 4 → 8) and §134 (the copy column had zero height and every beat drew
+its lines on one baseline — found by a playtest screenshot, not by a leg;
+`THE COPY DOES NOT STACK` now asserts the laid-out rects). TITLETEST 4 → 9, no
+save shape change. Open: a music treatment, and what the live system behind the
+scrim contributes — the title's own dial reads through it at 0.93). The commission: a lore-heavy
 cinematic introduction for new pilots — the war, the derelicts, the Authority's
 control — taking a supplied reference video's grammar (light narrates, one
 subject per shot, a founding myth in four beats). The research pass's finding:
@@ -13981,3 +13984,57 @@ the inverse of the horizon's usual defect and just as wrong.
 - **The visuals have not met an eye.** Every leg is green by construction;
   whether beat III *reads* is a Mac question, and the `PYXIS_SHOTS` stills are
   the loop for it.
+
+
+## 134. The column with no height (Horizon 13, commit 2)
+
+A playtest screenshot, not a leg, found this: **every line of every beat drew on
+one baseline.** Four sentences printed over each other, unreadable, in a film
+whose entire job is to be read.
+
+### The bug is one missing offset
+
+```gdscript
+_lines_box.anchor_top = 0.62
+_lines_box.anchor_bottom = 0.62      # ... and no offsets
+```
+
+Both anchors at the same fraction with default offsets is a rect **zero pixels
+tall**. A `Container` hands its children the rect it has, so Godot squashed
+every `Label` onto one line. Anchored to the bottom with a margin instead, the
+`VBox` lays out downward from `COPY_TOP` the way the compositions were drawn
+around — and `ALIGNMENT_BEGIN` keeps it there now that the box has room to
+distribute.
+
+### Why nine legs were green
+
+**All of them ask what the film SAYS. Not one asked where it puts it.**
+`THE BEAT TABLE IS WELL-FORMED` counts beats and characters;
+`THE INDUCTION QUOTES NO FRAGMENT` compares strings; `SKIP LEAVES NO TRACE`
+diffs state. Every one of them would pass with the copy drawn in a single
+illegible pile, because a `Rect2` was never a verdict anywhere in the suite.
+
+**And the contact sheet missed it for a sharper reason.** The preview published
+before this shipped transcribed `induction.gd`'s *draw calls* into SVG — every
+circle, arc and polygon, faithfully — and hand-positioned the copy from the same
+constants. It could not have caught this: **the drawing was never wrong. The
+layout was.** A preview that replicates one half of a renderer proves things
+about that half only, and saying so is the whole value of having built it.
+
+> **A LAYOUT FACT IS AS ASSERTABLE AS A NUMBER.** §124's family again: a
+> screenshot cannot be a verdict, so the scene hands over the rects the engine
+> produced (`copy_rects()`) and the leg checks the two things stacking breaks —
+> every line has real height, and every line clears the one above it.
+
+`THE COPY DOES NOT STACK` walks **all five beats** rather than one, because the
+longest copy is beat IV's Directive card and a single-beat check would have
+gone green on beat V while the Directive was still a pile.
+
+### What it says about the review loop
+
+The sweep is an excellent instrument for what the game *computes* and a blind
+one for what it *shows*. Three of this horizon's findings now come from three
+different places — a leg (§133's own arithmetic), a hand transcription (§130's
+distribution), and **a pair of screenshots** — which is §129's observation
+holding one horizon later: no two findings came from the same instrument, and
+the eye is one of the instruments.

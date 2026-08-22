@@ -14673,6 +14673,51 @@ func _run_title_test() -> void:
 		"PASS" if rm_done
 			and bool(GameState.setting("reduce_motion")) == rm_was else "FAIL"])
 
+	# 9. §134. THE COPY DOES NOT STACK, and this leg exists because the bug it
+	#    checks for SHIPPED. The copy column was anchored top and bottom at the
+	#    same fraction with no offsets -- a rect zero pixels tall -- so every
+	#    line of every beat drew on one baseline, four sentences over each
+	#    other. All eight legs above stayed green, because each of them asks
+	#    what the film SAYS and not one asks where it puts it.
+	#
+	#    THE LESSON IS THE ASSERTION'S SHAPE. A screenshot cannot be a verdict,
+	#    so the scene hands over the rects the engine produced and this checks
+	#    the two things stacking breaks: every line has real height, and every
+	#    line clears the one above it. Walked over ALL five beats, because the
+	#    longest copy is beat IV's and a single-beat check would have passed on
+	#    beat V while the Directive card was still broken.
+	induction.open(true)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var stack_bad := ""
+	var lines_seen := 0
+	var tightest := 1.0e9
+	for bi in range(Induction.BEATS.size()):
+		var rects: Array = induction.copy_rects()
+		var want: int = ((Induction.BEATS[bi] as Dictionary)["lines"] as Array).size()
+		if rects.size() != want:
+			stack_bad = "beat %d laid out %d of %d lines" % [bi, rects.size(), want]
+		for ri in range(rects.size()):
+			var r: Dictionary = rects[ri]
+			lines_seen += 1
+			if float(r["h"]) < 6.0:
+				stack_bad = "beat %d line %d is %.1fpx tall" % [bi, ri, float(r["h"])]
+			if ri == 0:
+				continue
+			var prev: Dictionary = rects[ri - 1]
+			var gap := float(r["y"]) - (float(prev["y"]) + float(prev["h"]))
+			tightest = minf(tightest, gap)
+			if gap < 0.0:
+				stack_bad = "beat %d line %d overlaps the line above by %.1fpx" % [
+					bi, ri, -gap]
+		induction.advance_beat()
+		await get_tree().process_frame
+		await get_tree().process_frame
+	print("[title] THE COPY DOES NOT STACK %d line(s) across %d beats, tightest gap %.1fpx, %s -> %s" % [
+		lines_seen, Induction.BEATS.size(), tightest,
+		stack_bad if stack_bad != "" else "every line has height and clears the one above it",
+		"PASS" if stack_bad == "" and lines_seen > 0 else "FAIL"])
+
 	# 4. NEW SURVEY HANDS OVER TO THE TUTORIAL. Four clauses, and the last is the
 	#    one with history: start_new_game calls tutorial.arm() BEFORE _load_system
 	#    precisely so the builder leaves the garrison out, and that ordering is
