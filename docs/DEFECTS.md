@@ -181,6 +181,34 @@ a plausible surface.
 
 ---
 
+## 2b. Two systems writing the same property
+
+**What happens.** Two mechanisms both own one value. Neither is wrong on its
+own; the one that writes more often wins, and it wins *silently* because
+nothing anywhere compares them.
+
+**Instance.** `UIKit.reveal_list` tweens a `Control`'s `position` to slide it
+in. Both call sites put their labels in a `VBoxContainer` — which owns its
+children's positions — and call the helper in the same frame the labels are
+added, before the container has sorted. So `from` reads `(0, 0)`, the tween
+drives every label **to** `(0, 0)`, and the tween beats the layout because a
+tween writes every frame and a container sorts only when asked. A column of
+copy collapses onto one corner. Live in `CAPTAIN'S LOG` since §118 and shipped
+in the induction (§136).
+
+**Why it hides.** Each half is individually correct and individually testable.
+The container lays out properly; the tween tweens properly. **No instrument in
+this repo watches one system fight another**, and both screenshots that found
+it came from a person looking at a screen.
+
+**The rule.** **Name the owner of every property that two things can write.**
+A container owns `position`; animate something else, or animate outside the
+container. And when an assertion covers an animated value, it must **say when
+it looks** — §136's leg sampled two frames in against a reveal that runs a
+third of a second, and would have passed on the broken build.
+
+---
+
 ## 5b. A validity rule strict enough to be wrong
 
 **What happens.** A loader validates a key against one format, a second format

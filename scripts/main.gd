@@ -14694,9 +14694,17 @@ func _run_title_test() -> void:
 	#    line clears the one above it. Walked over ALL five beats, because the
 	#    longest copy is beat IV's and a single-beat check would have passed on
 	#    beat V while the Directive card was still broken.
+	# §136. SAMPLED AFTER THE REVEAL SETTLES, and the first draft of this leg
+	# was not -- it waited two frames, and the reveal runs for
+	# T_STAGGER x lines + T_REVEAL, about a third of a second. So it would have
+	# read the container's layout in the window BEFORE the tweens yanked every
+	# label to (0,0), and gone green on the exact build the owner photographed.
+	# A leg that samples before the animation settles measures a moment nobody
+	# sees. The wait is derived from UIKit's own constants, so a retune there
+	# cannot leave this reading early again.
+	var settle := UIKit.T_STAGGER * 5.0 + UIKit.T_REVEAL + 0.1
 	induction.open(true)
-	await get_tree().process_frame
-	await get_tree().process_frame
+	await get_tree().create_timer(settle).timeout
 	var stack_bad := ""
 	var lines_seen := 0
 	var tightest := 1.0e9
@@ -14719,8 +14727,7 @@ func _run_title_test() -> void:
 				stack_bad = "beat %d line %d overlaps the line above by %.1fpx" % [
 					bi, ri, -gap]
 		induction.advance_beat()
-		await get_tree().process_frame
-		await get_tree().process_frame
+		await get_tree().create_timer(settle).timeout
 	print("[title] THE COPY DOES NOT STACK %d line(s) across %d beats, tightest gap %.1fpx, %s -> %s" % [
 		lines_seen, Induction.BEATS.size(), tightest,
 		stack_bad if stack_bad != "" else "every line has height and clears the one above it",

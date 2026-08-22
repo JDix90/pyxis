@@ -6498,10 +6498,12 @@ and commits 1–4 were re-sized against the measurement before they were built.
 **Horizon 13 — the induction** (opened 2026-08-22; researched in
 `docs/HORIZON-13-RESEARCH.md`; specced in `docs/HORIZON-13-THE-INDUCTION.md`;
 **commits 1–3 BUILT** — §133 (the copy approved and shipped verbatim),
-§134 (the copy column had zero height and every beat drew its lines on one
-baseline — found by a playtest screenshot, not by a leg) and §135 (the replay
-hid the door: the title's compass, taglines and buttons had been reading
-through the scrim on the replay path). TITLETEST 4 → 10, no save shape change.
+§134 (the copy column had zero height), §135 (the replay hid the door) and
+§136 (the real cause of the stacking: `reveal_list` tweened `position` inside a
+`VBoxContainer`, capturing `(0,0)` before the container sorted and then driving
+every label there — `CAPTAIN'S LOG` has done the same since §118, and the leg
+written to catch it sampled too early to see it). TITLETEST 4 → 10, no save
+shape change.
 Open: a music treatment, and whether the live 3D system behind the scrim should
 recede — §135 measured it as the world rather than the menu, and `SCRIM_BASE`'s
 alpha is the one constant if it should). The commission: a lore-heavy
@@ -14089,3 +14091,69 @@ the live system should recede too, that is one constant — `SCRIM_BASE`'s alpha
 
 Recorded this way round because the alternative was to ship the fix, let the
 owner run it, and have them find the ellipse still there.
+
+
+## 136. A container owns its children's positions (Horizon 13, commit 4)
+
+§134 gave the copy column a height and the lines still stacked. The height was
+never the whole bug — it was the half that was visible.
+
+### The real cause, and it is two years old
+
+`UIKit.reveal_list` slides each item in from the left:
+
+```gdscript
+var from := c.position          # read BEFORE the container has sorted
+c.position = from - Vector2(12.0, 0.0)
+tw.tween_property(c, "position", from, T_REVEAL)
+```
+
+Both call sites add their labels to a `VBoxContainer` and call it **in the same
+frame**. At that moment every child's `position` is still `(0, 0)` — the
+container queues its sort and runs it later. So `from` is `(0, 0)` for every
+item, the tween drives every item **to** `(0, 0)`, and the tween wins, because
+**a tween writes every frame and a container sorts only when something asks it
+to.**
+
+> **A CONTAINER OWNS ITS CHILDREN'S POSITIONS.** A tween that writes `position`
+> inside one is fighting the layout, and it wins — silently, at whatever value
+> it captured before the container ran.
+
+There is no container-safe slide: a `Control` has one position and the container
+owns it. So inside a container the reveal is the **stagger alone**, which is the
+half that carried the meaning anyway — the log's own comment asks for *"a beat
+between entries"*, not for movement.
+
+### And `CAPTAIN'S LOG` has been doing this since §118
+
+The second call site is `pause_menu._build_log`, whose `_body` is a
+`VBoxContainer` and which uses the identical pattern. **This is a code-derived
+finding, not an observed one** — the induction is what made anyone read the
+helper, and the log's page wants an eye on it now that the cause is named.
+
+That is the third time this horizon that fixing one thing exposed an older one
+in a place nobody was looking: §127's annex bay, §130's archetype tilt, and now
+this.
+
+### The leg written to catch this would have missed it
+
+§134 shipped `THE COPY DOES NOT STACK` for exactly this class of defect, and it
+sampled **two process frames** after each beat opened. The reveal runs for
+`T_STAGGER × lines + T_REVEAL` — about a third of a second. Two frames is
+0.033s. **The leg would have read the container's layout in the window before
+the tweens yanked the labels, and gone green on the build in the screenshots.**
+
+It now waits out the reveal, derived from `UIKit`'s own constants so a retune
+there cannot leave it reading early again.
+
+> **AN ASSERTION ABOUT AN ANIMATED THING MUST NAME WHEN IT LOOKS.** A leg that
+> samples before the animation settles measures a moment nobody sees — which is
+> §124's rule about unattributed figures, moved into the time axis.
+
+### What actually found it
+
+Screenshots, twice. §134's and these. The sweep proved the film's arithmetic,
+the contact sheet proved its geometry, and neither could see that a tween was
+overwriting a layout — because **no instrument in this repo watches one system
+fight another.** §129's observation stands at four findings now, and the eye is
+still doing work nothing else does.

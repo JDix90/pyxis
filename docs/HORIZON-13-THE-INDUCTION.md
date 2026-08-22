@@ -96,3 +96,23 @@ and making it also mean *is the door drawn* would give one word two jobs.
 3D system, not the compass — 129px of circular compass arc cannot produce a
 ~500×430 ellipse. This commit fixes the replay path; the backdrop on the first-
 boot path is `SCRIM_BASE`'s alpha and a separate decision.
+
+
+## Commit 4 — §136, a container owns its children's positions
+
+§134's height fix was necessary and not sufficient. The real cause:
+`UIKit.reveal_list` tweens each item's `position` to slide it in, and both call
+sites add their labels to a `VBoxContainer` **in the same frame** — before the
+container sorts. So `from` reads `(0,0)` for every label, the tween drives every
+label there, and the tween wins, because a tween writes every frame and a
+container sorts only when asked.
+
+The helper now slides only where `position` is ours to write. Inside a container
+the reveal is the stagger alone — the half that carried the meaning.
+
+**`CAPTAIN'S LOG` has the same defect and has since §118** (code-derived, not
+observed — that page wants an eye now the cause is named).
+
+**And §134's leg would have missed this.** `THE COPY DOES NOT STACK` sampled two
+process frames in; the reveal runs `T_STAGGER × lines + T_REVEAL` ≈ 0.33s. It
+now waits out the reveal, derived from `UIKit`'s constants.
