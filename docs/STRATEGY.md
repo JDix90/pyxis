@@ -6486,7 +6486,7 @@ and commits 1–4 are re-sized against the measurement before they are built.
 |---|---|---|---|
 | 0 | the death price: rescue on its own constants, banded [0.30, 0.50] of measured steady; repair recorded as band-blind | none | **BUILT** — §123; repair turned out never to have been involuntary, and the ceiling law was sampled rather than total |
 | — | the measurement: `RESCUE_FEE_FAR` 13,000→4,500, four documents of estimates corrected, and `_pacing_catalog_cost` given the `BERTHS` dict it had been missing since v24 | none | **BUILT** — §124; the band went red on its first sweep, which is the leg doing its job on the commit that added it — and the catalogue defect went the other way, a leg wrong where the prose was right |
-| 1 | the wider margin: REQ_MULT 5→8, jumps revisited | none | **PLANNED** — re-sized against 11,236 |
+| 1 | the wider margin: REQ_MULT 5→8, jumps revisited | none | **BUILT as its opposite** — §125; both halves died on research (the jumps clear by 2–4.5×, and the order desk is a convenience whose free competitor is the core loop), and the leg turned out to print the bias-free ceiling while asserting the bias-inclusive one. `REQ_MULT` stays at 5.0; the margin is now reported |
 | 2 | the ladder stands: `requires` staging, the four works re-priced | none | **PLANNED** — re-sized against 11,236 |
 | 3 | EXPANDED VAULTS + THE YARD | none | **PLANNED** — re-sized against 11,236 |
 | 4 | THE LIGHT + THE ARCHIVE | none | **PLANNED** |
@@ -12999,3 +12999,102 @@ The honest coda is that they only found one of the two. The estimate died to a
 leg; the leg's own under-count died to somebody adding up a data file by hand
 because a different number had just been proven wrong. An instrument is worth
 building and it is not a reason to stop reading.
+
+## 125. The margin the line did not report (Horizon 12, commit 1)
+
+Commit 1 was specced as **the wider margin**: `REQ_MULT` 5→8, jump fees
+revisited against the new rescue curve. The research pass killed both halves and
+found a third thing that was actually wrong.
+
+### The jumps: nothing to do, and §123 is why
+
+`THE RESCUE COSTS MORE THAN THE JUMP` was the reason to revisit them, and §123
+already answered it with room to spare. The rescue is 240 at the chart edge
+against a 120 jump, and 2,228 at `BEACON_JUMP_MAX_DEPTH` against a 500 one —
+**2× at the edge, 4.5× at the cap**, and jumps are refused past the cap
+entirely. Nothing is close to anything.
+
+As a *sink*, a 500-credit jump is **21 seconds** of a measured loop. Quadruple
+it and it is eighty-five. Against a 98-loop yard the whole channel is noise, and
+it is noise whose free competitor is flying — which is the game. **Dead.**
+
+### `REQ_MULT` 5→8 as a sink: dead, and backwards
+
+The dearest order in the game is `lens_unsounded` at 4,500 — **0.40 of a loop**.
+At 8× it is 7,200, or 0.64. `REQ_MAX_OPEN` is 3 and `REQ_DELAY` is five minutes,
+so the entire channel's concurrent exposure is under two loops.
+
+Worse than small, it is aimed the wrong way. The order desk's own row says what
+it is: *"a part sourced for you is dearer than one you found — that is the
+entire deal."* Its competitor is **going and finding the component**, which is
+`identify()`, which is the core loop; and `NO ORDER WITHOUT THE READ` already
+gates it to parts the pilot has handled. So the price falls entirely on the
+pilot who cannot yet afford the alternative to flying, and not at all on the one
+the commission is about. **A sink that bites the early pilot and not the late
+one is not the sink this horizon was asked for.**
+
+### What the pass found instead, by reading the leg rather than running it
+
+`THE ORDER DESK IS NOT A PRINTER` computes a ceiling from live constants:
+
+```
+(1+DRIFT 0.12)(1+PRESSURE 0.25)(shortage 2.2)(1-SPREAD 0.06)(bulk 1.06)(fence 1.45)
+  = 4.4499x base
+```
+
+then asserts, **per good**, that `requisition_price > base × bias_best ×
+ceiling_mult`. And then prints `ceiling_mult`.
+
+**It prints the bias-free ceiling and asserts the bias-inclusive one.** Today
+those are the same number by accident: *not one component carries a port bias
+anywhere in the game*, so every `bias_best` reads 1.0 and the printed 4.45×
+happens to be the asserted one.
+
+The first authored component bias breaks that in the one direction that matters.
+The line keeps printing 4.45× while the real worst-case sale climbs toward the
+order price — under-reporting the danger it exists to warn about, at the exact
+moment the danger becomes real. That is §124's rule owed by an assertion **one
+commit after the rule was written**, and it was found by reading the leg, not by
+it going red.
+
+### The fix, and why the price does not move
+
+The line now reports the **thinnest margin across all eleven components**, the
+good that owns it, and that good's actual worst-case sale:
+
+> `THE ORDER DESK IS NOT A PRINTER 11 components at 5.0x base; thinnest margin`
+> `1.124 on <good> (orders N, best legal sale M = 4.45x base), first loop: none`
+
+A boolean law says whether the desk is a printer **today**. The margin says how
+close it is, which is the only form of this number a content author can act on
+*before* the red. It is **1.124** — so a component bias of 1.124 at any counter
+is the single data edit that trips it, and now that number is on screen instead
+of being derivable by whoever thinks to divide.
+
+**`REQ_MULT` stays at 5.0.** With an honest margin report the tripwire is doing
+its job, and 8.0 would be a constant anchored to a feeling about headroom —
+§124's rule, one section old, applied to the commit that was going to break it
+first. §41 and §99's posture, again: the numbers are provisional, the laws are
+what is checked, and a red at the moment somebody authors a bias is the
+conversation working rather than failing.
+
+### A defect the fix nearly shipped
+
+The first draft tracked the worst good as `CommodityDB.short_name(gid_p)` and
+then fed that **display string** to `Market.requisition_price` and
+`CommodityDB.base_price`. Both take an **ID**. `requisition_price` floors at 1
+via `maxi`, so the line would have printed an order price of **1** beside a
+correct margin — and passed, because the assertion never touches those values.
+
+A measurement column reporting on nothing, added to the leg being edited to stop
+exactly that. `DEFECTS.md` class 5, caught by re-reading the diff. The names are
+now `worst_id` and `worst_name`, derived apart and above the format array, where
+the mismatch is visible.
+
+### What this leaves the horizon
+
+Commit 1 was the smallest lever in the plan and the measurement made it smaller.
+The sink table has **one entry between twenty minutes and thirteen hours** — a
+colony's four works at 2.5 loops — and nothing at all between 2.5 loops and 98.
+That gap is the whole commission, and commits 2–4 are the only things in the
+horizon that reach it. Nothing else was ever going to.

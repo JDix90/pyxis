@@ -8590,6 +8590,35 @@ func _run_store_test() -> void:
 		* worst_event * (1.0 - Market.FREEPORT_SPREAD) * bulk_best * fence_best
 	var printer := ""
 	var comps := 0
+	# §125. AND THE LINE REPORTS THE MARGIN IT ASSERTS, which the first draft of
+	# it did not. It printed `ceiling_mult` -- the bias-FREE ceiling -- while the
+	# loop below asserts against `bias_best * ceiling_mult`, PER GOOD. The two
+	# agree today only by accident: not one component carries a port bias
+	# anywhere in the game, so every bias_best reads 1.0 and the printed figure
+	# happens to be the asserted one.
+	#
+	# The first authored component bias breaks that silently, in the one
+	# direction that matters: the line would keep printing 4.45x while the real
+	# worst-case sale climbed toward the order price, under-reporting the danger
+	# it exists to warn about at the exact moment the danger became real. That is
+	# §124's rule -- A NUMBER IN PROSE STATES WHAT PRODUCED IT -- owed by an
+	# assertion one commit after the rule was written, and found by reading this
+	# leg rather than by it going red.
+	#
+	# SO THE THINNEST MARGIN IS THE MEASUREMENT. A boolean law says whether the
+	# desk is a printer TODAY; the margin says how close it is, which is the only
+	# form of this number a content author can act on before the red. It is
+	# 1.124 as this ships -- REQ_MULT 5.0 against a 4.45x worst-case sale -- so a
+	# component bias of 1.124 at any counter is the edit that trips it.
+	#
+	# AND THE GOOD IT NAMES TODAY MEANS NOTHING, which is worth saying because a
+	# named good reads as a singled-out one. Every margin is identical while
+	# every bias is 1.0, so the row reported is simply the first component in
+	# CommodityDB.ids() order. The moment a bias exists the name starts carrying
+	# information, and that is the only condition under which it should be read.
+	var worst_margin := 0.0
+	var worst_id := ""
+	var worst_sale := 0.0
 	for gid_pv in CommodityDB.ids():
 		var gid_p := String(gid_pv)
 		if not CommodityDB.is_component(gid_p):
@@ -8604,11 +8633,26 @@ func _run_store_test() -> void:
 			bias_best = maxf(bias_best,
 				Market.port_bias(DeepPortDB.by_id(String(a_pv)), gid_p))
 		var best_sale := base_p * bias_best * ceiling_mult
+		var margin := float(Market.requisition_price(gid_p)) / maxf(best_sale, 0.001)
+		if worst_id == "" or margin < worst_margin:
+			worst_margin = margin
+			worst_id = gid_p
+			worst_sale = best_sale
 		if float(Market.requisition_price(gid_p)) <= best_sale and printer == "":
 			printer = "%s orders at %d, best legal sale %.0f" % [
 				CommodityDB.short_name(gid_p), Market.requisition_price(gid_p), best_sale]
-	print("[store] THE ORDER DESK IS NOT A PRINTER %d components, order at %.1fx base against a worst-case sale of %.2fx, first loop: %s -> %s" % [
-		comps, Market.REQ_MULT, ceiling_mult,
+	# Derived here rather than inside the format array: `worst_id` is an ID and
+	# the name beside it is a DISPLAY string, and the first draft of this line
+	# fed the display string to `requisition_price`. It would have printed a
+	# price of 1 (maxi's floor on a base_price of 0 for an unknown id) beside a
+	# correct margin, and passed -- a measurement column reporting on nothing,
+	# in the leg being edited to stop exactly that.
+	var worst_name := CommodityDB.short_name(worst_id) if worst_id != "" else "none"
+	var worst_order := Market.requisition_price(worst_id) if worst_id != "" else 0
+	var worst_x := worst_sale / maxf(float(CommodityDB.base_price(worst_id)), 1.0) \
+		if worst_id != "" else 0.0
+	print("[store] THE ORDER DESK IS NOT A PRINTER %d components at %.1fx base; thinnest margin %.3f on %s (orders %d, best legal sale %.0f = %.2fx base), first loop: %s -> %s" % [
+		comps, Market.REQ_MULT, worst_margin, worst_name, worst_order, worst_sale, worst_x,
 		printer if printer != "" else "none",
 		"PASS" if printer == "" and comps > 0 else "FAIL"])
 
