@@ -6557,8 +6557,14 @@ reported beside it, unbounded by design) so no expected total is ever
 hand-tracked again. **OPEN, from the same review**: the tether channel caps at
 1.5, so the strongest tide this mechanism can ever produce is +14% on a Cruise
 Mk II fit — whether 0.9 is felt is a play question, but the current door cannot
-be tuned out of the problem. Remaining review items: telemetry fields + a
-playtest pass, a sheet-loop PACINGTEST floor, and a SURFACES contact sheet.
+be tuned out of the problem. **§145 BUILT** — turning the recorder on: `telemetry.gd`
+has been switchable since Horizon 3 and never read once, so the row gains
+`sheets_filed` and `tide_seconds` (the two facts Horizon 14 could not answer),
+`tools/read_telemetry.py` makes reading it one command, and TIDETEST asserts the
+clock only runs while the water carries you. **AWAITING THE OWNER**: three
+sessions with SHARE PLAY DATA on — the pass deferred since Horizon 1, which
+gates the sheet-loop floor and the tide's door. Remaining: a sheet-loop
+PACINGTEST floor, and a SURFACES contact sheet.
 
 **Horizon 14 — the middle** (opened 2026-08-22 after a play session;
 researched in `docs/HORIZON-14-RESEARCH.md`, specced in
@@ -15055,3 +15061,66 @@ committed by the tool built to prevent it.
 SAVETEST's verdicts are reported **beside** the bound rather than folded into it
 or dropped. A quarter of the sweep's runs silently missing from its own summary
 is the same defect one level up.
+
+
+## 145. Turning the recorder on (review item 4)
+
+`telemetry.gd` has existed since Horizon 3. It is written, documented, bounded
+at 500 rows, switchable from the pause menu as **SHARE PLAY DATA**, and it had
+**never been read once**. Its own header still says the phone-performance and
+playtest pass deferred from Horizon 1 *"has still never run"* — a sentence now
+eleven horizons old.
+
+Nothing here builds a switch, because the switch was already there. What was
+missing was two facts and a way to look.
+
+### The two questions Horizon 14 could not answer
+
+The existing row already settles the question the file was built for:
+`deepest_depth` beside `minutes` answers *"did anyone reach THE QUIET in one
+sitting?"* Neither says whether the **middle's own systems were used** once out
+there — which is the entire premise of the last horizon, and the thing three
+green harnesses cannot see.
+
+So the row gains `sheets_filed` and `tide_seconds`. Both are cumulative per
+**run**, matching the `minutes` they sit beside, so a row means one consistent
+kind of thing rather than two.
+
+`GameState.tide_seconds` rides v28 on defaults-not-branches (§137's precedent)
+and is accumulated in `main._process` where the HUD **already asks**
+`tide.is_riding()` — one `+= delta`, no second reader of the same fact. It sits
+**outside** the `if hud` guard, deliberately: the tide carries a hull whether or
+not a cockpit is drawing, and an accumulator gated on the HUD would under-report
+every harness and every second the chrome is hidden.
+
+The file's own law is untouched: **nothing in the game reads telemetry.** These
+are writes.
+
+### A counter that always ran would be worse than none
+
+`AND THE CLOCK ONLY RUNS WHILE IT CARRIES YOU` asserts it on the fixture that
+already exists — §139's three passes ride, cross and fight the same water for
+two seconds each, so the accumulator must have moved for exactly the first. A
+clock that ran regardless would report every session as tide-heavy and answer
+§139's open question with a confident lie, which is §144's whole subject.
+
+### And a way to look
+
+`tools/read_telemetry.py`. The friction was never the recording — it was that
+reading meant finding Godot's `user://` by hand and squinting at JSON. It finds
+the file on all three platforms, prints a row per session, and says where to
+turn the setting on when there is nothing there yet.
+
+**It refuses to grade.** No thresholds, no verdicts, no averages across rows —
+every question these numbers raise ("is that enough minutes?", "is one sheet a
+lot?") is a design question the reader answers. §144's lesson applied to a new
+tool on the day it was written: a number wearing a verdict it never earned is
+worse than no number. It also says *cumulative per run, not per sitting* in its
+own output, because that is the one way its rows are easy to misread.
+
+### What this does not do
+
+It does not answer anything yet. **Three sessions have to be played**, and that
+is the owner's to do — which is precisely why the instrument sat unread for
+eleven horizons, and why the two questions it now carries are worth the four
+lines they cost.

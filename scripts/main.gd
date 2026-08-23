@@ -3052,6 +3052,15 @@ func _process(delta: float) -> void:
 	# instrumentation. set_deep_tag ignores sub-unit changes, so this is a float
 	# compare per frame rather than a string build.
 	var depth := deep_depth()
+	# §145. THE ONE FACT §139's DESIGN RESTS ON AND NO ASSERTION CAN REACH.
+	# TIDETEST proves the water pushes; only a person can say whether it was
+	# worth steering for, and this is how that stops being a memory.
+	#
+	# OUTSIDE the `if hud` below, deliberately: the tide carries a hull whether
+	# or not a cockpit is drawing, and an accumulator gated on the HUD would
+	# quietly under-report every harness and every second the chrome is hidden.
+	if is_instance_valid(tide) and tide.is_riding():
+		GameState.tide_seconds += delta
 	if hud:
 		# THROTTLED, not per frame: _find_apex walks a group and allocates an
 		# array to do it, and the answer cannot meaningfully change in a
@@ -30920,11 +30929,14 @@ func _run_tide_test() -> void:
 	# shape, a wrong call form the static checker cannot see, and this file has
 	# already paid for that once this horizon.
 	var rode: Array = []
+	# §145. The telemetry clock, sampled per run off the same three passes.
+	var rode_clock: Array = []
 	for heading_v in [along, -along, across]:
 		var heading: Vector3 = heading_v
 		player.teleport_to(stand)
 		player.clear_tether()
 		player.has_move_target = false
+		var clock_was := GameState.tide_seconds
 		# 120 frames is two seconds. PUSH is 0.62 u/s/s against a DRIFT of 0.9,
 		# so terminal arrives at 1.45s -- the margin is there so this measures
 		# the CLAMP rather than the ramp, and a slower push goes red instead of
@@ -30934,6 +30946,7 @@ func _run_tide_test() -> void:
 			player.velocity = heading * 3.0
 			await get_tree().physics_frame
 		rode.append((player._tether_vel as Vector3).length())
+		rode_clock.append(GameState.tide_seconds - clock_was)
 
 	var with_it := float(rode[0])
 	var against_it := float(rode[1])
@@ -30943,6 +30956,20 @@ func _run_tide_test() -> void:
 	# and fighting pay nothing at all. There is no escape arithmetic in this
 	# suite because there is nothing to escape -- the tide has no way to reach
 	# the channel unless the hull is already agreeing with it.
+	# §145. AND THE CLOCK ONLY RUNS WHILE IT IS CARRYING YOU. The playtest
+	# instrument, asserted where the fixture already exists: the three runs
+	# above rode, crossed and fought the same water for two seconds each, so
+	# the accumulator has to have moved for exactly the first one.
+	#
+	# A COUNTER THAT RAN ALWAYS WOULD BE WORSE THAN NO COUNTER -- it would
+	# report every session as tide-heavy and answer §139's open question with a
+	# confident lie, which is §144's whole subject.
+	var tide_clock_ok := rode_clock[0] > 1.0 and rode_clock[1] < 0.05 \
+		and rode_clock[2] < 0.05
+	print("[tide] AND THE CLOCK ONLY RUNS WHILE IT CARRIES YOU riding %.2fs, athwart %.2fs, against %.2fs over 2s each -> %s" % [
+		rode_clock[0], rode_clock[2], rode_clock[1],
+		"PASS" if tide_clock_ok else "FAIL"])
+
 	print("[tide] IT GIVES AND IT NEVER TAKES riding %.3f (DRIFT %.2f), athwart %.3f, against %.3f -> %s" % [
 		with_it, Tide.DRIFT, athwart, against_it,
 		"PASS" if absf(with_it - Tide.DRIFT) < 0.05 and athwart < 0.05

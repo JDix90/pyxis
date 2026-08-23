@@ -223,6 +223,14 @@ var run_seed := 0
 # v4: the economy.
 var cargo := {}                # good id -> units held
 var played_seconds := 0.0      # drives market drift; never wall-clock
+# §145. Seconds this RUN has spent actually carried by a tide. Written by Main
+# where the HUD already asks, read by nothing in the game -- it exists so a
+# playtest can answer "was the tide used?" with a number instead of a memory,
+# which is the one question §139's whole design rests on and no assertion can
+# reach. Cumulative per run and persisted, matching played_seconds, so the
+# telemetry row it feeds means the same kind of thing the `minutes` beside it
+# does. Rides v28 on defaults-not-branches, §137's precedent.
+var tide_seconds := 0.0
 var docked_at := ""            # port id, so a reload resumes docked
 var market_pressure := {}      # "port|good" -> -0.25..0.25
 # v27. THE SHELF. "<counter>|good" -> {d: units the player has taken, t: the
@@ -1677,6 +1685,7 @@ func reset_to_starter() -> void:
 	apex_down = []
 	cargo = {}
 	played_seconds = 0.0
+	tide_seconds = 0.0
 	docked_at = ""
 	market_pressure = {}
 	market_stock = {}
@@ -4822,6 +4831,7 @@ func save_dict() -> Dictionary:
 		"run_seed": run_seed,
 		"cargo": cargo,
 		"played_seconds": played_seconds,
+		"tide_seconds": tide_seconds,
 		"docked_at": docked_at,
 		"market_pressure": market_pressure,
 		"market_stock": market_stock,
@@ -5134,6 +5144,7 @@ func load_game() -> bool:
 		if CommodityDB.exists(id):
 			cargo[id] = int(data["cargo"][good])
 	played_seconds = float(data.get("played_seconds", 0.0))
+	tide_seconds = float(data.get("tide_seconds", 0.0))
 	docked_at = str(data.get("docked_at", ""))
 	market_pressure = {}
 	for k in data.get("market_pressure", {}):

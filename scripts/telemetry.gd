@@ -59,6 +59,19 @@ static func record_session(seconds: float) -> void:
 		"deepest_depth": int(led.get("deepest_depth", 0)),
 		# Context for reading the four above: a run that bought the whole catalog
 		# and one that bought nothing produce very different hull counts per hour.
+		# §145. THE TWO HORIZON 14 COULD NOT ANSWER. `deepest_depth` and
+		# `minutes` above already settle "did anyone reach THE QUIET in one
+		# sitting?" -- the question this file was built for. Neither says
+		# whether the MIDDLE's own systems were used once out there, which is
+		# the whole premise of the last horizon and the thing three green
+		# harnesses cannot see.
+		#
+		# A sheet filed is a block worked to completion; tide seconds are time
+		# spent actually carried. Both are cumulative per RUN, like the
+		# `minutes` they sit beside, so a row means one consistent kind of
+		# thing rather than two.
+		"sheets_filed": GameState.sheets_filed.size(),
+		"tide_seconds": int(GameState.tide_seconds),
 		"salvage": GameState.salvage,
 		"modules_owned": GameState.owned.size(),
 		"commission_claimed": GameState.commission_claimed,
