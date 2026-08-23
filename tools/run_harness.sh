@@ -324,6 +324,20 @@ save_md5() {
 BEFORE="$(save_md5)"
 
 pass=0; fail=0; errs=0; runs=0; short=0
+# §144. THE SWEEP'S OWN BOUND, accumulated so the footer can state it. The
+# per-tag gate below has existed since §113 and works; what did not exist was
+# any figure in the SUMMARY, which is why the expected total kept being tracked
+# by hand -- and misquoted twice (864 against a real 866, and once an 824
+# baseline recorded off a tree that printed a FAIL).
+#
+# IT IS A BOUND AND IT CAN NEVER BE AN EQUALITY. Do not "fix" this into one.
+# harness_legs.py's own docstring has the argument in full: legs under if/match
+# legitimately may not fire, legs under for/while fire zero-to-many, and
+# SAVETEST is one function dispatched 24 times whose static site count "has no
+# relationship at all to its contribution". Summing those into a single
+# expected number would be a measurement column claiming coverage it does not
+# have -- DEFECTS class 5, committed by the tool built to prevent it.
+gate_total=0; gated_verdicts=0; gated_tags=0; save_verdicts=0
 
 # What an engine error looks like from outside the process. Every one of these
 # ALREADY fails the sweep through `errs`, which is the whole licence for killing
@@ -392,6 +406,21 @@ run_one() {  # tag, env assignment
 	# legitimately did not fire cannot redden this (see harness_legs.py).
 	local verdicts=$((p + f)) gate=""
 	gate=$(awk -F'\t' -v t="$tag" '$1 == t { print $2 }' "$GATES" 2>/dev/null)
+	# §144. Rolled up for the footer from the SAME lookup the gate uses, so the
+	# summary and the per-tag lines can never disagree about which tags were
+	# bounded. SAVETEST's modes carry no gate by design and are counted apart
+	# rather than dropped -- a total that quietly omitted a quarter of the runs
+	# is the shape this whole line exists to stop.
+	case "$tag" in
+		SAVETEST=*) save_verdicts=$((save_verdicts + verdicts)) ;;
+		*)
+			if [ -n "$gate" ] && [ "$gate" -gt 0 ]; then
+				gate_total=$((gate_total + gate))
+				gated_verdicts=$((gated_verdicts + verdicts))
+				gated_tags=$((gated_tags + 1))
+			fi
+			;;
+	esac
 	if [ -n "$gate" ] && [ "$gate" -gt 0 ] && [ "$verdicts" -lt "$gate" ]; then
 		short=$((short + 1))
 		printf '    SHORT: %d verdict(s), at least %d expected -- legs did not run\n' \
@@ -407,6 +436,16 @@ for mode in "${SAVE_MODES[@]+"${SAVE_MODES[@]}"}"; do run_one "SAVETEST=$mode" "
 AFTER="$(save_md5)"
 echo "---"
 echo "$runs runs | $pass PASS | $fail FAIL | $errs script errors | $short short"
+# §144. WHAT THE TREE ITSELF SAYS TO EXPECT. Derived from main.gd by
+# harness_legs.py, never remembered: "at least" because it counts only
+# unconditional leg sites, and SAVETEST is reported beside it because its
+# contribution has no static bound at all.
+if [ "$gated_tags" -gt 0 ]; then
+	echo "derived bound: $gated_verdicts verdict(s) across $gated_tags gated tag(s), against at least $gate_total; SAVETEST adds $save_verdicts (unbounded by design)"
+	if [ "$gated_verdicts" -lt "$gate_total" ]; then
+		echo "  ^ UNDER THE BOUND -- the per-tag SHORT lines above name which"
+	fi
+fi
 echo "tree: $(tree_id)"
 if [ "$BEFORE" != "$AFTER" ]; then
 	echo "SAVE TOUCHED: $BEFORE -> $AFTER   (a harness wrote the real save)"

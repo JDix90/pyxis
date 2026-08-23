@@ -215,6 +215,26 @@ failure**, which is worse than a plain red because it sends the next reader to
 the wrong file entirely. Every fixture purse in that test is now derived from
 the prices it pays (§126).
 
+**And a sixth, in the horizon that quotes this rule (§144).** §139 shipped
+"+15% on the fastest legal fit" for the tide's flat 0.9 u/s, in three documents.
+`compute_stats` is additive and `enforce_floors` sets no ceiling, so the fastest
+legal fit is at minimum 5.75 + 5.00 = **10.75 u/s** before a rig — the true
+figure is **+8.4%**, falling to +5.7% fully rigged. Wrong by roughly a factor of
+two, written in the section that cites §124, by the author of §124.
+
+**The defect is not the arithmetic.** The +56% on the 1.6 floor, derived from a
+constant, was right. The other half was *estimated from a recollection of the
+drive ladder and never derived from it* — and then repeated twice more, because
+a figure in prose is copied, not recomputed.
+
+> **A NUMBER YOU DID NOT DERIVE IS A NUMBER YOU GUESSED, HOWEVER CONFIDENT THE
+> SENTENCE AROUND IT SOUNDS.**
+
+The same failure ran on the sweep totals in the same week: 866 quoted as 864,
+off a chain of hand-tracked deltas. §144's footer bound is the fix for that half
+— the sweep now prints what the tree itself says to expect, so no human,
+including this one, tracks it by hand again.
+
 **Covered by:** `run_harness.sh --counts` (runs) and `--legs` (assertions), both
 derived, neither needing the Godot binary; `tree_id` on every mode so a figure
 carries its provenance; and `THE DEATH PRICE SITS IN ITS BAND`, which is what

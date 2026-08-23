@@ -6547,6 +6547,19 @@ and the rate. The cockpit now separates PRESENT from RIDING, which is the other
 half of the same report. **OPEN**: nothing auto-levels the view on warp or dock —
 `level_view()` is public and unwired for that.
 
+**Review fixes** — §144, what the tree says to expect: a self-critical review
+(items 2 and 3 of seven) found §139's "+15% on the fastest legal fit" wrong by
+~2x — the true figure is **+8.4%**, since `compute_stats` is additive and the
+fastest fit is 10.75 u/s before a rig — corrected in §139, §64 and the horizon
+spec, and recorded as DEFECTS class 5's sixth instance. The sweep footer now
+prints its own DERIVED BOUND (806 legs across 57 gated tags, measured; SAVETEST
+reported beside it, unbounded by design) so no expected total is ever
+hand-tracked again. **OPEN, from the same review**: the tether channel caps at
+1.5, so the strongest tide this mechanism can ever produce is +14% on a Cruise
+Mk II fit — whether 0.9 is felt is a play question, but the current door cannot
+be tuned out of the problem. Remaining review items: telemetry fields + a
+playtest pass, a sheet-loop PACINGTEST floor, and a SURFACES contact sheet.
+
 **Horizon 14 — the middle** (opened 2026-08-22 after a play session;
 researched in `docs/HORIZON-14-RESEARCH.md`, specced in
 `docs/HORIZON-14-THE-MIDDLE.md`; **commit 1 BUILT** — §137, the sheet: reward
@@ -6557,7 +6570,7 @@ premium so it is worth proportionally most where income is lowest.
 derived on its own salted stream (no store, no save bump, no fingerprint), which
 pushes only a hull ALREADY agreeing with it, runs TANGENTIAL so it is a reason to
 cross a band rather than a slide outward, and pays a FLAT 0.9 u/s — +56% on the
-speed floor, +15% on the fastest fit. The braid: a filed sheet does not unlock
+speed floor, +8.4% on the fastest fit (shipped as +15%; corrected in §144). The braid: a filed sheet does not unlock
 the tide, it unlocks the CHART of it, so §137 pays twice. Stands down inside a
 storm (DEFECTS 2b — `apply_tether` re-clamps to the last caller). New tag
 TIDETEST, 10 legs, 82 → 83 runs. **Commit 3 BUILT — the horizon closes** —
@@ -14442,8 +14455,19 @@ in the sweep leans further off tangential than `sin(35°)`.
 ### The drift is flat, which is §137's trick a second time
 
 `DRIFT := 0.9` u/s everywhere, against a drive ladder that only rises: **+56%**
-on the 1.6 `max_speed` floor, about **+15%** on the fastest legal fit. The water
-is worth most to the pilot who has least.
+on the 1.6 `max_speed` floor, **+8.4%** on the fastest legal fit. The water is
+worth most to the pilot who has least.
+
+> **CORRECTED (§144).** This section shipped saying +15%, and it was wrong by
+> roughly a factor of two. `compute_stats` is additive and `enforce_floors`
+> sets only a floor, so the fastest legal fit is at minimum 5.75 (BASE) + 5.00
+> (`drive_cruise_2`) = **10.75 u/s** before a single rig — 0.9 against that is
+> **+8.4%**, falling to +5.7% with `rig_runner` and `proto_coil` aboard. The
+> +56% on the floor is correct and stands.
+>
+> The defect is not the arithmetic, it is that **the figure was estimated and
+> never derived** — §124's own rule, broken in the section that quotes it.
+> DEFECTS class 5.
 
 `RICHER OUTWARD` is untouched, and did not have to bend: the tide pays in
 **time**, and it pays the same everywhere it exists. Two commits into this
@@ -14951,3 +14975,83 @@ streak says current** — which is the whole thing this effect has to communicat
 before any text does. And the emission box now follows the lens in eighths,
 which §142 made necessary: with a thirteenfold zoom range, a fixed box is either
 a postage stamp in a wide view or fill nobody sees.
+
+
+## 144. What the tree says to expect (review fix, items 2 and 3)
+
+Two corrections from a self-critical review, landing together because they are
+the same defect at two scales: **a number nobody derived.**
+
+### The tide's speed claim was wrong by a factor of two
+
+§139 shipped *"+56% on the 1.6 `max_speed` floor, about +15% on the fastest
+legal fit"*, and repeated it in §64 and in the horizon spec. `compute_stats` is
+additive and `enforce_floors` sets a floor with no ceiling, so:
+
+| fit | speed | 0.9 u/s is |
+|---|---|---|
+| hull + `drive_cruise_2` | 10.75 u/s | **+8.4%** |
+| + `rig_runner` | 13.35 u/s | +6.7% |
+| + `rig_runner` + `proto_coil` | 15.75 u/s | +5.7% |
+
+The +56% on the floor was derived from a constant and is right. The other half
+was estimated from a recollection of the drive ladder, in the section that
+quotes §124's rule about exactly this, by the author of §124.
+
+> **A NUMBER YOU DID NOT DERIVE IS A NUMBER YOU GUESSED, HOWEVER CONFIDENT THE
+> SENTENCE AROUND IT SOUNDS.**
+
+Corrected in all three documents. The commit messages carry the old figure and
+cannot be edited, which is why the correction is stated in §139's own body
+rather than only here — a reader who arrives at that section must not have to
+find this one.
+
+**It sharpens the open question rather than settling it.** The tide reaches the
+hull through `apply_tether`, clamped at `TETHER_DRAG_CEILING = 1.5` — a
+`[PHYSICS]` constant sized against the 1.6 escape floor and not movable. So the
+strongest tide this mechanism can *ever* produce is **+14.0%** on a Cruise Mk II
+fit, which is barely the number §139 wrongly claimed for 0.9. Whether 0.9 is
+felt is still a play question; what is now known is that **the current door
+cannot be tuned out of the problem**, and that a different door (a riding
+multiplier on drive speed, which never touches the tether channel, so the
+storm's guarantee is untouched) is the alternative if it comes to it. §131: the
+owner's call, costed.
+
+### And the sweep now prints its own bound
+
+The per-tag leg gate has existed since §113 and works — `harness_legs.py
+--gates` feeds `$GATES`, and `run_one` prints `SHORT: N verdict(s), at least M
+expected` for any tag that came up short. That is not what failed.
+
+What failed is that the **summary line carried no derived figure at all**, so
+the expected total was tracked by hand across commits — and misquoted: 866
+reported as 864, and once an 824 baseline recorded off a tree that had printed
+a FAIL. Three of this project's recorded defects are that same shape (§73's
+44-vs-61, §77's 46-vs-64, §113's "green at 758").
+
+The footer now reads, in shape:
+
+    derived bound: <observed> verdict(s) across 57 gated tag(s), against at
+    least 806; SAVETEST adds <n> (unbounded by design)
+
+**806 across 57 tags is measured** — `harness_legs.py --gates` summed over the
+sweep's own `TAGS` array, this commit. The observed figures are left as
+placeholders here on purpose: this section cannot state them without a sweep,
+and inventing a plausible pair would be the exact defect the section is about.
+(The first draft of this paragraph did precisely that, with four fabricated
+numbers, and was caught before it shipped. It is recorded because a rule that
+its own author trips over on the same page is worth more than one that reads as
+easy.)
+
+**It is a bound and it must never become an equality**, and the code says so at
+length so that nobody later "improves" it. `harness_legs.py`'s own docstring
+carries the argument: legs under `if`/`match` legitimately may not fire, legs
+under `for`/`while` fire zero-to-many, and SAVETEST is one function dispatched
+twenty-four times whose static site count *"has no relationship at all to its
+contribution"*. Summing those into a single expected number would be a
+measurement column claiming coverage it does not have — this document's class 5,
+committed by the tool built to prevent it.
+
+SAVETEST's verdicts are reported **beside** the bound rather than folded into it
+or dropped. A quarter of the sweep's runs silently missing from its own summary
+is the same defect one level up.

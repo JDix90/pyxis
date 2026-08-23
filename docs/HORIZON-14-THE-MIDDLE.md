@@ -88,8 +88,12 @@ to move **across** a band — to the next colony, to the sheet next door.
 ### The drift is flat, which is §137's trick again
 
 `DRIFT := 0.9` u/s everywhere, against a drive ladder that only rises: **+56%**
-on the 1.6 `max_speed` floor and about **+15%** on the fastest legal fit. The
-water is worth most to the pilot who has least. `RICHER OUTWARD` is untouched —
+on the 1.6 `max_speed` floor and **+8.4%** on the fastest legal fit — 5.75
+(BASE) + 5.00 (`drive_cruise_2`) = 10.75 u/s before any rig, falling to +5.7%
+fully rigged. The water is worth most to the pilot who has least.
+
+*(This section shipped saying +15%. Corrected in §144 — the figure was estimated
+and never derived.)* `RICHER OUTWARD` is untouched —
 the tide pays in **time**, and it pays the same everywhere it exists.
 
 ### The braid
