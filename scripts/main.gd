@@ -112,6 +112,7 @@ const HARNESS_VARS := [
 	"PYXIS_STORETEST",
 	"PYXIS_STORMTEST",
 	"PYXIS_STREAMTEST",
+	"PYXIS_SURFACES",
 	"PYXIS_TIDETEST",
 	"PYXIS_TITLETEST",
 	"PYXIS_TORPTEST",
@@ -1081,6 +1082,14 @@ func _ready() -> void:
 		_load_system(GameState.current_system)
 		_enter_playing()
 		_run_tide_test()
+		return
+
+	if OS.get_environment("PYXIS_SURFACES") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_surfaces()
 		return
 
 	if OS.get_environment("PYXIS_ACCESSTEST") != "":
@@ -31071,3 +31080,253 @@ func _run_tide_test() -> void:
 		"PASS" if not writes and tide_src.length() > 0 else "FAIL"])
 
 	get_tree().quit()
+
+
+# --- the contact sheet -------------------------------------------------------
+
+func _run_surfaces() -> void:
+	# §146. EVERY DRAWN SURFACE, ONCE, AS A PNG.
+	#
+	# THE REASON THIS EXISTS IS A SCOREBOARD. Of the six defects that have ever
+	# reached a player, ZERO were found by an assertion: §88 and §141 by
+	# playtest, §134 and §136 by screenshots, §143 by a playtest against a
+	# harness that was 10 for 10 at the time. Against 866 legs. The instrument
+	# outweighs the game four to one and has never once been first.
+	#
+	# What they have in common is that they are all things a person SEES: a
+	# column with no height, a tween fighting its container, a tap that cannot
+	# land, a particle system with no mesh. Nothing here can see a renderer, so
+	# nothing here could have caught any of them -- and the answer is not a
+	# cleverer assertion, it is a contact sheet somebody looks at.
+	#
+	# IT CARRIES NO VERDICTS ON PURPOSE, and joins DEEPSHOTS, DEMO, ECONDEMO and
+	# WORLDTOUR in the cannot-fail family rather than the sweep. A PASS line
+	# here would be a lie: this harness cannot tell a good frame from a bad one,
+	# and pretending otherwise is exactly the "green that measured nothing" §77
+	# names. The verdict is a human's, and the frames are how they reach it.
+	#
+	# NEEDS A REAL WINDOW. Rendering is the thing being captured, so this cannot
+	# run --headless -- _run_phase2_shots' own constraint.
+	var shots: String = OS.get_environment("PYXIS_SHOTS")
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	var rig := get_tree().get_first_node_in_group("camera_rig") as CameraRig
+	get_window().size = Vector2i(720, 1280)
+	player.invulnerable = true
+	_wave_timer = 1.0e9
+	_rift_timer = 1.0e9
+	_storm_timer = 1.0e9
+	_apex_wake_timer = -1.0
+	GameState.mark_breached("pyx01")
+	GameState.mark_breached("pyx02")
+	GameState.salvage = 400000
+	var wrote: Array = []
+	await get_tree().create_timer(0.6).timeout
+
+	# --- 1. THE COCKPIT, STATE BY STATE ------------------------------------
+	# THE SUFFIXES ARE STAGED, NOT FLOWN, and main._process is stopped while
+	# they are. That loop rewrites the deep tag from live values EVERY FRAME, so
+	# a staged string would be overwritten before the shutter opened -- and
+	# flying a hull into a carrier wash and a tide at once, on purpose, is not a
+	# thing a capture pass can arrange. set_process(false) is the honest way to
+	# hold one frame still.
+	_load_system("pyx01")
+	await get_tree().create_timer(0.8).timeout
+	player.global_position = Vector3(0.0, 0.0, 6.0)
+	rig.global_position = player.global_position
+	rig.zoom = 20.0
+	rig._target_zoom = 20.0
+	await get_tree().create_timer(0.6).timeout
+	await _surface_shot(shots, wrote, "h01_hud_charted")
+
+	set_process(false)
+	# Each row is one readout the cockpit can show. The LAST is the reason this
+	# group exists: the jam and the tide can both be lit between 1,100 and 1,450
+	# units out, _system_label has no clip_text and no autowrap, and that string
+	# reaches roughly eighty characters. Suspected since §139 and never once
+	# looked at.
+	for spec_v in [
+		{"tag": "h02_hud_deep", "band": "THE UNFILED", "out": 2402.0,
+			"wash": false, "caught": false, "tide": -1, "riding": false},
+		{"tag": "h03_hud_jam", "band": "THE UNFILED", "out": 1300.0,
+			"wash": true, "caught": false, "tide": -1, "riding": false},
+		{"tag": "h04_hud_tide_present", "band": "THE UNFILED", "out": 2402.0,
+			"wash": false, "caught": false, "tide": 43, "riding": false},
+		{"tag": "h05_hud_tide_riding", "band": "THE UNFILED", "out": 2402.0,
+			"wash": false, "caught": false, "tide": 43, "riding": true},
+		{"tag": "h06_hud_jam_AND_tide", "band": "THE UNFILED", "out": 1300.0,
+			"wash": true, "caught": false, "tide": 317, "riding": true},
+		{"tag": "h07_hud_storm", "band": "THE UNSOUNDED", "out": 5600.0,
+			"wash": false, "caught": true, "tide": -1, "riding": false},
+	]:
+		var spec: Dictionary = spec_v
+		hud.set_deep_tag(String(spec["band"]), float(spec["out"]),
+			bool(spec["wash"]), bool(spec["caught"]), int(spec["tide"]),
+			bool(spec["riding"]))
+		await get_tree().create_timer(0.25).timeout
+		await _surface_shot(shots, wrote, String(spec["tag"]))
+	set_process(true)
+
+	# The transient chrome, each on its own frame: a capture that stacked them
+	# would answer "do they overlap" and never "does each one read".
+	hud.show_toast("SHEET 3 OF 5 IN THIS BLOCK", Palette.AMBER)
+	await get_tree().create_timer(0.5).timeout
+	await _surface_shot(shots, wrote, "h08_hud_toast")
+	hud.show_broadcast("SUBSPACE ADVISORY — AUTOMATED",
+		"SHEAR DETECTED · BEARING 240 · 190u OUT · IT WILL NOT HOLD",
+		Palette.band_color(2))
+	await get_tree().create_timer(0.6).timeout
+	await _surface_shot(shots, wrote, "h09_hud_broadcast")
+	hud.prompt("THE ORRERY · THIRD INSTRUMENT — HOLD AT THE BASE TO CLAIM IT")
+	await get_tree().create_timer(0.5).timeout
+	await _surface_shot(shots, wrote, "h10_hud_prompt")
+	hud.crack_progress(0.62, "FOUNDING")
+	await get_tree().create_timer(0.4).timeout
+	await _surface_shot(shots, wrote, "h11_hud_progress")
+	hud.crack_progress(-1.0)
+	hud.clear_prompt()
+	# Far enough out that the system's own objects are all off screen, which is
+	# the only condition under which the ring has anything to say.
+	player.global_position = Vector3(0.0, 0.0, 120.0)
+	rig.global_position = player.global_position
+	await get_tree().create_timer(1.0).timeout
+	print("[surfaces] radar markers on screen: %d" % hud.radar_markers().size())
+	await _surface_shot(shots, wrote, "h12_hud_radar")
+
+	# --- 2. THE CHART, ACROSS ITS ZOOM RANGE --------------------------------
+	# Three zooms because §139's arrows and §140's ring are WORLD-sized and the
+	# coverage squares under them are too -- so the question "does this read as
+	# water or as clutter" has a different answer at each end, and no frame has
+	# ever been taken at either.
+	GameState.claim_colony("pyx01:3", 2200.0, 0.0)
+	var scell := DeepSpace.cell_of(Vector3(2200.0, 0.0, 0.0))
+	GameState.note_survey_worked(DeepSpace.cell_key("pyx01", scell.x, scell.y))
+	GameState.colony_works["pyx01:3"] = ["roads", "dock"]
+	for sx in range(6, 14):
+		GameState.sheets_filed[DeepSpace.sheet_key("pyx01", sx, 0)] = 5
+		GameState.note_survey_worked(DeepSpace.cell_key("pyx01", sx * 4, 0))
+	chart_panel.open()
+	await get_tree().create_timer(0.9).timeout
+	await _surface_shot(shots, wrote, "c01_chart_rows")
+	for zspec_v in [{"z": 0.9, "tag": "c02_chart_wide"},
+			{"z": 2.6, "tag": "c03_chart_mid"},
+			{"z": 6.5, "tag": "c04_chart_near"}]:
+		var zspec: Dictionary = zspec_v
+		chart_panel._zoom = float(zspec["z"])
+		chart_panel._refresh_plot()
+		await get_tree().create_timer(0.5).timeout
+		await _surface_shot(shots, wrote, String(zspec["tag"]))
+	chart_panel.close_panel()
+	await get_tree().create_timer(0.4).timeout
+
+	# --- 3. THE PORT, TAB BY TAB --------------------------------------------
+	var cantina: Port = null
+	for n in get_tree().get_nodes_in_group("dockable"):
+		if (n as Port).port_id == "cantina":
+			cantina = n
+	if cantina != null:
+		player.global_position = cantina.dock_point
+		_complete_dock(cantina)
+		await get_tree().create_timer(0.9).timeout
+		await _surface_shot(shots, wrote, "p01_port_arrival")
+		# DERIVED FROM THE PORT, never typed. `services()` is the same list
+		# _build_tabs walks, so this captures exactly the tabs a pilot can see
+		# here and a service added later is captured without touching this file.
+		#
+		# The first draft typed ["contracts", "paint", "skills"] and "skills" is
+		# not a tab this game has -- _on_tab would have set an unknown key,
+		# _refresh would have drawn an empty sheet, and the frame would have
+		# gone in the contact sheet looking like a real screen with nothing on
+		# it. A capture pass inventing its own inputs is §110's forge hint with
+		# a camera.
+		for tab_v in port_panel.services():
+			var tab := String(tab_v)
+			if tab == "depart" or not PortPanel.TAB_LABELS.has(tab):
+				continue
+			port_panel._on_tab(tab)
+			await get_tree().create_timer(0.5).timeout
+			await _surface_shot(shots, wrote, "p02_port_%s" % tab)
+		port_panel.close_panel()
+		undock()
+		await get_tree().create_timer(0.4).timeout
+
+	# --- 4. THE SHIP'S OWN SHEETS -------------------------------------------
+	refit_panel.open()
+	await get_tree().create_timer(0.7).timeout
+	await _surface_shot(shots, wrote, "s01_refit")
+	refit_panel.close_panel()
+	await get_tree().create_timer(0.3).timeout
+	GameState.cargo = {"alloys": 6, "isotopes": 3, "chart_quiet": 4}
+	hold_screen.open()
+	await get_tree().create_timer(0.7).timeout
+	await _surface_shot(shots, wrote, "s02_hold")
+	hold_screen.close_panel()
+	await get_tree().create_timer(0.3).timeout
+	damage_screen.open()
+	await get_tree().create_timer(0.7).timeout
+	await _surface_shot(shots, wrote, "s03_damage")
+	damage_screen.close_panel()
+	await get_tree().create_timer(0.3).timeout
+
+	# --- 5. THE MANUAL, EVERY PAGE ------------------------------------------
+	# Walked off ManualScreen.PAGES rather than a typed list, so a page added
+	# later is captured without this file being touched -- the §126 shape.
+	manual_screen.open()
+	await get_tree().create_timer(0.6).timeout
+	await _surface_shot(shots, wrote, "m00_manual_contents")
+	for page_v in ManualScreen.PAGES:
+		var page: Dictionary = page_v
+		manual_screen._page = String(page["id"])
+		manual_screen._refresh()
+		await get_tree().create_timer(0.45).timeout
+		await _surface_shot(shots, wrote, "m01_manual_%s" % String(page["id"]))
+	manual_screen.close_panel()
+	await get_tree().create_timer(0.3).timeout
+
+	# --- 6. THE OVERLAYS -----------------------------------------------------
+	toggle_pause()
+	await get_tree().create_timer(0.5).timeout
+	await _surface_shot(shots, wrote, "u01_pause")
+	pause_menu._page = "settings"
+	pause_menu._refresh()
+	await get_tree().create_timer(0.5).timeout
+	await _surface_shot(shots, wrote, "u02_settings")
+	pause_menu.resume()
+	# The narrow suite's own belt and braces: a harness that leaves the tree
+	# paused hangs forever on the next pausable await instead of quitting.
+	get_tree().paused = false
+	await get_tree().create_timer(0.4, true, false, true).timeout
+
+	# --- 7. THE INDUCTION, BEAT BY BEAT -------------------------------------
+	# Walked with advance_beat(), the same verb a thumb uses, and bounded by the
+	# beat count rather than by a typed five -- §136's two defects both lived in
+	# these frames and neither had ever been captured by anything but a
+	# playtester's phone.
+	induction.open(true)
+	await get_tree().create_timer(0.9).timeout
+	for b in range(Induction.BEATS.size()):
+		await _surface_shot(shots, wrote, "i%02d_induction_beat" % (b + 1))
+		if b < Induction.BEATS.size() - 1:
+			induction.advance_beat()
+			await get_tree().create_timer(0.9).timeout
+	induction.visible = false
+	await get_tree().create_timer(0.4).timeout
+
+	# NO ARROW IN THIS LINE, and that is not a style note. harness_legs.py reads
+	# "-> " as the marker of a VERDICT, so the first draft of this print gave
+	# SURFACES a GATE of 1 and kept it out of the CANNOT FAIL list -- the
+	# instrument contradicting the comment forty lines up that says this
+	# harness carries no verdicts. The tool was right and the prose was wrong,
+	# which is §124's outcome exactly, caught this time before the sweep.
+	print("[surfaces] %d frame(s) written to %s" % [wrote.size(), shots])
+	print("[surfaces] %s" % ", ".join(PackedStringArray(wrote)))
+	print("[surfaces] NO VERDICTS. Open the frames -- that is the whole point;")
+	print("[surfaces] a green run nobody looks at has verified nothing.")
+	get_tree().quit()
+
+
+func _surface_shot(dir: String, wrote: Array, tag: String) -> void:
+	# One place appends and one place shoots, so the manifest printed at the end
+	# cannot disagree with what is on disk -- §120's rule about one act speaking
+	# once, applied to a capture pass.
+	wrote.append(tag)
+	await _shot(dir, "%s.png" % tag)

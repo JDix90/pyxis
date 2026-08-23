@@ -6563,8 +6563,14 @@ has been switchable since Horizon 3 and never read once, so the row gains
 `tools/read_telemetry.py` makes reading it one command, and TIDETEST asserts the
 clock only runs while the water carries you. **AWAITING THE OWNER**: three
 sessions with SHARE PLAY DATA on — the pass deferred since Horizon 1, which
-gates the sheet-loop floor and the tide's door. Remaining: a sheet-loop
-PACINGTEST floor, and a SURFACES contact sheet.
+gates the sheet-loop floor and the tide's door. **§146 BUILT** — the contact sheet: `PYXIS_SURFACES`
+captures ~40 frames (twelve cockpit states including the suspected jam+tide
+overflow, the chart across its zoom range, every port tab, every manual page,
+every induction beat) and carries NO VERDICTS, joining the cannot-fail family so
+the sweep is untouched. Registers the standing rule this review earned: **no
+commit touching a drawn surface ships without a frame.** Remaining: a sheet-loop
+PACINGTEST floor (item 5) and the tide's door (item 7), both gated on the
+playtest sessions.
 
 **Horizon 14 — the middle** (opened 2026-08-22 after a play session;
 researched in `docs/HORIZON-14-RESEARCH.md`, specced in
@@ -15124,3 +15130,79 @@ It does not answer anything yet. **Three sessions have to be played**, and that
 is the owner's to do — which is precisely why the instrument sat unread for
 eleven horizons, and why the two questions it now carries are worth the four
 lines they cost.
+
+
+## 146. The contact sheet (review item 6)
+
+Every drawn surface in the game, once, as a PNG. `PYXIS_SURFACES`.
+
+### The scoreboard that justifies it
+
+Of the six defects that have ever reached a player, **zero were found by an
+assertion** — §88 and §141 by playtest, §134 and §136 by screenshots, §143 by a
+playtest against a harness that was 10 for 10 at the time. Against 866 legs, and
+an instrument that is 79% of `main.gd`.
+
+What they have in common is that they are all things a person **sees**: a column
+with no height, a tween fighting its container, a tap that cannot land, a
+particle system with no mesh. **Nothing in this repo can see a renderer**, so
+nothing here could have caught any of them — and the answer is not a cleverer
+assertion, it is a contact sheet somebody looks at.
+
+> **NO COMMIT TOUCHING A DRAWN SURFACE SHIPS WITHOUT A FRAME.**
+
+### It carries no verdicts, on purpose
+
+It joins DEEPSHOTS, DEMO, ECONDEMO and WORLDTOUR in the cannot-fail family
+rather than the sweep, so the run and leg counts are untouched. A PASS line here
+would be a lie: this harness cannot tell a good frame from a bad one, and
+pretending otherwise is the "green that measured nothing" §77 names.
+
+**The instrument caught the prose saying so, too.** The first draft's summary
+line read `%d frame(s) -> %s`, and `harness_legs.py` reads `-> ` as a verdict
+marker — so SURFACES was reported with a GATE of 1 and kept *out* of the
+cannot-fail list, directly contradicting the comment forty lines above it. §124's
+outcome exactly (the tool right, the prose wrong), caught before a sweep this
+time rather than after one.
+
+### What it captures, and why those
+
+**Twelve cockpit frames**, and the sixth is why the group leads. The jam and the
+tide can both be lit between 1,100 and 1,450 units out, `_system_label` has no
+`clip_text` and no autowrap, and that string reaches roughly eighty characters.
+Suspected since §139 and never once looked at.
+
+The suffixes are **staged, not flown**, with `main._process` stopped while they
+are: that loop rewrites the deep tag from live values every frame, so a staged
+string would be overwritten before the shutter opened — and flying a hull into a
+carrier wash and a tide simultaneously, on purpose, is not something a capture
+pass can arrange.
+
+**Four chart frames across the zoom range**, because §139's arrows and §140's
+ring are world-sized and the coverage squares under them are too. "Does this
+read as water or as clutter" has a different answer at each end, and no frame
+had ever been taken at either.
+
+Then the port tabs, refit, hold, damage, every manual page, pause, settings, and
+the induction beat by beat — §136's two defects both lived in those frames and
+neither had been captured by anything but a playtester's phone.
+
+### Derived, never typed — and the one time I typed it anyway
+
+The manual walks `ManualScreen.PAGES` and the induction is bounded by
+`Induction.BEATS.size()`, so a page or a beat added later is captured without
+this file being touched.
+
+The port tabs were the exception, and the first draft typed
+`["contracts", "paint", "skills"]`. **There is no "skills" tab in this game.**
+`_on_tab` would have set an unknown key, `_refresh` would have drawn an empty
+sheet, and that frame would have gone into the contact sheet looking like a real
+screen with nothing on it — a capture pass inventing its own inputs, which is
+§110's forge hint with a camera. It now walks `port_panel.services()`, the same
+list `_build_tabs` walks, so it captures exactly the tabs a pilot can see.
+
+### What it does not do
+
+It does not decide anything. **Open the frames** — that is the entire point, and
+the harness says so in its own last line: a green run nobody looks at has
+verified nothing.

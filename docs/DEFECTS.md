@@ -454,6 +454,22 @@ not a parse error, and the footer had to be corrected to stop calling it one.
 > **A HARNESS THAT MEASURES THE MECHANISM WILL GO GREEN ON A FEATURE NOBODY CAN
 > SEE. ASSERT THE TELL, NOT ONLY THE RULE.**
 
+**And the standing rule this class finally earned (§146).** Every defect that
+has ever reached a player in this project — six of them — was found by an eye:
+§88 and §141 by playtest, §134 and §136 by screenshots, §143 by a playtest
+against a harness that was 10 for 10 at the time. **Zero by an assertion**,
+against 866 legs and an instrument four times the size of the game.
+
+So:
+
+> **NO COMMIT TOUCHING A DRAWN SURFACE SHIPS WITHOUT A FRAME.**
+
+`PYXIS_SURFACES` is what makes that cheap rather than a chore — one run, ~40
+PNGs, every panel and every cockpit state. It carries **no verdicts** and joins
+the cannot-fail family deliberately: this harness cannot tell a good frame from
+a bad one, and a PASS line on it would be the "green that measured nothing" §77
+names. The verdict is a human's; the frames are how they reach it.
+
 ---
 
 ## 10. A wrong arity, invisible without the binary
