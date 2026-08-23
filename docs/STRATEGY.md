@@ -6574,7 +6574,13 @@ knew only consts) and an indexed SINGULAR node getter. Rules 9 and 10 close
 both, red-verified against the live failure before the fix. The standing lesson
 is bigger than the rules: **"0 problems" means ten known classes are absent, and
 has never meant "it parses"** — a commit verified only by the static checker has
-an UNKNOWN parse status and is to be reported that way. Remaining: a sheet-loop
+an UNKNOWN parse status and is to be reported that way. **§148 BUILT** — §146's first run wrote ZERO frames (the
+output directory did not exist) and its manifest said "41 frame(s) written"
+anyway: `_shot` discarded `save_png`'s Error across 82 call sites in six suites
+and never made its directory, and `_surface_shot` appended BEFORE shooting, so
+the count was intentions. Both fixed; the summary now reports failures loudly.
+The run's logic was otherwise sound — the port tabs derived correctly, including
+a `requisitions` tab I would not have guessed. Remaining: a sheet-loop
 PACINGTEST floor (item 5) and the tide's door (item 7), both gated on the
 playtest sessions.
 
@@ -15276,3 +15282,69 @@ have caught real defects *before* a sweep several times over, including twice
 today — rule 4 on a shadowed local in §140, rules 9 and 10 here. That is worth
 having. It is just not the same claim as "it compiles", and conflating them is
 how a capture pass gets handed to the owner with two parse errors in it.
+
+
+## 148. The manifest that counted intentions
+
+§146 ran, and its last lines said:
+
+    [surfaces] 41 frame(s) written to /tmp/pyxis-surfaces
+
+**Zero were written.** The directory did not exist, Godot logged forty-one
+"Can't save PNG at path" errors, and the harness printed its whole manifest over
+the top of them.
+
+The pass built to stop me claiming things I had not verified made an unverified
+claim on its first outing.
+
+### Two causes, both mine
+
+**`_shot` threw away the answer.** `save_png` returns an `Error` and this
+discarded it, and it never created its output directory either:
+
+    get_viewport().get_texture().get_image().save_png(dir.path_join(filename))
+
+That line has been there for **82 call sites across six suites**. Every
+screenshot pass this project has ever had could report success while writing
+nothing; §146 is simply the first one whose directory did not already exist.
+
+**`_surface_shot` appended before it shot.** So `wrote` held frames *attempted*
+and the summary printed them under the word *written*. Its own comment claimed
+the manifest "cannot disagree with what is on disk" — and it disagreed with an
+empty directory the first time it mattered.
+
+> **A COUNTER INCREMENTED BEFORE THE ACT COUNTS INTENTIONS.**
+
+Now: `_shot` makes the directory, returns whether the write landed, and warns on
+failure; `_surface_shot` appends only on success and collects the rest; and the
+summary prints `N FRAME(S) DID NOT WRITE` loudly, ahead of the closing lines,
+saying the contact sheet is incomplete. The return type went `void` → `bool`,
+which is safe for the eighty-one callers that ignore it.
+
+### What the run did prove
+
+It failed at the last inch, and everything before that inch worked — worth
+recording, because the temptation is to read a run that wrote nothing as a run
+that did nothing:
+
+- **41 frames attempted**, against the "~40" §146 estimated.
+- **The port tabs derived correctly**: rumors, games, fence, contracts, paint,
+  **requisitions**. §146 replaced a typed `["contracts", "paint", "skills"]`
+  with a walk of `port_panel.services()` after finding there is no "skills" tab
+  — and `requisitions` is a tab I would never have guessed either. The
+  derive-don't-type fix paid for itself on the run that could not save a file.
+- The manual walked contents plus all seven pages, the induction all five beats,
+  and the radar reported **12 markers on screen** — so the frame that was
+  supposed to have something in it did.
+
+### The pattern this makes
+
+Three sections in a row now — §144's figure, §147's parse claim, §148's
+manifest — are the same defect: **a summary asserting something its author had
+not checked.** DEFECTS class 5, three times, in the horizon whose entire subject
+is that.
+
+That is not a coincidence and it is not carelessness at three sites. It is what
+happens when the person writing the summary cannot run the thing. Every one was
+caught by the owner running it, which is the fourth entry in a row on that
+scoreboard.

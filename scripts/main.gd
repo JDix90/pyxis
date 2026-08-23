@@ -5877,11 +5877,31 @@ func _attack_nearest(player: PlayerShip) -> void:
 		player.command_attack(best)
 
 
-func _shot(dir: String, filename: String) -> void:
+func _shot(dir: String, filename: String) -> bool:
+	# §148. IT MAKES THE DIRECTORY AND IT REPORTS WHETHER IT WROTE, and it did
+	# neither for six suites and eighty-two call sites.
+	#
+	# save_png returns an Error and this discarded it, so a capture pass whose
+	# output directory did not exist printed its whole manifest and wrote
+	# NOTHING -- Godot logging one line per failure while the harness said
+	# "41 frame(s) written". §146 was built to stop me claiming things I had not
+	# verified, and its own summary was the first thing to do it.
+	#
+	# THE RETURN TYPE CHANGED FROM void TO bool, which is safe for the
+	# eighty-one callers that ignore it: a discarded return value is legal, and
+	# `await` on a coroutine is unaffected. Only _surface_shot reads it.
 	if dir == "":
-		return
+		return false
+	# globalize_path so this works for an OS path (PYXIS_SHOTS is absolute) and
+	# for a res:// or user:// one alike -- telemetry.gd's own idiom.
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
 	await RenderingServer.frame_post_draw
-	get_viewport().get_texture().get_image().save_png(dir.path_join(filename))
+	var err := get_viewport().get_texture().get_image().save_png(
+		dir.path_join(filename))
+	if err != OK:
+		push_warning("[shot] could not write %s (error %d)"
+			% [dir.path_join(filename), err])
+	return err == OK
 
 
 # --- world tour (composition capture) ---------------------------------------
@@ -31128,6 +31148,7 @@ func _run_surfaces() -> void:
 	GameState.mark_breached("pyx02")
 	GameState.salvage = 400000
 	var wrote: Array = []
+	var failed: Array = []
 	await get_tree().create_timer(0.6).timeout
 
 	# --- 1. THE COCKPIT, STATE BY STATE ------------------------------------
@@ -31144,7 +31165,7 @@ func _run_surfaces() -> void:
 	rig.zoom = 20.0
 	rig._target_zoom = 20.0
 	await get_tree().create_timer(0.6).timeout
-	await _surface_shot(shots, wrote, "h01_hud_charted")
+	await _surface_shot(shots, wrote, failed, "h01_hud_charted")
 
 	set_process(false)
 	# Each row is one readout the cockpit can show. The LAST is the reason this
@@ -31171,25 +31192,25 @@ func _run_surfaces() -> void:
 			bool(spec["wash"]), bool(spec["caught"]), int(spec["tide"]),
 			bool(spec["riding"]))
 		await get_tree().create_timer(0.25).timeout
-		await _surface_shot(shots, wrote, String(spec["tag"]))
+		await _surface_shot(shots, wrote, failed, String(spec["tag"]))
 	set_process(true)
 
 	# The transient chrome, each on its own frame: a capture that stacked them
 	# would answer "do they overlap" and never "does each one read".
 	hud.show_toast("SHEET 3 OF 5 IN THIS BLOCK", Palette.AMBER)
 	await get_tree().create_timer(0.5).timeout
-	await _surface_shot(shots, wrote, "h08_hud_toast")
+	await _surface_shot(shots, wrote, failed, "h08_hud_toast")
 	hud.show_broadcast("SUBSPACE ADVISORY — AUTOMATED",
 		"SHEAR DETECTED · BEARING 240 · 190u OUT · IT WILL NOT HOLD",
 		Palette.band_color(2))
 	await get_tree().create_timer(0.6).timeout
-	await _surface_shot(shots, wrote, "h09_hud_broadcast")
+	await _surface_shot(shots, wrote, failed, "h09_hud_broadcast")
 	hud.prompt("THE ORRERY · THIRD INSTRUMENT — HOLD AT THE BASE TO CLAIM IT")
 	await get_tree().create_timer(0.5).timeout
-	await _surface_shot(shots, wrote, "h10_hud_prompt")
+	await _surface_shot(shots, wrote, failed, "h10_hud_prompt")
 	hud.crack_progress(0.62, "FOUNDING")
 	await get_tree().create_timer(0.4).timeout
-	await _surface_shot(shots, wrote, "h11_hud_progress")
+	await _surface_shot(shots, wrote, failed, "h11_hud_progress")
 	hud.crack_progress(-1.0)
 	hud.clear_prompt()
 	# Far enough out that the system's own objects are all off screen, which is
@@ -31198,7 +31219,7 @@ func _run_surfaces() -> void:
 	rig.global_position = player.global_position
 	await get_tree().create_timer(1.0).timeout
 	print("[surfaces] radar markers on screen: %d" % hud.radar_markers().size())
-	await _surface_shot(shots, wrote, "h12_hud_radar")
+	await _surface_shot(shots, wrote, failed, "h12_hud_radar")
 
 	# --- 2. THE CHART, ACROSS ITS ZOOM RANGE --------------------------------
 	# Three zooms because §139's arrows and §140's ring are WORLD-sized and the
@@ -31214,7 +31235,7 @@ func _run_surfaces() -> void:
 		GameState.note_survey_worked(DeepSpace.cell_key("pyx01", sx * 4, 0))
 	chart_panel.open()
 	await get_tree().create_timer(0.9).timeout
-	await _surface_shot(shots, wrote, "c01_chart_rows")
+	await _surface_shot(shots, wrote, failed, "c01_chart_rows")
 	for zspec_v in [{"z": 0.9, "tag": "c02_chart_wide"},
 			{"z": 2.6, "tag": "c03_chart_mid"},
 			{"z": 6.5, "tag": "c04_chart_near"}]:
@@ -31222,7 +31243,7 @@ func _run_surfaces() -> void:
 		chart_panel._zoom = float(zspec["z"])
 		chart_panel._refresh_plot()
 		await get_tree().create_timer(0.5).timeout
-		await _surface_shot(shots, wrote, String(zspec["tag"]))
+		await _surface_shot(shots, wrote, failed, String(zspec["tag"]))
 	chart_panel.close_panel()
 	await get_tree().create_timer(0.4).timeout
 
@@ -31235,7 +31256,7 @@ func _run_surfaces() -> void:
 		player.global_position = cantina.dock_point
 		_complete_dock(cantina)
 		await get_tree().create_timer(0.9).timeout
-		await _surface_shot(shots, wrote, "p01_port_arrival")
+		await _surface_shot(shots, wrote, failed, "p01_port_arrival")
 		# DERIVED FROM THE PORT, never typed. `services()` is the same list
 		# _build_tabs walks, so this captures exactly the tabs a pilot can see
 		# here and a service added later is captured without touching this file.
@@ -31252,7 +31273,7 @@ func _run_surfaces() -> void:
 				continue
 			port_panel._on_tab(tab)
 			await get_tree().create_timer(0.5).timeout
-			await _surface_shot(shots, wrote, "p02_port_%s" % tab)
+			await _surface_shot(shots, wrote, failed, "p02_port_%s" % tab)
 		port_panel.close_panel()
 		undock()
 		await get_tree().create_timer(0.4).timeout
@@ -31260,18 +31281,18 @@ func _run_surfaces() -> void:
 	# --- 4. THE SHIP'S OWN SHEETS -------------------------------------------
 	refit_panel.open()
 	await get_tree().create_timer(0.7).timeout
-	await _surface_shot(shots, wrote, "s01_refit")
+	await _surface_shot(shots, wrote, failed, "s01_refit")
 	refit_panel.close_panel()
 	await get_tree().create_timer(0.3).timeout
 	GameState.cargo = {"alloys": 6, "isotopes": 3, "chart_quiet": 4}
 	hold_screen.open()
 	await get_tree().create_timer(0.7).timeout
-	await _surface_shot(shots, wrote, "s02_hold")
+	await _surface_shot(shots, wrote, failed, "s02_hold")
 	hold_screen.close_panel()
 	await get_tree().create_timer(0.3).timeout
 	damage_screen.open()
 	await get_tree().create_timer(0.7).timeout
-	await _surface_shot(shots, wrote, "s03_damage")
+	await _surface_shot(shots, wrote, failed, "s03_damage")
 	damage_screen.close_panel()
 	await get_tree().create_timer(0.3).timeout
 
@@ -31280,24 +31301,24 @@ func _run_surfaces() -> void:
 	# later is captured without this file being touched -- the §126 shape.
 	manual_screen.open()
 	await get_tree().create_timer(0.6).timeout
-	await _surface_shot(shots, wrote, "m00_manual_contents")
+	await _surface_shot(shots, wrote, failed, "m00_manual_contents")
 	for page_v in ManualScreen.PAGES:
 		var page: Dictionary = page_v
 		manual_screen._page = String(page["id"])
 		manual_screen._refresh()
 		await get_tree().create_timer(0.45).timeout
-		await _surface_shot(shots, wrote, "m01_manual_%s" % String(page["id"]))
+		await _surface_shot(shots, wrote, failed, "m01_manual_%s" % String(page["id"]))
 	manual_screen.close_panel()
 	await get_tree().create_timer(0.3).timeout
 
 	# --- 6. THE OVERLAYS -----------------------------------------------------
 	toggle_pause()
 	await get_tree().create_timer(0.5).timeout
-	await _surface_shot(shots, wrote, "u01_pause")
+	await _surface_shot(shots, wrote, failed, "u01_pause")
 	pause_menu._page = "settings"
 	pause_menu._refresh()
 	await get_tree().create_timer(0.5).timeout
-	await _surface_shot(shots, wrote, "u02_settings")
+	await _surface_shot(shots, wrote, failed, "u02_settings")
 	pause_menu.resume()
 	# The narrow suite's own belt and braces: a harness that leaves the tree
 	# paused hangs forever on the next pausable await instead of quitting.
@@ -31312,29 +31333,53 @@ func _run_surfaces() -> void:
 	induction.open(true)
 	await get_tree().create_timer(0.9).timeout
 	for b in range(Induction.BEATS.size()):
-		await _surface_shot(shots, wrote, "i%02d_induction_beat" % (b + 1))
+		await _surface_shot(shots, wrote, failed, "i%02d_induction_beat" % (b + 1))
 		if b < Induction.BEATS.size() - 1:
 			induction.advance_beat()
 			await get_tree().create_timer(0.9).timeout
 	induction.visible = false
 	await get_tree().create_timer(0.4).timeout
 
-	# NO ARROW IN THIS LINE, and that is not a style note. harness_legs.py reads
-	# "-> " as the marker of a VERDICT, so the first draft of this print gave
-	# SURFACES a GATE of 1 and kept it out of the CANNOT FAIL list -- the
+	# NO ARROW IN THESE LINES, and that is not a style note. harness_legs.py
+	# reads "-> " as the marker of a VERDICT, so the first draft of this print
+	# gave SURFACES a GATE of 1 and kept it out of the CANNOT FAIL list -- the
 	# instrument contradicting the comment forty lines up that says this
 	# harness carries no verdicts. The tool was right and the prose was wrong,
-	# which is §124's outcome exactly, caught this time before the sweep.
+	# which is §124's outcome exactly, caught before the sweep.
+	#
+	# §148. AND IT COUNTS WHAT LANDED, NOT WHAT IT TRIED. The first run wrote
+	# zero frames -- the output directory did not exist -- and this line said
+	# "41 frame(s) written" anyway, because `wrote` was appended to before the
+	# shot rather than after it. A harness built to stop unverified claims made
+	# one on its first outing.
 	print("[surfaces] %d frame(s) written to %s" % [wrote.size(), shots])
-	print("[surfaces] %s" % ", ".join(PackedStringArray(wrote)))
+	if not wrote.is_empty():
+		print("[surfaces] %s" % ", ".join(PackedStringArray(wrote)))
+	if not failed.is_empty():
+		# LOUD, and first among the closing lines a reader sees. A capture pass
+		# that silently wrote less than it listed is the whole defect this
+		# section exists because of.
+		print("[surfaces] %d FRAME(S) DID NOT WRITE: %s"
+			% [failed.size(), ", ".join(PackedStringArray(failed))])
+		print("[surfaces] the directory may be unwritable -- nothing below is")
+		print("[surfaces] a verification, and the contact sheet is INCOMPLETE.")
 	print("[surfaces] NO VERDICTS. Open the frames -- that is the whole point;")
 	print("[surfaces] a green run nobody looks at has verified nothing.")
 	get_tree().quit()
 
 
-func _surface_shot(dir: String, wrote: Array, tag: String) -> void:
-	# One place appends and one place shoots, so the manifest printed at the end
-	# cannot disagree with what is on disk -- §120's rule about one act speaking
-	# once, applied to a capture pass.
-	wrote.append(tag)
-	await _shot(dir, "%s.png" % tag)
+func _surface_shot(dir: String, wrote: Array, failed: Array, tag: String) -> void:
+	# §148. IT APPENDS ON SUCCESS, WHICH THE FIRST VERSION DID NOT.
+	#
+	# It appended and THEN shot, discarding the result, so `wrote` was a list of
+	# frames ATTEMPTED printed under the word "written". The comment here used
+	# to claim the manifest "cannot disagree with what is on disk"; it disagreed
+	# with an empty directory on the first real run.
+	#
+	# One place appends and one place shoots is still the rule -- §120 -- but
+	# the append now depends on the shot, which is what made the claim true
+	# rather than merely stated.
+	if await _shot(dir, "%s.png" % tag):
+		wrote.append(tag)
+	else:
+		failed.append(tag)

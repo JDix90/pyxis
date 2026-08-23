@@ -259,6 +259,24 @@ off a chain of hand-tracked deltas. §144's footer bound is the fix for that hal
 — the sweep now prints what the tree itself says to expect, so no human,
 including this one, tracks it by hand again.
 
+**And a seventh, by the instrument built to stop the sixth (§148).** §146's
+capture pass reported `41 frame(s) written to /tmp/pyxis-surfaces` on a run that
+wrote **zero** — the directory did not exist, Godot logged forty-one failures,
+and the harness printed its full manifest anyway. Two causes, both mine:
+
+- `_shot` discarded `save_png`'s `Error` return, and never created its output
+  directory. It has done so for **82 call sites across six suites** since it was
+  written, so every screenshot pass this project has ever had could report
+  success while writing nothing.
+- `_surface_shot` appended to the manifest **before** taking the shot, so
+  `wrote` was a list of frames *attempted*, printed under the word *written*.
+  Its own comment claimed the manifest "cannot disagree with what is on disk."
+  It disagreed with an empty directory on the first real run.
+
+> **A COUNTER INCREMENTED BEFORE THE ACT COUNTS INTENTIONS.** The append now
+> depends on the shot's return, which is what makes the claim true rather than
+> merely stated.
+
 **Covered by:** `run_harness.sh --counts` (runs) and `--legs` (assertions), both
 derived, neither needing the Godot binary; `tree_id` on every mode so a figure
 carries its provenance; and `THE DEATH PRICE SITS IN ITS BAND`, which is what
