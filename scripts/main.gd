@@ -21634,8 +21634,12 @@ func _run_feel_test() -> void:
 	# reaches with, off `_camera.global_transform.basis.x`, which is exactly the
 	# vector a yaw moves. Tapped at the projected anchor of a real node, before
 	# and after a turn.
-	var feel_mon: Node3D = get_tree().get_first_node_in_group("hyper")[0] \
-		if not get_tree().get_nodes_in_group("hyper").is_empty() else null
+	# get_NODES_in_group, plural. The first draft indexed the SINGULAR getter
+	# -- get_first_node_in_group(...)[0] -- which returns one Node, and
+	# indexing a Node is a parse error outright. One character, and it took the
+	# whole capture pass down. Rule 9 now catches it.
+	var feel_hypers := get_tree().get_nodes_in_group("hyper")
+	var feel_mon: Node3D = feel_hypers[0] if not feel_hypers.is_empty() else null
 	var hit_level := false
 	var hit_turned := false
 	if feel_mon != null:
@@ -30973,8 +30977,12 @@ func _run_tide_test() -> void:
 	# A COUNTER THAT RAN ALWAYS WOULD BE WORSE THAN NO COUNTER -- it would
 	# report every session as tide-heavy and answer §139's open question with a
 	# confident lie, which is §144's whole subject.
-	var tide_clock_ok := rode_clock[0] > 1.0 and rode_clock[1] < 0.05 \
-		and rode_clock[2] < 0.05
+	# float() on every read: rode_clock is an untyped Array, so its elements are
+	# Variants, a Variant comparison is a Variant, and `:=` has nothing to infer
+	# from. DEFECTS class 1 in a shape rule 6 did not cover -- it knew about
+	# untyped CONSTS, and a harness leg's buckets are locals. Rule 10 now does.
+	var tide_clock_ok := float(rode_clock[0]) > 1.0 \
+		and float(rode_clock[1]) < 0.05 and float(rode_clock[2]) < 0.05
 	print("[tide] AND THE CLOCK ONLY RUNS WHILE IT CARRIES YOU riding %.2fs, athwart %.2fs, against %.2fs over 2s each -> %s" % [
 		rode_clock[0], rode_clock[2], rode_clock[1],
 		"PASS" if tide_clock_ok else "FAIL"])

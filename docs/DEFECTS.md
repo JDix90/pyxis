@@ -43,8 +43,32 @@ identical line inside `main.gd` compiles, because there `deep_space` is a typed
 member of the class rather than a property fished off a handle — so "it works
 elsewhere" is not evidence here.
 
+**A fifth and sixth form, both in one load (§147).** §146's capture pass would
+not parse, and Godot named two lines the checker had just called clean:
+
+    var ok := rode_clock[0] > 1.0          # untyped LOCAL, not a const
+    get_tree().get_first_node_in_group("hyper")[0]   # indexing ONE Node
+
+Rule 6 collects untyped **consts** and is exact about them; a harness leg's
+buckets are **locals**. And the second is one character from
+`get_nodes_in_group(...)[0]` — plural — which reads as completely ordinary code.
+Rules 9 and 10 cover both, red-verified against the live failure before it was
+fixed and against seven legal shapes after.
+
+> **"0 problems" MEANS "TEN KNOWN DEFECT CLASSES ARE ABSENT". IT HAS NEVER
+> MEANT "IT PARSES".**
+
+That distinction is the standing debt this class actually carries. Ten rules
+have each been written *after* paying for their form, GDScript's inference has
+more corners than a rule-per-incident approach will ever close, and the only
+instrument that settles the question is the parser itself —
+`run_harness.sh --parse`, or any run on a machine with the binary. A commit
+verified only by `check_scripts.py` is a commit whose parse status is **unknown**
+and should be reported that way.
+
 **Covered by:** `check_scripts.py` rules 5 (`check_infer`), 6
-(`check_container_infer`) and 7 (`check_handle_infer`). Rule 6 collects every
+(`check_container_infer`), 7 (`check_handle_infer`) and 9–10
+(`check_local_infer`). Rule 6 collects every
 `const NAME := [` or `{` the project declares and flags `:=` off a lookup into
 one, indexing **and** `.get()` — so it is exact rather than heuristic, and a
 typed `Array[String]` is never reported. Rule 7 collects locals assigned from

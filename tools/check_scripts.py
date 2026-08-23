@@ -303,6 +303,74 @@ def check_container_infer(path: str, consts):
     return out
 
 
+# --------------------------------------------------- untyped local buckets ---
+
+# A local Array/Dictionary with no element type. Three shapes, all of them
+# common in the harness legs: an explicit `: Array =`, an inferred `:= []`, and
+# the same two for dictionaries.
+UNTYPED_LOCAL = re.compile(
+    r'^\t+var\s+([A-Za-z_]\w*)\s*(?::\s*(?:Array|Dictionary)\s*=|:=\s*[\[{])')
+# `Array[int]` and friends ARE typed and must not be collected.
+TYPED_LOCAL = re.compile(r'^\t+var\s+[A-Za-z_]\w*\s*:\s*(?:Array|Dictionary)\s*\[')
+
+LOCAL_READ = re.compile(
+    r'^\s*var\s+[A-Za-z_]\w*\s*:=\s*([A-Za-z_]\w*)\s*(\[|\.get\()')
+
+# Getters that return ONE node. Indexing the result is a parse error outright:
+# "Only String or StringName can be used as index for type Node".
+ONE_NODE = re.compile(
+    r'(?:get_first_node_in_group|get_node|get_node_or_null|get_parent|find_child)'
+    r'\s*\([^()]*\)\s*\[')
+
+
+def check_local_infer(path: str):
+    """Two more ways to write a parse error the first eight rules let through.
+
+    THE NINTH AND TENTH, and both were found the same way: by Godot, on a tree
+    `check_scripts.py` had just called clean. §146's capture pass would not
+    load, and the two errors were in legs written that same day.
+
+    1. `:=` OFF AN UNTYPED LOCAL. Rule 6 collects untyped CONSTS and is exact
+       about them -- but a harness leg's buckets are locals:
+
+           var rode_clock: Array = []
+           var ok := rode_clock[0] > 1.0 and rode_clock[1] < 0.05
+
+       `rode_clock[0]` is a Variant, so the comparison is a Variant, so `and`
+       of two Variants is a Variant, and `:=` has nothing to infer from.
+       `Array[float]` is typed and is never collected here.
+
+    2. INDEXING A SINGLE-NODE GETTER. `get_first_node_in_group` returns ONE
+       node, and `[0]` on it is "Only String or StringName can be used as
+       index for type Node". It is a one-character slip from
+       `get_nodes_in_group(...)[0]` and reads as completely ordinary code --
+       which is the entire reason it is worth a rule rather than more care.
+
+    Scoped to the function, `check_shadow`'s discipline and the lesson rule 7
+    had to be taught in §142.
+    """
+    out = []
+    buckets = set()
+    for lineno, line in enumerate(open(path, encoding="utf-8"), 1):
+        if FUNC.match(line):
+            buckets = set()
+        code = line.split("#", 1)[0]
+        if ONE_NODE.search(code):
+            out.append((lineno, "indexing a getter that returns ONE Node -- "
+                        "did you mean get_nodes_in_group(...)?", line.rstrip()))
+        m = UNTYPED_LOCAL.match(code)
+        if m and not TYPED_LOCAL.match(code):
+            buckets.add(m.group(1))
+        d = LOCAL_READ.match(code)
+        if d and d.group(1) in buckets:
+            out.append((lineno, "`:=` cannot infer from `%s`, an untyped local "
+                        "%s -- wrap it (float(...), String(...)) or declare "
+                        "the local's type"
+                        % (d.group(1), "dictionary" if d.group(2) != "[" else
+                           "array"), line.rstrip()))
+    return out
+
+
 # ----------------------------------------------------------- node handles ---
 
 # A local that holds a bare, uncast Node. Every one of these lookups returns
@@ -631,6 +699,7 @@ def main(argv):
                 check_shadow(path) + check_infer(path) + \
                 check_container_infer(path, consts) + \
                 check_handle_infer(path) + check_particles(path) + \
+                check_local_infer(path) + \
                 check_refs(path, members, parent, home):
             rel = os.path.relpath(path, root)
             print("%s:%d: %s\n    %s" % (rel, lineno, why, text[:88]))

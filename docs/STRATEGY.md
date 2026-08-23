@@ -6568,7 +6568,13 @@ captures ~40 frames (twelve cockpit states including the suspected jam+tide
 overflow, the chart across its zoom range, every port tab, every manual page,
 every induction beat) and carries NO VERDICTS, joining the cannot-fail family so
 the sweep is untouched. Registers the standing rule this review earned: **no
-commit touching a drawn surface ships without a frame.** Remaining: a sheet-loop
+commit touching a drawn surface ships without a frame.** **§147 BUILT** — §146 would not parse: two errors on a
+tree `check_scripts.py` had just called clean, an untyped LOCAL bucket (rule 6
+knew only consts) and an indexed SINGULAR node getter. Rules 9 and 10 close
+both, red-verified against the live failure before the fix. The standing lesson
+is bigger than the rules: **"0 problems" means ten known classes are absent, and
+has never meant "it parses"** — a commit verified only by the static checker has
+an UNKNOWN parse status and is to be reported that way. Remaining: a sheet-loop
 PACINGTEST floor (item 5) and the tide's door (item 7), both gated on the
 playtest sessions.
 
@@ -15206,3 +15212,67 @@ list `_build_tabs` walks, so it captures exactly the tabs a pilot can see.
 It does not decide anything. **Open the frames** — that is the entire point, and
 the harness says so in its own last line: a green run nobody looks at has
 verified nothing.
+
+
+## 147. Two more holes, and what "0 problems" actually means
+
+§146 shipped and would not load. Godot named two lines:
+
+    Parse Error: Only "String" or "StringName" can be used as index for type
+    "Node", but received "int".                          main.gd:21637
+    Parse Error: Cannot infer the type of "tide_clock_ok" variable because the
+    value doesn't have a set type.                       main.gd:30976
+
+`check_scripts.py` had just reported **72 files, 0 problems** on that tree.
+
+### The two shapes
+
+**Rule 6 knew about consts; a leg's buckets are locals.**
+
+    var rode_clock: Array = []
+    var tide_clock_ok := rode_clock[0] > 1.0 and rode_clock[1] < 0.05
+
+`rode_clock[0]` is a Variant, so the comparison is a Variant, so `and` of two
+Variants is a Variant, and `:=` has nothing to infer from. `check_container_infer`
+collects untyped **consts** and is exact about them — which is why it is quiet
+and why it missed this entirely.
+
+**And one character from a working line.**
+
+    get_tree().get_first_node_in_group("hyper")[0]
+
+The **singular** getter returns one Node, and indexing a Node is a parse error
+outright. `get_nodes_in_group(...)[0]` is the line I meant. It reads as
+completely ordinary code, which is the whole reason it is worth a rule rather
+than more care.
+
+Both now covered, and **red-verified against the live failure before it was
+fixed** — the rules were written first, run against the broken tree, and
+reported exactly `21637` and `30976`. Then seven legal shapes (`Array[float]`,
+a `float()` wrap, the plural getter, an explicit `: Variant`, a `.split()`
+result) confirmed silent.
+
+### The thing worth writing down is not the two rules
+
+This is the **second** time in one session that the checker called a tree clean
+and Godot refused it — §138 was the first. Ten rules now, and every one was
+written *after* paying for its form.
+
+> **"0 PROBLEMS" MEANS "TEN KNOWN DEFECT CLASSES ARE ABSENT". IT HAS NEVER
+> MEANT "IT PARSES".**
+
+I have been reporting it as though it did. Every commit this session closed with
+`72 file(s) checked, 0 problem(s)` stated as if it were a verification, when what
+it verifies is a list — and GDScript's inference has more corners than a
+rule-per-incident approach will ever close.
+
+The instrument that settles it is the parser: `run_harness.sh --parse`, or any
+run on a machine with the binary. **A commit verified only by the static checker
+has an unknown parse status and should be reported that way** — which is what
+this section changes about how the next one is handed over.
+
+It also says something about where the checker's value actually is. Rules 1–10
+have caught real defects *before* a sweep several times over, including twice
+today — rule 4 on a shadowed local in §140, rules 9 and 10 here. That is worth
+having. It is just not the same claim as "it compiles", and conflating them is
+how a capture pass gets handed to the owner with two parse errors in it.
