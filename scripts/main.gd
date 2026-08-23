@@ -31135,7 +31135,17 @@ func _run_surfaces() -> void:
 	#
 	# NEEDS A REAL WINDOW. Rendering is the thing being captured, so this cannot
 	# run --headless -- _run_phase2_shots' own constraint.
+	# §149. IT DEFAULTS SOMEWHERE FINDABLE AND DURABLE. The other capture suites
+	# require PYXIS_SHOTS and write nowhere without it, which is right for a
+	# one-off composition pass. This one is meant to be OPENED, possibly across
+	# several sittings, so a missing variable must not mean a missing sheet --
+	# and the /tmp the §146 instructions suggested was wrong twice over: macOS
+	# hides it from Finder (a symlink to /private/tmp) and macOS PURGES it.
+	# A contact sheet in a directory the OS deletes is a contact sheet with a
+	# clock on it.
 	var shots: String = OS.get_environment("PYXIS_SHOTS")
+	if shots == "":
+		shots = "user://surfaces"
 	var player: PlayerShip = get_tree().get_first_node_in_group("player")
 	var rig := get_tree().get_first_node_in_group("camera_rig") as CameraRig
 	get_window().size = Vector2i(720, 1280)
@@ -31352,7 +31362,12 @@ func _run_surfaces() -> void:
 	# "41 frame(s) written" anyway, because `wrote` was appended to before the
 	# shot rather than after it. A harness built to stop unverified claims made
 	# one on its first outing.
-	print("[surfaces] %d frame(s) written to %s" % [wrote.size(), shots])
+	# GLOBALIZED, so the line is a path the owner can paste rather than the
+	# string they already typed. Echoing `shots` back told them nothing they did
+	# not know, and told them nothing at all when it was a user:// URI.
+	var shots_abs := ProjectSettings.globalize_path(shots)
+	print("[surfaces] %d frame(s) written to %s" % [wrote.size(), shots_abs])
+	print("[surfaces] open %s" % shots_abs)
 	if not wrote.is_empty():
 		print("[surfaces] %s" % ", ".join(PackedStringArray(wrote)))
 	if not failed.is_empty():

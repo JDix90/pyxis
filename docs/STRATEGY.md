@@ -6580,9 +6580,12 @@ anyway: `_shot` discarded `save_png`'s Error across 82 call sites in six suites
 and never made its directory, and `_surface_shot` appended BEFORE shooting, so
 the count was intentions. Both fixed; the summary now reports failures loudly.
 The run's logic was otherwise sound — the port tabs derived correctly, including
-a `requisitions` tab I would not have guessed. Remaining: a sheet-loop
-PACINGTEST floor (item 5) and the tide's door (item 7), both gated on the
-playtest sessions.
+a `requisitions` tab I would not have guessed. **§149 BUILT** — §146's frames wrote fine and could not be
+found: `/tmp` is hidden by Finder on macOS AND purged by it. `_run_surfaces` now
+defaults to `user://surfaces` and prints the GLOBALIZED path plus an `open`
+line, so the closing output is something to paste rather than the string the
+owner just typed. Remaining: a sheet-loop PACINGTEST floor (item 5) and the
+tide's door (item 7), both gated on the playtest sessions.
 
 **Horizon 14 — the middle** (opened 2026-08-22 after a play session;
 researched in `docs/HORIZON-14-RESEARCH.md`, specced in
@@ -15348,3 +15351,41 @@ That is not a coincidence and it is not carelessness at three sites. It is what
 happens when the person writing the summary cannot run the thing. Every one was
 caught by the owner running it, which is the fourth entry in a row on that
 scoreboard.
+
+
+## 149. Somewhere you can actually find it
+
+§146's capture pass ran clean — 41 frames, no failures — and the owner could not
+find them.
+
+`/tmp/pyxis-surfaces` was my instruction, and it was wrong twice over on the
+platform this game is developed on:
+
+- **macOS hides it.** `/tmp` is a symlink to `/private/tmp` and Finder shows
+  neither, so a directory full of PNGs reads as an empty result.
+- **macOS purges it.** A contact sheet exists to be *reviewed*, plausibly over
+  several sittings. Writing it to a directory the OS deletes puts a clock on the
+  one artefact whose whole value is being looked at slowly.
+
+So `_run_surfaces` now defaults to `user://surfaces` when `PYXIS_SHOTS` is
+unset. The other capture suites keep requiring the variable, which is right for
+a one-off composition pass; this one is meant to be opened, so a missing
+variable must not mean a missing sheet.
+
+And the closing line is **globalized**:
+
+    [surfaces] 41 frame(s) written to /Users/.../app_userdata/Pyxis/surfaces
+    [surfaces] open /Users/.../app_userdata/Pyxis/surfaces
+
+Echoing `shots` back told the owner the string they had just typed — and would
+have told them nothing at all once it became a `user://` URI. A path you can
+paste is the difference between an instrument and a rumour about one.
+
+### The smaller lesson
+
+§146 built a pass whose stated purpose is *somebody looks at these*, and then
+handed over a location where looking was hard and keeping was temporary. The
+frames existed and the review still did not happen.
+
+> **AN ARTEFACT NOBODY CAN FIND HAS THE SAME VALUE AS ONE THAT WAS NEVER
+> WRITTEN.** §148 fixed the count; this fixes the address.
