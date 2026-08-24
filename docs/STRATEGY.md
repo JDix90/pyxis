@@ -6593,6 +6593,13 @@ align > 0.0` calling any heading within 89.99° "carried by the tide", which
 corrupted §145's `tide_seconds`, the cockpit `▸` and the motes alike
 (`RIDE_MIN_ALIGN := 0.25`, gating push and readout as ONE rule, both at the
 owner's call). The third was FEELTEST inheriting a camera position it never set.
+**§151 BUILT** — merged to `main` as `f832cbe`, and the sweep the merge commit
+flagged as outstanding came back green: **83 runs / 869 PASS / 0 FAIL / 0 errors
+/ 0 short**, `824 + 45 = 869`, save intact. §144's bound and the total agree for
+the first time on a clean run. The merge had been taken on a written containment
+claim — that §150's three files reached only INPUTTEST, TIDETEST and FEELTEST —
+and the other 80 runs were indeed unmoved; §151 records both that and why one
+such data point does not generalise.
 Remaining: a sheet-loop PACINGTEST floor (item 5) and the tide's door (item 7),
 both gated on the playtest sessions.
 
@@ -15494,3 +15501,67 @@ that was never a threshold, and a leg missing a precondition are three unrelated
 mistakes — but all three were invisible to 865 green assertions until the one
 sweep that ran them together. **The sweep is the instrument; the checker is a
 pre-flight.** §147 said so about parsing, and this says it about behaviour.
+
+## 151. The receipt
+
+§150 merged to `main` as `f832cbe`, and the merge commit carried a caveat I put
+there on purpose: **a full sweep at `44fe919` had not been run.** It has now,
+on `main`, and it is green —
+
+    83 runs | 869 PASS | 0 FAIL | 0 script errors | 0 short
+    derived bound: 824 verdict(s) across 57 gated tag(s), against at least 808;
+    SAVETEST adds 45 (unbounded by design)
+    tree: main @ f832cbe
+    save intact (b553ce4e7a16f6958fd636a5f40cbf84)
+
+**824 + 45 = 869.** That is §144's bound agreeing with the total for the first
+time on a clean run rather than a red one, and it is the whole reason the footer
+exists: the number is now derived twice by different routes and read once, so no
+document has to carry it by hand. INPUTTEST's new `NO TWO ACTIONS SHARE A KEY`
+moved the gated count 823 → 824 and the static floor 807 → 808 — both predicted
+before the sweep ran, both exact.
+
+This section exists because the alternative was leaving a false caveat in the
+record and a live number in a chat window. That is DEFECTS class 5 in its
+natural habitat, and §144 is the entry that already cost this project three
+documents' worth of it.
+
+### The containment argument, written down first and then checked
+
+The merge was taken before that sweep, on a claim: **§150's three files could be
+observed by INPUTTEST, TIDETEST and FEELTEST and by nothing else** — the three
+that had been re-run green. The claim was made falsifiable by naming what it
+rested on, rather than asserting a feeling about blast radius:
+
+- `_press_key` is the **only** synthesizer of key events in the harness — one
+  definition, one other caller — and it presses I, C, B and P, never V.
+- All **16** physical keycodes in `project.godot` appear exactly once, so the
+  67 → 86 move collided with nothing.
+- `main.gd`'s 60 changed lines sit **entirely** inside `_run_input_test` (36)
+  and `_run_feel_test` (24). Nothing else in 31,000 lines moved.
+- `static func set_at()` was untouched, so COLONYTEST's use of it was safe.
+- COLONYTEST also asserts by source text that `tide.gd` contains no `roads` —
+  and §150 had edited that very header, so it was re-read by hand. Still true.
+  That was the one real way a fourth tag could have gone red.
+
+The sweep agreed. The other 80 runs were unmoved.
+
+**What that licenses, and what it does not.** It does not promote reasoning to
+measurement, and this section is not the place that starts. What it says is
+narrower: a containment claim that is *written down and falsifiable* is worth
+making, because the alternative — "should be fine" — cannot be checked by
+anyone, before or after. This one could be, and was.
+
+**The counterweight, so nobody quotes half of this.** One data point, about a
+three-file change of ~90 lines with no shared state, made by the same hand that
+wrote the change. It does not generalise to a wide one. §150's rule stands
+unamended: **the sweep is the instrument; the checker is a pre-flight.**
+
+### And it is not a victory lap
+
+A green sweep does not touch the finding the review turned on: **zero of six
+defects that ever reached a player were first found by an assertion.** 869 legs
+green is the floor holding. It is not evidence that the surface is right, and
+§146 exists precisely because those are different claims. The two things that
+would actually move that finding — the SURFACES frames, and three telemetry
+sessions — are both still unstarted.
