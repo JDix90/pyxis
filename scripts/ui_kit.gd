@@ -180,12 +180,30 @@ static func reveal_list(items: Array, reduced_motion := false) -> void:
 			c.modulate.a = 1.0
 			continue
 		c.modulate.a = 0.0
-		var from := c.position
-		c.position = from - Vector2(12.0, 0.0)
 		var tw := c.create_tween()
 		tw.set_ignore_time_scale(true)      # the log is read while paused
 		tw.set_parallel(true)
 		tw.tween_property(c, "modulate:a", 1.0, T_REVEAL).set_delay(T_STAGGER * i)
+		# §136. THE SLIDE ONLY WHERE `position` IS OURS TO WRITE, and it was not
+		# ours at either call site.
+		#
+		# A CONTAINER OWNS ITS CHILDREN'S POSITIONS. Both callers add their
+		# labels to a VBoxContainer and call this in the SAME FRAME, before the
+		# container has sorted -- so `c.position` read (0, 0) for every item,
+		# this tweened every item TO (0, 0), and the tween beat the layout
+		# because a tween writes every frame and a container sorts only when
+		# something asks it to. The result is a column of labels stacked on the
+		# container's top-left corner, which is exactly what the induction
+		# shipped and what CAPTAIN'S LOG has been doing since §118.
+		#
+		# There is no container-safe slide: a Control has one position and the
+		# container owns it. So inside a container the reveal is the STAGGER
+		# alone -- which is the half that carries the meaning anyway. The log's
+		# own comment asks for "a beat between entries", not for movement.
+		if c.get_parent() is Container:
+			continue
+		var from := c.position
+		c.position = from - Vector2(12.0, 0.0)
 		tw.tween_property(c, "position", from, T_REVEAL).set_delay(T_STAGGER * i) \
 			.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
 

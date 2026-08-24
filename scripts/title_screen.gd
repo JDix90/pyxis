@@ -9,6 +9,10 @@ signal continue_pressed
 # control to the game. The manual opens on top and the title stays exactly where
 # it was, because reading it is not a decision to start playing.
 signal manual_pressed
+# §133. THE INDUCTION, replayed. The manual's own contract: opened on top,
+# through Main (which owns the scene), while the title stays where it is --
+# rewatching the briefing is not a decision to start playing.
+signal induction_pressed
 # A pilot was picked or created, and the run behind it is already loaded. Main
 # treats it exactly like CONTINUE, because that is what it is.
 signal pilot_chosen
@@ -181,6 +185,10 @@ func _build() -> void:
 	var manual_button := _make_button("PILOT'S MANUAL", Palette.TEAL)
 	manual_button.pressed.connect(func() -> void: manual_pressed.emit())
 	_buttons.add_child(manual_button)
+
+	var induction_button := _make_button("THE INDUCTION", Palette.TEAL)
+	induction_button.pressed.connect(func() -> void: induction_pressed.emit())
+	_buttons.add_child(induction_button)
 
 	var pilots_button := _make_button("PILOTS", Palette.AMBER)
 	pilots_button.pressed.connect(func() -> void:
@@ -413,7 +421,10 @@ func _draw_compass() -> void:
 
 
 func _process(delta: float) -> void:
-	if not visible:
+	# §135. And nothing animates while the furniture is hidden -- a compass
+	# rotating and redrawing behind a film nobody can see it through is work
+	# with no viewer.
+	if not visible or not _root.visible:
 		return
 	_t += delta
 	_compass.rotation = _t * 0.06
@@ -493,6 +504,26 @@ func _choose(sig: Signal) -> void:
 		visible = false
 		sig.emit()
 	)
+
+
+func set_chrome_visible(shown: bool) -> void:
+	# §135. THE DOOR STEPS ASIDE FOR THE FILM. The induction replays ON TOP of
+	# an open title (the manual's contract), so without this the compass rose,
+	# the title, the taglines and five buttons all read through a 0.93 scrim --
+	# a menu behind a briefing, with controls the player can see and cannot
+	# reach.
+	#
+	# THE LAYER'S OWN `visible` IS NOT TOUCHED, deliberately. That flag is a
+	# STATE the harness and `_choose` both read ("is the door open"), and
+	# borrowing it to mean "is the door drawn" would make one word answer two
+	# questions -- the shape of defect §120 found in a print line. This hides
+	# the furniture; the title is still open underneath it.
+	_root.visible = shown
+	_scrim.visible = shown
+
+
+func chrome_visible() -> bool:
+	return _root.visible
 
 
 func _toggle_mute() -> void:

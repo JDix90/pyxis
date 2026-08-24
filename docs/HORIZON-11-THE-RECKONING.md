@@ -24,11 +24,15 @@ no credit figure. So the entire sink side of the economy, which is what
 Horizon 10 was *about*, is unmeasured by construction.
 
 **2. Converted, the numbers are stark.** A steady loop pays on the order of
-34,000. The full module catalogue is ~1.1M — about **4.3 hours**. Everything
-else in the game, added together, is about **300,000**: colony works at ≤270k,
-requisitions at ≤4,500 each, a full repair at 1,400, and the deepest possible
-rescue at 1,870 — **twenty-six seconds of income**. Even at the pacing band's
-*floor* the deepest rescue is a fifth of one loop. A pilot is poor until the
+11,236 (measured; this doc shipped with a ~34,000 estimate — see STRATEGY
+§124). The full **yard** catalogue is 1,106,200 — 98 loops, about **13 hours**
+— and that figure was right here while `_pacing_catalog_cost` was reading
+846,200, because the leg was missing `ModuleDB.BERTHS` (§124 again, from the
+other direction). Everything else in the game, added together, is about
+**300,000**, a bit over a quarter of it: colony works at ≤270k (24 loops, 3.2
+hours), requisitions at ≤4,500 each, a full repair at 1,400, and the deepest
+possible rescue at 1,870 — **eighty seconds of income**. Even at the pacing
+band's *floor* the deepest rescue is a fifth of one loop. A pilot is poor until the
 catalogue is bought and never again, and Horizon 10 moved "never again" by
 about an hour.
 

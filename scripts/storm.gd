@@ -261,6 +261,16 @@ func _build() -> void:
 		_motes.scale_amount_min = 0.6
 		_motes.scale_amount_max = 1.6
 		_motes.color = tint
+		# §143. THE LINE THAT WAS MISSING HERE TOO, since v20. CPUParticles3D
+		# draws nothing without a mesh, and `color` only tints a material that
+		# is not there -- so the eye's motes have never rendered. It went
+		# unnoticed for four horizons because a storm also has an eye, arms, a
+		# ring and a shockwave to be seen by; the tide, which had only motes,
+		# is what finally reported it. FX.burst's exact construction.
+		var storm_mote := BoxMesh.new()
+		storm_mote.size = Vector3.ONE * 0.16
+		storm_mote.material = Palette.emissive(tint, 2.6)
+		_motes.mesh = storm_mote
 		add_child(_motes)
 
 	_audio = Sfx.attached_loop(self, "sweep", AUDIO_DB_FAR)

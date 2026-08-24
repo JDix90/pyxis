@@ -22,18 +22,86 @@ fails to compile, every class that names it fails behind it, and the report is
 `Could not parse global class "DeepSpace"` plus a few hundred cascade lines in
 files nobody touched.
 
-**Three forms, each found the hard way.** Bare math globals (§77), untyped
-containers indexed (§106, in an autoload — loud), and the same in a **leaf**
+**Four forms, each found the hard way.** Bare math globals (§77), untyped
+containers indexed (§106, in an autoload — loud), the same in a **leaf**
 class (§111, quiet: `survey_mast.gd` took `deep_space`, `system_db`,
 `game_state` and the audio autoload down behind it, the pre-flight passed
 because `main.gd` parses fine alone, and the sweep died at `SurveyMast.new()`
-with "Nonexistent function 'new' in base 'GDScript'").
+with "Nonexistent function 'new' in base 'GDScript'"), and inference through an
+untyped **node handle** (§138 — `survey_mast.gd` again, same leaf, same
+cascade, one substitution along).
 
-**Covered by:** `check_scripts.py` rules 4 (`check_infer`) and 6
-(`check_container_infer`). Rule 6 collects every `const NAME := [` or `{` the
-project declares and flags `:=` off a lookup into one, indexing **and** `.get()`
-— so it is exact rather than heuristic, and a typed `Array[String]` is never
-reported. Both forms were red-verified. Also `run_harness.sh --parse`.
+**The fourth form is the one that reads as typed code.**
+
+    var main := get_tree().get_first_node_in_group("main")
+    var want := main.deep_space.sheet_readings(sc.x, sc.y)
+
+`sheet_readings()` is declared `-> int`; the call site looks fully typed. But
+the lookup returns `Node`, `Node` has no `deep_space`, so `main.deep_space` is
+a Variant and a call **through** a Variant has no return type at all. The
+identical line inside `main.gd` compiles, because there `deep_space` is a typed
+member of the class rather than a property fished off a handle — so "it works
+elsewhere" is not evidence here.
+
+**A fifth and sixth form, both in one load (§147).** §146's capture pass would
+not parse, and Godot named two lines the checker had just called clean:
+
+    var ok := rode_clock[0] > 1.0          # untyped LOCAL, not a const
+    get_tree().get_first_node_in_group("hyper")[0]   # indexing ONE Node
+
+Rule 6 collects untyped **consts** and is exact about them; a harness leg's
+buckets are **locals**. And the second is one character from
+`get_nodes_in_group(...)[0]` — plural — which reads as completely ordinary code.
+Rules 9 and 10 cover both, red-verified against the live failure before it was
+fixed and against seven legal shapes after.
+
+> **"0 problems" MEANS "TEN KNOWN DEFECT CLASSES ARE ABSENT". IT HAS NEVER
+> MEANT "IT PARSES".**
+
+That distinction is the standing debt this class actually carries. Ten rules
+have each been written *after* paying for their form, GDScript's inference has
+more corners than a rule-per-incident approach will ever close, and the only
+instrument that settles the question is the parser itself —
+`run_harness.sh --parse`, or any run on a machine with the binary. A commit
+verified only by `check_scripts.py` is a commit whose parse status is **unknown**
+and should be reported that way.
+
+**Covered by:** `check_scripts.py` rules 5 (`check_infer`), 6
+(`check_container_infer`), 7 (`check_handle_infer`) and 9–10
+(`check_local_infer`). Rule 6 collects every
+`const NAME := [` or `{` the project declares and flags `:=` off a lookup into
+one, indexing **and** `.get()` — so it is exact rather than heuristic, and a
+typed `Array[String]` is never reported. Rule 7 collects locals assigned from
+an **uncast** node lookup and flags `:=` off any member of one that `Node` does
+not itself declare; `... as CameraRig` supplies the type and is not flagged,
+which is load-bearing — without that guard the rule reported two lines in
+`main.gd` that compile fine. All three forms were red-verified: rule 7 reports
+exactly the two §137 lines against the broken tree and 0 against the fixed one.
+Also `run_harness.sh --parse`.
+
+**And rule 7 cried wolf three commits later, which is the other half of the same
+lesson.** Its handle set was collected per FILE and never cleared, so a name
+used as an untyped handle anywhere poisoned every later function that reused it,
+however that one had declared it. `main.gd` declares `var rig :=
+get_tree().get_first_node_in_group(...)` in five functions and `var rig:
+CameraRig = ...` in FEELTEST; the rule reported 0 problems for three commits and
+then flagged six perfectly legal lines the moment FEELTEST grew a `:=` off its
+properly typed local. Fixed by scoping the set to the function, which
+`check_shadow`'s `live` had done since the day it was written — the rule
+borrowed that rule's shape and not its scoping. **A checker earns its keep in
+both directions: it has to catch the real one and stay silent on the rest, and
+those are two separate red-verifications.**
+
+**The first draft of rule 7 could not fail, and the reason is §77's shape
+exactly.** It asked whether the member was declared by some class in the
+project index, reasoning that a project member off a `Node` must be Variant.
+But `build_index` skips files without a `class_name`, and `main.gd` — 29,000
+lines, the class every handle in the game points at — has none, so
+`deep_space` was not in the index and the rule returned green against the tree
+that was on fire. The fix was to invert the test: concede the short list of
+members `Node` genuinely declares and report everything else. **A checker that
+asks "is this known-bad?" fails open; one that asks "is this known-good?" fails
+closed.** Rules 5, 6 and 7 all now ask the second question.
 
 ---
 
@@ -57,6 +125,17 @@ get a clean slate, and `THE DOCK IS TIME, NOT POWER` measured that store
 **eighty lines below** — so a leg that had been green for a horizon went red for
 something that was not wrong with the dock. Caught by the sweep, which is the
 system working, but the lesson is cheaper than the sweep.
+
+*Five at once, in one horizon, and none of them by a sweep.* Horizon 12's
+re-pricing (§126–§128) put five fixtures a re-read caught before a run did: a
+purse typed beside the prices it paid; a manifest loop that assigned each work's
+goods over the last instead of summing them; three refusal clauses that would
+have passed off a newly-added prereq while the gate they are named for went
+untested; an orphan-state clause that would have read its grant off a colony
+eighty lines above; and a leg filling a bay to its cap twenty lines above the leg
+that stows into that same key. **The tell in every one is the same question:
+*what else could make this pass?*** Ask it of a green assertion, not only of a
+red one.
 
 **Covered by:** nothing mechanical, and the cure is the same in both directions
 — **state the dependency at the site, or remove it.** A loader goes immediately
@@ -116,9 +195,175 @@ and a sweep of 66. §113 found "green at 758" for a sweep that was never run. An
 `check_scripts.py`'s own header said "four checks" for two rules after it was
 six — while §111 and §113 both said six.
 
+**And a fourth instance, from the other end: a measurement that does not say
+what it measured.** Three times in one horizon a sweep's counts looked plausible
+and were correct for a tree nobody had checked — twice an old checkout, once
+`main` while the work sat on a branch. The numbers were never wrong; they were
+unattributed, which in a repo with two live trees is the same failure wearing a
+different coat. `--counts`, `--legs` and the sweep summary now all print
+`branch @ sha`.
+
+**And a fifth, the worst of them: an ESTIMATE wearing a measurement's
+clothes.** §114 published a table of sinks whose `credits` column was derived
+from live constants and whose `loops` column was that column divided by a steady
+loop somebody had guessed. The two columns looked identical. The guess was
+~34,000; `PACINGTEST` prints 11,236, and it had been printing it on every sweep
+for a week. The figure travelled through four documents and became the premise
+of a whole horizon's commission before §123 converted one sentence of it into an
+assertion and the leg went red on its first run (§124). Three companion figures
+travelled with it, each one line of arithmetic away from being right.
+
+**And a sixth, which is the fifth's mirror: the LEG was the wrong one.** Two
+figures for the module catalogue — 1,106,200 in the docs, 846,200 from
+`_pacing_catalog_cost` — coexisted for a week and were never compared, because
+nothing is built to compare a number to another statement of itself. The leg was
+missing `ModuleDB.BERTHS`, 23% of everything a run can buy, and it *could not*
+go red over it: the catalogue is the denominator of both assertions that use it,
+so under-counting makes each one stricter and still passing. An error that only
+ever tightens a green test is invisible by construction. **Two numbers for the
+same thing are a defect even while both are green.**
+
+**And a seventh, the one that closed Horizon 12: a sweep total recorded from a
+RED tree.** §122 wrote down "824 across 82" as the horizon's figure. It was
+measured at `2f309ed`, which printed **one FAIL**, and nobody re-recorded it
+after the fixes made it green. Seven sections later §129 built its own expected
+total on it and was off by eight. The rule: **a measured figure carries the tree
+that produced it, or it is an estimate with a decimal point** — and a sweep with
+a FAIL in it produces no total worth keeping.
+
+**And a sixth, from Horizon 12: a fixture holding a number typed beside the
+thing it pays for.** `WORKS ARE A SINK` set `salvage = 30000` against a colony
+ladder that totalled 28,000. Re-pricing it to 101,000 would have reddened the
+leg with *"a work refused"* — a **pricing change reported as a mechanism
+failure**, which is worse than a plain red because it sends the next reader to
+the wrong file entirely. Every fixture purse in that test is now derived from
+the prices it pays (§126).
+
+**And a sixth, in the horizon that quotes this rule (§144).** §139 shipped
+"+15% on the fastest legal fit" for the tide's flat 0.9 u/s, in three documents.
+`compute_stats` is additive and `enforce_floors` sets no ceiling, so the fastest
+legal fit is at minimum 5.75 + 5.00 = **10.75 u/s** before a rig — the true
+figure is **+8.4%**, falling to +5.7% fully rigged. Wrong by roughly a factor of
+two, written in the section that cites §124, by the author of §124.
+
+**The defect is not the arithmetic.** The +56% on the 1.6 floor, derived from a
+constant, was right. The other half was *estimated from a recollection of the
+drive ladder and never derived from it* — and then repeated twice more, because
+a figure in prose is copied, not recomputed.
+
+> **A NUMBER YOU DID NOT DERIVE IS A NUMBER YOU GUESSED, HOWEVER CONFIDENT THE
+> SENTENCE AROUND IT SOUNDS.**
+
+The same failure ran on the sweep totals in the same week: 866 quoted as 864,
+off a chain of hand-tracked deltas. §144's footer bound is the fix for that half
+— the sweep now prints what the tree itself says to expect, so no human,
+including this one, tracks it by hand again.
+
+**And a seventh, by the instrument built to stop the sixth (§148).** §146's
+capture pass reported `41 frame(s) written to /tmp/pyxis-surfaces` on a run that
+wrote **zero** — the directory did not exist, Godot logged forty-one failures,
+and the harness printed its full manifest anyway. Two causes, both mine:
+
+- `_shot` discarded `save_png`'s `Error` return, and never created its output
+  directory. It has done so for **82 call sites across six suites** since it was
+  written, so every screenshot pass this project has ever had could report
+  success while writing nothing.
+- `_surface_shot` appended to the manifest **before** taking the shot, so
+  `wrote` was a list of frames *attempted*, printed under the word *written*.
+  Its own comment claimed the manifest "cannot disagree with what is on disk."
+  It disagreed with an empty directory on the first real run.
+
+> **A COUNTER INCREMENTED BEFORE THE ACT COUNTS INTENTIONS.** The append now
+> depends on the shot's return, which is what makes the claim true rather than
+> merely stated.
+
+**And an eighth: a threshold that was never a threshold (§150).** `Tide._riding`
+was `align > 0.0`, so every heading up to **89.99°** off the set reported as
+*the tide is carrying you* — and `tide_seconds`, the cockpit `▸` and the mote
+brightness all believed it. §145 had shipped that field one commit earlier
+specifically to answer *"was the tide used?"*, and it would have answered **yes**
+whatever a player did. A bound of zero is not a bound; it is the absence of one
+wearing a comparison operator.
+
 **Covered by:** `run_harness.sh --counts` (runs) and `--legs` (assertions), both
-derived, neither needing the Godot binary. **If a number describes the code,
-derive it or do not write it.**
+derived, neither needing the Godot binary; `tree_id` on every mode so a figure
+carries its provenance; and `THE DEATH PRICE SITS IN ITS BAND`, which is what
+turning a prose figure into an assertion buys. **If a number describes the code,
+derive it or do not write it — say which code, and say whether it was measured,
+derived or estimated.** A table that mixes the three without labels is drift with
+a plausible surface.
+
+---
+
+## 2b. Two systems writing the same property
+
+**What happens.** Two mechanisms both own one value. Neither is wrong on its
+own; the one that writes more often wins, and it wins *silently* because
+nothing anywhere compares them.
+
+**Instance.** `UIKit.reveal_list` tweens a `Control`'s `position` to slide it
+in. Both call sites put their labels in a `VBoxContainer` — which owns its
+children's positions — and call the helper in the same frame the labels are
+added, before the container has sorted. So `from` reads `(0, 0)`, the tween
+drives every label **to** `(0, 0)`, and the tween beats the layout because a
+tween writes every frame and a container sorts only when asked. A column of
+copy collapses onto one corner. Live in `CAPTAIN'S LOG` since §118 and shipped
+in the induction (§136).
+
+**The standing instance to watch for.** `PlayerShip._tether_vel` is the game's
+one shared write channel: `apply_tether` re-clamps it to the **last** caller's
+cap, so any two mechanisms driving it in one frame settle the question by node
+order. §139 is the first time two could — the tide stands down inside a storm's
+pull radius for exactly this reason, and standing down is a *cease to drive*
+rather than a `clear_tether()`, because zeroing a shared channel on the way out
+is the same defect pointed the other way. **Anything new that calls
+`apply_tether` owes this list an answer about who yields.**
+
+A quieter form of the same shape is two readers of one fact, each carrying its
+own copy of the rule. §139 refused an obvious early-out for that reason: the
+band gate is inside `Tide.set_at` and nowhere else, because a second gate on the
+hull's depth would have had a different edge from the one on the block's radius,
+and the chart would have drawn arrows for water the hull is not pushed in.
+
+**Why it hides.** Each half is individually correct and individually testable.
+The container lays out properly; the tween tweens properly. **No instrument in
+this repo watches one system fight another**, and both screenshots that found
+it came from a person looking at a screen.
+
+**The rule.** **Name the owner of every property that two things can write.**
+A container owns `position`; animate something else, or animate outside the
+container. And when an assertion covers an animated value, it must **say when
+it looks** — §136's leg sampled two frames in against a reveal that runs a
+third of a second, and would have passed on the broken build.
+
+---
+
+## 5b. A validity rule strict enough to be wrong
+
+**What happens.** A loader validates a key against one format, a second format
+arrives later, and the loader silently deletes the data rather than crashing on
+it. A crash would have been found in a day.
+
+**Instance.** `_bay_key_is_real` split a bay key on `:` and demanded **three**
+parts, because a deep bay is a cell `system:x:y`. The BONDED ANNEX (§112) stores
+under a colony key — `system:index`, **two** parts. Every annex bay was dropped
+on every load for two horizons, and everything a pilot stowed in one vanished.
+§16's *"nothing may vanish"*, broken by a function whose own comment calls the
+warehouse *"the one save field that arrives with no structure guaranteeing
+itself."*
+
+Nothing could catch it. The loader is *supposed* to drop keys that fail
+validation — that is its job — so the deletion looked exactly like the feature
+working. It was found by §127 asking whether it was safe to double that bay.
+
+**The rule.** **A validity test deletes; write the weakest one that is still
+true.** The fix asks only that the colony exists, not that it has an annex: a
+work cannot be un-built, so a bay without one is unreachable rather than
+illegal. And **a loader that discards should say how much** — a silent drop and
+a correct load are the same shape from outside.
+
+**Covered by:** `THE VAULT SURVIVES ITS OWN LOADER` (COLONYTEST), which stows a
+full bay and reloads it.
 
 ---
 
@@ -185,10 +430,95 @@ the player to use it, so it does not exist.
 that the game never introduced.** The claim hold had been wired since hyper
 structures shipped; the select ladder just never picked `hyper`.
 
+**And the same object again, two horizons later (§141).** A playtest reported
+"completely unable to interact" with a hyper structure — the ladder from §88
+working perfectly, `on_tapped` answering every branch, and the tap still unable
+to land. `CameraRig._pick` was a **60-pixel test around a single anchor point**,
+applied to every object in the game. That is correct for a hulk, a seam, a
+beacon or a mark, all a few units across. It is exactly wrong for a 140-unit
+object whose centre is off frame at claim range.
+
+> **A VERB CAN HAVE AN AFFORDANCE AND STILL BE UNREACHABLE. THE RUNG IS NOT THE
+> REACH.**
+
+**Why the leg did not catch it.** COLONYTEST's `THE MONUMENT ANSWERS A TAP` was
+written for §88 and stayed green throughout, because it calls `on_tapped()`
+**directly**. It tested the verb; nothing tested whether a finger could get
+there. A leg that drives a verb through its own function measures the function.
+`AND THE TAP CAN REACH IT` (§141) is the missing clause: it projects the object,
+taps 0.7 of its half-span off centre, and asserts the pick lands.
+
 **Covered by:** §88 as a rule, and `EVERY RUNG SAYS WHAT IT BOUGHT` for skill
 tiers specifically (a rung with no perk string fails). §111 killed two rungs
-against it before they shipped. **No mechanical check exists for the general
-case** — it is caught by reading the surface a player actually touches.
+against it before they shipped. §141 adds `AND THE TAP CAN REACH IT` plus `AND
+NOTHING ELSE WIDENED`, which asserts that `hyper` is the only group claiming a
+world pick radius — the ladder's near-last ordering is what makes a wide radius
+safe, and that argument holds only while it is the only one. **No mechanical
+check exists for the general case** — it is caught by reading, and by tapping,
+the surface a player actually touches.
+
+---
+
+## 9b. A system with no tell
+
+**What happens.** The mechanism is correct, asserted, and shipping. Its only
+way of announcing itself to the player cannot render. Class 9's sibling: there
+the verb has no affordance, here the *system* has no evidence.
+
+**Instance (§143).** A playtester found a tide, read the cockpit line, and
+reported *"could not determine any effect ... no visual feedback related to the
+tide that I could identify."* There was none to identify. The tide's entire
+visual tell was a `CPUParticles3D` with **no mesh and no material** — a null
+mesh renders nothing, and `color` only tints a material that is not there.
+Three independent reasons it was invisible, any one of them sufficient:
+
+| | |
+|---|---|
+| no mesh, no material | draws nothing at all |
+| `amount 70 / lifetime 26.7s` | **2.6 particles a second** |
+| a 240u emission box | the lens sees ~21u; ~99% off screen |
+
+**It had already shipped once.** `storm.gd` built the eye's motes the same way
+in v20 and went unnoticed for four horizons, because a storm also has an eye,
+arms, a ring and a shockwave to be seen by. The tide had only the motes, which
+is why the tide is what reported it.
+
+**Why the legs were green.** TIDETEST was **10 for 10**. Every leg measured the
+derivation (purity, density, the tangential bound) or the physics (the three-way
+riding/athwart/against measurement). **No instrument in this repo can see a
+renderer** — §129's observation, arriving somewhere new.
+
+**And a second, quieter half of the same report.** *"it quickly disappeared from
+my sensors."* It had not. The cockpit suffix only lit while `_riding`, which
+requires the hull to be under way and aligned — so finishing a move order made
+the line vanish. The readout conflated *there is water here* with *it is
+carrying me*, and the player correctly read the result as the tide going away.
+
+**Covered by:** `check_scripts.py` rule 8 (`check_particles`) — every
+`CPUParticles3D.new()` must be given a `.mesh` in the same function, red-verified
+against both shipped forms. Plus `AND THE WATER CAN BE SEEN` in TIDETEST, which
+asserts the mesh, the material and the emission **rate**, since 2.6 a second
+needed no renderer to be wrong. Rule 8 is the first rule in that file that is
+not a parse error, and the footer had to be corrected to stop calling it one.
+
+> **A HARNESS THAT MEASURES THE MECHANISM WILL GO GREEN ON A FEATURE NOBODY CAN
+> SEE. ASSERT THE TELL, NOT ONLY THE RULE.**
+
+**And the standing rule this class finally earned (§146).** Every defect that
+has ever reached a player in this project — six of them — was found by an eye:
+§88 and §141 by playtest, §134 and §136 by screenshots, §143 by a playtest
+against a harness that was 10 for 10 at the time. **Zero by an assertion**,
+against 866 legs and an instrument four times the size of the game.
+
+So:
+
+> **NO COMMIT TOUCHING A DRAWN SURFACE SHIPS WITHOUT A FRAME.**
+
+`PYXIS_SURFACES` is what makes that cheap rather than a chore — one run, ~40
+PNGs, every panel and every cockpit state. It carries **no verdicts** and joins
+the cannot-fail family deliberately: this harness cannot tell a good frame from
+a bad one, and a PASS line on it would be the "green that measured nothing" §77
+names. The verdict is a human's; the frames are how they reach it.
 
 ---
 

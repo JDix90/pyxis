@@ -332,6 +332,24 @@ func _complete() -> void:
 	var main := get_tree().get_first_node_in_group("main")
 	if main and main.deep_space:
 		main.deep_space.note_surveyed(cell)
+		# §137. THE SHEET SAYS WHERE IT STANDS, and this line is the feature.
+		# The premium at the end is the payment; THIS is the motivation -- a
+		# pilot who cannot see that they are three readings into a block of five
+		# has no reason to take the fourth, and "my only motivation is to go
+		# further" is what that looks like from the cockpit.
+		#
+		# Read AFTER note_surveyed, so it counts the reading just taken. Silent
+		# on the last one: the completion toast is already saying it, and two
+		# messages for one act is the double-report §120 found in a print line.
+		# Annotated, not inferred: `main` is an untyped Node, so `main.deep_space`
+		# is a Variant and a call through it has no return type the parser can
+		# see -- `:=` off that chain is a parse error, not a warning. §138.
+		var sc := DeepSpace.supercell_of(cell.x, cell.y)
+		var want: int = main.deep_space.sheet_readings(sc.x, sc.y)
+		var have: int = main.deep_space.sheet_read(sc.x, sc.y)
+		if hud and want > 1 and have < want:
+			hud.show_toast("SHEET %d OF %d IN THIS BLOCK" % [have, want],
+				Palette.AMBER)
 
 	# §111. SURVEYING'S ONE FEED, and the verb nothing else in the game is fed
 	# by. Counted per MAST rather than per unit or per cell: a mast is the act,

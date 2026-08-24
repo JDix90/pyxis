@@ -6390,20 +6390,23 @@ the deaths are listed in the research doc's §5 and the survivors are below:
 | 7 | the prompt holds its refusals: `prompt(text, hold_s := 0.0)` appended-optional, and the label wraps | rides v28 | **BUILT** — §121; adding the lock nearly converted a once-ever bark from deferred to spent |
 | 8 | the eleventh: an all-ladders capstone derived from both table families, one broadcast, a visible count | rides v28 | **BUILT** — §119; derived from the tables so 5c can land on either side of it |
 | — | the one that could not fail: TITLETEST gets the four assertions it was printing in prose | none | **BUILT** — §120; found by commit 1's own `--legs` on its first execution |
-| 9 | the measure: the horizon closed and the sweep read | none | **BUILT** — §122; the figure is 824 across 82 MEASURED, and 831 is arithmetic until a full sweep prints it |
+| 9 | the measure: the horizon closed and the sweep read | none | **BUILT** — §122; the figure recorded here was 824 across 82, and §129 found it was measured at `2f309ed` — a tree printing one FAIL, never re-recorded after the fixes made it green. Treat it as the reading of a red tree, not the horizon's total |
 
 **The finding that set the order, and it is a measurement rather than a
 feeling.** This project has an income instrument and has never had a wealth
 one. `PACINGTEST` measures earning rate against a mid-tier module and asserts a
 band; **nothing anywhere measures a balance or a sink**, and `DEFAULT_LEDGER`'s
-seven keys contain no credit figure. Converted against a steady loop of roughly
-34,000: the module catalogue is ~1.1M (**~4.3 hours**) and *everything else in
-the game together* is about 300,000 — colony works ≤270k, a requisition ≤4,500,
-a full repair 1,400, and the deepest possible tug's fee 1,870, which is
-**twenty-six seconds of income**. Even at the pacing band's floor the deepest
-rescue is a fifth of one loop. So §64's own question — does a mid-game pilot
-ever feel poor again — has an answer: not after the catalogue, and Horizon 10
-moved that by about an hour. The cause is one sentence, and it is the rule
+seven keys contain no credit figure. Against the loop the sweep actually
+measures — **11,236 credits per eight minutes**, and every figure this block
+first carried was an estimate (§124) — the yard catalogue is 1,106,200: **98
+loops, thirteen hours**. *Everything else in the game together* is roughly
+435,000, under half of it: colony works 28,000 a colony (252k–420k across a
+run's three to five structures per system), a requisition ≤4,500, a full repair
+1,400, and the deepest possible tug's fee 1,869, which is **eighty seconds of
+income**.
+Even at the pacing band's floor the deepest rescue is a fifth of one loop. So
+§64's own question — does a mid-game pilot ever feel poor again — has an answer:
+not after the catalogue, and Horizon 10 moved that by about an hour.
 commit 0 writes: **every price in this game is anchored to another price, and no
 price is anchored to the loop.**
 
@@ -6451,6 +6454,198 @@ WHETHER it has. `Rival.filed` is monotone in `played_seconds`, so a chart that
 derived "a colleague filed this" would retroactively re-label every cell the
 player filed *first* — the exact inverse of §97's `files_with_the_network()`,
 which is derivable because it is an existential over a store that only grows.
+
+**Horizon 12 — the settlement** (opened 2026-08-21, the evening Horizon 11
+merged; researched in `docs/HORIZON-12-RESEARCH.md`, specced in
+`docs/HORIZON-12-THE-SETTLEMENT.md`). Six commits, **all built** (§123–§129,
+closed 2026-08-22, no save bump — v28 throughout). The
+commission: raise the sinks so they bite, and answer *what is a late-game
+pilot's money for*. The research pass's answer: **money converts into place**
+— the network takes no credits (§96, settled), so the works ladder is where
+the Authority's ledger is spent out. Seven ideas died in the pass (courier,
+insurance, two escorts, THE GLASS, a flat repair raise, the rescue's ride on
+the jump ramp); the finding that shaped it is that **PACINGTEST is blind to
+repair costs** (the measured loop is invulnerable), so the bite lands on the
+rescue and the repair is recorded as band-blind rather than silently re-priced.
+
+Four decisions settled before code (2026-08-21): the bite is **firm** (rescue
+at 0.3–0.5 of a measured steady loop at the far marks, against 0.166 today);
+the re-priced sinks get a **measured band** so the drift §114 documented
+cannot recur; **THE ARCHIVE is allowed** — a colony work displaying the run's
+record, narrowly amending H10's "NOT prestige purchases" (the boundary held:
+status for money stays refused; a record of what was already done is not
+status); and the spec followed a research pass.
+
+**And the first sweep of the horizon corrected the horizon's own premise.**
+§124: steady is **11,236**, not the ~34,000 four documents had been carrying —
+a third of the estimate, and 0.775 of a mid-tier module against a legal band of
+[0.60, 3.00]. The game earns near the **floor** of the band it asserts, so every
+sink is already three times deeper in loop-minutes than the commission assumed,
+and commits 1–4 were re-sized against the measurement before they were built.
+
+| # | what | save | status |
+|---|---|---|---|
+| 0 | the death price: rescue on its own constants, banded [0.30, 0.50] of measured steady; repair recorded as band-blind | none | **BUILT** — §123; repair turned out never to have been involuntary, and the ceiling law was sampled rather than total |
+| — | the measurement: `RESCUE_FEE_FAR` 13,000→4,500, four documents of estimates corrected, and `_pacing_catalog_cost` given the `BERTHS` dict it had been missing since v24 | none | **BUILT** — §124; the band went red on its first sweep, which is the leg doing its job on the commit that added it — and the catalogue defect went the other way, a leg wrong where the prose was right |
+| 1 | the wider margin: REQ_MULT 5→8, jumps revisited | none | **BUILT as its opposite** — §125; both halves died on research (the jumps clear by 2–4.5×, and the order desk is a convenience whose free competitor is the core loop), and the leg turned out to print the bias-free ceiling while asserting the bias-inclusive one. `REQ_MULT` stays at 5.0; the margin is now reported |
+| 2 | the ladder stands: `requires` staging, the four works re-priced | none | **BUILT** — §126; scope became data, the staging shrank to one prereq (the rest would have been a price in a gate's clothes), and the channel reached 76% of the yard at that commit (205% once §127 and §128 landed) |
+| 3 | EXPANDED VAULTS + THE YARD | none | **BUILT** — §127; both upgrade a rung rather than adding one, and the research found the annex bay has been deleted on every load since §112 |
+| 4 | THE LIGHT + THE ARCHIVE | none | **BUILT (half)** — §128; THE LIGHT ships at a radius derived from `MIN_HYPER_SEPARATION` so no two overlap. THE ARCHIVE died: `PILOT'S LEDGER` (§111) and `CAPTAIN'S LOG` (§118) already show the run's record free, so it was a paywall in front of a free screen |
+| 5 | the measure | none | **BUILT** — §129; the figure is **836 across 82 MEASURED** at `3a56e85`, green. The exempt channel row now prints its ratio to the catalogue, and the section's own expected figure (828) was wrong because it rested on §122's 824 — a number measured on a tree that printed a FAIL |
+| — | **from playtest, after the close**: the deep archetype pool is cumulative, so a uniform draw made the deepest counters rarer the further out a pilot flew (14.3% at band 6 against 33% at band 2); pyx01 could not be fixed with data because it is the fingerprint control | none | **BUILT** — §130; a derived default tilts the pick from band 4 outward, which is the first band the fingerprint's window cannot reach |
+| — | **THE ARCHIVE, reinstated and reshaped** (§131: the kill was not the assistant's call). Deep counters docked at are the one found place the game never remembered; the work buys reading the file, never the facts in it | none | **BUILT** — §132; system-scoped, 56,000, the first component manifest in the game, and the first store that needed a cap |
+
+**Horizon 13 — the induction** (opened 2026-08-22; researched in
+`docs/HORIZON-13-RESEARCH.md`; specced in `docs/HORIZON-13-THE-INDUCTION.md`;
+**commits 1–3 BUILT** — §133 (the copy approved and shipped verbatim),
+§134 (the copy column had zero height), §135 (the replay hid the door) and
+§136 (the real cause of the stacking: `reveal_list` tweened `position` inside a
+`VBoxContainer`, capturing `(0,0)` before the container sorted and then driving
+every label there — `CAPTAIN'S LOG` has done the same since §118, and the leg
+written to catch it sampled too early to see it). TITLETEST 4 → 10, no save
+shape change.
+Open: a music treatment, and whether the live 3D system behind the scrim should
+recede — §135 measured it as the world rather than the menu, and `SCRIM_BASE`'s
+alpha is the one constant if it should). The commission: a lore-heavy
+cinematic introduction for new pilots — the war, the derelicts, the Authority's
+control — taking a supplied reference video's grammar (light narrates, one
+subject per shot, a founding myth in four beats). The research pass's finding:
+**the story is already shipped** in `UnsoundedSite.FRAGMENTS`, the beacon
+plates and the band-name arcs, so the intro is designed as **the Authority's
+own induction film** — partial, euphemistic, and quietly wrong, with every
+redaction a hook the deep later answers. Four decisions taken at the fork:
+Authority-briefing narrator; the cause (deep time) is shown, with §6 of the
+research doc splitting fact-for-the-intro from consequence-for-the-vault;
+in-engine hybrid (prerendered died COSTED); first boot + replayable, one
+`seen_induction` key riding v28. Draft beat copy awaits the owner's read —
+the `UNSOUNDED-FRAGMENTS-DRAFT` ritual — before any spec or code.
+
+**Playtest fixes, after Horizon 14** — §141, the reach: a playtester could not
+interact with a hyper structure at all. `CameraRig._pick` was a 60px test around
+ONE anchor for every object in the game, which is right for a hulk and exactly
+wrong for a 140u object whose centre is off frame at claim range. A node may now
+declare a WORLD radius and the pixels are MEASURED against the live camera;
+`hyper` is the only claimant and a leg asserts that, because the ladder's
+near-last ordering is what makes a wide radius safe. §88's own leg stayed green
+throughout — it calls `on_tapped()` directly, so it tested the verb and never
+the reach. COLONYTEST 24 → 26. **And §142, the free look** (same session): drag now TURNS
+the view (yaw free, pitch clamped −82°…−28° so the camera never looks along the
+plane the game is drawn on), zoom widens 9–34 → 6–80, and the pan keeps all its
+machinery — it moved to two fingers and the middle button rather than being
+taken away. `level_view` unwinds it, on a rebindable key and a two-finger tap.
+The radar and `_pick` followed for free (both unproject through the live lens);
+the chart stays WORLD-aligned by decision, and its orientation comment was
+amended rather than left resting on an assumption the code stopped supporting.
+FEELTEST 13 → 17. Rule 7 cried wolf on this commit's own legs and was scoped to
+the function to fix it. **And §143, the water you could not see**: §139's tide
+shipped with its entire visual tell unable to render — a `CPUParticles3D` with
+no mesh (draws nothing), at 2.6 particles a second, in a box ten times the view
+— and TIDETEST was 10 for 10 throughout, because nothing here can see a
+renderer. `storm.gd` had the same defect since v20. Fixed in both, plus
+`check_scripts.py` rule 8 and a TIDETEST leg asserting the mesh, the material
+and the rate. The cockpit now separates PRESENT from RIDING, which is the other
+half of the same report. **OPEN**: nothing auto-levels the view on warp or dock —
+`level_view()` is public and unwired for that.
+
+**Review fixes** — §144, what the tree says to expect: a self-critical review
+(items 2 and 3 of seven) found §139's "+15% on the fastest legal fit" wrong by
+~2x — the true figure is **+8.4%**, since `compute_stats` is additive and the
+fastest fit is 10.75 u/s before a rig — corrected in §139, §64 and the horizon
+spec, and recorded as DEFECTS class 5's sixth instance. The sweep footer now
+prints its own DERIVED BOUND (806 legs across 57 gated tags, measured; SAVETEST
+reported beside it, unbounded by design) so no expected total is ever
+hand-tracked again. **OPEN, from the same review**: the tether channel caps at
+1.5, so the strongest tide this mechanism can ever produce is +14% on a Cruise
+Mk II fit — whether 0.9 is felt is a play question, but the current door cannot
+be tuned out of the problem. **§145 BUILT** — turning the recorder on: `telemetry.gd`
+has been switchable since Horizon 3 and never read once, so the row gains
+`sheets_filed` and `tide_seconds` (the two facts Horizon 14 could not answer),
+`tools/read_telemetry.py` makes reading it one command, and TIDETEST asserts the
+clock only runs while the water carries you. **AWAITING THE OWNER**: three
+sessions with SHARE PLAY DATA on — the pass deferred since Horizon 1, which
+gates the sheet-loop floor and the tide's door. **§146 BUILT** — the contact sheet: `PYXIS_SURFACES`
+captures ~40 frames (twelve cockpit states including the suspected jam+tide
+overflow, the chart across its zoom range, every port tab, every manual page,
+every induction beat) and carries NO VERDICTS, joining the cannot-fail family so
+the sweep is untouched. Registers the standing rule this review earned: **no
+commit touching a drawn surface ships without a frame.** **§147 BUILT** — §146 would not parse: two errors on a
+tree `check_scripts.py` had just called clean, an untyped LOCAL bucket (rule 6
+knew only consts) and an indexed SINGULAR node getter. Rules 9 and 10 close
+both, red-verified against the live failure before the fix. The standing lesson
+is bigger than the rules: **"0 problems" means ten known classes are absent, and
+has never meant "it parses"** — a commit verified only by the static checker has
+an UNKNOWN parse status and is to be reported that way. **§148 BUILT** — §146's first run wrote ZERO frames (the
+output directory did not exist) and its manifest said "41 frame(s) written"
+anyway: `_shot` discarded `save_png`'s Error across 82 call sites in six suites
+and never made its directory, and `_surface_shot` appended BEFORE shooting, so
+the count was intentions. Both fixed; the summary now reports failures loudly.
+The run's logic was otherwise sound — the port tabs derived correctly, including
+a `requisitions` tab I would not have guessed. **§149 BUILT** — §146's frames wrote fine and could not be
+found: `/tmp` is hidden by Finder on macOS AND purged by it. `_run_surfaces` now
+defaults to `user://surfaces` and prints the GLOBALIZED path plus an `open`
+line, so the closing output is something to paste rather than the string the
+owner just typed. **§150 BUILT** — the first full sweep since §141 came back 83
+runs / 865 PASS / **3 FAIL**, and §144's derived bound printed correctly on its
+first outing. Two reds were mine: `level_view` and `chart` both bound to C
+(§142; moved to V, plus a `NO TWO ACTIONS SHARE A KEY` leg walking the live
+InputMap — nothing had ever checked the SHIPPED bindings), and `_riding =
+align > 0.0` calling any heading within 89.99° "carried by the tide", which
+corrupted §145's `tide_seconds`, the cockpit `▸` and the motes alike
+(`RIDE_MIN_ALIGN := 0.25`, gating push and readout as ONE rule, both at the
+owner's call). The third was FEELTEST inheriting a camera position it never set.
+Remaining: a sheet-loop PACINGTEST floor (item 5) and the tide's door (item 7),
+both gated on the playtest sessions.
+
+**Horizon 14 — the middle** (opened 2026-08-22 after a play session;
+researched in `docs/HORIZON-14-RESEARCH.md`, specced in
+`docs/HORIZON-14-THE-MIDDLE.md`; **commit 1 BUILT** — §137, the sheet: reward
+for area rather than depth, on `SUPERCELL`'s existing grain, with a **flat**
+premium so it is worth proportionally most where income is lowest.
+`RICHER OUTWARD` untouched. CARTTEST 21 → 23, no save bump. **Commit 2 BUILT**
+— §139, the tide: a standing set of water per supercell across bands 4–5,
+derived on its own salted stream (no store, no save bump, no fingerprint), which
+pushes only a hull ALREADY agreeing with it, runs TANGENTIAL so it is a reason to
+cross a band rather than a slide outward, and pays a FLAT 0.9 u/s — +56% on the
+speed floor, +8.4% on the fastest fit (shipped as +15%; corrected in §144). The braid: a filed sheet does not unlock
+the tide, it unlocks the CHART of it, so §137 pays twice. Stands down inside a
+storm (DEFECTS 2b — `apply_tether` re-clamps to the last caller). New tag
+TIDETEST, 10 legs, 82 → 83 runs. **Commit 3 BUILT — the horizon closes** —
+§140, the roads: a 26,000 colony work whose reach (`MIN_HYPER_SEPARATION` × 1.5
+= 1,050u, three times the light's and overlapping on purpose) draws every tide
+in it on the chart WITHOUT filing a sheet. Information only — §26 and §51 both
+asserted, including a source read proving `tide.gd` cannot name the work. Its
+manifest is the surveys the road is made of (`chart_quiet` 6 + `chart_fathom` 6,
+a gate on having worked both halves of the middle). `supercell_centre` moved to
+DeepSpace and `supercells_within` added beside it. COLONYTEST 22 → 24, CARTTEST
+23 → 24, no save bump. **Commit 1a
+BUILT** — §138: §137 shipped a parse error, `:=` inferred through an untyped
+node handle, which took CARTTEST to `3 pass 7 err` and every SAVETEST with it.
+Fixed by annotation, and `check_scripts.py` gained **rule 7**
+(`check_handle_infer`) — the fourth form of DEFECTS class 1 and the first the
+checker could not see. Its own first draft returned green against the broken
+tree, §77's shape exactly; both halves red-verified before the section was
+written). The
+commission: 1,000–5,000u is boring, and the only motivation out there is to go
+further. The pass's measurement says why — **every per-band table in the game
+is monotone in depth**, with no exception across stations, hulks, loot, salvage
+grades, chart data, seams, debris, packs and traps, so the middle is never
+optimal for anything; and **no new noun appears between band 2 and band 6.**
+`Storm.band_floor()` is 5,200u, so the one environmental system begins exactly
+where the complaint ends. Two theories died in the pass: the Rival is not the
+cause (earliest claim at the band-4 floor is ~18.8 hours of play), and
+landmarks must not start paying out (`TASTE`, refused in writing, and the
+reason is right). Diagnosis: **the expanse is a gradient, not a geography** —
+the middle has scattered destinations and nothing that happens, accumulates, or
+rewards knowing it. OPEN after §139: whether the tide should ever TURN — route
+knowledge with a timetable in it is a second dimension the chart cannot draw
+today, and it was refused for that reason rather than for cost. Three directions
+researched as one horizon at the owner's
+call — reward area (the sheet, on `SUPERCELL`'s existing 4×4 grain, so a
+completed sheet always contains exactly one landmark and the landmark names it
+without paying), weather that gives rather than takes, and colony works that
+reach into the water — with **`RICHER OUTWARD` never broken** (owner's
+decision): the middle earns its place through coverage, knowledge and presence,
+and never through a better number.
 
 ### Built, despite what the docs said
 
@@ -11911,28 +12106,36 @@ either, so the outflow side of the economy, which is what the whole of Horizon
 Converted against the loop this function already measures, the shipped
 constants read:
 
-| sink | credits | loops |
-|---|---|---|
-| the module catalogue | ~919,000 | ~27 |
-| every colony work on one colony | 18,000 | 0.53 |
+| sink | credits | loops | wall |
+|---|---|---|---|
+| the yard catalogue | 1,106,200 | 98.5 | 13.1 h |
+| every colony work on one colony | 18,000 | 1.60 | 12.8 min |
+| the wager, a full streak | 5,250 | 0.467 | 3.7 min |
+| a requisition, dearest part | 4,500 | 0.400 | 3.2 min |
+| **the tug, at the far marks** | 1,869 | **0.166** | **80 s** |
+| **repair to full** | 1,400 | **0.125** | **60 s** |
+| the sharpest bearing sold | 900 | 0.080 | 38 s |
+| paint | 800 | 0.071 | 34 s |
+| a beacon jump at its cap, a colony jump, a rumour | 500 | 0.044 | 21 s |
 
-*(§116 adds a fourth work and moves that row to 28,000 / ~0.82 loops. The leg
-derives it from `COLONY_WORKS` and needs no edit; this table is the reading
-taken the day the block shipped, and it is corrected here rather than left to
-disagree with the sweep.)*
-| the wager, a full streak | 5,250 | 0.15 |
-| a requisition, dearest part | 4,500 | 0.13 |
-| **the tug, at the far marks** | 1,869 | **0.055** |
-| **repair to full** | 1,400 | **0.041** |
-| the sharpest bearing sold | 900 | 0.026 |
-| paint | 800 | 0.024 |
-| a beacon jump at its cap, a colony jump, a rumour | 500 | 0.015 |
+*(**Three corrections; two are prose catching up to the leg and one is the
+reverse.** The loop column was first published against an ESTIMATED steady loop
+of ~34,000, so every ratio above is three times what this section shipped
+claiming. The catalogue row said ~919,000 for a leg that summed 846,200 for a
+yard that actually costs 1,106,200 — three different numbers, none of which had
+been compared to the others; §124 fixed the leg (it was missing `BERTHS`) and
+this row now carries what it will print. §116 later adds a fourth colony work, moving that row
+to 28,000 / 2.49 loops / 20 min, and §123 re-prices the tug to 4,500 / 0.400 /
+3.2 min and corrects `repair to full` out of the forced set entirely. Every row
+derives from live constants, so the leg needed no edit for any of it. Only this
+table did.)*
 
-The two in bold are the only charges a pilot cannot decline. **The deepest
-possible rescue in the game is twenty-six seconds of standard-loop income**,
-and a full repair is twenty. Even against the pacing band's *floor* — the
-poorest economy this project asserts as legal — the deepest rescue is a fifth
-of one loop.
+The two in bold are the charges §114 shipped calling undeclinable; §123 finds
+that repair is not one, because it competes with a free wait. **The deepest
+possible rescue in the game is eighty seconds of standard-loop income**, and a
+full repair is sixty. Even against the pacing band's *floor* — the poorest
+economy this project asserts as legal — the deepest rescue is a fifth of one
+loop.
 
 ### The rule, and it is §11's missing half
 
@@ -12602,11 +12805,12 @@ what it read.
 
 This project has measured **earning rate** since §41 and has never measured a
 **sink**. Converted against the loop `PACINGTEST` already computes, the deepest
-possible rescue in the game is twenty-six seconds of standard-loop income and a
-full repair is twenty; every voluntary sink together is under an hour against a
-catalogue that takes four. §109's tug is priced at exactly twice the beacon
+possible rescue in the game is eighty seconds of standard-loop income and a full
+repair is sixty; every voluntary sink outside the yard together is under half a
+catalogue that takes thirteen hours. §109's tug is priced at exactly twice the beacon
 jump, which is right, and anchored to a number that was itself never anchored to
-anything.
+anything. *(Figures corrected in §124. This paragraph shipped carrying an
+estimated loop — in the commit whose entire subject is that estimates drift.)*
 
 > **A sink's price is stated in loop-minutes** — §11's missing half.
 
@@ -12706,3 +12910,2587 @@ one by the instrument built to look for exactly it.
 
 The checker ended the horizon with six rules, as it began. The harness ended it
 with three commands that need no binary and one gate that did not exist.
+
+## 123. The death price (Horizon 12, commit 0)
+
+§114 measured the deepest possible rescue in the game at **eighty seconds** of
+standard-loop income and deliberately asserted no target, because the decision
+belonged to a later horizon taken with the table in hand. This is that horizon
+and that decision — and the constant it first shipped was wrong by a **factor of
+three**, caught by its own new leg on the first sweep that ran it (§124).
+
+### Its own constants, and the anchor that was never there
+
+`rescue_fee` walked `beacon_jump_fee`'s ramp at twice the price. The arithmetic
+was right, `THE RESCUE COSTS MORE THAN THE JUMP` swept seven depths to keep it
+right, and the anchor underneath it was a guess: **the jump's own fee had never
+been anchored to anything either.** §114 named that defect; this is its last
+site.
+
+The fee now has its own two constants expressing loop-fraction intent — ~240
+just past the chart edge, ~900 at a shallow deep death, ~2,700 at the band-6
+floor, **4,500 at the far marks**.
+
+### It clamps now, which reverses §109 rather than forgetting it
+
+§109 refused `beacon_jump_fee`'s clamp with a good reason: that one sits at
+`BEACON_JUMP_MAX_DEPTH` (4,200) while content runs out to 9,000, so inheriting
+it would flatten the bill across the entire far deep — *"cheapest exactly where
+it should cost the most."*
+
+This clamp sits at the far marks **themselves**. `FarMarks.DEPTH_MAX` is the
+deepest authored thing in the game, so there is no content in the flat region at
+all. The ramp measures the flight home, and past the marks there is nothing out
+there the tug could have been called to.
+
+It also makes §114's ceiling law **total rather than sampled**. Unclamped, a fee
+rising forever crosses one measured loop somewhere past ~60,800u — true of a
+pilot who flew into empty space, invisible to a leg that prices one depth, and a
+promise quietly broken out where nobody looks. `NOTHING INVOLUNTARY EXCEEDS A
+LOOP` now prices the fee at **ten times** the marks — 90,000u, comfortably past
+that crossing — and `THE RESCUE COSTS MORE THAN THE JUMP` grew a clause
+asserting the ramp really does stop.
+
+### The band is the point, not the raise
+
+A one-time raise is a nudge that expires. Yields move, the loop grows, and the
+death price silently becomes eighty seconds again with nothing to notice —
+which is precisely how it got there the first time.
+
+> `THE DEATH PRICE SITS IN ITS BAND` — the deepest rescue, as a fraction of the
+> loop `PACINGTEST` measures, in **[0.30, 0.50]**.
+
+Income's own instrument shape: an authored constant, a measured ratio, a red
+when they drift apart. Measured against **STEADY**, never the best case — the
+best-case loop carries a once-per-system derelict, and pricing a recurring
+consequence against a windfall would make death cheapest for the pilot who just
+found one (`ROUTE PARITY` picks steady for the same reason). A red here is one
+constant moving, not a crisis: `RESCUE_FEE_FAR` is the provisional half and the
+band is the thing being defended.
+
+### And repair was never involuntary
+
+§114's table shipped calling repair a forced charge. **It is not**, and
+`repair_full`'s own comment says so in as many words:
+
+> *"The slow recovery in `_tick_shield` is the free option; this is the one you
+> pay to skip."*
+
+A docked repair is a **time purchase competing with waiting** — the same thing
+the DRY DOCK sells. The misclassification made the ceiling law weaker than it
+read, because half of what it checked was a convenience. The forced set is now
+exactly one row, and the law means what its name says.
+
+**So repair is deliberately not re-priced**, for two reasons that compound:
+
+- `PACINGTEST` measures a loop that runs `invulnerable` and **never pays a
+  repair**, so any raise moves real-play net income while `STEADY MIDTIER` reads
+  exactly what it read — a stealth nerf the band structurally cannot see,
+  landing hardest on the pilot who fights every loop.
+- Its competitor is **free**. Raising the price of skipping a wait does not
+  deepen a sink; it buys more waiting, which is tedium sold as economy.
+
+Both are recorded at the row rather than in this section alone, because the next
+person to reach for the obvious knob will be looking at the table.
+
+## 124. A third of the number in the document (Horizon 12, commit 0b)
+
+§123 shipped `RESCUE_FEE_FAR := 13000` and a band asserting the deepest rescue
+sits in `[0.30, 0.50]` of the loop `PACINGTEST` measures. The first sweep that
+ran it printed:
+
+```
+NOTHING INVOLUNTARY EXCEEDS A LOOP one loop is 11,236, the deepest forced
+  charge anywhere is 13,000, 2 above it -> FAIL
+THE DEATH PRICE SITS IN ITS BAND deepest rescue 13,000 is 1.157 of a steady
+  loop (11,236) vs [0.30, 0.50] -> FAIL
+```
+
+**The loop is 11,236. Every document in this horizon had been written against
+~32,500–34,000.** The constant was not slightly wrong; it was three times the
+whole loop, and both of §123's own new legs caught it on their first execution.
+
+### The mistake, named precisely
+
+It is `DEFECTS.md` class 5 — *a measurement presented without saying what
+produced it* — committed **inside the section whose entire subject is that
+estimated numbers drift**. §114's table has a `loops` column. Nobody ever ran
+the leg and read what it printed; the column was arithmetic over a steady loop
+somebody had guessed, published in a table whose neighbours were all derived
+from live constants, and it looked exactly like the derived ones.
+
+Four figures travelled that way, through `HORIZON-11-RESEARCH.md`,
+`HORIZON-11-THE-RECKONING.md`, §64, §114, §122 and §123:
+
+| figure | written | actual | how the actual was got |
+|---|---|---|---|
+| steady loop | ~32,500–34,000 | **11,236** | `PACINGTEST` printed it |
+| the yard catalogue | ~919,000 in §114, ~1.1M in §64 | **1,106,200** | summing `MODULES` + `REACTOR_TIERS` + `BERTHS` |
+| deepest rescue, as time | twenty-six seconds | **eighty seconds** | 1,869 ÷ 11,236 × 480 s |
+| where an unclamped fee crosses a loop | ~24,000u | **~60,800u** | solving 240 + 0.181·d = 11,236 |
+
+Not one of the four was hard to obtain. Three are one line of arithmetic over
+constants that were already open in the editor, and the fourth was being printed
+by a leg on every sweep for a week.
+
+### And the second row is the one worth stopping on: the leg was wrong
+
+Re-deriving the catalogue by hand produced **846,200** — and the docs said
+**1,106,200**. Two numbers that had coexisted for a week, neither ever compared
+to the other. The docs were right.
+
+`_pacing_catalog_cost` sums `ModuleDB.MODULES` and `ModuleDB.REACTOR_TIERS`.
+`ModuleDB.BERTHS` — three one-way credit purchases at the yard, 260,000
+together, **23% of everything a run can buy** — has been outside it since v24
+shipped them. And the print line describing it had gone stale a second time in
+the same sentence: *"every module and both reactor upgrades"* says **both**, and
+`REACTOR_TIERS` has held four purchasable tiers since the Mk IV and the Mk V.
+The sink row said *"the module catalogue"*, which was true of what the function
+summed. Neither line said *the yard*, and the number was read as though they
+had — class 5 twice in one `print`, at the site the whole ledger is read from.
+
+**Nothing could ever have gone red over it**, and that is the structural part.
+The catalogue appears in exactly two assertions and it is the **denominator** of
+both:
+
+- `CEILING` asserts `earned / catalog ≤ 0.15`. An under-counted catalogue makes
+  the ratio **larger** — a stricter test that passes anyway.
+- `THE CATALOGUE IS THE LONGEST PRICE` asserts no sink exceeds it. An
+  under-counted catalogue makes the bar **lower** — also stricter, also passing.
+
+An error that only ever tightens a passing test is invisible by construction, in
+both directions it is checked. It took a hand derivation done for an unrelated
+reason to see it.
+
+Fixed in the same commit: the function sums all three dicts, the print line says
+*"every module, every reactor tier and all three berths"*, and the sink row is
+renamed **the yard catalogue** — via a local `const` rather than a string typed
+at both the row and the law that must exclude the row from its own comparison,
+which was one rename away from a law quietly comparing the catalogue to itself.
+
+The consequence runs the other way from everything else here: the road is
+**98 loops, thirteen hours**, not the 75 the hand derivation produced or the 27
+§114 published. The finding gets stronger a second time.
+
+### What the error did to the argument, which is the interesting part
+
+**It strengthened it in one direction and weakened it in another, and both
+matter to the horizon this opens.**
+
+Stronger: the catalogue is **98 loops, thirteen hours**, not the ~27 loops §114
+claimed. The finding that started Horizon 11 — *this project has an income
+instrument and has never had a wealth one* — is more true than the section
+arguing it, and the yard is a longer road than anybody had written down.
+
+Weaker: the commission for Horizon 12 was *raise the sinks so they bite*, sized
+against a loop three times too fast. **Every sink already bites three times
+harder than the plan assumed.** A colony's four works are 2.5 loops, not 0.8; a
+full ladder across a run's structures is three to five **hours**, not the one
+to one-and-a-half the plan was written against. The re-pricing that commits 1–4
+were going to perform is therefore far smaller than specced, and the deepest line
+in
+the research doc — a works ladder at "~300k+ per colony" — is **3.6 hours for a
+single colony and forty-three hours to finish everywhere**. It is deleted rather
+than trimmed.
+
+And one thing neither: the measured loop is **0.775 of a mid-tier module**
+against `PACING_MIN_MODULES` 0.60 and `PACING_MAX_MODULES` 3.00. The game earns
+near the **floor** of the band it declares legal, with the ceiling almost four
+times the measurement. That is legal and always was — but it means any sink
+priced as a flat constant against today's rate is up to 4× too cheap for an
+economy this project would still call in-band. **§123's shape — a ratio to a
+measured loop, not a number — is the only shape a sink price should take here**,
+and that is now a rule rather than a preference for the one it was built for.
+
+### The fix, and why it is one constant
+
+`RESCUE_FEE_FAR` 13,000 → **4,500**: 0.400 of the measured loop, the exact
+middle of the band, and inside `NOTHING INVOLUNTARY EXCEEDS A LOOP` by a factor
+of two and a half. `RESCUE_FEE_EDGE` does not move. No leg changed, no law
+changed, no save shape moved. That is what §123's own comment promised — *"a red
+here is one constant moving, not a crisis"* — being true the first time it was
+tested, which was six hours after it was written.
+
+The ramp now reads ~240 just past the chart edge, ~900 at a shallow deep death,
+~2,700 at the band-6 floor, 4,500 at the marks and flat beyond them.
+
+### The rule this earns
+
+> **A NUMBER IN PROSE STATES WHAT PRODUCED IT.** A figure derived from live
+> constants says so; a figure a leg printed says which leg; a figure somebody
+> estimated says *estimated* in the sentence that carries it. A table mixing the
+> three without labels is four documents of drift with a plausible surface.
+
+And the berth row earns the rule's other half, which is why it is *state what
+produced it* rather than *trust the leg*:
+
+> **TWO NUMBERS FOR THE SAME THING ARE A DEFECT EVEN WHILE BOTH ARE GREEN.**
+> 1,106,200 and 846,200 sat in the same repo for a week describing the same
+> yard. Nothing compared them, because nothing was built to: an assertion checks
+> a number against a *bound*, never against another statement of itself.
+
+`DEFECTS.md` class 5 is extended with this instance, which is its worst: the
+class was written about *test output* that did not attribute itself, and this is
+the same failure in the architectural record, where nothing runs and nothing
+goes red. The instrument caught the estimate — but only because §123 happened to
+convert one prose figure into an assertion, and it did not catch the leg at all;
+a hand derivation did, by accident, while checking something else. **Every other
+number in this document is still unchecked**, and the only defence is the two
+rules above.
+
+### What this says about the horizon's method
+
+The research pass for Horizon 12 was run, argued, decided and specced across six
+commits' worth of documents on top of a number that had never been read. Nothing
+in that process was designed to catch it: the pass reads *code*, and the wrong
+figure was in *prose*, restated so often it had the texture of a measurement.
+
+The thing that caught it was a leg that turned a sentence into arithmetic the
+harness could run. That is the whole argument for §114 and §123, made
+retroactively and at this repo's own expense: **the assertions found the error in
+the document that specified them.**
+
+The honest coda is that they only found one of the two. The estimate died to a
+leg; the leg's own under-count died to somebody adding up a data file by hand
+because a different number had just been proven wrong. An instrument is worth
+building and it is not a reason to stop reading.
+
+## 125. The margin the line did not report (Horizon 12, commit 1)
+
+Commit 1 was specced as **the wider margin**: `REQ_MULT` 5→8, jump fees
+revisited against the new rescue curve. The research pass killed both halves and
+found a third thing that was actually wrong.
+
+### The jumps: nothing to do, and §123 is why
+
+`THE RESCUE COSTS MORE THAN THE JUMP` was the reason to revisit them, and §123
+already answered it with room to spare. The rescue is 240 at the chart edge
+against a 120 jump, and 2,228 at `BEACON_JUMP_MAX_DEPTH` against a 500 one —
+**2× at the edge, 4.5× at the cap**, and jumps are refused past the cap
+entirely. Nothing is close to anything.
+
+As a *sink*, a 500-credit jump is **21 seconds** of a measured loop. Quadruple
+it and it is eighty-five. Against a 98-loop yard the whole channel is noise, and
+it is noise whose free competitor is flying — which is the game. **Dead.**
+
+### `REQ_MULT` 5→8 as a sink: dead, and backwards
+
+The dearest order in the game is `lens_unsounded` at 4,500 — **0.40 of a loop**.
+At 8× it is 7,200, or 0.64. `REQ_MAX_OPEN` is 3 and `REQ_DELAY` is five minutes,
+so the entire channel's concurrent exposure is under two loops.
+
+Worse than small, it is aimed the wrong way. The order desk's own row says what
+it is: *"a part sourced for you is dearer than one you found — that is the
+entire deal."* Its competitor is **going and finding the component**, which is
+`identify()`, which is the core loop; and `NO ORDER WITHOUT THE READ` already
+gates it to parts the pilot has handled. So the price falls entirely on the
+pilot who cannot yet afford the alternative to flying, and not at all on the one
+the commission is about. **A sink that bites the early pilot and not the late
+one is not the sink this horizon was asked for.**
+
+### What the pass found instead, by reading the leg rather than running it
+
+`THE ORDER DESK IS NOT A PRINTER` computes a ceiling from live constants:
+
+```
+(1+DRIFT 0.12)(1+PRESSURE 0.25)(shortage 2.2)(1-SPREAD 0.06)(bulk 1.06)(fence 1.45)
+  = 4.4499x base
+```
+
+then asserts, **per good**, that `requisition_price > base × bias_best ×
+ceiling_mult`. And then prints `ceiling_mult`.
+
+**It prints the bias-free ceiling and asserts the bias-inclusive one.** Today
+those are the same number by accident: *not one component carries a port bias
+anywhere in the game*, so every `bias_best` reads 1.0 and the printed 4.45×
+happens to be the asserted one.
+
+The first authored component bias breaks that in the one direction that matters.
+The line keeps printing 4.45× while the real worst-case sale climbs toward the
+order price — under-reporting the danger it exists to warn about, at the exact
+moment the danger becomes real. That is §124's rule owed by an assertion **one
+commit after the rule was written**, and it was found by reading the leg, not by
+it going red.
+
+### The fix, and why the price does not move
+
+The line now reports the **thinnest margin across all eleven components**, the
+good that owns it, and that good's actual worst-case sale:
+
+> `THE ORDER DESK IS NOT A PRINTER 11 components at 5.0x base; thinnest margin`
+> `1.124 on <good> (orders N, best legal sale M = 4.45x base), first loop: none`
+
+A boolean law says whether the desk is a printer **today**. The margin says how
+close it is, which is the only form of this number a content author can act on
+*before* the red. It is **1.124** — so a component bias of 1.124 at any counter
+is the single data edit that trips it, and now that number is on screen instead
+of being derivable by whoever thinks to divide.
+
+**`REQ_MULT` stays at 5.0.** With an honest margin report the tripwire is doing
+its job, and 8.0 would be a constant anchored to a feeling about headroom —
+§124's rule, one section old, applied to the commit that was going to break it
+first. §41 and §99's posture, again: the numbers are provisional, the laws are
+what is checked, and a red at the moment somebody authors a bias is the
+conversation working rather than failing.
+
+### A defect the fix nearly shipped
+
+The first draft tracked the worst good as `CommodityDB.short_name(gid_p)` and
+then fed that **display string** to `Market.requisition_price` and
+`CommodityDB.base_price`. Both take an **ID**. `requisition_price` floors at 1
+via `maxi`, so the line would have printed an order price of **1** beside a
+correct margin — and passed, because the assertion never touches those values.
+
+A measurement column reporting on nothing, added to the leg being edited to stop
+exactly that. `DEFECTS.md` class 5, caught by re-reading the diff. The names are
+now `worst_id` and `worst_name`, derived apart and above the format array, where
+the mismatch is visible.
+
+### What this leaves the horizon
+
+Commit 1 was the smallest lever in the plan and the measurement made it smaller.
+The sink table has **one entry between twenty minutes and thirteen hours** — a
+colony's four works at 2.5 loops — and nothing at all between 2.5 loops and 98.
+That gap is the whole commission, and commits 2–4 are the only things in the
+horizon that reach it. Nothing else was ever going to.
+
+## 126. The ladder stands (Horizon 12, commit 2)
+
+The re-pricing the horizon was opened for. It found the thing that had made
+"raise the works" look like one decision when it is two.
+
+### The finding: two of the four rungs cap at three copies
+
+The chart asks whether **any** colony in the selected system has a relay, and
+the same for a repeater. So a second relay in a system grants **nothing**, and a
+run's authored ceiling is three systems — **three useful relays in the entire
+game, and three repeaters.** The dry dock is a 30-unit aura at the colony it
+stands at; the bonded annex is a bay keyed to its own colony. Those two
+multiply by every colony a pilot develops.
+
+| work | scope | useful copies |
+|---|---|---|
+| RELAY MAST | system | **3** — one per authored system, hard-capped by the chart's own question |
+| DEEP REPEATER | system | **3** — same question |
+| DRY DOCK | colony | up to 15, positional |
+| BONDED ANNEX | colony | up to 15 |
+
+**Raising a system-scoped work's price does not deepen the sink.** It makes the
+three copies anybody would buy dearer and nothing else. Raising a colony-scoped
+one multiplies. The flat 4 / 6 / 8 / 10 ladder priced them as though they were
+the same product.
+
+And it kills the staging the spec asked for. A prereq that forces a purchase you
+did not want is a **price wearing a gate's clothes** — §72 read backwards.
+Staging the colony works behind the relay would make a pilot who wants twelve
+annexes raise twelve masts, **nine of which would do nothing at all.**
+
+### So the scope became data, and it was already written in the blurbs
+
+*"OUT TO THIS SYSTEM"* against *"ALONGSIDE THIS COLONY"* and *"A BONDED BAY OF
+ITS OWN"*. The consumers have always behaved that way; nothing said so anywhere
+a second reader could find it. `scope` promotes that sentence to a key, and it
+is **load-bearing rather than decorative**: `work_stands_in_system` reads it, the
+chart's two hand-written any-in-system loops are gone, and the sink table derives
+the whole channel's size from it. A fifth system-scoped work arrives without a
+third copy of that walk.
+
+`work_scope` defaults to `"colony"` — the narrower reading — so a work added
+without the key grants only where it stands rather than silently across a system.
+
+### One prereq, and it is the one the fiction already wrote
+
+`repeater` **requires** `relay`. Its own blurb has said so since §116 — *"the way
+the relay carries the chart's."* And it costs nothing extra by construction: the
+mast it demands is the same single per-system mast the repeater's own grant
+depends on. Nothing else gets one, for the arithmetic above.
+
+The gate lives in `GameState.buy_colony_work`, not Main's half, because *"does
+this colony have the mast"* is answerable from `colony_works` alone — the split
+that function's own comment documents. The chart states the rung in a third
+cascade branch, ordered by root cause: **the ground** is the whole colony's
+question, **the prereq** is the ladder's, **the manifest** is this one trip's.
+Telling a pilot to bring twelve alloys for a repeater they could not buy with a
+full hold teaches the wrong thing.
+
+### The prices, as loop fractions
+
+| work | was | now | loops | wall |
+|---|---|---|---|---|
+| RELAY MAST | 4,000 | **11,000** | 0.98 | 7.8 min |
+| DRY DOCK | 6,000 | **17,000** | 1.51 | 12.1 min |
+| BONDED ANNEX | 8,000 | **28,000** | 2.49 | 19.9 min |
+| DEEP REPEATER | 10,000 | **45,000** | 4.00 | 32.0 min |
+| one colony's four | 28,000 | **101,000** | 8.99 | 72 min |
+| **the channel, at its ceiling** | 174,000 | **843,000** | **75.0** | **10.0 h** |
+
+Against the yard's 1,106,200 / 98 loops / 13 hours, the works channel is now
+**76% of the road** — the largest thing in the game that is not the ship, and
+still never longer than it. One colony fully developed is about one long
+session, which is the unit this was sized in.
+
+### `THE WORKS AT THEIR CEILING`, and why the old row was not enough
+
+`EVERY SINK IS PRICED` had a row reading *"colony works, one colony"*. That is
+the **menu**, and a pilot does not buy a menu. The new row prices the
+**channel** — every copy that grants anything — derived from `scope`,
+`HYPER_MAX` and the authored system list, so a new work, a new system or a wider
+structure count all land in it without an edit.
+
+It also gives `THE CATALOGUE IS THE LONGEST PRICE` real work to do for the first
+time: 843,000 against 1,106,200 is **24% of headroom**, where every row before
+it cleared by an order of magnitude.
+
+### Three fixtures that would have gone green for the wrong reason
+
+The commit's own legs, found by re-reading rather than by running:
+
+1. **`WORKS ARE A SINK` held `salvage = 30000`** against a ladder that had
+   totalled 28,000. At 101,000 it would have reddened with *"a work refused"* —
+   a pricing change reported as a mechanism failure, which sends the next reader
+   to the wrong file. The purse is now derived from the prices it pays.
+
+2. **`THE TRIP IS THE COST` picks the first work with a manifest** — the
+   repeater — and raises it on a fresh colony. With the prereq shipped, its
+   three refusal clauses would all have passed **off the ladder** while the
+   delivery gate went untested and `bought` failed. It now satisfies every other
+   gate first, derived from `requires` so a re-staged ladder cannot reintroduce
+   it.
+
+3. **`THE LADDER STANDS`' own clause 4** asks whether an orphan repeater still
+   *grants*. Run in pyx01 it would have read true off the repeater
+   `WORKS ARE A SINK` raised eighty lines above — passing whether or not the
+   orphan granted anything. It runs in pyx02, which has no colony until the
+   clause makes one.
+
+All three are the same defect wearing three coats: **an assertion satisfied by
+state it did not set.** `DEFECTS.md` class 2, which Horizon 11 generalised to
+"state set at a distance", now with the ladder's own instance beside it.
+
+### Staging never un-builds
+
+A v28 save written before this commit can hold a repeater with no mast under it
+— legal when written, unreachable now. The gate is on **raising** a work and
+must never become a validity rule for one already standing, or shipping a prereq
+would silently demolish what a pilot already paid for. The loader's filter keeps
+any key `COLONY_WORKS` knows and asks nothing about order; clause 4 asserts the
+readers downstream of it agree. **No save bump** — `scope` and `requires` are
+const data and `colony_works`' shape is untouched.
+
+And `A WORK IS DECLARED AFTER WHAT IT REQUIRES` is asserted rather than assumed.
+This leg and the chart both walk `COLONY_WORKS` in declaration order, so a work
+declared before its prerequisite would fail here as a pricing bug and show a
+pilot a rung above its own prerequisite there.
+
+## 127. The vault and the yard (Horizon 12, commit 3)
+
+Two works, and **both upgrade a rung rather than adding one** — which is what
+makes their prereqs legal under §126's test. That test asks whether a gate
+forces a purchase you did not want; here the thing required *is* the thing being
+improved. A pilot who wants the vault wants the annex by definition.
+
+| work | scope | requires | price | loops |
+|---|---|---|---|---|
+| EXPANDED VAULTS | colony | `annex` | **39,000** | 3.47 |
+| THE YARD | colony | `dock` | **34,000** | 3.03 |
+
+One colony's full six is now **174,000 — 15.5 loops, about two hours**, and
+6.4× under the yard catalogue. The channel at its ceiling is 1,938,000.
+
+### The refusal on `WAREHOUSE_SPACE`, and the boundary that survives
+
+`WAREHOUSE_SPACE`'s own comment refused exactly what EXPANDED VAULTS proposes:
+
+> *"Never a port-def key: a cap that VARIES turns storage capacity into a thing
+> you shop for and compare across stations, which is a second budget with its
+> own shopping trip — and 9 rule 1 allows exactly one."*
+
+The refusal names its mechanism precisely, and that is what lets it be amended
+rather than contradicted: **a cap authored per station is a thing you shop for.**
+A vault is not authored and cannot be shopped for — it is a work the pilot
+raised, at a colony the pilot founded, and every charted and deep counter in the
+game is still exactly 60. *"Identical at every station"* stays literally true.
+
+So the narrower line does the same job: **A CAP NEVER VARIES BY PORT DEF.**
+`CAP` still sweeps every def and archetype for a `warehouse_space` key and
+reddens on the first one.
+
+### The bug the research found: the annex has been eating cargo since §112
+
+Asking whether it was safe to *double* the annex bay turned up the reason
+doubling it would have sold nothing.
+
+`_bay_key_is_real` splits a bay key on `:` and — for anything containing one —
+demanded **three** parts, because a deep bay is a cell key `system:x:y`. **A
+colony key is two:** `claim_key()` returns `colony_key(system_id, index)`, which
+is `"pyx01:9"`.
+
+So `parts.size() != 3` returned false, `_load_warehouse` dropped the key, and
+**everything a pilot ever stowed in a bonded annex vanished on the next load.**
+§16's *"nothing may vanish"*, broken silently for two horizons, in the one save
+field the function's own comment calls *"the one save field that arrives with no
+structure guaranteeing itself."*
+
+The fix is the weaker test on purpose: a two-part key is real if the colony
+exists. **Not** "and it has an annex" — a work cannot be un-built, so a bay
+without one is unreachable rather than illegal, and a validity rule strict
+enough to be wrong is precisely how this function got here.
+
+### And the keyed cap makes the loader order-critical
+
+`_load_warehouse`'s over-capacity trimmer sheds cheapest-first so a reload is
+idempotent. It now asks `warehouse_space_of`, which asks `has_work` — so if
+`colony_works` were ever loaded **after** `_load_warehouse`, a vaulted annex
+holding 120 space would be trimmed against 60 and **sixty space of a pilot's
+goods would be deleted on load.**
+
+It is safe only because `load_game` populates colonies at 4891, works at 4898,
+and calls `_load_warehouse` at 4917. That is luck until it is written down — and
+the comment beside the works loader records this repo already shipping one
+load-order defect of exactly this shape. `THE VAULT SURVIVES ITS OWN LOADER`
+asserts it, so a reorder reddens instead of eating cargo.
+
+### THE YARD is six, and six is derived
+
+A hundred points of shield at the base 6/s is 16.7 seconds. The dry dock halves
+that to 8.3. **Six times takes it to 2.8 — under `SHIELD_CALM_DELAY`'s four
+seconds**, at which point the regen is no longer the wait and the calm delay is.
+Past six the multiplier buys nothing, because what remains is a combat rule
+rather than a repair one. The leg asserts it reaches that point, so a regen
+retune that made six too slow reddens.
+
+**It is not a paid instant repair**, and the three reasons compound. A meter
+would make it the only work with one; it would break §26 (works pay in time,
+choice, access and information — *never* credits); and it would land on a price
+`PACINGTEST` is structurally blind to, since the measured loop runs
+`invulnerable` and never pays a repair — §123's own recorded reason for leaving
+`REPAIR_FULL_PRICE` alone. The one-time price **is** the cost, and what it buys
+is the end of the wait at a place the pilot made.
+
+`repair_aura_mult_at` asks about the yard **first**, and that ordering is
+load-bearing: a yard colony also has a dock, so the other order would cap every
+yard in the game at the dock's two and nothing would ever say so.
+
+### §126 fed the wrong kind of row to the ceiling law
+
+`THE CATALOGUE IS THE LONGEST PRICE` means *no purchase costs more than the
+ship*. Every row in that table is what **one** pilot pays for one thing or one
+menu — except the channel row §126 added, which is what **fifteen colonies**
+would cost if somebody developed all of them. Handing a completionist aggregate
+to that law compares two different kinds of number, and it came due one commit
+later: these two works put the channel at **1.75× the catalogue.**
+
+**The red would have been the wrong answer**, and that is a decision rather than
+a convenience. Capping the works channel below the yard re-creates the exact
+condition §114 was written about — money buys place, a bit, and then nothing
+again. A terminal sink has to be able to outlast the ship or it is not terminal.
+
+So the law is sharpened from *nothing* to **no single decision**: the ship stays
+the spine, no one choice a pilot makes costs more than it, and completionism
+across a map is allowed to be longer. The exemption is a flag the row declares
+(`over_exempt`), not a name match, and the count is **printed** — a law with a
+quiet exception is a law nobody can audit.
+
+### Two more fixtures that would have gone green for the wrong reason
+
+- **`WORKS ARE A SINK` assigned each manifest over the last** instead of summing
+  them. Invisible while exactly one work had goods; THE YARD is the second and
+  wants alloys too, so the repeater's twelve would have been clobbered by the
+  yard's twenty, the repeater would have eaten them, and the yard would have
+  refused a hold eight short — a green leg turning red on a data addition it
+  should not care about.
+- **The vault leg fills a bay to its cap to prove it can**, and
+  `THE ANNEX IS BONDED` stows into that very key twenty lines below. It puts the
+  bay back. Same blast-radius rule the delivery leg states.
+
+**No save bump.** `scope`, `requires` and the two new works are const data;
+`warehouse`'s shape is untouched; and the bay-key fix makes the loader *keep*
+data it was discarding, which no save needs migrating for.
+
+## 128. The light, and the archive that was already free (Horizon 12, commit 4)
+
+Commit 4 was specced as two works. One shipped. The other died to a screen that
+has existed since §111.
+
+### THE LIGHT
+
+*"What lies adrift inside this colony's reach, nobody else takes."* 22,000,
+colony-scoped, no prereq, a manifest of ten volatiles. Two loops, priced below
+the yard because it is situational where the yard is not: the yard removes a
+wait after every fight, the light saves a hold only when a death happens inside
+its reach.
+
+**Reworded from "this system" before it was built** (decided 2026-08-22). It
+would have capped at three useful copies and repeated the relay's mistake — the
+scope finding from §126 catching a work one commit before it shipped, which is
+what a finding is for.
+
+**The radius is derived, and it buys an invariant.**
+`SystemDB.MIN_HYPER_SEPARATION` is how far apart any two structures must stand.
+Half of it — **350u** — is the largest reach a light can have and still never
+overlap another. `NO TWO LIGHTS OVERLAP` is the assertion, and it is what stops
+a pilot blanketing a system by founding colonies in a huddle. Coverage is bought
+one colony at a time.
+
+It is deliberately far wider than `DOCK_AURA_RANGE`'s thirty, because the two
+auras ask different questions. The dock asks *are you parked at the yard*; the
+light asks *did you die within this colony's reach* — and a death happens where
+the fight was. At 350u it is a reason to work the ground near your own colony,
+which is the same thing the dock's aura buys and the whole of what a colony is
+meant to become.
+
+**The clock stops; the claim is not cancelled.** A pilot who tows a spill out
+from under the light is back on the deadline they had, with the seconds they had
+left. What the work buys is that this ground is *watched*, not that this cargo
+is immortal.
+
+**Asked of the spill, never of the ship.** The pilot is by construction
+somewhere else while that clock runs — §118's whole argument — so reading the
+player's position would fire the grant exactly when it is not needed and never
+when it is.
+
+**And it says so once.** The alternative is silence: the thirty-second warning
+simply never arriving, which from the cockpit is indistinguishable from the
+clock still running. §88, applied to a grant rather than a verb.
+
+### THE ARCHIVE dies, and the code is what refused it
+
+The horizon opened by *allowing* it: **"a record is not a purchase"** narrowly
+amended H10's prestige refusal, on the grounds that displaying what was already
+done is not status. The permission held. The thing turned out not to exist.
+
+**The run's record is already displayed, free, on the pause menu**, on two pages
+built for exactly this:
+
+- **`PILOT'S LEDGER`** (§111) — *"WHAT YOU HAVE DONE, AND WHAT IT OPENED.
+  NOTHING HERE IS SPENT."* Eleven ladders, every skill line, and §119's capstone
+  count.
+- **`CAPTAIN'S LOG`** (§118) — the last ten things that happened, plus the
+  running total of what was claimed off you.
+
+So THE ARCHIVE was never "a record made into a place." It was **a paywall in
+front of a free screen, plus a flight to reach it** — a purchase and a trip
+charged for information the game already gives away. §26 says works pay in
+information; a second copy of a page you already have is not information.
+
+§111's own comment is the refusal, written two horizons early:
+
+> *"What is here is a RECORD — eleven one-line statements of what this pilot has
+> done and what it opened — and it exists because eleven of them cannot live on
+> the root page... **There is nothing on this page to press.** That is the
+> difference, and it is the whole of it."*
+
+An Archive has something to press: a price.
+
+**Two reshapes were weighed and both fail.** A version showing what is *left*
+rather than what is done contradicts §19's bookkeeping refusal harder than the
+ledger does, and this game deliberately hides what it hides. A purely visual
+monument grants nothing in any §26 currency and nobody else can see it — which
+is not a record, it is decor, and the H10 amendment does not reach it.
+
+The ladder ends at **seven works**, and that is the right number rather than a
+shortfall.
+
+### Where the works stand at the end of the building
+
+| | credits | loops | wall |
+|---|---|---|---|
+| one colony's seven | 196,000 | 17.4 | 140 min |
+| four colonies fully developed | 728,000 | 65 | 8.6 h |
+| the channel at its ceiling | 2,268,000 | 202 | 26.9 h |
+| the yard catalogue | 1,106,200 | 98 | 13.1 h |
+
+The channel is **2.05× the ship**, exempt from the ceiling law by §127's
+`over_exempt` flag and for §127's reason: no single decision costs more than the
+ship, and completionism across a map is allowed to outlast it. One colony's full
+ladder is 5.6× under the catalogue, so the law still has its teeth in the place
+it means them.
+
+## 129. The measure (Horizon 12 closes)
+
+Horizon 12, commit 5 — written the way §113 and §122 were: **before the sweep
+that judges it**, because its job is to say what that sweep means rather than to
+report it.
+
+### What this horizon did to the economy, in one paragraph
+
+Every sink price in the game moved except two, and **not one yield did.**
+The deepest rescue went 1,869 → 4,500; the colony ladder went 28,000 → 196,000
+and grew from four works to seven. Repair and the jump fees were left alone with
+their reasons recorded (§123, §125). Nothing touched earning, so
+`STEADY MIDTIER` should read **0.775** exactly as it read at the horizon's
+first commit, and a red there is a regression rather than a re-derivation.
+`SAVE_VERSION` is still **28**: seven sections and six commits on one save shape.
+
+### The horizon's own finding, and it arrived in the wrong order
+
+The commission was two sentences — *raise the sinks so they bite*, and *what is
+a late-game pilot's money for*. The research pass answered the second from the
+code (**money converts into place**; §96 already settled that the network takes
+goods and never credits), and then the **answer to the second changed the
+first**, three times, each time downward and each time for a different reason:
+
+1. **§124 — the loop was a third of what four documents said.** So the sinks
+   already bit three times harder than the commission assumed, and the raise
+   shrank before a price moved.
+2. **§125 — the smallest lever was aimed the wrong way.** `REQ_MULT` prices a
+   convenience whose free competitor is the core loop, so raising it bites the
+   pilot who cannot yet afford to fly for the part and not the one this horizon
+   is about.
+3. **§126 — half the ladder caps at three copies.** A system-scoped work has one
+   useful copy per authored system, so raising its price does not deepen the
+   sink; it makes the three copies anybody would buy dearer. The re-pricing had
+   to be *shaped* rather than *scaled*.
+
+> **A sink is not deepened by its price alone. It is deepened by its price times
+> the number of times anybody would pay it.** §126's scope key is that sentence
+> made into data.
+
+What came out the other side: the works channel went from **174,000 — 16% of
+the ship — to 2,268,000, 205% of it.** The terminal sink now outlasts the yard,
+which is the answer to the second sentence stated as arithmetic.
+
+### No two findings came from the same instrument
+
+That is the observation worth keeping, and it is an argument against trusting
+any single one of them:
+
+| finding | what found it |
+|---|---|
+| the loop is 11,236, not ~34,000 | a **leg going red** on the commit that added it |
+| the catalogue is 1,106,200, not the leg's 846,200 | a **hand derivation** done for an unrelated reason |
+| the order desk prints a ceiling it does not assert | **reading the leg** rather than running it |
+| the annex has deleted every bay since §112 | **asking whether a change was safe** |
+| THE ARCHIVE has nothing to grant | **reading a UI file** written two horizons ago |
+
+The instrument caught one of the five. Two were caught by arithmetic nobody was
+asked to do, and two by reading code that was not the code being changed.
+§124's rule — *a number in prose states what produced it* — has a companion the
+horizon earned the hard way: **an instrument is worth building and it is not a
+reason to stop reading.**
+
+### What the tooling found, and what it cost
+
+Two defects were found **by** the instruments (§124's red, and the same section's
+under-counted catalogue). Three were found by reading. And **five fixtures would
+have gone green for the wrong reason**, every one of them caught on an
+adversarial re-read of a diff rather than by a run:
+
+- `WORKS ARE A SINK` held a purse typed beside the prices it paid, and summed
+  nothing — it assigned each work's manifest over the last.
+- `THE TRIP IS THE COST` would have passed all three refusal clauses off the new
+  ladder while the gate it is named for went untested.
+- `THE LADDER STANDS`' orphan clause would have read its grant off a colony
+  eighty lines above.
+- The vault leg fills a bay to its cap twenty lines above the leg that stows
+  into that same key.
+- `NOTHING IS TAKEN UNDER THE LIGHT` reads the first adrift cube, so one
+  survivor from a leg above would have decided it.
+
+All five are one defect wearing five coats — **an assertion satisfied by state
+it did not set** — and `DEFECTS.md` class 2 now carries the horizon's instances.
+Class 5 gained two more, and a new class **5b** was written: *a validity rule
+strict enough to be wrong*, which is how a loader deletes data for two horizons
+without a single red.
+
+### What this horizon leaves open, stated rather than implied
+
+- **The channel at 2.05× the ship is a bet, and it is untested by play.** It is
+  deliberate (§127: a terminal sink has to outlast the ship or it is not
+  terminal), it is now printed on every sweep beside its ratio, and nothing has
+  played an hour against it.
+- **`MIDTIER` 2.91 against `STEADY MIDTIER` 0.775 is a spread of ~3.8×.** Both
+  print on every `PACINGTEST` run and nobody has read them together. If the
+  spread is real it makes §123's choice to band against STEADY load-bearing
+  rather than tidy.
+- **The order desk's margin is 1.124.** One authored component bias at that
+  value turns it into a printer. The number is on screen now (§125); the
+  decision to leave `REQ_MULT` at 5.0 rides on somebody reading it.
+- **THE LIGHT's 350u has never met a real death site.** The radius is derived
+  and the non-overlap invariant is asserted; whether deaths actually happen
+  inside it is a play question.
+- **H10's prestige amendment is on the books with nothing using it.** *"A record
+  is not a purchase"* was granted for THE ARCHIVE and THE ARCHIVE died. The
+  permission stands unspent, which is worth knowing before the next thing
+  reaches for it.
+- **§64's ALLIED-splash question**, open since 2026-08-06, and **the four legacy
+  deepenings (5c)**, deferred since §111. Neither moved.
+- **The tug's fee is `min(fee, wallet)`, so a pilot with nothing pays nothing**
+  (§130, from playtest). §123 banded the fee at 0.30–0.50 of a loop; the
+  *effective* band for a broke pilot is zero. Debt, goods-as-fee and refusal are
+  each already refused with reasons at `charge_rescue`; the one shape that would
+  close it without breaking any of them is to spend the unpaid remainder against
+  the spill's claim clock, which already exists and which §128's LIGHT already
+  protects. **Not taken** — it is a design decision, not a defect.
+- **How much tilt a deep band should carry** (§130). The law is that it points
+  outward; the amount is reported per band and nothing asserts a target, so the
+  first play session past 5,200u is the instrument.
+
+### And the closing figure was wrong before the sweep printed it
+
+This section was written expecting **828**. The sweep printed **836 across 82,
+0 FAIL, save intact** (`3a56e85`). The gap is not a surprise in the code; it is
+the horizon's own defect landing on the horizon's own closing section.
+
+The arithmetic was `824 + 4`. The **+4** is right and was verified by deriving
+the leg counts from both trees and diffing them: Horizon 12 moved exactly two
+tags — `COLONYTEST` 18 → 21 and `SPILLTEST` 12 → 13 — and every other tag's
+`GATE`, `COND`, `LOOP` and `PROSE` count is byte-identical across the horizon.
+
+The **824** is the wrong half. It was measured at `2f309ed`, a tree that printed
+**one FAIL**, and it was recorded in §122 as the horizon's figure and then
+carried into this one as though it described a green tree. Nobody re-recorded
+the number after the fixes that made it green.
+
+> **A measured figure carries the tree that produced it, or it is an estimate
+> with a decimal point.** §124's rule, owed by the section that closes the
+> horizon §124 is in.
+
+So the figure that goes in the box is the one the sweep printed: **836 across
+82**, at `3a56e85`, green. The static ceiling behind it is `GATE 777 + COND 6 +
+LOOP 7 + SAVETEST 45 = 835`, and 836 means one conditional or loop leg fires
+once more than its static site — which is precisely what `--legs` documents
+those two columns to do (*"fire zero-to-many, reported only"*). The instrument
+was right; the prose beside it was not, for the third time in seven sections.
+
+### The horizon, remembered
+
+Seven sections across six commits and **no save bump at all**. Two works were
+added, two upgraded, one killed, and one commit shipped as its own opposite.
+
+The deaths are the output, as they were last horizon: a margin raise that was
+aimed at the wrong pilot, a staging plan that would have forced nine useless
+masts, a repair meter that would have broken §26 and hidden inside a band the
+instrument cannot see, and an archive that turned out to be a paywall in front
+of a page from §111.
+
+And the number the whole horizon turns on was wrong on the day it opened. The
+leg that caught it was written in the same commit that shipped it, six hours
+earlier, by somebody who did not know they were building it for that.
+
+## 130. Two from a playtester (Horizon 12, after the close)
+
+Two reports arrived after §129 closed the horizon. One was a real bug with a
+cause nobody had looked for; the other was a question the code had already
+answered in writing, with one residual hole the answer does not cover.
+
+### 1. The deep counters got worse the deeper you flew
+
+> *"Beyond 5000u there's a reversion in the ports available... the player no
+> longer finds the rarest ports, but begins to see the common, low-levelled ones
+> familiar from closer regions. It makes it difficult to expand or improve the
+> ship out in the Fathoms and Unsounded."*
+
+**Confirmed, and the cause is structural rather than a typo.**
+`DeepPortDB.for_band` is **cumulative** — *"every archetype the expanse is deep
+enough to have built"* — so the pool grows with depth:
+
+| band | pool | newest archetype's share, uniform |
+|---|---|---|
+| 2 THE DRIFT | 3 | 33.3% |
+| 3 THE REACHES | 4 | 25.0% |
+| 4 THE QUIET | 5 | 20.0% |
+| 5 THE FATHOMS | 6 | 16.7% |
+| 6 THE UNSOUNDED | 7 | **14.3%** |
+
+**Under a uniform draw the reward for distance is inverted by construction** —
+the newest tier gets rarer the further out you go. That is the exact opposite of
+`for_band`'s own promise three lines above it: *"The good ones sit further out,
+so the reward for distance is a better counter."* Availability delivered on that
+promise; frequency reversed it.
+
+And it lands hardest where it hurts most. The deepest archetypes are not
+flavour: `deep_breakwater` (band 5) is where the **Mk III weapons** are bought,
+and `deep_lantern` (band 6) carries the defensive Mk III line and **the only
+Reactor Mk V in the game**. At band 6's `STATION_CHANCE` of 0.135, a 14.3%
+archetype share put the Far Lantern behind **one cell in fifty-two**.
+
+**Why it was worst in the starting system, and why the obvious fix was refused.**
+`station_weights` exists precisely to tilt this, and pyx02 and pyx03 both author
+it. **pyx01 cannot** — it is the system `_world_fingerprint` hashes, so
+`station_weights` is named in `SHARED_STREAM_KEYS` and forbidden there by
+`IDENTITY IS ADDITIVE`. The fix could not be data in pyx01, and the starting
+system — *"where the tutorial runs and where the manual's first hour sends
+you"*, in that same block's words — was permanently stuck with the uniform draw.
+
+### The fix is a derived default, and it is provably free of the control
+
+`DeepPortDB.distance_weights(band, kinds)` weights each archetype by **how
+recently it became available**: the shallowest row keeps 1.0 and each band
+deeper adds one. An authored row still wins; this is the default, not a floor.
+
+At band 6 that is `[1,2,2,3,4,5,6]` — the Far Lantern at **26.1%** against
+14.3%, and the band-1 Relay down to **4.3%**.
+
+**It starts at band 4, and that number is derived from the control rather than
+chosen.** `_world_fingerprint` hashes `plan_cell` — station archetype included —
+over cells `[-5, 5]` at `CELL` 64. Its furthest corner is
+`√2 × 6 × 64 = 543u`, less the shallowest authored bounds (40) = **503u**, which
+`BAND_EDGES` puts in **band 3**. So band 4 is the first band whose content can
+change without retiring a hash recorded before seams existed.
+`THE TILT CANNOT MOVE THE CONTROL` re-derives all of that from
+`FINGERPRINT_SPAN`, `CELL` and `bounds_of` rather than trusting this paragraph.
+
+Both halves of that are true and **the constraint is the binding one** — said in
+that order, because dressing a constraint up as a design reason is how a number
+stops being checkable.
+
+> `THE REWARD FOR DISTANCE IS A BETTER COUNTER` — at every tilted band, the
+> deepest tier is the single likeliest counter out there. The **law** is that it
+> points outward; **how much** is reported, never asserted (§114's posture).
+
+**What changes in a live save:** station *identities* in pyx01's bands 4–6 only.
+Positions do not move — `weighted_index` consumes the same `rng.randi()` — and
+pyx02 and pyx03 are untouched, because both author rows at every band the tilt
+reaches. It is one constant (`TILT_MIN_BAND`) to revert.
+
+### 2. What happens when the pilot cannot pay the tug
+
+> *"Should the player go into debt? Should the Authority require materials?
+> What if the player refuses?"*
+
+**All three are already refused, in writing, at `charge_rescue`:**
+
+> *"THE TUG TAKES WHAT YOU HAVE AND NEVER REFUSES. A rescue that could fail for
+> want of credits is a soft-lock with a story attached — there is no other way
+> out of a shield-zero ship — and a debt is a second currency the game does not
+> have. So it bills what is in the account and writes the rest off."*
+
+Each option breaks something specific. **Debt** is a second currency, and §123's
+`NOTHING INVOLUNTARY EXCEEDS A LOOP` exists precisely so an undeclinable charge
+cannot delete the session before it — a debt makes the charge exceed the wallet
+*by construction*. **Goods as the fee** would be the first goods-as-price in the
+game; §116 drew that line explicitly (*"THE GOODS ARE A GATE, NOT A PRICE"*).
+**Refusal** is the soft-lock: there is no other exit from a shield-zero hull.
+The toast already says so — the fee prints `(ALL YOU HAD)` when it could not be
+met in full.
+
+**The residual hole the answer does not cover, and it is real:** the write-off
+means the effective fee is `min(fee, wallet)`, so **a pilot with nothing pays
+nothing.** The deep death price is a wealth tax that vanishes for the pilot most
+likely to be dying. §123 banded the fee at 0.30–0.50 of a measured loop; the
+*effective* band for a broke pilot is zero.
+
+Whether that matters is a design question and it is **not** taken here. The
+position and the spill are still the other half of the price (§109, §118), so
+dying broke is not free in the currencies that are not credits — and the one
+shape that would close it without inventing debt or goods-as-price is to spend
+the unpaid remainder against the **spill's claim clock**, which is a mechanic
+that already exists and which §128's LIGHT already protects. Recorded in §64 as
+open rather than built at the end of a horizon that has closed.
+
+## 131. A refusal is a price, not a veto
+
+A process section rather than a code one, written because the assistant got this
+wrong four times in one horizon and the owner had to say so.
+
+### What happened
+
+`THE ARCHIVE` was **explicitly approved** — an `AskUserQuestion` put to the
+owner, answered *"Allow it — a record is not a purchase."* Four commits later
+§128 killed it and wrote *"the code is what refused it."*
+
+That framing was wrong twice. §111's comment — *"there is nothing on this page
+to press"* — is an argument for why a shared ledger page survives §19's
+no-bookkeeping-screens rule. **It says nothing about colony works and nothing
+about paying for records.** The real argument was a design judgement (*the
+information is already free, so a paid copy grants nothing*), and citing §111
+dressed that judgement in an authority it did not have.
+
+Three more the same horizon, all decided without asking: `REQ_MULT` (§125), the
+`requires` staging (§126), and THE YARD as a paid repair (§127). Each kill was
+argued and each may even have been right. **None of them was the assistant's to
+make alone.**
+
+### The line
+
+The opening brief for Horizon 11 said *"kill ideas freely when the code refuses
+them"*, and that stands — for **ideas the assistant proposed**. It was never
+meant to cover **changes the owner asked for**.
+
+> **A REFUSAL IS A PRICE, NOT A VETO.** A comment refusing something is a past
+> decision, not a law of physics, and it never outranks a live one. When an
+> explicitly requested change meets a written refusal, the refusal is **costed
+> and put back to the owner** — what breaks, what amending it costs, what the
+> alternatives are — and never reported as a kill.
+>
+> Two things may still die without asking: a change that would **corrupt saves
+> or soft-lock the game**, and an idea the assistant proposed itself.
+
+### And a refusal says which kind it is
+
+The root of the error is that all refusals were read as the same weight. They
+are three different things, and only the first is not negotiable:
+
+| marker | what it means | who owns it |
+|---|---|---|
+| `PHYSICS` | breaks correctness — data loss, a soft-lock, a control that cannot move | nobody; it is a fact |
+| `COSTED` | breakable, and the price is nameable and payable | the owner, once the assistant prices it |
+| `TASTE` | a past design decision, written down | **the owner, always** |
+
+Read against this horizon: the tug's refusal to fail for want of credits is
+`PHYSICS` (there is no other exit from a shield-zero hull). pyx01's ban on
+`station_weights` is `COSTED` (it moves a recorded hash — §130 paid it by
+finding a band the hash cannot reach). *"Works pay in time, never credits"*,
+*"NOT prestige purchases"* and §111's page are all `TASTE`.
+
+**New refusals state their marker at the site.** Retrofitting every existing one
+is not worth a horizon; the ones an argument actually leans on get labelled when
+it leans on them.
+
+### Why this is the same defect as §124, one layer up
+
+§124's rule is *a number in prose states what produced it*, and its companion
+from §129 is *an instrument is worth building and it is not a reason to stop
+reading*. This is the third of the family:
+
+> **A RULE STATES WHAT IT WAS DECIDED ABOUT.** §111's comment was written about
+> skill screens and was applied, two horizons later, to a colony work — a
+> different context, never re-examined. A refusal carried into a context it was
+> not written for is an unattributed claim, exactly like a figure carried into a
+> document that never measured it.
+
+The repo's refusals have no expiry and no review. This section is the review.
+
+## 132. The Archive, reshaped (Horizon 12, after the close)
+
+§128 killed THE ARCHIVE and §131 records why that was not the assistant's call.
+This is the version built after the owner reinstated it — and it is a different
+work, because four commits happened in between.
+
+### What the first draft got wrong, restated honestly
+
+It displayed **the run's record**, which `PILOT'S LEDGER` (§111) and
+`CAPTAIN'S LOG` (§118) already show free on the pause menu. That was a real
+objection and it is unchanged. What was wrong was the conclusion: *the idea is
+dead* rather than *this shape of it is, and here is what it costs to reshape*.
+
+### The gap this one fills, and it was sitting in plain sight
+
+The game remembers every found place **except one**:
+
+| store | what it keeps | bound |
+|---|---|---|
+| `structures_seen` | hyper-structures found | 15, generator-bounded |
+| `marks_seen` | sounding marks resolved | 15, generator-bounded |
+| `deep_logs` | unsounded fragments read | 4, generator-bounded |
+| **nothing** | **deep counters docked at** | **—** |
+
+`structures_seen`'s own comment writes the principle: *"The search stays hard;
+the answer stops evaporating."* Deep counters were the one found place where the
+answer evaporated. A pilot who reached the Far Lantern at 6,200u — **the only
+counter in the game selling a Reactor Mk V** — bought what they could afford,
+flew home, and had no record of where it was. Next session it went back to being
+a 13.5%-per-cell search.
+
+That is the other half of what the playtester reported (§130). §130 made the
+deep counters *findable*; this makes them **re-findable**.
+
+### It buys access, never facts
+
+`stations_seen` fills **whether or not an archive stands**. The finding is the
+pilot's, done before any work was raised; what the work buys is reading the file
+back on the chart. That is precisely the sense in which *a record is not a
+purchase* — and it is why an archive raised late still reads everything its
+system already knows, and nothing it does not.
+
+An archive that granted knowledge rather than access would be intel for money,
+which §72 already refused and which the hunt desks already occupy.
+`THE ARCHIVE KEEPS WHAT YOU FOUND` asserts the file is byte-identical across the
+purchase.
+
+### Its shape, against what the horizon built
+
+| | |
+|---|---|
+| **scope** | `system` — the chart draws one system, so the other two information works are system-scoped for the same reason |
+| **requires** | **nothing**, and that is §126's test honestly applied |
+| **price** | **56,000** — 4.98 loops, the top of the information family |
+| **manifest** | **4 Data Lattices** — the first component manifest in the game |
+
+**No prereq, argued rather than assumed.** The repeater is the obvious candidate
+— deep information, same chart section — but an archive works perfectly well
+without deep market weather, so demanding one would force 45,000 of purchase a
+pilot may not want. §126's own test calls that a price in a gate's clothes, and
+it applies here even though the conclusion is inconvenient.
+
+**The manifest is a read, not a trip.** Every other work's goods are bulk and
+measure a dedicated run (§116's yardstick, twelve alloys being a starter hold).
+A Data Lattice is *"one layer of an archive core, prised out intact"* — written
+two years before the work that needed it. So the Archive is the one work gated
+on **ARCHEOLOGY's own output**: what you have understood rather than what you
+have hauled. `NO ORDER WITHOUT THE READ` already means a pilot cannot order one
+without having read one, so the desk is an alternative to the salvage and never
+a way around it.
+
+**The cap is the first one this repo has had to think about.** The three stores
+above are generator-bounded — fifteen, fifteen and four across the whole game.
+Deep counters are rolled per cell out of an expanse with no edge, so this store
+is bounded by nothing. `ARCHIVE_CAP` is 12 per system and **the eviction is the
+feature**: when the file is full the **shallowest** entry goes. An archive of the
+deep that forgets the near stuff first is the file a pilot actually wants, and it
+means the cap can never cost them the Lantern to keep a Relay.
+
+**No save bump.** `stations_seen` is a new key with a defaults-based load
+(`marks_seen`'s own precedent) — a v28 file has no key, gets `{}`, and loads as
+a pilot who has filed nothing, which was true of every pilot before this.
+
+### Where the works stand now
+
+| | credits | loops | wall |
+|---|---|---|---|
+| one colony's eight | 252,000 | 22.4 | 3.0 h |
+| the channel at its ceiling | 2,436,000 | 217 | 28.9 h |
+| the yard catalogue | 1,106,200 | 98 | 13.1 h |
+
+The menu is 4.4× under the catalogue, so the ceiling law keeps its teeth where
+it means them; the channel is 2.20× the ship and exempt for §127's reason.
+
+### And one fixture that would have gone green for the wrong reason
+
+Clause 5 asks whether the work gates *access* — so it must run where no archive
+stands. Written against pyx01 it would have read `true` before the purchase,
+because `WORKS ARE A SINK` raises every work on pyx01:7 eighty lines above it.
+It runs in pyx02, through the **store** half, because what is being tested is
+access and the journey is `THE TRIP IS THE COST`'s business one leg down. Sixth
+instance of the same defect this horizon, and the sixth caught by re-reading
+rather than by a run.
+
+## 133. The induction (Horizon 13, commit 1)
+
+The Authority's briefing film, built to the research pass's approved copy
+(`HORIZON-13-RESEARCH.md`) — five beats, sixty seconds, first boot and
+replayable, skippable from frame one. The war stays one clause deep; the cause
+is stated flat; the cruelty stays at 5,600u. *"ASSETS REMAIN ON STATION."*
+
+### Drawn in chart language, and that is a design decision
+
+The research doc said *"tableaux in the game's own renderer — washes, meshes in
+silhouette"*. What shipped draws the film in the **chart's** language instead:
+cells, rings, clocks, hull silhouettes as flat polygons, over a translucent
+scrim with the live system behind it. Two reasons, in honesty order:
+
+1. **It is more in character.** The Authority's induction film would be
+   diagrams and light — a filing body does not shoot cockpit footage. Beat II's
+   lattice of cells lighting outward and beat III's outer lights going out
+   *are the game's own survey vocabulary*, which is what the film is about.
+2. **It is verifiable without a binary.** A 3D staged scene lit wrong is
+   invisible until the Mac sees it; flat draws over a scrim degrade gracefully
+   and the `PYXIS_SHOTS` stills catch the rest.
+
+The title's written rule — *"the first thing a player sees is the actual game
+rather than a still"* — survives intact: the scrim is at 0.93, and the real sky
+drifts behind every beat.
+
+### The scene owns no state, and the copy rules are legs
+
+`Induction` never writes GameState. The seen flag is a **device preference**
+(`seen_induction` in `DEFAULT_SETTINGS`), written by Main on the `finished`
+signal — a preference rather than a save key because NEW SURVEY resets the
+save, and a returning player starting a second pilot has not un-watched the
+film. Marked on skip as well as on watch: skip is an answer, and asking again
+is a nag.
+
+The research pass's copy rules shipped as assertions rather than memory
+(TITLETEST 4 → 8):
+
+- `THE INDUCTION QUOTES NO FRAGMENT` walks `UnsoundedSite.FRAGMENTS` in both
+  directions — the deep keeps its own sentences — **and** asserts the one
+  allowed quotation, `Beacon.DIRECTIVE_PAGES[0]`'s public clause, appears
+  verbatim: a paraphrased legal text is a second version of the law.
+- `SKIP LEAVES NO TRACE` walks the film to the end and compares the state
+  byte-for-byte.
+- `THE BEAT TABLE IS WELL-FORMED` and `REDUCE MOTION HAS A PATH` bound the
+  table and keep the accommodation a first-class path.
+
+One fixture defect was caught before it shipped, §126's habit: the walk leg
+first expected `BEATS.size() + 1` advances when the arithmetic is
+`BEATS.size()` — a leg that would have gone red on correct behaviour, which is
+the inverse of the horizon's usual defect and just as wrong.
+
+### Left open, stated
+
+- **Music.** The game owns one eight-bar phrase; the film currently plays over
+  whatever the title plays. A treatment is its own decision.
+- **The visuals have not met an eye.** Every leg is green by construction;
+  whether beat III *reads* is a Mac question, and the `PYXIS_SHOTS` stills are
+  the loop for it.
+
+
+## 134. The column with no height (Horizon 13, commit 2)
+
+A playtest screenshot, not a leg, found this: **every line of every beat drew on
+one baseline.** Four sentences printed over each other, unreadable, in a film
+whose entire job is to be read.
+
+### The bug is one missing offset
+
+```gdscript
+_lines_box.anchor_top = 0.62
+_lines_box.anchor_bottom = 0.62      # ... and no offsets
+```
+
+Both anchors at the same fraction with default offsets is a rect **zero pixels
+tall**. A `Container` hands its children the rect it has, so Godot squashed
+every `Label` onto one line. Anchored to the bottom with a margin instead, the
+`VBox` lays out downward from `COPY_TOP` the way the compositions were drawn
+around — and `ALIGNMENT_BEGIN` keeps it there now that the box has room to
+distribute.
+
+### Why nine legs were green
+
+**All of them ask what the film SAYS. Not one asked where it puts it.**
+`THE BEAT TABLE IS WELL-FORMED` counts beats and characters;
+`THE INDUCTION QUOTES NO FRAGMENT` compares strings; `SKIP LEAVES NO TRACE`
+diffs state. Every one of them would pass with the copy drawn in a single
+illegible pile, because a `Rect2` was never a verdict anywhere in the suite.
+
+**And the contact sheet missed it for a sharper reason.** The preview published
+before this shipped transcribed `induction.gd`'s *draw calls* into SVG — every
+circle, arc and polygon, faithfully — and hand-positioned the copy from the same
+constants. It could not have caught this: **the drawing was never wrong. The
+layout was.** A preview that replicates one half of a renderer proves things
+about that half only, and saying so is the whole value of having built it.
+
+> **A LAYOUT FACT IS AS ASSERTABLE AS A NUMBER.** §124's family again: a
+> screenshot cannot be a verdict, so the scene hands over the rects the engine
+> produced (`copy_rects()`) and the leg checks the two things stacking breaks —
+> every line has real height, and every line clears the one above it.
+
+`THE COPY DOES NOT STACK` walks **all five beats** rather than one, because the
+longest copy is beat IV's Directive card and a single-beat check would have
+gone green on beat V while the Directive was still a pile.
+
+### What it says about the review loop
+
+The sweep is an excellent instrument for what the game *computes* and a blind
+one for what it *shows*. Three of this horizon's findings now come from three
+different places — a leg (§133's own arithmetic), a hand transcription (§130's
+distribution), and **a pair of screenshots** — which is §129's observation
+holding one horizon later: no two findings came from the same instrument, and
+the eye is one of the instruments.
+
+
+## 135. The door steps aside (Horizon 13, commit 3)
+
+The induction replays **on top of an open title** — the manual's contract, so
+rewatching the briefing is not a decision to start playing. The cost of that
+contract, unnoticed until §134's screenshots prompted a look: the compass rose,
+the title, the taglines and five buttons all read through a 0.93 scrim. A menu
+behind a briefing, with controls a player can see and cannot reach.
+
+`TitleScreen.set_chrome_visible()` hides `_root` and `_scrim` for the duration
+of a replay, and Main restores them in `_on_induction_finished`.
+
+**The layer's own `visible` is deliberately not touched.** That flag is a
+*state* — `_choose` writes it and `THE ATTRACT SCREEN IS INERT` reads it, both
+meaning *is the door open*. Borrowing it to also mean *is the door drawn* would
+make one word answer two questions, which is the shape of defect §120 found in
+a print line. So `THE REPLAY HIDES THE DOOR` asserts both: the furniture goes
+and comes back, **and the title stays open behind it the whole time.**
+
+Restored in exactly one place. `_finish` is the film's only exit — tap-through
+and SKIP both land there — so one restore covers every way out, and a second
+would be a second thing to keep in step.
+
+### And what this does not fix, measured rather than assumed
+
+The large ellipse and crossing lines in §134's screenshots are **not the
+compass**, and the arithmetic says so plainly:
+
+| element | radius at the 1580×1345 window |
+|---|---|
+| the title's compass arc | **129px** — a 300×300 clamped square control, circular |
+| the induction's own chart ring | **188px** — the inner circle in the shot |
+| the ellipse in the screenshot | **~500 × 430px, elliptical** |
+
+An ellipse five hundred pixels across cannot come from a three-hundred-pixel
+square, and a circular arc does not project to an ellipse in a 2D `Control`.
+That backdrop is the **live 3D system** drifting in ATTRACT — a ring seen at an
+angle — which is the title screen's own philosophy showing through exactly as
+designed, one layer deeper than intended.
+
+So this commit fixes the **replay** path, which was genuinely broken and had
+never been looked at. It will not change what those screenshots show, because
+`_choose` had already hidden the title before the film opened on that path. If
+the live system should recede too, that is one constant — `SCRIM_BASE`'s alpha
+— and a separate decision.
+
+Recorded this way round because the alternative was to ship the fix, let the
+owner run it, and have them find the ellipse still there.
+
+
+## 136. A container owns its children's positions (Horizon 13, commit 4)
+
+§134 gave the copy column a height and the lines still stacked. The height was
+never the whole bug — it was the half that was visible.
+
+### The real cause, and it is two years old
+
+`UIKit.reveal_list` slides each item in from the left:
+
+```gdscript
+var from := c.position          # read BEFORE the container has sorted
+c.position = from - Vector2(12.0, 0.0)
+tw.tween_property(c, "position", from, T_REVEAL)
+```
+
+Both call sites add their labels to a `VBoxContainer` and call it **in the same
+frame**. At that moment every child's `position` is still `(0, 0)` — the
+container queues its sort and runs it later. So `from` is `(0, 0)` for every
+item, the tween drives every item **to** `(0, 0)`, and the tween wins, because
+**a tween writes every frame and a container sorts only when something asks it
+to.**
+
+> **A CONTAINER OWNS ITS CHILDREN'S POSITIONS.** A tween that writes `position`
+> inside one is fighting the layout, and it wins — silently, at whatever value
+> it captured before the container ran.
+
+There is no container-safe slide: a `Control` has one position and the container
+owns it. So inside a container the reveal is the **stagger alone**, which is the
+half that carried the meaning anyway — the log's own comment asks for *"a beat
+between entries"*, not for movement.
+
+### And `CAPTAIN'S LOG` has been doing this since §118
+
+The second call site is `pause_menu._build_log`, whose `_body` is a
+`VBoxContainer` and which uses the identical pattern. **This is a code-derived
+finding, not an observed one** — the induction is what made anyone read the
+helper, and the log's page wants an eye on it now that the cause is named.
+
+That is the third time this horizon that fixing one thing exposed an older one
+in a place nobody was looking: §127's annex bay, §130's archetype tilt, and now
+this.
+
+### The leg written to catch this would have missed it
+
+§134 shipped `THE COPY DOES NOT STACK` for exactly this class of defect, and it
+sampled **two process frames** after each beat opened. The reveal runs for
+`T_STAGGER × lines + T_REVEAL` — about a third of a second. Two frames is
+0.033s. **The leg would have read the container's layout in the window before
+the tweens yanked the labels, and gone green on the build in the screenshots.**
+
+It now waits out the reveal, derived from `UIKit`'s own constants so a retune
+there cannot leave it reading early again.
+
+> **AN ASSERTION ABOUT AN ANIMATED THING MUST NAME WHEN IT LOOKS.** A leg that
+> samples before the animation settles measures a moment nobody sees — which is
+> §124's rule about unattributed figures, moved into the time axis.
+
+### What actually found it
+
+Screenshots, twice. §134's and these. The sweep proved the film's arithmetic,
+the contact sheet proved its geometry, and neither could see that a tween was
+overwriting a layout — because **no instrument in this repo watches one system
+fight another.** §129's observation stands at four findings now, and the eye is
+still doing work nothing else does.
+
+
+## 137. The sheet (Horizon 14, commit 1)
+
+The first answer to *"once I'm out there my only motivation is to go further"*,
+and it changes the **shape** of the payoff table rather than any number in it.
+
+A **sheet** is a `SUPERCELL` — a 4×4 block of 64u cells — whose every readable
+cell this pilot has read. Completing one pays a flat premium, once, ever.
+
+### Readable, not every cell — the finding that shaped it
+
+A survey mast rides on a **derelict**; a berth charts its own cell on the first
+dock. So a cell is surveyable only if it rolled a hulk or a station, and at band
+4 that is **31% of cells**. "Survey every cell in the block" is not a hard goal,
+it is an impossible one — the requirement had to be *what the block actually
+holds*, walked against `plan_cell`, or the feature would have shipped unachiev-
+able.
+
+| band | readable | readings per sheet |
+|---|---|---|
+| 3 | 25.1% | ~4.0 |
+| 4 | 31.2% | ~5.0 |
+| 5 | 36.3% | ~5.8 |
+| 6 | 41.2% | ~6.6 |
+
+**A sheet is more work the deeper it sits**, because hulks and berths both
+thicken outward. That is a counter-gradient bought without moving one number in
+one value table — the owner's condition on this horizon was that
+`RICHER OUTWARD` never breaks, and it did not have to.
+
+### The premium is flat, and that is the whole design
+
+`SHEET_PREMIUM := 2800` — a quarter of §124's measured loop — **and it does not
+scale with depth.** Every other value in this game rises outward, which is
+exactly why the middle bands are never optimal for anything. A premium that also
+rose would change nothing. Flat, it is worth proportionally most where income is
+lowest, which is the middle.
+
+> **A COUNTER-GRADIENT NEEDS NO NEW NUMBERS, ONLY A FLAT ONE.** Against a table
+> that rises everywhere, a constant is a slope.
+
+### And the landmark keeps its refusal
+
+`landmarks.gd` refuses to let a landmark pay out: *"an object that pays out
+stops being a landmark and becomes another errand."* Landmarks are placed **one
+per supercell** — so a completed sheet always contains exactly one, and it
+becomes the **name** of the region a pilot finished while paying nothing at all.
+The refusal is honoured rather than amended: it is somewhere to be, and the
+sheet is somewhere you finished.
+
+### Derived twice, stored once
+
+`sheet_readings()` and `sheet_read()` are both walks — against `plan_cell` and
+against `survey_coverage` — so **no progress counter exists that could disagree
+with the store it summarises.** `sheets_filed` is the one thing stored, and it
+has to be: `survey_coverage` is a 400-cell **window** that evicts, so a sheet
+finished a thousand cells ago would silently un-finish itself and pay its
+premium a second time. That is §11's printer with a geometry, and the only
+defence is to record the sheet as a fact about the sheet. Capped at 24 per
+system, §132's shape, evicting the **nearest** — a pilot who fills the file has
+been working outward.
+
+### The line that is actually the feature
+
+The mast prints `SHEET n OF m IN THIS BLOCK` on every reading but the last.
+The premium is the payment; **visible partial progress is the motivation.** A
+pilot who cannot see they are three readings into a block of five has no reason
+to take the fourth, and *"my only motivation is to go further"* is what that
+looks like from the cockpit.
+
+Silent on the last reading, because the completion toast is already speaking and
+two messages for one act is the double-report §120 found in a print line.
+
+
+## 138. Inference through a handle (Horizon 14, commit 1a)
+
+§137 went out at 71/0 on the static checker and broke the build. Two lines:
+
+    var main := get_tree().get_first_node_in_group("main")
+    var want := main.deep_space.sheet_readings(sc.x, sc.y)
+    var have := main.deep_space.sheet_read(sc.x, sc.y)
+
+    Parse Error: Cannot infer the type of "want" variable because the
+    value doesn't have a set type.
+    Compile Error: Failed to compile depended scripts.
+
+CARTTEST reported `3 pass 0 fail 7 err` and `SHORT: 3 verdict(s), at least 23
+expected`, and the cascade took every SAVETEST mode with it.
+
+### Why it reads as correct code
+
+`sheet_readings()` is declared `-> int`. `sheet_read()` is declared `-> int`.
+The call site names two typed functions and assigns their results — there is
+nothing at that line to look at. The type is lost one step **earlier**:
+`get_first_node_in_group` returns `Node`, `Node` has no `deep_space`, so
+`main.deep_space` is a Variant, and a call **through** a Variant has no return
+type at all regardless of what the callee declares.
+
+The same two lines inside `main.gd` compile, because there `deep_space` is a
+typed member of the class rather than a property fished off a handle. So *"the
+identical code works over there"* is not evidence — it is the trap.
+
+> **A DECLARED RETURN TYPE IS NOT A TYPE AT THE CALL SITE. THE RECEIVER
+> DECIDES.**
+
+### The fix, and the other fix
+
+`var want: int = ...` — annotate, because the local is where the type is
+missing. The alternative is to cast the handle: `get_first_node_in_group(
+"camera_rig") as CameraRig`, which is what `main.gd:18377` already does and why
+`var tapped_a := rig_m._select(at_px)` two hundred lines below it is legal.
+Either is correct. Annotating was chosen here because one line needs it, and
+casting `main` would assert a `class_name` that `main.gd` does not have.
+
+### Rule 7, and the first draft of it that could not fail
+
+This is the **fourth** form of one defect (DEFECTS class 1): untyped globals
+(§77), untyped consts (§106), untyped consts in a leaf (§111), and now untyped
+node handles. Rules 5 and 6 cover the first three. `check_scripts.py` returned
+71/0 here because neither looks at a property chain, so the one instrument this
+repo has without a binary watched it go past.
+
+`check_handle_infer` collects locals assigned from an **uncast** node lookup —
+`get_first_node_in_group`, `get_node`, `get_node_or_null`, `find_child`,
+`get_parent`, or an explicit `: Node =` — and flags `:=` off any member of one
+that `Node` does not itself declare.
+
+**The first draft returned green against the tree that was on fire**, and the
+reason is §77's shape exactly. It asked *is this member declared by some class
+in the project index?*, reasoning that a project member reached through a
+`Node` must be a Variant. But `build_index` skips files with no `class_name`,
+and `main.gd` — 29,000 lines, the class nearly every handle in this game points
+at — has none. `deep_space` was not in the index, so the rule conceded it, so
+the rule reported zero problems against the two lines it was written for.
+
+The fix was to **invert the question**: concede the short list of members `Node`
+genuinely declares and report everything else.
+
+> **A CHECK THAT ASKS "IS THIS KNOWN-BAD?" FAILS OPEN. ONE THAT ASKS "IS THIS
+> KNOWN-GOOD?" FAILS CLOSED.** The first is a green that measured nothing; the
+> second costs an annotation when it is wrong.
+
+`NODE_MEMBERS` is therefore fifteen names long and **currently unexercised** —
+no line in this project reaches a real `Node` member off a handle with `:=`.
+It is stated so the first legitimate one costs a word instead of a rule.
+
+The `as` guard is load-bearing in the other direction: without it the rule
+reported `main.gd:18397` and `:18417`, two lines that compile perfectly well,
+and §77's other lesson is that a checker which cries wolf is a checker nobody
+runs.
+
+### Red-verified, which is the only reason it is here
+
+Against the §137 tree the rule reports exactly two lines and exits 1. Against
+the fixed tree it reports zero, and the whole check is 71 files / 0 problems.
+Both halves were measured before this section was written — rules 5 and 6 were
+red-verified too, and the first draft of this one is the demonstration of why
+that step is not optional.
+
+
+## 139. The tide (Horizon 14, commit 2)
+
+Weather in the middle bands, and the first thing in this game that only ever
+**gives**.
+
+A **standing set of water**, one per `SUPERCELL` across THE QUIET and THE
+FATHOMS, derived rather than stored: a pure function of `(system, supercell)`
+drawing its own salted stream, so it costs no save key, no world-gen change and
+no fingerprint. Roughly one block in three carries one.
+
+### The research's strongest single argument, answered
+
+§2 of the research pass: **the only environmental system in the game starts at
+exactly the depth the complaint stops at.** `Storm.band_floor()` is 5,200u and
+the boredom is 1,000–5,000. So the middle got weather — and the shape had to be
+the storm's mirror, because the middle does not need another thing that takes.
+
+### It cannot slow you, push you off course, or cage you
+
+Structural rather than tuned. The push is scaled by how well the hull's own
+heading **already** agrees with the set — a dot product clamped at zero — so
+crossing a tide gets nothing and fighting one gets nothing.
+
+There is no escape guarantee anywhere in `tide.gd`, and that absence is the
+design rather than an oversight: §40's promise exists because a storm can hold
+you, and nothing here can.
+
+> **A STORM IS A THING YOU PREPARED FOR. A TIDE IS A THING YOU FOUND.**
+
+### It runs across the depth, never along it
+
+The set is tangential to the system centre, twisted up to `TWIST_DEG`. That is
+the feature rather than the flavour, and it is the sentence the whole horizon
+turns on:
+
+> **A RADIAL TIDE WOULD BE A SLIDE OUTWARD — WHICH IS MORE OF THE COMPLAINT,
+> NOT AN ANSWER TO IT.** A tangential one is a reason to move ACROSS a band.
+
+Depth is radius out here, so the outward normal *is* the depth gradient and its
+perpendicular is the direction that costs nothing in depth. The feature is two
+lines of arithmetic, and TIDETEST asserts the ceiling directly: no set anywhere
+in the sweep leans further off tangential than `sin(35°)`.
+
+### The drift is flat, which is §137's trick a second time
+
+`DRIFT := 0.9` u/s everywhere, against a drive ladder that only rises: **+56%**
+on the 1.6 `max_speed` floor, **+8.4%** on the fastest legal fit. The water is
+worth most to the pilot who has least.
+
+> **CORRECTED (§144).** This section shipped saying +15%, and it was wrong by
+> roughly a factor of two. `compute_stats` is additive and `enforce_floors`
+> sets only a floor, so the fastest legal fit is at minimum 5.75 (BASE) + 5.00
+> (`drive_cruise_2`) = **10.75 u/s** before a single rig — 0.9 against that is
+> **+8.4%**, falling to +5.7% with `rig_runner` and `proto_coil` aboard. The
+> +56% on the floor is correct and stands.
+>
+> The defect is not the arithmetic, it is that **the figure was estimated and
+> never derived** — §124's own rule, broken in the section that quotes it.
+> DEFECTS class 5.
+
+`RICHER OUTWARD` is untouched, and did not have to bend: the tide pays in
+**time**, and it pays the same everywhere it exists. Two commits into this
+horizon, the middle has been given a counter-gradient twice without one value
+table moving.
+
+### The braid: what a filed sheet unlocks is the CHART, not the tide
+
+The water moves whether or not you have worked the block — the motes show it,
+the cockpit tag names it — so a tide is always discoverable by flying into one.
+What §137's sheet buys is the tide **drawn**, permanently, so the next crossing
+can be planned instead of stumbled into.
+
+The research asked whether a current should be *learned* or *shown*, and called
+learned stronger and shown kinder. This answers **both, in that order** — and it
+makes the sheet pay twice: a premium once, and a fact about the region forever.
+
+Iterated over `sheets_filed` rather than over supercells, which is both cheap
+(§137 caps the store at 24 a system) and exactly the right loop: **the knowledge
+IS the store**, so a block that is not in it cannot be drawn by accident.
+
+### One vector, three instruments
+
+The push the hull feels, the bearing in the cockpit suffix and the arrow on the
+chart all come off the same `set_at` return. §120's rule about one act speaking
+once, applied to three readers instead of two messages — the only way they can
+disagree is if `set_deg` does, and that has a leg of its own.
+
+The band gate lives inside `set_at` for the same reason, and `_physics_process`
+has **none** — which is worth stating, because the obvious optimisation is to
+bail early on the hull's own depth. That test would have a slightly different
+edge from this one: `set_at` gates on the **block's** radius, the early-out
+would gate on the **ship's**, and the chart would then draw arrows for the outer
+sliver of a block the hull is not actually pushed in. DEFECTS class 2b in its
+quietest form — **two readers of one fact, each with its own copy of the rule.**
+The cache asks `set_at` once per 256 units, which is cheap enough that the
+early-out was never worth a second edge.
+
+### It stands down inside a storm, and that is a defect class rather than etiquette
+
+`apply_tether` re-clamps `_tether_vel` to the **last** caller's cap. A tide
+feeding the channel in the same frame as a storm's pull would overwrite the
+storm's cap with its own and the answer would be settled by node order — DEFECTS
+class 2b exactly. So the tide stands down inside any storm's pull radius,
+checked against the `storm` group rather than through `main`: a guarantee that
+rests on another file's bookkeeping is one refactor from being untrue.
+
+Standing down is a *cease to drive*, never a `clear_tether()` — zeroing a shared
+channel on the way out would cancel the storm's own pull the moment the two
+overlapped.
+
+### What it does not do
+
+It pays no credits, ever — §67's landmark rule one system along. It calls
+`note_log` and `note_ledger` exactly zero times, §53's rule, asserted off the
+source the way STORMTEST asserts it of weather that already shipped.
+
+**And it does not turn.** A tide on a clock would make route knowledge into
+route-AND-timetable knowledge, which is a second dimension the chart has no way
+to draw and the player has no way to check. Standing, it is a fact about a
+PLACE — which is the only kind of fact a filed sheet can remember, and the braid
+depends on that. §64 carries the question of whether it ever should.
+
+### The one suffix that is a bearing
+
+The cockpit tag's other two suffixes say HERE and never THAT WAY, because a jam
+and a storm are threats and a threat that leaks a direction is a threat the
+pilot did not have to find. The tide is the opposite kind of fact: **the thing
+the middle bands were missing is something worth knowing about a place**, so its
+whole value is the direction. Stated in §139 rather than left as an apparent
+inconsistency with §14's rule.
+
+Fed through a **fifth appended-optional** parameter, §108's discipline: a
+reshaped signature is a wrong arity, and a wrong arity is a parse error the
+static checker cannot see. Both existing callers are untouched by construction.
+
+### TIDETEST, and why it is a suite of its own
+
+Ten legs, a new tag, 82 → 83 runs. STORMTEST's stated reason: the derivation is
+a data suite, but the **promise** is a physics one, and what the tether channel
+does with a hull that is not agreeing with the water cannot be asserted off a
+table. The three-number leg is the design:
+
+    riding 0.900 (DRIFT 0.90), athwart 0.000, against 0.000
+
+The density leg's tolerance is deliberately loose at 0.05. About 1,240 middle
+blocks put one sigma at 0.013, so a 0.03 window is 2.2 sigma — **a leg that goes
+red on one seed in forty for being correct.** What it is there to catch is a
+constant that stopped meaning what it says, not the uniformity of `randf()`.
+
+The measurement loop is written out rather than lifted into a lambda, and the
+comment says why: an `await` inside a `Callable` makes it a coroutine, and a
+coroutine called without an await fails at **runtime** rather than at parse.
+That is DEFECTS class 10's shape, and this horizon paid for the neighbouring
+class in the commit immediately before this one — §138 was last commit.
+
+
+## 140. The roads (Horizon 14, commit 3)
+
+Home waters, and the commit that closes the horizon. **THE ROADS** — a colony
+work, 26,000, colony-scoped, no prereq. Within `ROADS_RANGE` of the colony that
+raised it, **every tide is drawn on the chart without filing a sheet.**
+
+### Why a colony work is the third answer at all
+
+Every work before this one faces the deep or faces the colony itself. The relay
+and the repeater carry market weather; the Archive files deep counters; the
+vault and the yard serve the hull. **The Light is the only work in the game that
+reaches into the surrounding water, and its reach is 350u.**
+
+The research called this the weakest direction taken alone — colonies are
+already there and the middle is still boring — and the most continuous with what
+had just shipped. Its own sentence for why it belongs anyway:
+
+> *its real value is as the place the other two are spent.*
+
+Which is what it is. **§137 gives an area worth finishing. §139 gives something
+happening in it. §140 is where both accumulate.**
+
+### It grants information and nothing else
+
+That is what makes it legal under both rules the research named, and it is worth
+naming them together because a work that reached into the water could very
+easily have broken either:
+
+- **§26.** Works pay in time, choice, access and information — never credits.
+  The roads pays no credits at any rate.
+- **§51.** Only the player depletes the world. Drawing a tide that was already
+  there mints no coverage, no salvage and no seam.
+
+> **THE ONE THING A PILOT COULD NOT GET WITHOUT FILING EVERY SHEET IN A REGION
+> IS THE SHAPE OF THE WATER. THE ROADS SELLS EXACTLY THAT, FOR ONE COLONY'S
+> REACH, AT A PRICE THAT IS NEVER CHEAPER THAN THE FILING.**
+
+26,000 is nine sheets, and it buys one disc. So it is a convenience in the place
+you live, never a way around the work — which is the same relationship §132's
+Archive has to the counters a pilot already stood at.
+
+Asserted rather than argued: coverage and `sheets_filed` are counted across a
+live purchase, and `tide.gd` is read for the word `roads`. **The water cannot
+know about the work**, because the tide is a pure function and the only way it
+could learn is by naming one.
+
+### The reach is three times the Light's, which is the opposite decision
+
+`LIGHT_AURA_RANGE` is half `MIN_HYPER_SEPARATION` precisely so that **no two
+lights overlap** — a wreck has exactly one owner, and coverage is bought one
+colony at a time. `ROADS_RANGE` is `MIN_HYPER_SEPARATION × 1.5`, and overlap is
+fine here. That is stated in the constant rather than left for a reader to
+assume the invariant was forgotten: a tide drawn twice is drawn once, nothing is
+owned, nothing is consumed, and two colonies close enough to share water
+genuinely do share it.
+
+The sizing argument is arithmetic, not feel. At the Light's 350u a roads would
+chart six blocks, of which two carry water:
+
+> **TWO ARROWS IS NOT A REGION.**
+
+At 1,050u it is about 53 blocks and a dozen to eighteen tides, depending on
+where the colony sits relative to the band-4 floor — and that variation is
+itself a reason to care where you founded. Drawn on the plot as a world-sized
+ring under the colony marker, because a grant whose edge the pilot cannot see is
+a grant they cannot plan with, and the arrows inside it would otherwise read as
+an arbitrary scatter rather than as one colony's water.
+
+### Its manifest is the only one the work is made of
+
+`{"chart_quiet": 6, "chart_fathom": 6}` — twelve space, half §116's starter-hold
+yardstick. Every other manifest in the game measures a **trip** (bulk) or a
+**read** (the Archive's lattice). This one is the thing itself: **a road is
+drawn from surveys, and these are surveys of the two bands the tide runs in.**
+
+It is therefore a gate on having worked *both halves of the middle*, asked once
+at the desk instead of assumed — which is the behaviour this whole horizon is
+trying to reward.
+
+### `supercell_centre` moved, and `supercells_within` is new
+
+Both on `DeepSpace`. The first came off `Tide`, where §139 had put it: it is a
+fact about the **grid**, and the grid lives in `deep_space.gd`. Leaving it on
+the one system that happened to need it first is how a second copy gets written
+by the second system.
+
+`supercells_within` measures **centre to centre**, one rule. The arrow on the
+plot, the tally in the rows and every leg get the same answer from the same
+walk. A rule about overlap instead would have to decide what a corner clipping
+the circle means, and three readers would each decide it.
+
+Its leg walks a deliberately **wider** box by hand and checks that every block
+the hand-walk finds inside the circle came back — because a check that asks the
+function to confirm itself confirms nothing. The colony leg asserts the other
+direction against a live purchase: over-reach charts water nobody bought,
+under-reach silently sells less than the ring on the chart promises.
+
+### Home waters, and the figure that is deliberately absent
+
+The chart's colony rows gain a section per roads: the tides drawn, and the
+sheets filed inside the reach. **No denominator on the sheets**, and that is
+§137's own finding rather than an oversight — a sheet asks for what its block
+actually holds, which is sixteen `plan_cell` walks per block and eight hundred
+to build one row of a panel. A cheaper denominator would be the wrong one:
+"4 OF 53" names a target most of whose blocks hold nothing readable at all.
+
+> **AN IMPOSSIBLE GOAL PRINTED CONFIDENTLY IS WORSE THAN A FIGURE WITH NO GOAL
+> BESIDE IT.**
+
+### The staging lesson, applied rather than relearned
+
+Both colony legs build every gate themselves — the ground sounded, the manifest
+**derived** from the table rather than typed, the hull standing alongside, the
+purse sized off the price. §116's leg left that lesson in writing after a block
+that reset shared state reddened the dock leg eighty lines below it. Here it
+cost nothing to honour, and the second leg orders its own staging carefully too:
+the ground is sounded *before* the coverage baseline is taken, or the leg would
+have measured its own setup as the roads minting a cell.
+
+`mint_raised` is in that leg's verdict for the same class of reason: **a
+purchase that was REFUSED also mints nothing**, and would have passed while
+measuring a work that never went up.
+
+### And the checker earned its keep again
+
+`check_shadow` caught `var got` colliding with a live local 315 lines below, in
+a 30,000-line file, in a leg written this commit. That is rule 4's exact stated
+failure mode — *"the loop and the declaration were two hundred lines apart, both
+correct on their own, and the diff showed only the new one"* — and it would have
+been a parse error taking the whole class registry down. Two commits, two
+catches: §138 wrote rule 7 after a sweep, and rule 4 paid for itself here before
+one started.
+
+
+## 141. The reach, not the rung (playtest fix)
+
+A playtester found a hyper structure, stood in it, and could not interact with
+it at all. §88 fixed that same complaint about that same object two horizons
+ago, and its fix was correct and is still working.
+
+### What was actually refusing
+
+Not the ladder. `CameraRig._pick`:
+
+    var px := _camera.unproject_position(anchor).distance_to(screen_pos)
+    if px < best_px:                       # PICK_PX = 60.0
+
+**A sixty-pixel circle around one anchor point, for every object in the game.**
+That is right for a hulk, a seam, a beacon or a mark — each a few units across,
+so the circle IS the object. A hyper structure spans 140u, and its own file says
+it "fills the view at claim range". Its one tappable point is a needle somewhere
+in the middle of a shape that owns the whole screen, and usually off frame
+entirely.
+
+> **A VERB CAN HAVE AN AFFORDANCE AND STILL BE UNREACHABLE. THE RUNG IS NOT THE
+> REACH.**
+
+The ladder's own comment reasons about the structure's size — but for the
+opposite concern, that a contested tap near an instrument should resolve to the
+smaller thing. Half the consequence was thought through and half was not.
+
+### The fix measures pixels rather than choosing them
+
+A node may declare a **world** radius. `_pick` then projects the anchor,
+projects a point one radius to the camera's right, and takes the distance
+between them as that object's limit on **this** screen at **this** zoom.
+Self-correcting, no magic number, and it means "tap anywhere on the thing"
+literally. `HyperStructure.pick_radius()` returns `SILHOUETTE_SPAN * 0.5` — the
+same constant the whole "findable at 1000u" argument is built on, so the tap
+target and the visibility claim cannot drift.
+
+Three details that are not decoration:
+
+- **Floored at `PICK_PX`.** A structure seen from four thousand units projects
+  to two pixels, and a big object must never become *harder* to hit than a small
+  one because it is far away.
+- **`best_px` starts at `INF`.** It used to double as the threshold; with a
+  per-node limit, a running best seeded at `PICK_PX` would refuse every node
+  whose own radius is wider before it was ever compared.
+- **Behind the lens is not on the screen.** `unproject_position` happily
+  projects a point behind the camera and returns a mirrored one. At sixty pixels
+  that never reached anything; at a radius this wide it would answer taps aimed
+  at empty sky on the opposite side. `is_position_behind` guards both the anchor
+  and the edge sample.
+
+### Why a wide radius cannot steal a tap
+
+Because of the ladder, not because of care. Both ladders ask each group in turn
+and take the first answer, with `hyper` near-last in each — and the ordering
+comments there already argue that a contested tap near an instrument should
+resolve to the smaller, more specific thing. **That ordering was written two
+horizons before anything needed it to be load-bearing, and it is what makes this
+safe.**
+
+It holds for exactly as long as `hyper` is the only group claiming a radius, so
+`AND NOTHING ELSE WIDENED` asserts precisely that. The moment a second group
+wants one, the ordering has to be re-argued, and a leg says so.
+
+### The leg that was green the whole time
+
+`THE MONUMENT ANSWERS A TAP` (§88) never wavered — because it calls
+`on_tapped()` **directly**. It tested the verb. Nothing tested whether a finger
+could get there.
+
+> **A LEG THAT DRIVES A VERB THROUGH ITS OWN FUNCTION MEASURES THE FUNCTION.**
+
+DEFECTS class 9 survived a green assertion for two horizons on that seam. `AND
+THE TAP CAN REACH IT` is the missing clause: park at claim range with the leash
+off — the exact geometry of the report — project the object, tap 0.7 of its
+half-span off centre, and assert the pick lands. It also asserts the offset
+exceeded `PICK_PX`, so it cannot pass by accident on a rig that happened to be
+zoomed out.
+
+
+## 142. The free look (playtest request)
+
+> *"the player is forced to look at things from a single view and perspective."*
+
+They were. Pitch was a constant, yaw did not exist, and the zoom range was 9 to
+34 — under fourfold. Every object in this game had been seen from the same angle
+at roughly the same size since the rig shipped.
+
+### The turn, and why it needs none of the pan's machinery
+
+The rig's own Y is the yaw, `_pitch_node`'s X is the pitch — the ordinary orbit
+split. What is worth stating is the asymmetry it creates:
+
+> **PANNING CAN STRAND THE SHIP OFF SCREEN. TURNING CANNOT LOSE ANYTHING.**
+
+So the pan has inertia to bleed, a leash to catch it and a follow-lockout to
+yield to it, and the turn is three lines and a clamp. None of that machinery was
+touched — the pan keeps all of it and simply moved to the gesture each device
+family had spare.
+
+### Nothing that worked yesterday stopped working
+
+The gesture a player tries first should do the thing they asked for, so **drag
+turns**. The pan went to two fingers (touch) and the middle button (desktop),
+rather than being taken away. A middle *click* does nothing on purpose: browsers
+bind it to autoscroll on one platform and paste on another, so a verb hung on it
+is a verb some players never get — and this request came from a browser session.
+
+### What the clamps are for
+
+`PITCH_MIN -82`, `PITCH_MAX -28`, and neither is taste. Past about −25 the camera
+looks along the plane this whole game is drawn on: the starfield stops sitting
+behind anything and a flat XZ world reads as a sheet of paper seen edge-on. The
+top end stops short of straight down, where yaw becomes unreadable because
+nothing on screen has a side.
+
+Zoom goes 6 to 80 — thirteenfold, from under four. **The ceiling is legibility,
+not content**: at 80 the lens sees about 83 units down the tall axis and the
+live cell window is 320 units across, so the world does not run out until
+roughly four times further back than this allows. That the limit is a judgement
+is said out loud in the constant, because a number with no derivation behind it
+is one somebody will "fix" later.
+
+### The pan had to be rotated, and that is the one real coupling
+
+`_pan` maps screen motion to world motion. It was world-space, which is
+*indistinguishable* from view-space while the yaw is nailed to zero. Turned a
+quarter turn, an unrotated pan walks the camera sideways in the world while the
+player watches it go diagonally across the screen — the drag stops meaning "move
+what I am looking at" and starts meaning nothing.
+
+Its leg measures the **angle between two identical drags a quarter turn apart**,
+which is the one number that cannot come out right by accident: it has to be the
+yaw.
+
+### What followed for free, and what needed a decision
+
+- **The radar** follows with no change at all — every marker is unprojected
+  through the live lens, so it was always a screen-space instrument and simply
+  had nothing to rotate against before.
+- **`_pick`** likewise, which matters because §141 had just widened its reach
+  using `_camera.global_transform.basis.x` — exactly the vector a yaw moves. A
+  leg taps a real object before and after a third of a turn.
+- **The chart** needed a decision, and the old comment had to go. It claimed a
+  cone pointing down-left on the plot points down-left when you fly it — true
+  only while the camera could not turn. The plot stays **world**-aligned,
+  because a map that rotated under the reader is a map you cannot remember; what
+  makes a bearing off it flyable is the HDG readout and the plot's own compass
+  letters, not the screen agreeing. Left unamended it would have been DEFECTS
+  class 7 — copy resting on an assumption the code stopped supporting.
+
+### The way back
+
+`level_view()` unwinds on the same exponential as everything else in the file,
+yaw going the **short** way round — unwinding 350° the long way is a full spin
+the player did not ask for and cannot stop. Two doors: the `level_view` key
+(rebindable, and added to `REBINDABLE` in the same commit as the action — §96's
+rule, which this project has paid for twice) and a **two-finger tap**, a gesture
+that was previously nothing at all.
+
+Both halves of "tap" are measured rather than assumed: a pinch is a tap only if
+it was brief AND the fingers never travelled, with travel accumulated over the
+whole gesture because a pinch that went out and came back has still moved.
+
+The snap threshold is half a degree, and the reason is in the constant: an
+exponential never arrives, so without one `_levelling` would never clear — and a
+threshold tight enough to *look* rigorous (0.05°) takes half again as long to
+reach from a big turn as one nobody can see the difference of. Its leg waits on
+the **clock**, not on a frame count, because the unwind is exponential in wall
+time and a fixed frame count measures a different amount of easing on every
+machine — which is the thing FEELTEST's own first leg exists to assert.
+
+### And rule 7 cried wolf, on this commit's own code
+
+`check_handle_infer` flagged six lines in the new FEELTEST legs. All six were
+legal: `rig` is `var rig: CameraRig = ...` there. The rule collected its handle
+set **per file and never cleared it**, so `var rig := get_tree()
+.get_first_node_in_group(...)` in five earlier functions poisoned every later
+one that reused the name.
+
+Fixed by scoping the set to the function — which `check_shadow`'s `live` has
+done since the day it was written. Rule 7 borrowed that rule's shape and not its
+scoping. Red-verified in both directions against a synthetic file: it still
+flags the untyped-handle defect, and stays silent on a typed local, a cast, and
+a later function reusing a poisoned name.
+
+> **A CHECKER EARNS ITS KEEP IN BOTH DIRECTIONS, AND THOSE ARE TWO SEPARATE
+> RED-VERIFICATIONS.** §138 did the first and called it done.
+
+
+## 143. The water you could not see (playtest fix)
+
+> *"I found a Tide set but could not determine any effect and it quickly
+> disappeared from my sensors. There was no visual feedback related to the tide
+> that I could identify."*
+
+There was none to identify. §139 shipped a system whose entire visual tell was a
+`CPUParticles3D` that could not draw a pixel, and **TIDETEST passed 10 for 10
+the whole time.**
+
+### Three reasons, any one of them sufficient
+
+1. **No mesh, no material.** `CPUParticles3D.mesh` defaults to null and a null
+   mesh renders nothing; `color` only tints a material that is not there. Every
+   working particle system in this project — `FX.burst`, `FX.vortex` — builds a
+   `BoxMesh` carrying `Palette.emissive` and assigns it. This did not.
+2. **The rate was 2.6 a second.** `lifetime` was derived as `(box * 2) / speed`
+   = 26.7s against an `amount` of 70, and a particle system's emission rate is
+   `amount / lifetime`. Even drawable, that is a speck every third of a second.
+3. **The box was ten times the view.** 240 units across, while the lens sees
+   about 21 down its long axis at the default zoom — so ~99% of what it emitted
+   was off screen before the other two problems got to it.
+
+### It had already shipped once
+
+`storm.gd` built the eye's motes the same way in **v20** and got away with it for
+four horizons, because a storm also has an eye, arms, a ring and a shockwave to
+be seen by. The tide had **only** the motes, which is exactly why the tide is
+what finally reported it. Both are fixed here.
+
+### Why ten green legs saw none of it
+
+Every one of them measured the derivation — purity, density, the tangential
+bound — or the physics, in that three-number leg the design is proud of.
+
+> **NOTHING IN THIS REPO CAN SEE A RENDERER.** §129's observation, arriving
+> somewhere new: a harness that measures the mechanism will go green on a
+> feature nobody can see.
+
+So the fix is not only paint. `check_scripts.py` gains **rule 8**
+(`check_particles`): every `CPUParticles3D.new()` must be handed a `.mesh` in
+the same function. Red-verified against both shipped forms — the `var` one and
+the member one — and silent across all 72 files. It is the first rule in that
+file that is **not** a parse error, and the footer that told every reader "each
+of these is a parse error" had to be corrected rather than left to send the next
+person hunting a syntax mistake that is not there.
+
+`AND THE WATER CAN BE SEEN` joins TIDETEST: the mesh, the material, and the
+**rate**, because 2.6 a second needed no renderer to be wrong either.
+
+### The quieter half of the same report
+
+*"it quickly disappeared from my sensors."* It had not. The cockpit suffix only
+lit while `_riding`, which needs the hull under way **and** aligned — so
+finishing a move order dropped the ship under `UNDER_WAY` and the line went
+dark. The readout conflated two different facts, and the player read the result
+exactly as it behaved.
+
+> **THERE IS WATER HERE** and **IT IS CARRYING ME** are two facts. A readout
+> that says only the second teaches the player that the first is unreliable.
+
+`tide_deg()` now answers whenever water is underfoot and `is_riding()` is asked
+separately, through a sixth appended-optional on `set_deep_tag` (§108). The tag
+reads `· TIDE 043` present and `· TIDE 043 ▸` riding — and "SET" came off the
+front rather than being kept for symmetry, because that line already carries a
+system, a band glyph, a band name, a range and sometimes a jam, and every
+character is one closer to a readout that does not fit.
+
+`_present` is a flag rather than a test on `_set`, because `_set` is a cache
+that survives a stand-down: driven off it, a hull sitting in a dock would be
+told there was a tide under it.
+
+### And the look now says which state it is in
+
+Present, the motes are dim and slow; riding, they are brighter and half again
+as fast. Same node, one dressing function, called when the set, the band or the
+riding state actually changes — three update paths writing one particle system
+is DEFECTS 2b waiting to happen, and a particle system is exactly the kind of
+object where the last writer wins in silence.
+
+The motes are stretched along their own velocity (`particle_flag_align_y` with a
+Y-elongated box), because **a mote that is a cube says dust and one that is a
+streak says current** — which is the whole thing this effect has to communicate
+before any text does. And the emission box now follows the lens in eighths,
+which §142 made necessary: with a thirteenfold zoom range, a fixed box is either
+a postage stamp in a wide view or fill nobody sees.
+
+
+## 144. What the tree says to expect (review fix, items 2 and 3)
+
+Two corrections from a self-critical review, landing together because they are
+the same defect at two scales: **a number nobody derived.**
+
+### The tide's speed claim was wrong by a factor of two
+
+§139 shipped *"+56% on the 1.6 `max_speed` floor, about +15% on the fastest
+legal fit"*, and repeated it in §64 and in the horizon spec. `compute_stats` is
+additive and `enforce_floors` sets a floor with no ceiling, so:
+
+| fit | speed | 0.9 u/s is |
+|---|---|---|
+| hull + `drive_cruise_2` | 10.75 u/s | **+8.4%** |
+| + `rig_runner` | 13.35 u/s | +6.7% |
+| + `rig_runner` + `proto_coil` | 15.75 u/s | +5.7% |
+
+The +56% on the floor was derived from a constant and is right. The other half
+was estimated from a recollection of the drive ladder, in the section that
+quotes §124's rule about exactly this, by the author of §124.
+
+> **A NUMBER YOU DID NOT DERIVE IS A NUMBER YOU GUESSED, HOWEVER CONFIDENT THE
+> SENTENCE AROUND IT SOUNDS.**
+
+Corrected in all three documents. The commit messages carry the old figure and
+cannot be edited, which is why the correction is stated in §139's own body
+rather than only here — a reader who arrives at that section must not have to
+find this one.
+
+**It sharpens the open question rather than settling it.** The tide reaches the
+hull through `apply_tether`, clamped at `TETHER_DRAG_CEILING = 1.5` — a
+`[PHYSICS]` constant sized against the 1.6 escape floor and not movable. So the
+strongest tide this mechanism can *ever* produce is **+14.0%** on a Cruise Mk II
+fit, which is barely the number §139 wrongly claimed for 0.9. Whether 0.9 is
+felt is still a play question; what is now known is that **the current door
+cannot be tuned out of the problem**, and that a different door (a riding
+multiplier on drive speed, which never touches the tether channel, so the
+storm's guarantee is untouched) is the alternative if it comes to it. §131: the
+owner's call, costed.
+
+### And the sweep now prints its own bound
+
+The per-tag leg gate has existed since §113 and works — `harness_legs.py
+--gates` feeds `$GATES`, and `run_one` prints `SHORT: N verdict(s), at least M
+expected` for any tag that came up short. That is not what failed.
+
+What failed is that the **summary line carried no derived figure at all**, so
+the expected total was tracked by hand across commits — and misquoted: 866
+reported as 864, and once an 824 baseline recorded off a tree that had printed
+a FAIL. Three of this project's recorded defects are that same shape (§73's
+44-vs-61, §77's 46-vs-64, §113's "green at 758").
+
+The footer now reads, in shape:
+
+    derived bound: <observed> verdict(s) across 57 gated tag(s), against at
+    least 806; SAVETEST adds <n> (unbounded by design)
+
+**806 across 57 tags is measured** — `harness_legs.py --gates` summed over the
+sweep's own `TAGS` array, this commit. The observed figures are left as
+placeholders here on purpose: this section cannot state them without a sweep,
+and inventing a plausible pair would be the exact defect the section is about.
+(The first draft of this paragraph did precisely that, with four fabricated
+numbers, and was caught before it shipped. It is recorded because a rule that
+its own author trips over on the same page is worth more than one that reads as
+easy.)
+
+**It is a bound and it must never become an equality**, and the code says so at
+length so that nobody later "improves" it. `harness_legs.py`'s own docstring
+carries the argument: legs under `if`/`match` legitimately may not fire, legs
+under `for`/`while` fire zero-to-many, and SAVETEST is one function dispatched
+twenty-four times whose static site count *"has no relationship at all to its
+contribution"*. Summing those into a single expected number would be a
+measurement column claiming coverage it does not have — this document's class 5,
+committed by the tool built to prevent it.
+
+SAVETEST's verdicts are reported **beside** the bound rather than folded into it
+or dropped. A quarter of the sweep's runs silently missing from its own summary
+is the same defect one level up.
+
+
+## 145. Turning the recorder on (review item 4)
+
+`telemetry.gd` has existed since Horizon 3. It is written, documented, bounded
+at 500 rows, switchable from the pause menu as **SHARE PLAY DATA**, and it had
+**never been read once**. Its own header still says the phone-performance and
+playtest pass deferred from Horizon 1 *"has still never run"* — a sentence now
+eleven horizons old.
+
+Nothing here builds a switch, because the switch was already there. What was
+missing was two facts and a way to look.
+
+### The two questions Horizon 14 could not answer
+
+The existing row already settles the question the file was built for:
+`deepest_depth` beside `minutes` answers *"did anyone reach THE QUIET in one
+sitting?"* Neither says whether the **middle's own systems were used** once out
+there — which is the entire premise of the last horizon, and the thing three
+green harnesses cannot see.
+
+So the row gains `sheets_filed` and `tide_seconds`. Both are cumulative per
+**run**, matching the `minutes` they sit beside, so a row means one consistent
+kind of thing rather than two.
+
+`GameState.tide_seconds` rides v28 on defaults-not-branches (§137's precedent)
+and is accumulated in `main._process` where the HUD **already asks**
+`tide.is_riding()` — one `+= delta`, no second reader of the same fact. It sits
+**outside** the `if hud` guard, deliberately: the tide carries a hull whether or
+not a cockpit is drawing, and an accumulator gated on the HUD would under-report
+every harness and every second the chrome is hidden.
+
+The file's own law is untouched: **nothing in the game reads telemetry.** These
+are writes.
+
+### A counter that always ran would be worse than none
+
+`AND THE CLOCK ONLY RUNS WHILE IT CARRIES YOU` asserts it on the fixture that
+already exists — §139's three passes ride, cross and fight the same water for
+two seconds each, so the accumulator must have moved for exactly the first. A
+clock that ran regardless would report every session as tide-heavy and answer
+§139's open question with a confident lie, which is §144's whole subject.
+
+### And a way to look
+
+`tools/read_telemetry.py`. The friction was never the recording — it was that
+reading meant finding Godot's `user://` by hand and squinting at JSON. It finds
+the file on all three platforms, prints a row per session, and says where to
+turn the setting on when there is nothing there yet.
+
+**It refuses to grade.** No thresholds, no verdicts, no averages across rows —
+every question these numbers raise ("is that enough minutes?", "is one sheet a
+lot?") is a design question the reader answers. §144's lesson applied to a new
+tool on the day it was written: a number wearing a verdict it never earned is
+worse than no number. It also says *cumulative per run, not per sitting* in its
+own output, because that is the one way its rows are easy to misread.
+
+### What this does not do
+
+It does not answer anything yet. **Three sessions have to be played**, and that
+is the owner's to do — which is precisely why the instrument sat unread for
+eleven horizons, and why the two questions it now carries are worth the four
+lines they cost.
+
+
+## 146. The contact sheet (review item 6)
+
+Every drawn surface in the game, once, as a PNG. `PYXIS_SURFACES`.
+
+### The scoreboard that justifies it
+
+Of the six defects that have ever reached a player, **zero were found by an
+assertion** — §88 and §141 by playtest, §134 and §136 by screenshots, §143 by a
+playtest against a harness that was 10 for 10 at the time. Against 866 legs, and
+an instrument that is 79% of `main.gd`.
+
+What they have in common is that they are all things a person **sees**: a column
+with no height, a tween fighting its container, a tap that cannot land, a
+particle system with no mesh. **Nothing in this repo can see a renderer**, so
+nothing here could have caught any of them — and the answer is not a cleverer
+assertion, it is a contact sheet somebody looks at.
+
+> **NO COMMIT TOUCHING A DRAWN SURFACE SHIPS WITHOUT A FRAME.**
+
+### It carries no verdicts, on purpose
+
+It joins DEEPSHOTS, DEMO, ECONDEMO and WORLDTOUR in the cannot-fail family
+rather than the sweep, so the run and leg counts are untouched. A PASS line here
+would be a lie: this harness cannot tell a good frame from a bad one, and
+pretending otherwise is the "green that measured nothing" §77 names.
+
+**The instrument caught the prose saying so, too.** The first draft's summary
+line read `%d frame(s) -> %s`, and `harness_legs.py` reads `-> ` as a verdict
+marker — so SURFACES was reported with a GATE of 1 and kept *out* of the
+cannot-fail list, directly contradicting the comment forty lines above it. §124's
+outcome exactly (the tool right, the prose wrong), caught before a sweep this
+time rather than after one.
+
+### What it captures, and why those
+
+**Twelve cockpit frames**, and the sixth is why the group leads. The jam and the
+tide can both be lit between 1,100 and 1,450 units out, `_system_label` has no
+`clip_text` and no autowrap, and that string reaches roughly eighty characters.
+Suspected since §139 and never once looked at.
+
+The suffixes are **staged, not flown**, with `main._process` stopped while they
+are: that loop rewrites the deep tag from live values every frame, so a staged
+string would be overwritten before the shutter opened — and flying a hull into a
+carrier wash and a tide simultaneously, on purpose, is not something a capture
+pass can arrange.
+
+**Four chart frames across the zoom range**, because §139's arrows and §140's
+ring are world-sized and the coverage squares under them are too. "Does this
+read as water or as clutter" has a different answer at each end, and no frame
+had ever been taken at either.
+
+Then the port tabs, refit, hold, damage, every manual page, pause, settings, and
+the induction beat by beat — §136's two defects both lived in those frames and
+neither had been captured by anything but a playtester's phone.
+
+### Derived, never typed — and the one time I typed it anyway
+
+The manual walks `ManualScreen.PAGES` and the induction is bounded by
+`Induction.BEATS.size()`, so a page or a beat added later is captured without
+this file being touched.
+
+The port tabs were the exception, and the first draft typed
+`["contracts", "paint", "skills"]`. **There is no "skills" tab in this game.**
+`_on_tab` would have set an unknown key, `_refresh` would have drawn an empty
+sheet, and that frame would have gone into the contact sheet looking like a real
+screen with nothing on it — a capture pass inventing its own inputs, which is
+§110's forge hint with a camera. It now walks `port_panel.services()`, the same
+list `_build_tabs` walks, so it captures exactly the tabs a pilot can see.
+
+### What it does not do
+
+It does not decide anything. **Open the frames** — that is the entire point, and
+the harness says so in its own last line: a green run nobody looks at has
+verified nothing.
+
+
+## 147. Two more holes, and what "0 problems" actually means
+
+§146 shipped and would not load. Godot named two lines:
+
+    Parse Error: Only "String" or "StringName" can be used as index for type
+    "Node", but received "int".                          main.gd:21637
+    Parse Error: Cannot infer the type of "tide_clock_ok" variable because the
+    value doesn't have a set type.                       main.gd:30976
+
+`check_scripts.py` had just reported **72 files, 0 problems** on that tree.
+
+### The two shapes
+
+**Rule 6 knew about consts; a leg's buckets are locals.**
+
+    var rode_clock: Array = []
+    var tide_clock_ok := rode_clock[0] > 1.0 and rode_clock[1] < 0.05
+
+`rode_clock[0]` is a Variant, so the comparison is a Variant, so `and` of two
+Variants is a Variant, and `:=` has nothing to infer from. `check_container_infer`
+collects untyped **consts** and is exact about them — which is why it is quiet
+and why it missed this entirely.
+
+**And one character from a working line.**
+
+    get_tree().get_first_node_in_group("hyper")[0]
+
+The **singular** getter returns one Node, and indexing a Node is a parse error
+outright. `get_nodes_in_group(...)[0]` is the line I meant. It reads as
+completely ordinary code, which is the whole reason it is worth a rule rather
+than more care.
+
+Both now covered, and **red-verified against the live failure before it was
+fixed** — the rules were written first, run against the broken tree, and
+reported exactly `21637` and `30976`. Then seven legal shapes (`Array[float]`,
+a `float()` wrap, the plural getter, an explicit `: Variant`, a `.split()`
+result) confirmed silent.
+
+### The thing worth writing down is not the two rules
+
+This is the **second** time in one session that the checker called a tree clean
+and Godot refused it — §138 was the first. Ten rules now, and every one was
+written *after* paying for its form.
+
+> **"0 PROBLEMS" MEANS "TEN KNOWN DEFECT CLASSES ARE ABSENT". IT HAS NEVER
+> MEANT "IT PARSES".**
+
+I have been reporting it as though it did. Every commit this session closed with
+`72 file(s) checked, 0 problem(s)` stated as if it were a verification, when what
+it verifies is a list — and GDScript's inference has more corners than a
+rule-per-incident approach will ever close.
+
+The instrument that settles it is the parser: `run_harness.sh --parse`, or any
+run on a machine with the binary. **A commit verified only by the static checker
+has an unknown parse status and should be reported that way** — which is what
+this section changes about how the next one is handed over.
+
+It also says something about where the checker's value actually is. Rules 1–10
+have caught real defects *before* a sweep several times over, including twice
+today — rule 4 on a shadowed local in §140, rules 9 and 10 here. That is worth
+having. It is just not the same claim as "it compiles", and conflating them is
+how a capture pass gets handed to the owner with two parse errors in it.
+
+
+## 148. The manifest that counted intentions
+
+§146 ran, and its last lines said:
+
+    [surfaces] 41 frame(s) written to /tmp/pyxis-surfaces
+
+**Zero were written.** The directory did not exist, Godot logged forty-one
+"Can't save PNG at path" errors, and the harness printed its whole manifest over
+the top of them.
+
+The pass built to stop me claiming things I had not verified made an unverified
+claim on its first outing.
+
+### Two causes, both mine
+
+**`_shot` threw away the answer.** `save_png` returns an `Error` and this
+discarded it, and it never created its output directory either:
+
+    get_viewport().get_texture().get_image().save_png(dir.path_join(filename))
+
+That line has been there for **82 call sites across six suites**. Every
+screenshot pass this project has ever had could report success while writing
+nothing; §146 is simply the first one whose directory did not already exist.
+
+**`_surface_shot` appended before it shot.** So `wrote` held frames *attempted*
+and the summary printed them under the word *written*. Its own comment claimed
+the manifest "cannot disagree with what is on disk" — and it disagreed with an
+empty directory the first time it mattered.
+
+> **A COUNTER INCREMENTED BEFORE THE ACT COUNTS INTENTIONS.**
+
+Now: `_shot` makes the directory, returns whether the write landed, and warns on
+failure; `_surface_shot` appends only on success and collects the rest; and the
+summary prints `N FRAME(S) DID NOT WRITE` loudly, ahead of the closing lines,
+saying the contact sheet is incomplete. The return type went `void` → `bool`,
+which is safe for the eighty-one callers that ignore it.
+
+### What the run did prove
+
+It failed at the last inch, and everything before that inch worked — worth
+recording, because the temptation is to read a run that wrote nothing as a run
+that did nothing:
+
+- **41 frames attempted**, against the "~40" §146 estimated.
+- **The port tabs derived correctly**: rumors, games, fence, contracts, paint,
+  **requisitions**. §146 replaced a typed `["contracts", "paint", "skills"]`
+  with a walk of `port_panel.services()` after finding there is no "skills" tab
+  — and `requisitions` is a tab I would never have guessed either. The
+  derive-don't-type fix paid for itself on the run that could not save a file.
+- The manual walked contents plus all seven pages, the induction all five beats,
+  and the radar reported **12 markers on screen** — so the frame that was
+  supposed to have something in it did.
+
+### The pattern this makes
+
+Three sections in a row now — §144's figure, §147's parse claim, §148's
+manifest — are the same defect: **a summary asserting something its author had
+not checked.** DEFECTS class 5, three times, in the horizon whose entire subject
+is that.
+
+That is not a coincidence and it is not carelessness at three sites. It is what
+happens when the person writing the summary cannot run the thing. Every one was
+caught by the owner running it, which is the fourth entry in a row on that
+scoreboard.
+
+
+## 149. Somewhere you can actually find it
+
+§146's capture pass ran clean — 41 frames, no failures — and the owner could not
+find them.
+
+`/tmp/pyxis-surfaces` was my instruction, and it was wrong twice over on the
+platform this game is developed on:
+
+- **macOS hides it.** `/tmp` is a symlink to `/private/tmp` and Finder shows
+  neither, so a directory full of PNGs reads as an empty result.
+- **macOS purges it.** A contact sheet exists to be *reviewed*, plausibly over
+  several sittings. Writing it to a directory the OS deletes puts a clock on the
+  one artefact whose whole value is being looked at slowly.
+
+So `_run_surfaces` now defaults to `user://surfaces` when `PYXIS_SHOTS` is
+unset. The other capture suites keep requiring the variable, which is right for
+a one-off composition pass; this one is meant to be opened, so a missing
+variable must not mean a missing sheet.
+
+And the closing line is **globalized**:
+
+    [surfaces] 41 frame(s) written to /Users/.../app_userdata/Pyxis/surfaces
+    [surfaces] open /Users/.../app_userdata/Pyxis/surfaces
+
+Echoing `shots` back told the owner the string they had just typed — and would
+have told them nothing at all once it became a `user://` URI. A path you can
+paste is the difference between an instrument and a rumour about one.
+
+### The smaller lesson
+
+§146 built a pass whose stated purpose is *somebody looks at these*, and then
+handed over a location where looking was hard and keeping was temporary. The
+frames existed and the review still did not happen.
+
+> **AN ARTEFACT NOBODY CAN FIND HAS THE SAME VALUE AS ONE THAT WAS NEVER
+> WRITTEN.** §148 fixed the count; this fixes the address.
+
+
+## 150. Three reds, and one of them was in the game
+
+The first full sweep since §141: **83 runs | 865 PASS | 3 FAIL | 0 errors |
+0 short**. §144's footer worked on its first outing —
+
+    derived bound: 823 verdict(s) across 57 gated tag(s), against at least 807;
+    SAVETEST adds 45 (unbounded by design)
+
+— and 0 errors with 0 short settles §147's open worry: this head parses.
+
+Two of the three reds were bugs I introduced. One was a leg that never built
+its own precondition.
+
+### A. `level_view` and `chart` were both bound to C
+
+    [input] THE CHART KEY OBEYS THE LOCK opens=false ... -> FAIL
+
+§142 gave the free look a `level_view` key and bound it to **C without reading
+the map**. `chart` was already on C. `CameraRig._unhandled_input`'s `elif` chain
+tests `level_view` first, so it consumed the event and **the chart key stopped
+opening the chart** — while `closes=true`, because the panel's own handler was
+untouched. Moved to **V**.
+
+`GameState.rebind` has conflict logic for what a *player* binds at runtime.
+**Nothing had ever checked what ships in `project.godot`** — the defaults were
+assumed correct because they were written by hand, which is the assumption every
+entry in DEFECTS class 5 is about. `NO TWO ACTIONS SHARE A KEY` now walks the
+live `InputMap` (never a typed list, so a later action is covered for free) and
+excludes Godot's `ui_*`, which legitimately overlap ours and are not ours to
+arbitrate.
+
+### B. "Riding" meant anything within 89.99°
+
+    [tide] AND THE CLOCK ONLY RUNS WHILE IT CARRIES YOU riding 2.00s,
+    athwart 2.00s, against 0.00s -> FAIL
+
+`_riding = align > 0.0`. **This one was in the game, not the test.**
+
+The harness caught it through a float32 edge: a *dead perpendicular* crossing
+reads positive about **one time in seven** in 32-bit (291 of 2,000 bearings,
+measured). But that is only how it surfaced. The real defect is the whole
+window — every heading up to 89.99° off the set was reported as *the tide is
+carrying you*, and three things believed it:
+
+| | |
+|---|---|
+| `tide_seconds` | §145's telemetry field, added to answer *"was the tide used?"* |
+| the cockpit `▸` | §143's entire PRESENT-vs-RIDING split |
+| mote brightness | the in-world tell of that same distinction |
+
+§145 shipped an instrument to answer a design question and the instrument was
+wrong in the direction that would have said *yes, the tide gets used* no matter
+what a player did.
+
+`RIDE_MIN_ALIGN := 0.25` (~75°), gating **the push as well as the readout** —
+one rule, one reader, DEFECTS 2b, rather than a continuous push wearing a
+thresholded label. The owner took both calls.
+
+> **THE CLIFF A SINGLE RULE INTRODUCES IS AFFORDABLE BECAUSE THE BAR IS LOW.**
+> What vanishes at the edge is 0.9 × 0.25 = **0.22 u/s**, about 2% of a fast
+> fit's speed, under the threshold of noticing. At a stricter bar the same
+> choice would be a wall.
+
+And the file's own header claimed *"crossing a tide gets nothing"* for two
+commits while the code did the opposite. Corrected in place rather than quietly
+— §143's lesson about prose the code stopped supporting.
+
+### C. A leg that inherited its camera
+
+    [feel] AND A TAP STILL LANDS ON A TURNED VIEW level=false,
+    a third of a turn round=true -> FAIL
+
+The tap leg never placed the rig. It used whatever the *pan* leg left behind,
+and a hyper structure sits 1,600–4,200u out — so the anchor was **behind the
+lens**, §141's `is_position_behind` guard correctly skipped it, and 120° of yaw
+brought it round to the front. `level=false, turned=true` fits exactly.
+
+§116's rule, quoted in COLONYTEST **this same session** and not applied here: *a
+precondition a leg needs is a precondition that leg states.*
+
+It now pins the rig on the structure — and **re-pins before every pick**, which
+the obvious fix would have missed: turning the leash off stops `_leash`, but
+`_follow` is a second writer of the same position and is not gated by the leash.
+At `FOLLOW_SPEED` it eats ~4% of the distance to the player per frame, and two
+awaits would have walked the camera ~8% of the way home before the shutter
+opened. DEFECTS 2b, met in a leg rather than in the game.
+
+### What the three have in common
+
+Nothing, and that is the point worth recording. A binding collision, a threshold
+that was never a threshold, and a leg missing a precondition are three unrelated
+mistakes — but all three were invisible to 865 green assertions until the one
+sweep that ran them together. **The sweep is the instrument; the checker is a
+pre-flight.** §147 said so about parsing, and this says it about behaviour.

@@ -112,6 +112,8 @@ const HARNESS_VARS := [
 	"PYXIS_STORETEST",
 	"PYXIS_STORMTEST",
 	"PYXIS_STREAMTEST",
+	"PYXIS_SURFACES",
+	"PYXIS_TIDETEST",
 	"PYXIS_TITLETEST",
 	"PYXIS_TORPTEST",
 	"PYXIS_TUTORIALTEST",
@@ -447,6 +449,9 @@ var contracts: Contracts
 
 var system_root: Node3D
 var deep_space: DeepSpace
+# §139. Rebuilt with the system exactly as DeepSpace is, and for the same
+# reason: it reads the expanse, so it cannot outlive one.
+var tide: Tide = null
 # Sticky across _load_system. Harnesses that assert against a hand-placed world
 # turn this off the same way they pin `_wave_timer`; the game never touches it.
 var _deep_generation := true
@@ -467,6 +472,7 @@ var docked_port: Port = null
 
 var state: int = State.ATTRACT
 var title_screen: TitleScreen
+var induction: Induction
 var tutorial: Tutorial
 
 var _event_roll_timer := Market.EVENT_ROLL_INTERVAL
@@ -697,7 +703,18 @@ func _ready() -> void:
 
 	title_screen = TitleScreen.new()
 	add_child(title_screen)
-	title_screen.new_game_pressed.connect(start_new_game)
+	# §133. NEW SURVEY routes through the induction exactly once per DEVICE
+	# (a preference, not a save key -- new pilots are not new people). The film
+	# owns no state: the seen flag is written HERE, on the finished signal, so
+	# skipping at any beat and watching to the end leave identical saves.
+	induction = Induction.new()
+	add_child(induction)
+	induction.finished.connect(_on_induction_finished)
+	title_screen.new_game_pressed.connect(_on_new_survey)
+	title_screen.induction_pressed.connect(func() -> void:
+		# §135. The door steps aside for its own film and comes back after.
+		title_screen.set_chrome_visible(false)
+		induction.open(true))
 	title_screen.continue_pressed.connect(continue_game)
 	# Picking a pilot IS continuing: GameState.switch_profile has already loaded
 	# that run (or laid down a starter one) by the time the signal fires, so this
@@ -1057,6 +1074,22 @@ func _ready() -> void:
 		_load_system(GameState.current_system)
 		_enter_playing()
 		_run_stream_test()
+		return
+
+	if OS.get_environment("PYXIS_TIDETEST") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_tide_test()
+		return
+
+	if OS.get_environment("PYXIS_SURFACES") != "":
+		GameState.lock_saving()
+		state = State.PLAYING
+		_load_system(GameState.current_system)
+		_enter_playing()
+		_run_surfaces()
 		return
 
 	if OS.get_environment("PYXIS_ACCESSTEST") != "":
@@ -1858,16 +1891,55 @@ const BEACON_JUMP_MIN_FEE := 120
 # any depth at no charge, which made it strictly cheaper than the 120-500 credit
 # beacon jump and therefore the best fast travel in the game.
 #
-# The fee walks beacon_jump_fee's own ramp at twice the price and WITHOUT its
-# clamp, so it keeps climbing past the depth a jump will reach: ~240 at the
-# chart edge, 1,000 where a jump stops being offered at all, ~1,870 at the far
-# marks. THE RESCUE COSTS MORE THAN THE JUMP sweeps it.
+# §123 RE-PRICES IT AND CUTS IT LOOSE. The original walked beacon_jump_fee's own
+# ramp at twice the price, which put the deepest possible death at 1,869 --
+# EIGHTY SECONDS of standard-loop income against the loop the sweep actually
+# measures. The arithmetic was right and the anchor was not: the jump's own fee
+# had never been anchored to anything either, so the death price was a multiple
+# of a guess. That is exactly the defect §114 named, and this is its last site.
+#
+# ITS OWN CONSTANTS NOW, and they express loop-fraction intent rather than a
+# multiple of a neighbour. ~240 just past the chart edge, ~900 at a shallow deep
+# death, ~2,700 at the band-6 floor, RESCUE_FEE_FAR at the marks.
+#
+# AND THE FAR CONSTANT IS DERIVED FROM A MEASUREMENT RATHER THAN A FEELING,
+# which the first draft of this line is the argument for. It shipped at 13,000
+# against an ESTIMATED steady loop of ~32,500 -- a figure carried through four
+# documents and never once measured. The sweep put the loop at 11,236, a THIRD
+# of the estimate, and both new legs went red on the first run exactly as the
+# band was built to. 4,500 is 0.40 of the measured loop: mid-band, and inside
+# the ceiling by a factor of two and a half.
+const RESCUE_FEE_EDGE := 240
+const RESCUE_FEE_FAR := 4500
+
+# AND IT CLAMPS AT THE FAR MARKS, which reverses §109's decision rather than
+# forgetting it. §109 refused beacon_jump_fee's clamp because that one sits at
+# BEACON_JUMP_MAX_DEPTH (4,200) while content runs out to 9,000 -- flattening
+# the bill across the entire far deep, "cheapest exactly where it should cost
+# the most". This clamp sits at the far marks THEMSELVES: FarMarks.DEPTH_MAX is
+# the deepest authored thing in the game, so there is no content in the flat
+# region at all. The ramp measures the flight home, and past the marks there is
+# nothing out there the tug could have been called to.
+#
+# It also makes §114's ceiling law TOTAL rather than sampled. Unclamped, a fee
+# rising forever crosses one measured loop somewhere past ~60,800u -- true of a
+# pilot who flew into empty space, invisible to a leg that checks one depth, and
+# a promise ("an involuntary charge larger than a loop deletes the session
+# before it") quietly broken out where nobody looks.
 #
 # The numbers are provisional and they are all in this block, §99's posture --
 # the LAWS are what is asserted (deeper costs more, always more than a jump,
-# nothing at all inside the chart), so a retune changes three lines and no
-# assertion.
-const RESCUE_FEE_MULT := 2.0
+# nothing at all inside the chart, and the band below), so a retune changes two
+# constants and no assertion.
+#
+# THE BAND IS THE POINT OF THE RE-PRICING. A one-time raise is a nudge that
+# expires: yields move, the loop grows, and the death price silently becomes
+# eighty seconds again with nothing to notice. So the deepest fee is pinned
+# to a FRACTION of the loop PACINGTEST measures, income's own instrument shape
+# -- an authored constant, a measured ratio, and a red when they drift apart.
+# THE DEATH PRICE SITS IN ITS BAND is the leg.
+const RESCUE_BAND_MIN := 0.30
+const RESCUE_BAND_MAX := 0.50
 
 # THE CLAIM. A spill used to be immortal: `spill` cubes skip the 25s reaper, so
 # cargo dropped at a deep death sat there for the rest of the visit and the whole
@@ -1883,6 +1955,8 @@ const SPILL_CLAIM_WARN := 30.0
 # Seconds left before somebody else takes what you dropped. 0 = nothing adrift.
 var _spill_claim_left := 0.0
 var _spill_warned := false
+# §128. Said once per spill, cleared everywhere _spill_warned is.
+var _spill_lit := false
 
 
 func rescue_fee(depth: float) -> int:
@@ -1891,17 +1965,56 @@ func rescue_fee(depth: float) -> int:
 	# what it was taught with and what CHART DEATH INTACT asserts.
 	if depth <= 0.0:
 		return 0
-	# Deliberately NOT beacon_jump_fee(depth) * 2: that function clamps its ramp
-	# at BEACON_JUMP_MAX_DEPTH because past there a jump is refused outright, and
-	# borrowing the clamp would make the rescue flat across the entire far deep --
-	# cheapest exactly where it should cost the most.
-	var t := depth / float(BEACON_JUMP_MAX_DEPTH)
-	var one_way := lerpf(float(BEACON_JUMP_MIN_FEE), float(COLONY_JUMP_FEE), t)
-	return int(round(one_way * RESCUE_FEE_MULT))
+	# Its own ramp, over the FAR MARKS rather than over the jump's cap -- see the
+	# constants block for why this one clamps where §109's refused to.
+	var t := clampf(depth / FarMarks.DEPTH_MAX, 0.0, 1.0)
+	return int(round(lerpf(float(RESCUE_FEE_EDGE), float(RESCUE_FEE_FAR), t)))
 
 
 func spill_claim_seconds(depth: float) -> float:
 	return SPILL_CLAIM_BASE + maxf(depth, 0.0) * SPILL_CLAIM_PER_DEPTH
+
+
+# §137. THE SHEET'S PREMIUM, and FLAT is the whole design rather than a
+# convenience. Every value in this game rises with depth -- salvage grades,
+# chart data, hulk loot, seam yield -- which is why the middle bands are never
+# optimal for anything and why a pilot's only motivation out there is to go
+# further. A premium that ALSO rose would change nothing.
+#
+# Flat, it is proportionally worth most exactly where income is lowest: a
+# quarter of a measured loop next to band-4 chart data, and pocket change next
+# to band-6 salvage. That is a counter-gradient bought without touching one
+# number in one value table -- `RICHER OUTWARD` is asserted twice and stays
+# green, which was the owner's own condition on this horizon.
+#
+# 0.25 of the loop PACINGTEST measures (§124), and priced against it rather
+# than felt: a sheet is roughly five readings inside a 256u block, so this is
+# what a deliberate detour is worth and not what a farm would pay.
+const SHEET_PREMIUM := 2800
+
+
+func _on_sheet_completed(sx: int, sz: int, readings: int) -> void:
+	# §137. The Authority pays for a CHART, not for notes. Scattered cells are
+	# readings; a block with every reading in it is a sheet, and this is the one
+	# place in the game that pays for finishing something rather than for going
+	# further.
+	var key := DeepSpace.sheet_key(system_id, sx, sz)
+	var centre := DeepSpace.cell_centre(
+		sx * DeepSpace.SUPERCELL + DeepSpace.SUPERCELL / 2,
+		sz * DeepSpace.SUPERCELL + DeepSpace.SUPERCELL / 2)
+	var depth := deep_space.depth_at(centre) if deep_space != null else 0.0
+	if not GameState.note_sheet_filed(key, readings, depth):
+		return
+	GameState.add_salvage(SHEET_PREMIUM)
+	GameState.note_ledger("sheets_filed", 1)
+	if hud:
+		hud.set_value(GameState.salvage)
+		# §58 AND §88 IN ONE LINE: names what completed, what it was worth, and
+		# WHERE -- a premium that arrives without saying which block earned it
+		# teaches a pilot nothing about the thing they are meant to repeat.
+		hud.show_toast("SHEET FILED — %s, %d READINGS · %s SALVAGE" % [
+			DeepSpace.band_name_in(system_id, depth), readings,
+			_comma_int(SHEET_PREMIUM)], Palette.GOLD)
 
 
 func charge_rescue(at: Vector3) -> int:
@@ -1913,10 +2026,11 @@ func charge_rescue(at: Vector3) -> int:
 	var fee := rescue_fee(deep_space.depth_at(at))
 	if fee <= 0:
 		return 0
-	# THE TUG TAKES WHAT YOU HAVE AND NEVER REFUSES. A rescue that could fail for
-	# want of credits is a soft-lock with a story attached -- there is no other
-	# way out of a shield-zero ship -- and a debt is a second currency the game
-	# does not have. So it bills what is in the account and writes the rest off.
+	# THE TUG TAKES WHAT YOU HAVE AND NEVER REFUSES. [PHYSICS, §131] A rescue
+	# that could fail for want of credits is a soft-lock with a story attached --
+	# there is no other way out of a shield-zero ship. The write-off half is
+	# [TASTE]: a debt is a second currency the game does not have, and §64 carries
+	# the open question of what a broke pilot should pay instead.
 	var paid := mini(fee, GameState.salvage)
 	if paid > 0:
 		GameState.spend_salvage(paid)
@@ -1938,6 +2052,28 @@ func _tick_spill_claim(delta: float) -> void:
 		# Recovered, or abandoned by a warp. Either way the clock is not running.
 		_spill_claim_left = 0.0
 		_spill_warned = false
+		_spill_lit = false
+		return
+	# §128, THE LIGHT. The clock STOPS rather than the claim being cancelled, and
+	# the difference matters: a pilot who tows a spill out from under the light
+	# is back on the deadline they had, with the seconds they had left. Nothing
+	# is granted permanently -- what the work buys is that this ground is watched.
+	#
+	# ASKED OF THE SPILL, NOT THE SHIP. The pilot is by construction somewhere
+	# else while this runs (§118's whole argument), so reading the player's
+	# position would make the grant fire exactly when it is not needed and never
+	# when it is.
+	if GameState.light_aura_at((adrift[0] as Node3D).global_position.x,
+			(adrift[0] as Node3D).global_position.z):
+		# AND IT SAYS SO ONCE, §88: a grant a pilot cannot perceive is one they
+		# cannot decide with, and the alternative here is SILENCE -- the 30s
+		# warning simply never arriving, which is indistinguishable from the
+		# clock still running.
+		if not _spill_lit:
+			_spill_lit = true
+			if hud:
+				hud.show_toast("UNDER THE LIGHT — NOTHING OUT THERE TAKES IT",
+					Palette.TEAL)
 		return
 	_spill_claim_left -= delta
 	if not _spill_warned and _spill_claim_left <= SPILL_CLAIM_WARN:
@@ -1976,6 +2112,7 @@ func _tick_spill_claim(delta: float) -> void:
 		c.queue_free()
 	_spill_claim_left = 0.0
 	_spill_warned = false
+	_spill_lit = false
 	FX.flash(system_root, where, Palette.THREAT, 3.0, 0.4)
 	if hud:
 		# WHAT AND WHERE, not just that it happened (§58's copy rule applied to
@@ -2200,6 +2337,29 @@ func spawn_sentries() -> void:
 	SystemBuilder.build_garrison(system_def, system_root, system_id)
 
 
+func _on_new_survey() -> void:
+	if bool(GameState.setting("seen_induction")):
+		start_new_game()
+		return
+	induction.open(false)
+
+
+func _on_induction_finished(replay: bool) -> void:
+	# A replay returns to the title it opened over; the first showing marks the
+	# device and starts the run it was standing in for. Marked whether the film
+	# was watched or skipped -- SKIP is an answer, not an accident, and asking
+	# again would be the §58 problem inverted (a refusal re-asked is a nag).
+	if replay:
+		# §135. RESTORED HERE AND NOWHERE ELSE. `_finish` is the film's only
+		# exit -- tap-through and SKIP both land in it -- so one restore covers
+		# every way out, and a second one somewhere else would be a second
+		# thing to keep in step.
+		title_screen.set_chrome_visible(true)
+		return
+	GameState.set_setting("seen_induction", true)
+	start_new_game()
+
+
 func start_new_game() -> void:
 	GameState.reset_to_starter()
 	# A real new game persists. Under a harness this is a no-op: lock_saving()
@@ -2375,6 +2535,7 @@ func _load_system(id: String) -> void:
 	# down, or the next spill inherits a deadline that already half expired.
 	_spill_claim_left = 0.0
 	_spill_warned = false
+	_spill_lit = false
 
 	# Boss state never survives a system change: a DAMAGED engine resets to full on
 	# warp or reload, because retreating costs tempo and never salvage. Clearing
@@ -2476,6 +2637,19 @@ func _load_system(id: String) -> void:
 	# quietly turn the expanse back on underneath its assertions.
 	if deep_space:
 		deep_space.set_generation(_deep_generation)
+		# §137. RE-CONNECTED WITH THE NODE, because DeepSpace is rebuilt with
+		# the system and a connection made once at boot would be to a freed
+		# node from the second warp onward -- the shape `_build_beacons` two
+		# lines up already works around.
+		deep_space.sheet_completed.connect(_on_sheet_completed)
+	# §139. THE TIDE, spawned with the expanse it reads. Identity is set BEFORE
+	# add_child -- every spawner's contract here -- so _physics_process can
+	# never run one frame against an unnamed system, which would resolve the
+	# whole middle to "no tide" and cache it.
+	tide = Tide.new()
+	tide.system_id = id
+	tide.deep = deep_space
+	system_root.add_child(tide)
 	# A new system is a new expanse, so its beacons are unheard again.
 	_broadcast_band = 0
 
@@ -2887,6 +3061,15 @@ func _process(delta: float) -> void:
 	# instrumentation. set_deep_tag ignores sub-unit changes, so this is a float
 	# compare per frame rather than a string build.
 	var depth := deep_depth()
+	# §145. THE ONE FACT §139's DESIGN RESTS ON AND NO ASSERTION CAN REACH.
+	# TIDETEST proves the water pushes; only a person can say whether it was
+	# worth steering for, and this is how that stops being a memory.
+	#
+	# OUTSIDE the `if hud` below, deliberately: the tide carries a hull whether
+	# or not a cockpit is drawing, and an accumulator gated on the HUD would
+	# quietly under-report every harness and every second the chrome is hidden.
+	if is_instance_valid(tide) and tide.is_riding():
+		GameState.tide_seconds += delta
 	if hud:
 		# THROTTLED, not per frame: _find_apex walks a group and allocates an
 		# array to do it, and the answer cannot meaningfully change in a
@@ -2911,8 +3094,14 @@ func _process(delta: float) -> void:
 			_carrier_wash = washed
 		# v21: named the way THIS Pyx names it. band_name stays the default and
 		# the fallback, so a system with no authored names reads exactly as before.
+		# §139. A FIFTH APPENDED-OPTIONAL, §108's discipline: a reshaped signature
+		# is a wrong arity, and a wrong arity is a parse error the static checker
+		# cannot see. -1 is "no tide", which is what every caller that does not
+		# pass it means.
 		hud.set_deep_tag(DeepSpace.band_name_in(system_id, depth) if depth > 0.0 else "", depth,
-			_carrier_wash, storm_has_player())
+			_carrier_wash, storm_has_player(),
+			tide.tide_deg() if is_instance_valid(tide) else -1,
+			tide.is_riding() if is_instance_valid(tide) else false)
 	# The score's second axis, fed from the same poll that already drives the
 	# wayfinding label and the beacons. Music smooths it internally, so this is a
 	# raw value every frame rather than something this function has to rate-limit.
@@ -4827,6 +5016,13 @@ func _complete_dock(port: Port) -> void:
 	port.set_docked_visual(true)
 	player.dock_to(port.dock_point)
 	GameState.set_docked(port.port_id)
+	# §132. THE FILE IS WRITTEN ON ARRIVAL, and only for a deep counter: bay_key
+	# is set by DeepSpace and by nothing else, which is _live_deep_counters' own
+	# tell for "not the charted port". Filed whether or not an archive stands
+	# anywhere -- the finding is the pilot's, and the work buys reading it back.
+	if port.bay_key != "" and deep_space != null:
+		GameState.note_station_seen(port.bay_key,
+			deep_space.depth_at(port.global_position))
 
 	# A BERTH IS WHERE BURNED SECTIONS COME BACK. This is the entire cost side of
 	# the diversion mechanic: power traded away in a fight stays traded until the
@@ -5252,6 +5448,7 @@ func spill_unread(at: Vector3) -> int:
 		# rather than stacking a second deadline -- there is only ever one pile.
 		_spill_claim_left = spill_claim_seconds(deep_space.depth_at(at))
 		_spill_warned = false
+		_spill_lit = false
 		if hud:
 			hud.show_toast("HOLD BREACHED — %d UNREAD ADRIFT, %d MIN" % [
 				spilled, maxi(1, int(round(_spill_claim_left / 60.0)))],
@@ -5680,11 +5877,31 @@ func _attack_nearest(player: PlayerShip) -> void:
 		player.command_attack(best)
 
 
-func _shot(dir: String, filename: String) -> void:
+func _shot(dir: String, filename: String) -> bool:
+	# §148. IT MAKES THE DIRECTORY AND IT REPORTS WHETHER IT WROTE, and it did
+	# neither for six suites and eighty-two call sites.
+	#
+	# save_png returns an Error and this discarded it, so a capture pass whose
+	# output directory did not exist printed its whole manifest and wrote
+	# NOTHING -- Godot logging one line per failure while the harness said
+	# "41 frame(s) written". §146 was built to stop me claiming things I had not
+	# verified, and its own summary was the first thing to do it.
+	#
+	# THE RETURN TYPE CHANGED FROM void TO bool, which is safe for the
+	# eighty-one callers that ignore it: a discarded return value is legal, and
+	# `await` on a coroutine is unaffected. Only _surface_shot reads it.
 	if dir == "":
-		return
+		return false
+	# globalize_path so this works for an OS path (PYXIS_SHOTS is absolute) and
+	# for a res:// or user:// one alike -- telemetry.gd's own idiom.
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
 	await RenderingServer.frame_post_draw
-	get_viewport().get_texture().get_image().save_png(dir.path_join(filename))
+	var err := get_viewport().get_texture().get_image().save_png(
+		dir.path_join(filename))
+	if err != OK:
+		push_warning("[shot] could not write %s (error %d)"
+			% [dir.path_join(filename), err])
+	return err == OK
 
 
 # --- world tour (composition capture) ---------------------------------------
@@ -7696,6 +7913,107 @@ func _run_cart_test() -> void:
 		str(before_warp), str(after_warp), str(not never_warp),
 		"PASS" if before_warp and after_warp and not never_warp else "FAIL"])
 
+	# §137. A SHEET IS DERIVED, NOT COUNTED, and the two clauses are the two
+	# ways this could be a lie rather than two ways of asking whether it works.
+	#
+	# 1. THE REQUIREMENT IS WHAT THE BLOCK ACTUALLY HOLDS. A survey mast rides
+	#    on a DERELICT and a berth charts its own cell, so a sheet asking for
+	#    all sixteen cells would be asking for something the generator refuses
+	#    to provide -- barely a third of cells hold anything readable. Walked
+	#    against plan_cell rather than against a table, so a density retune
+	#    moves the requirement instead of breaking it.
+	# 2. AND IT RISES OUTWARD. More hulks and more berths deeper means more
+	#    readings a sheet, so a sheet is MORE work the further out it sits --
+	#    the counter-gradient this whole horizon is built on, and the reason
+	#    RICHER OUTWARD never had to move.
+	var sheet_bad := ""
+	var sheet_line := ""
+	# AN EMPTY BLOCK IS LEGAL, and saying so here is the difference between a
+	# law and a lucky seed. A supercell whose sixteen cells all rolled nothing
+	# asks for nothing, `note_surveyed` refuses to complete it (`want > 0`), and
+	# at band 6's density that is a 1-in-2,500 block rather than an impossible
+	# one. What must hold is that SOME band answers, and that no band ever asks
+	# for more than the block can hold.
+	var any_readings := false
+	for sb in range(3, DeepSpace.BAND_NAMES.size()):
+		# A supercell at this band's floor, on the axis so depth is unambiguous.
+		var lo: float = float(DeepSpace.BAND_EDGES[sb - 1]) \
+			if sb - 1 < DeepSpace.BAND_EDGES.size() else 5200.0
+		var ring := int((SystemDB.bounds_of(system_id) + lo + 200.0) / DeepSpace.CELL)
+		var sc0 := DeepSpace.supercell_of(ring, 0)
+		var want := deep_space.sheet_readings(sc0.x, sc0.y)
+		var have := deep_space.sheet_read(sc0.x, sc0.y)
+		if want < 0 or want > DeepSpace.SUPERCELL * DeepSpace.SUPERCELL:
+			sheet_bad = "band %d asks for %d readings" % [sb, want]
+		if have > want:
+			sheet_bad = "band %d has read %d of %d" % [sb, have, want]
+		if want > 0:
+			any_readings = true
+		sheet_line += "b%d:%d " % [sb, want]
+	print("[cart] A SHEET IS DERIVED, NOT COUNTED %sreadings per sheet (of %d cells), %s -> %s" % [
+		sheet_line, DeepSpace.SUPERCELL * DeepSpace.SUPERCELL,
+		sheet_bad if sheet_bad != "" else "every sheet asks for what its block holds",
+		"PASS" if sheet_bad == "" and any_readings else "FAIL"])
+
+	# §137. THE PREMIUM IS PAID ONCE, which is §11 with a geometry: a sheet
+	# whose completion re-fires on a re-read is a printer a pilot can stand
+	# still in. Driven through the STORE rather than through the world, because
+	# what is being asserted is the once-ever contract and not the survey verb.
+	GameState.sheets_filed = {}
+	var sk := DeepSpace.sheet_key(system_id, 3, 4)
+	var first_file := GameState.note_sheet_filed(sk, 5, 2000.0)
+	var second_file := GameState.note_sheet_filed(sk, 5, 2000.0)
+	# AND THE CAP KEEPS THE DEEPEST. Overfilled with NEAR sheets so a cap that
+	# dropped the oldest or the newest would still land on the right count and
+	# quietly lose the far one this pilot actually worked for.
+	var far_key := DeepSpace.sheet_key(system_id, 400, 400)
+	GameState.note_sheet_filed(far_key, 6, 9000.0)
+	for i in range(GameState.SHEET_CAP + 4):
+		GameState.note_sheet_filed(DeepSpace.sheet_key(system_id, i, 0), 4, 500.0)
+	var kept_far := GameState.sheets_filed.has(far_key)
+	var capped_n := GameState.sheets_filed_in(system_id)
+	# §140. A REACH IS A BLOCK LIST, AND THE LIST IS COMPLETE. The roads' whole
+	# grant is "these blocks", so the function that answers it has to be exact in
+	# BOTH directions -- over-reach charts water nobody bought, under-reach
+	# silently sells less than the ring on the chart promises. The colony leg
+	# asserts the first half against a live purchase; this asserts the second
+	# against the grid, by walking a deliberately WIDER box by hand and checking
+	# that every block the hand-walk finds inside the circle came back.
+	#
+	# Hand-walked rather than derived from the same helper, which is the point:
+	# a check that asks the function to confirm itself confirms nothing.
+	var reach_r := 900.0
+	var reach_x := 1700.0
+	var reach_z := -400.0
+	var reach_got: Dictionary = {}
+	for rg_v in DeepSpace.supercells_within(reach_x, reach_z, reach_r):
+		reach_got[rg_v] = true
+	var reach_span := float(DeepSpace.SUPERCELL) * DeepSpace.CELL
+	var reach_box := int(ceilf(reach_r / reach_span)) + 3
+	var missed := 0
+	var inside := 0
+	for rx in range(int(reach_x / reach_span) - reach_box,
+			int(reach_x / reach_span) + reach_box + 1):
+		for rz in range(int(reach_z / reach_span) - reach_box,
+				int(reach_z / reach_span) + reach_box + 1):
+			var rcen := DeepSpace.supercell_centre(rx, rz)
+			if Vector2(rcen.x - reach_x, rcen.y - reach_z).length() > reach_r:
+				continue
+			inside += 1
+			if not reach_got.has(Vector2i(rx, rz)):
+				missed += 1
+	print("[cart] A REACH IS A BLOCK LIST, AND IT IS COMPLETE %d block(s) returned for a %.0fu circle, %d found inside it by hand, %d missed -> %s" % [
+		reach_got.size(), reach_r, inside, missed,
+		"PASS" if inside > 0 and missed == 0 and reach_got.size() == inside
+			else "FAIL"])
+
+	print("[cart] THE SHEET'S PREMIUM IS PAID ONCE first file=%s, a second refuses=%s; %d sheet(s) against a cap of %d, the far one kept=%s -> %s" % [
+		str(first_file), str(not second_file), capped_n, GameState.SHEET_CAP,
+		str(kept_far),
+		"PASS" if first_file and not second_file
+			and capped_n == GameState.SHEET_CAP and kept_far else "FAIL"])
+	GameState.sheets_filed = {}
+
 	# 7b. THE STORE IS SYSTEM-QUALIFIED. The old dict keyed on bare Vector2i, so
 	#     pyx01's (7,-3) and pyx02's (7,-3) were one key — persist that and a
 	#     survey here marks a cell THERE. Asserted at the GameState layer, where
@@ -8202,9 +8520,18 @@ func _run_spill_test() -> void:
 	#     expensive exit rather than the convenient one"; it was not.
 	#
 	# Swept rather than spot-checked, because the two curves are only guaranteed
-	# to stay apart if the rescue does NOT borrow beacon_jump_fee's clamp -- and
-	# the far deep, past where a jump is refused at all, is exactly where an
-	# inherited clamp would have made the rescue flattest.
+	# to stay apart across the whole range, and the far deep -- past where a jump
+	# is refused at all -- is where a badly placed clamp would flatten the
+	# rescue.
+	#
+	# §123 AMENDS THIS LEG'S PREMISE RATHER THAN QUIETLY PASSING IT (§24). The
+	# original swept a rescue that borrowed beacon_jump_fee's RAMP at 2x and
+	# refused its clamp; the rescue now has its own constants and DOES clamp --
+	# at the far marks, which is the deepest authored thing in the game rather
+	# than the mid-range cap §109 refused. So the sweep grows a clause: the fee
+	# must still be flat past the marks, because a bill that rose forever would
+	# cross a measured loop out in empty space where §114's ceiling law samples
+	# nothing.
 	var fee_bad := ""
 	var fee_last := 0
 	var fee_rises := true
@@ -8216,10 +8543,15 @@ func _run_spill_test() -> void:
 		if rf <= fee_last:
 			fee_rises = false
 		fee_last = rf
-	print("[spill] THE RESCUE COSTS MORE THAN THE JUMP 7 depths swept, %du costs %d, deeper always dearer=%s, first cheaper-than-a-jump: %s -> %s" % [
-		9000, rescue_fee(9000.0), str(fee_rises),
+	# AND IT STOPS WHERE THE CONTENT DOES. Ten times past the marks is a pilot
+	# in empty space; the tug's bill is the flight home, and there is nothing out
+	# there it could have been called to.
+	var fee_capped: bool = rescue_fee(FarMarks.DEPTH_MAX * 10.0) \
+		== rescue_fee(FarMarks.DEPTH_MAX)
+	print("[spill] THE RESCUE COSTS MORE THAN THE JUMP 7 depths swept, %du costs %d, deeper always dearer=%s, flat past the marks=%s, first cheaper-than-a-jump: %s -> %s" % [
+		9000, rescue_fee(9000.0), str(fee_rises), str(fee_capped),
 		fee_bad if fee_bad != "" else "none",
-		"PASS" if fee_bad == "" and fee_rises else "FAIL"])
+		"PASS" if fee_bad == "" and fee_rises and fee_capped else "FAIL"])
 
 	# 11. THE TUG TAKES WHAT YOU HAVE. A rescue that could fail for want of
 	#     credits is a soft-lock with a story attached -- there is no other way
@@ -8258,9 +8590,76 @@ func _run_spill_test() -> void:
 		"PASS" if near_ttl >= SPILL_CLAIM_BASE and mid_ttl > near_ttl
 			and far_ttl > mid_ttl else "FAIL"])
 
+	# §128. NOTHING IS TAKEN UNDER THE LIGHT, and it is asserted in BOTH
+	# directions because a grant that always granted is the same useless thing as
+	# a gate that always refused (`NO ORDER WITHOUT THE READ`'s posture, and
+	# `THE LADDER STANDS`').
+	#
+	# The clock is driven rather than waited out -- this file's own technique
+	# three legs up, and for the same reason: 180 seconds of harness time to
+	# prove a branch is off is 180 seconds nobody will spend.
+	# A CLEAN SITE FIRST. `_tick_spill_claim` reads adrift[0]'s position -- the
+	# same cube the claim itself reports from -- so one survivor from a leg above,
+	# sitting outside the light, would decide this test. The legs above end at
+	# zero today; that is a fact about them, not a precondition this one stated.
+	for stale in _spill_cubes():
+		stale.queue_free()
+	await get_tree().physics_frame
+	GameState.colonies = {}
+	GameState.colony_works = {}
+	var lit_at := Vector3(600.0, 0.0, 0.0)
+	GameState.claim_colony("pyx01:5", lit_at.x, lit_at.z)
+	GameState.colony_works["pyx01:5"] = ["light"]
+	# 1. THE RULE FUNCTION, at the boundary rather than at the middle: a radius
+	#    read as a diameter, or the dock's thirty leaking in through
+	#    work_aura_at's default, both pass a test taken at the centre.
+	var lit_here := GameState.light_aura_at(lit_at.x, lit_at.z)
+	var lit_inside := GameState.light_aura_at(
+		lit_at.x + GameState.LIGHT_AURA_RANGE - 1.0, lit_at.z)
+	var lit_outside := GameState.light_aura_at(
+		lit_at.x + GameState.LIGHT_AURA_RANGE + 1.0, lit_at.z)
+	# 2. NO TWO LIGHTS OVERLAP. The radius is derived from the separation the
+	#    generator guarantees, so this is the invariant that derivation exists
+	#    for -- and it reddens if either constant moves alone.
+	var no_overlap := GameState.LIGHT_AURA_RANGE * 2.0 <= SystemDB.MIN_HYPER_SEPARATION
+	# 3. THE CLOCK STOPS INSIDE IT. A real spill, at the colony, ticked hard.
+	var player_l: PlayerShip = get_tree().get_first_node_in_group("player")
+	if player_l != null:
+		player_l.global_position = lit_at
+	GameState.cargo = {}
+	GameState.load_cargo("salvage_quiet", 4)
+	spill_unread(lit_at)
+	await get_tree().physics_frame
+	var lit_spilled := _spill_cubes().size()
+	_spill_claim_left = 5.0
+	_spill_lit = false
+	for i in range(6):
+		_tick_spill_claim(10.0)
+	await get_tree().physics_frame
+	var lit_left := _spill_claim_left
+	var lit_alive := _spill_cubes().size()
+	var lit_told := _spill_lit
+	# 4. AND IT RUNS AGAIN OUTSIDE IT. Same spill, same clock, the light moved
+	#    off it -- so the only thing that changed is the one thing being tested.
+	GameState.colony_works["pyx01:5"] = []
+	_spill_claim_left = 5.0
+	_tick_spill_claim(10.0)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var unlit_alive := _spill_cubes().size()
+	print("[spill] NOTHING IS TAKEN UNDER THE LIGHT reach %.0fu (half the %.0fu structures must stand apart, so no two overlap=%s); at the colony=%s, a unit inside=%s, a unit outside=%s; %d crate(s) held %.0fs of clock through 60s of ticks and %d survived (told once=%s); light off, %d left -> %s" % [
+		GameState.LIGHT_AURA_RANGE, SystemDB.MIN_HYPER_SEPARATION, str(no_overlap),
+		str(lit_here), str(lit_inside), str(lit_outside),
+		lit_spilled, lit_left, lit_alive, str(lit_told), unlit_alive,
+		"PASS" if no_overlap and lit_here and lit_inside and not lit_outside
+			and lit_spilled > 0 and is_equal_approx(lit_left, 5.0)
+			and lit_alive == lit_spilled and lit_told and unlit_alive == 0
+			else "FAIL"])
+
 	GameState.salvage = 5000
 	_spill_claim_left = 0.0
 	_spill_warned = false
+	_spill_lit = false
 	get_tree().quit()
 
 
@@ -8428,8 +8827,13 @@ func _run_store_test() -> void:
 		"PASS" if used_with_bay == 0 and value_with_bay == 0 \
 			and sig_carried > 1.0 and is_equal_approx(sig_stored, 1.0) else "FAIL"])
 
-	# 8. One cap, everywhere, never a port-def key. A cap that VARIES makes
-	#    capacity a thing you shop for, which is a second budget (9 rule 1).
+	# 8. NEVER A PORT-DEF KEY, which §127 narrowed this to from "one cap,
+	#    everywhere". A cap authored per station is a thing you SHOP for, and
+	#    that is the second budget 9 rule 1 forbids. A cap a pilot RAISES at a
+	#    colony they founded is not shoppable and not authored, so EXPANDED
+	#    VAULTS passes over this law rather than through it -- and every charted
+	#    and deep counter in the game is still exactly 60, which is what this
+	#    sweep still proves.
 	var carries_key := ""
 	for pid_v in SystemDB.port_ids():
 		if SystemDB.port_def_by_id(String(pid_v)).has("warehouse_space"):
@@ -8540,6 +8944,35 @@ func _run_store_test() -> void:
 		* worst_event * (1.0 - Market.FREEPORT_SPREAD) * bulk_best * fence_best
 	var printer := ""
 	var comps := 0
+	# §125. AND THE LINE REPORTS THE MARGIN IT ASSERTS, which the first draft of
+	# it did not. It printed `ceiling_mult` -- the bias-FREE ceiling -- while the
+	# loop below asserts against `bias_best * ceiling_mult`, PER GOOD. The two
+	# agree today only by accident: not one component carries a port bias
+	# anywhere in the game, so every bias_best reads 1.0 and the printed figure
+	# happens to be the asserted one.
+	#
+	# The first authored component bias breaks that silently, in the one
+	# direction that matters: the line would keep printing 4.45x while the real
+	# worst-case sale climbed toward the order price, under-reporting the danger
+	# it exists to warn about at the exact moment the danger became real. That is
+	# §124's rule -- A NUMBER IN PROSE STATES WHAT PRODUCED IT -- owed by an
+	# assertion one commit after the rule was written, and found by reading this
+	# leg rather than by it going red.
+	#
+	# SO THE THINNEST MARGIN IS THE MEASUREMENT. A boolean law says whether the
+	# desk is a printer TODAY; the margin says how close it is, which is the only
+	# form of this number a content author can act on before the red. It is
+	# 1.124 as this ships -- REQ_MULT 5.0 against a 4.45x worst-case sale -- so a
+	# component bias of 1.124 at any counter is the edit that trips it.
+	#
+	# AND THE GOOD IT NAMES TODAY MEANS NOTHING, which is worth saying because a
+	# named good reads as a singled-out one. Every margin is identical while
+	# every bias is 1.0, so the row reported is simply the first component in
+	# CommodityDB.ids() order. The moment a bias exists the name starts carrying
+	# information, and that is the only condition under which it should be read.
+	var worst_margin := 0.0
+	var worst_id := ""
+	var worst_sale := 0.0
 	for gid_pv in CommodityDB.ids():
 		var gid_p := String(gid_pv)
 		if not CommodityDB.is_component(gid_p):
@@ -8554,11 +8987,26 @@ func _run_store_test() -> void:
 			bias_best = maxf(bias_best,
 				Market.port_bias(DeepPortDB.by_id(String(a_pv)), gid_p))
 		var best_sale := base_p * bias_best * ceiling_mult
+		var margin := float(Market.requisition_price(gid_p)) / maxf(best_sale, 0.001)
+		if worst_id == "" or margin < worst_margin:
+			worst_margin = margin
+			worst_id = gid_p
+			worst_sale = best_sale
 		if float(Market.requisition_price(gid_p)) <= best_sale and printer == "":
 			printer = "%s orders at %d, best legal sale %.0f" % [
 				CommodityDB.short_name(gid_p), Market.requisition_price(gid_p), best_sale]
-	print("[store] THE ORDER DESK IS NOT A PRINTER %d components, order at %.1fx base against a worst-case sale of %.2fx, first loop: %s -> %s" % [
-		comps, Market.REQ_MULT, ceiling_mult,
+	# Derived here rather than inside the format array: `worst_id` is an ID and
+	# the name beside it is a DISPLAY string, and the first draft of this line
+	# fed the display string to `requisition_price`. It would have printed a
+	# price of 1 (maxi's floor on a base_price of 0 for an unknown id) beside a
+	# correct margin, and passed -- a measurement column reporting on nothing,
+	# in the leg being edited to stop exactly that.
+	var worst_name := CommodityDB.short_name(worst_id) if worst_id != "" else "none"
+	var worst_order := Market.requisition_price(worst_id) if worst_id != "" else 0
+	var worst_x := worst_sale / maxf(float(CommodityDB.base_price(worst_id)), 1.0) \
+		if worst_id != "" else 0.0
+	print("[store] THE ORDER DESK IS NOT A PRINTER %d components at %.1fx base; thinnest margin %.3f on %s (orders %d, best legal sale %.0f = %.2fx base), first loop: %s -> %s" % [
+		comps, Market.REQ_MULT, worst_margin, worst_name, worst_order, worst_sale, worst_x,
 		printer if printer != "" else "none",
 		"PASS" if printer == "" and comps > 0 else "FAIL"])
 
@@ -11629,6 +12077,58 @@ func _run_station_test() -> void:
 	print("[station] WAGER %.0f%% to double = %.2fx expected, streak capped at %d -> %s" % [
 		PortPanel.GAMBLE_WIN_CHANCE * 100.0, ev, PortPanel.GAMBLE_STREAK_LIMIT,
 		"PASS" if ev < 1.0 and PortPanel.GAMBLE_STREAK_LIMIT > 0 else "FAIL"])
+
+	# §130. THE REWARD FOR DISTANCE IS A BETTER COUNTER, which is `for_band`'s
+	# own promise and was false under the shipped uniform draw: the pool is
+	# CUMULATIVE, so the newest archetype's share fell from 1/3 at band 2 to 1/7
+	# at band 6 and the deepest counters got rarer the further a pilot flew.
+	#
+	# Reported per band as well as asserted, because how MUCH tilt is a design
+	# number and the LAW is only that it points outward -- §114's posture, and
+	# the reason this does not assert a target.
+	var tilt_bad := ""
+	var tilt_line := ""
+	for band in range(DeepPortDB.TILT_MIN_BAND, DeepSpace.BAND_NAMES.size()):
+		var kinds := DeepPortDB.for_band(band)
+		var w := DeepPortDB.distance_weights(band, kinds)
+		if w.size() != kinds.size():
+			tilt_bad = "band %d has no default of its own width" % band
+			continue
+		var total := 0.0
+		for wv in w:
+			total += float(wv)
+		# The deepest tier is the LAST row of a cumulative pool by construction,
+		# and it must be the single likeliest thing out there. Asked of every
+		# other row rather than of the average, which a flat table would pass.
+		var deepest := float(w[w.size() - 1])
+		for i in range(w.size() - 1):
+			if float(w[i]) >= deepest:
+				tilt_bad = "band %d: %s is not below the deepest tier" % [
+					band, String((kinds[i] as Dictionary)["id"])]
+		tilt_line += "b%d %s %.0f%%; " % [band,
+			String((kinds[kinds.size() - 1] as Dictionary)["id"]),
+			deepest / maxf(total, 0.001) * 100.0]
+	print("[station] THE REWARD FOR DISTANCE IS A BETTER COUNTER %s(%s) -> %s" % [
+		tilt_line, tilt_bad if tilt_bad != "" else "every tilted band points outward",
+		"PASS" if tilt_bad == "" else "FAIL"])
+
+	# §130. AND THE TILT CANNOT MOVE THE CONTROL, which is why it starts at band
+	# 4 rather than at band 1. `_world_fingerprint` hashes plan_cell -- station
+	# ARCHETYPE included -- over a fixed window, and that hash was recorded
+	# before seams existed and has held ever since. Re-derived from the same
+	# three constants the window is built from rather than argued in a comment:
+	# the furthest corner it can reach, less the SHALLOWEST authored bounds
+	# (which maximises depth), must land in a band strictly below the tilt.
+	var span_far := float(FINGERPRINT_SPAN + 1) * DeepSpace.CELL
+	var shallowest := 1.0e9
+	for sid_tv in SystemDB.ids():
+		shallowest = minf(shallowest, SystemDB.bounds_of(String(sid_tv)))
+	var window_depth := sqrt(2.0) * span_far - shallowest
+	var window_band := DeepSpace.band_of(window_depth)
+	print("[station] THE TILT CANNOT MOVE THE CONTROL the fingerprint reaches %.0fu at its corner (band %d, %s); the tilt starts at band %d -> %s" % [
+		window_depth, window_band, DeepSpace.BAND_NAMES[window_band],
+		DeepPortDB.TILT_MIN_BAND,
+		"PASS" if window_band < DeepPortDB.TILT_MIN_BAND else "FAIL"])
 	get_tree().quit()
 
 
@@ -13333,7 +13833,7 @@ func _run_pacing_test() -> void:
 	print("[pacing] starter fit: dps %.0f  hold %d  salvage_mult %.2f  system loot_mult %.2f" % [
 		float(GameState.stats.get("dps", 0.0)), GameState.cargo_capacity(),
 		float(GameState.stats.get("salvage_mult", 1.0)), loot_mult()])
-	print("[pacing] catalog: every module + both reactor upgrades = %d" % catalog)
+	print("[pacing] catalog: every module, every reactor tier and all three berths = %d" % catalog)
 
 	var per_swarm := await _pacing_kill_yield("swarm", 6)
 	var per_sentry := await _pacing_kill_yield("sentry", 3)
@@ -13532,13 +14032,63 @@ func _run_pacing_test() -> void:
 	# typed twice -- which is what makes `EVERY SINK IS PRICED` able to notice a
 	# constant that moved or a key that was renamed.
 	var sink_rows: Array = []
-	sink_rows.append({"name": "the module catalogue", "cost": float(catalog),
+	# NAMED ONCE. The ceiling law below has to exclude this row from its own
+	# comparison, and a string typed at both sites is a rename away from a law
+	# that silently compares the catalogue to itself -- the class of defect this
+	# whole block was built to stop being possible.
+	const CATALOGUE_ROW := "the yard catalogue"
+	sink_rows.append({"name": CATALOGUE_ROW, "cost": float(catalog),
 		"forced": false})
 	var works_total := 0
 	for w_v in GameState.COLONY_WORKS:
 		works_total += int((GameState.COLONY_WORKS[w_v] as Dictionary).get("price", 0))
 	sink_rows.append({"name": "colony works, one colony", "cost": float(works_total),
 		"forced": false})
+	# §126. AND THE CHANNEL, which is a different number from the menu above it
+	# and the one the re-pricing was actually about. A pilot does not buy one
+	# colony's works; they buy every copy that grants anything, and the two
+	# scopes multiply differently -- a system-scoped work has a HARD CAP of one
+	# useful copy per authored system, because the chart asks whether ANY colony
+	# in the system has it, while a colony-scoped work multiplies by every
+	# colony there is.
+	#
+	# Pricing the menu as though it were the channel is what made "raise the
+	# works" look like one decision when it is two. Derived from `scope`,
+	# `HYPER_MAX` and the authored system list, so a new work, a new system or a
+	# wider structure count all land here without an edit.
+	var work_systems := 0
+	for sid_wv in SystemDB.ids():
+		if not SystemDB.hyper_positions(String(sid_wv), 1).is_empty():
+			work_systems += 1
+	var max_colonies := work_systems * SystemDB.HYPER_MAX
+	var channel_total := 0
+	for w3_v in GameState.COLONY_WORKS:
+		var w3 := String(w3_v)
+		var copies := work_systems if GameState.work_scope(w3) == "system" \
+			else max_colonies
+		channel_total += int((GameState.COLONY_WORKS[w3] as Dictionary)
+			.get("price", 0)) * copies
+	# §127. AND IT IS REPORTED RATHER THAN BOUNDED, which §126 got wrong by one
+	# commit. Every other row in this table is what ONE pilot pays for one thing
+	# or one menu; this row is what FIFTEEN COLONIES would cost if somebody
+	# developed every one of them. Handing a completionist aggregate to a law
+	# that means "no purchase costs more than the ship" compares two different
+	# kinds of number, and it came due immediately: the two works §127 adds put
+	# the channel at 1.75x the catalogue.
+	#
+	# THE RED WOULD HAVE BEEN THE WRONG ANSWER, and that is the decision rather
+	# than a convenience. Capping the works channel below the yard re-creates
+	# the exact condition §114 was written about -- money buys place, a bit, and
+	# then nothing again. A terminal sink has to be able to outlast the ship or
+	# it is not terminal. The ship stays the SPINE (no single decision a pilot
+	# makes costs more than it, which is what the law still asserts, one colony
+	# at a time), and completionism across a map is allowed to be longer.
+	#
+	# `over_exempt` is the flag, not a name match: the law reads the row's own
+	# declaration, so a future aggregate row is exempted by saying so rather than
+	# by a string somebody has to remember to add to a list.
+	sink_rows.append({"name": "the works, every useful copy",
+		"cost": float(channel_total), "forced": false, "over_exempt": true})
 	# The dearest component the order desk will ever quote, derived rather than
 	# named: a later component priced above lens_unsounded moves this row.
 	var req_max := 0
@@ -13549,16 +14099,30 @@ func _run_pacing_test() -> void:
 		req_max = maxi(req_max, Market.requisition_price(cid))
 	sink_rows.append({"name": "a requisition, dearest part", "cost": float(req_max),
 		"forced": false})
-	# THE TWO A PILOT CANNOT DECLINE. A shield-zero ship has no other way out,
-	# and a hull that will not mend is a ship that cannot be flown -- so these
-	# two are the ones the third law below is about.
-	# AT THE FAR MARKS, and the depth is FarMarks' own rather than a doubled
-	# hyper cap: the rescue ramp deliberately does NOT clamp (§109), so the row
-	# is only honest if it names the deepest place a pilot can actually die.
+	# THE ONE A PILOT CANNOT DECLINE, and §123 corrects the count. This block
+	# shipped calling repair forced too, and it is not: `repair_full`'s own
+	# comment says so in as many words -- "the slow recovery in _tick_shield is
+	# the FREE option; this is the one you pay to SKIP". A docked repair is a
+	# TIME purchase competing with waiting, the same thing the DRY DOCK sells.
+	#
+	# The mistake made the ceiling law weaker than it read: half of what it
+	# checked was a convenience. A shield-zero ship genuinely has no other way
+	# out, so the forced set is exactly one row, and the law below now means what
+	# its name says.
+	#
+	# AT THE FAR MARKS, which is both the deepest place a pilot can die and --
+	# since §123 -- where the ramp stops climbing.
 	sink_rows.append({"name": "the tug, at the far marks",
 		"cost": float(rescue_fee(FarMarks.DEPTH_MAX)), "forced": true})
-	sink_rows.append({"name": "repair to full",
-		"cost": float(PortPanel.REPAIR_FULL_PRICE), "forced": true})
+	# AND IT IS DELIBERATELY NOT RE-PRICED (§123), for two reasons that compound.
+	# PACINGTEST measures a loop that runs `invulnerable` and never pays a
+	# repair, so any raise here moves real-play net income while STEADY MIDTIER
+	# reads exactly what it read -- a stealth nerf the band structurally cannot
+	# see, landing hardest on the pilot who fights every loop. And its competitor
+	# is FREE: raising the price of skipping a wait does not deepen a sink, it
+	# just buys more waiting, which is tedium sold as economy.
+	sink_rows.append({"name": "repair to full (a wait you may skip)",
+		"cost": float(PortPanel.REPAIR_FULL_PRICE), "forced": false})
 	sink_rows.append({"name": "a beacon jump, at its cap",
 		"cost": float(beacon_jump_fee(float(BEACON_JUMP_MAX_DEPTH))), "forced": false})
 	sink_rows.append({"name": "a colony jump", "cost": float(COLONY_JUMP_FEE),
@@ -13594,9 +14158,19 @@ func _run_pacing_test() -> void:
 	for row_v in sink_rows:
 		var row: Dictionary = row_v
 		var loops := float(row["cost"]) / maxf(steady, 1.0)
+		# §129. AN EXEMPT ROW SAYS WHAT IT IS EXEMPT AGAINST. `THE CATALOGUE IS
+		# THE LONGEST PRICE` skips these (§127), so the one number that would
+		# have caught an aggregate running away is the one nothing prints. This
+		# horizon's largest untested bet is that the works channel SHOULD outrun
+		# the ship; the bet is now on screen every sweep instead of living in a
+		# document, which is §124's rule turned on the decision that used it.
+		var tail := "   (cannot be declined)" if bool(row["forced"]) else ""
+		if bool(row.get("over_exempt", false)):
+			tail = "   = %.2fx the catalogue (exempt: an aggregate, not a price)" \
+				% (float(row["cost"]) / maxf(float(catalog), 1.0))
 		print("[pacing]   %-28s %10s   %7.3f loops   %8.0f s%s" % [
 			String(row["name"]), _comma_int(int(row["cost"])), loops,
-			loops * loop_secs, "   (cannot be declined)" if bool(row["forced"]) else ""])
+			loops * loop_secs, tail])
 
 	# 1. Every row read a live number. A zero means the constant or the port-def
 	#    key it derives from has moved, been renamed, or gone -- at which point
@@ -13612,18 +14186,28 @@ func _run_pacing_test() -> void:
 		"" if unpriced.is_empty() else (" (%s)" % ", ".join(PackedStringArray(unpriced))),
 		"PASS" if unpriced.is_empty() else "FAIL"])
 
-	# 2. The catalogue is what a run is FOR, so nothing may cost more than it.
-	#    True today by a wide margin; it goes red the moment somebody prices a
-	#    work or an order above the entire yard, which is the one direction a
-	#    re-pricing could overshoot without anybody noticing.
+	# 2. The catalogue is what a run is FOR, so no single DECISION may cost more
+	#    than it. It goes red the moment somebody prices a work or an order
+	#    above the entire yard, which is the one direction a re-pricing could
+	#    overshoot without anybody noticing.
+	#
+	#    §127 SHARPENS "NOTHING" TO "NO DECISION". A row flagged `over_exempt`
+	#    is an aggregate across places rather than a price a pilot pays at one
+	#    of them; see the works channel row for the argument. The exemption is
+	#    counted and printed, never silent -- a law with a quiet exception is a
+	#    law nobody can audit.
 	var over: Array = []
+	var exempt := 0
 	for row3_v in sink_rows:
 		var row3: Dictionary = row3_v
-		if String(row3["name"]) != "the module catalogue" \
+		if bool(row3.get("over_exempt", false)):
+			exempt += 1
+			continue
+		if String(row3["name"]) != CATALOGUE_ROW \
 				and float(row3["cost"]) > float(catalog):
 			over.append(String(row3["name"]))
-	print("[pacing] THE CATALOGUE IS THE LONGEST PRICE catalogue %s, %d sink(s) above it%s -> %s" % [
-		_comma_int(catalog), over.size(),
+	print("[pacing] THE CATALOGUE IS THE LONGEST PRICE catalogue %s, %d aggregate row(s) exempt, %d priced sink(s) above it%s -> %s" % [
+		_comma_int(catalog), exempt, over.size(),
 		"" if over.is_empty() else (" (%s)" % ", ".join(PackedStringArray(over))),
 		"PASS" if over.is_empty() else "FAIL"])
 
@@ -13640,10 +14224,41 @@ func _run_pacing_test() -> void:
 		var row4: Dictionary = row4_v
 		if bool(row4["forced"]) and float(row4["cost"]) > steady:
 			forced_over.append(String(row4["name"]))
-	print("[pacing] NOTHING INVOLUNTARY EXCEEDS A LOOP one loop is %s, %d forced sink(s) above it%s -> %s" % [
-		_comma_int(int(steady)), forced_over.size(),
+	# §123. AND THE LAW IS TOTAL NOW, NOT SAMPLED. The rows above price the
+	# forced sink at one depth; before the rescue clamped, a fee rising forever
+	# crossed a loop somewhere out in empty space that no row named. Ten times
+	# past the marks is the check that the ramp really does stop.
+	var deepest_forced := float(rescue_fee(FarMarks.DEPTH_MAX * 10.0))
+	if deepest_forced > steady:
+		forced_over.append("the tug past the marks")
+	print("[pacing] NOTHING INVOLUNTARY EXCEEDS A LOOP one loop is %s, the deepest forced charge anywhere is %s, %d above it%s -> %s" % [
+		_comma_int(int(steady)), _comma_int(int(deepest_forced)),
+		forced_over.size(),
 		"" if forced_over.is_empty() else (" (%s)" % ", ".join(PackedStringArray(forced_over))),
 		"PASS" if forced_over.is_empty() else "FAIL"])
+
+	# §123. THE DEATH PRICE SITS IN ITS BAND, and this is the re-pricing made
+	# into a LAW rather than a nudge. §114 measured the deepest possible rescue
+	# at eighty seconds of loop income and deliberately asserted no target,
+	# because the decision belonged to a later horizon taken with the table in
+	# hand. This is that horizon and that decision: the fee is pinned to a
+	# FRACTION of the loop PACINGTEST measures, so a yield retune that quietly
+	# cheapens death reddens here instead of waiting a year for somebody to
+	# wonder.
+	#
+	# Measured against STEADY, never against the best case: the best-case loop
+	# carries a once-per-system derelict, and pricing a recurring consequence
+	# against a windfall would make death cheapest for the pilot who just found
+	# one. `ROUTE PARITY` picks steady for the same reason.
+	#
+	# A RED HERE IS ONE CONSTANT, NOT A CRISIS (§99): RESCUE_FEE_FAR moves, the
+	# band stands, and the band is the thing being defended.
+	var death_frac := float(rescue_fee(FarMarks.DEPTH_MAX)) / maxf(steady, 1.0)
+	print("[pacing] THE DEATH PRICE SITS IN ITS BAND deepest rescue %s is %.3f of a steady loop (%s) vs [%.2f, %.2f] -> %s" % [
+		_comma_int(rescue_fee(FarMarks.DEPTH_MAX)), death_frac,
+		_comma_int(int(steady)), RESCUE_BAND_MIN, RESCUE_BAND_MAX,
+		"PASS" if death_frac >= RESCUE_BAND_MIN and death_frac <= RESCUE_BAND_MAX
+			else "FAIL"])
 	get_tree().quit()
 
 
@@ -13674,11 +14289,28 @@ func _pacing_describe(profile: Dictionary) -> String:
 
 
 func _pacing_catalog_cost() -> int:
+	# EVERYTHING A RUN CAN BUY FOR THE SHIP, and §124 adds the third dict it had
+	# been missing since v24. This summed MODULES and REACTOR_TIERS only, while
+	# ModuleDB.BERTHS holds 260,000 of one-way credit purchases at the yard --
+	# 23% of the road, invisible to `CEILING`, to `THE CATALOGUE IS THE LONGEST
+	# PRICE`, and to the "sessions to the full catalog" line that has been
+	# printing on every sweep since. Both assertions get LOOSER with a bigger
+	# denominator, which is why nothing ever went red over it: an under-count
+	# here is a silent one in both directions it is checked.
+	#
+	# Found by re-deriving §114's table by hand after the loop measurement
+	# landed -- the docs said 1,106,200 (the whole file) and the leg said 846,200
+	# (two of its three dicts), and neither had ever been compared to the other.
+	# THE PROSE WAS RIGHT AND THE INSTRUMENT WAS WRONG, which is the one outcome
+	# §124's own rule does not predict and the reason the rule is "say what
+	# produced it" rather than "trust the leg".
 	var total := 0
 	for id in ModuleDB.MODULES:
 		total += int((ModuleDB.MODULES[id] as Dictionary).get("price", 0))
 	for tier in ModuleDB.REACTOR_TIERS:
 		total += int((tier as Dictionary).get("price", 0))
+	for b_id in ModuleDB.BERTHS:
+		total += int((ModuleDB.BERTHS[b_id] as Dictionary).get("price", 0))
 	return total
 
 
@@ -14163,6 +14795,180 @@ func _run_title_test() -> void:
 	print("[title] INPUT IS LOCKED BEHIND THE MENU a held bearing moved the ship %.2fu over 1s, allowed %.2fu -> %s" % [
 		moved, TITLE_DRIFT_MAX, "PASS" if moved <= TITLE_DRIFT_MAX else "FAIL"])
 
+	# §133. THE INDUCTION, four legs, run while the title is still up because
+	# the film lives in front of it and leg 4 below starts the game for good.
+
+	# 5. THE BEAT TABLE IS WELL-FORMED. The film is data so this can be asked
+	#    without a viewport: five beats, bounded durations, a total a thumb can
+	#    sit through, and no line past what the copy column wraps cleanly.
+	var beats_ok := Induction.BEATS.size() == 5
+	var total_dur := 0.0
+	var longest_line := 0
+	for b_v in Induction.BEATS:
+		var b: Dictionary = b_v
+		var d := float(b["dur"])
+		total_dur += d
+		if d < 6.0 or d > 20.0:
+			beats_ok = false
+		if (b["lines"] as Array).is_empty():
+			beats_ok = false
+		for ln_v in (b["lines"] as Array):
+			longest_line = maxi(longest_line, String(ln_v).length())
+	print("[title] THE BEAT TABLE IS WELL-FORMED %d beats, %.0fs total (40-90), longest line %d chars -> %s" % [
+		Induction.BEATS.size(), total_dur, longest_line,
+		"PASS" if beats_ok and total_dur >= 40.0 and total_dur <= 90.0
+			and longest_line <= 170 else "FAIL"])
+
+	# 6. THE INDUCTION QUOTES NO FRAGMENT -- AND QUOTES THE DIRECTIVE EXACTLY.
+	#    Both directions of the copy rule, derived from the sources rather than
+	#    remembered: the unsounded structures' sentences exist only at the
+	#    structures, so no beat line may contain one and no fragment may
+	#    contain a beat line; and the ONE allowed quotation -- Directive 9's
+	#    public clause, the text the Authority itself published on the beacon
+	#    plates -- must appear VERBATIM, because a paraphrased legal text is a
+	#    second version of the law.
+	var frag_hit := ""
+	for b2_v in Induction.BEATS:
+		for ln2_v in ((b2_v as Dictionary)["lines"] as Array):
+			var line := String(ln2_v)
+			for kind_v in UnsoundedSite.FRAGMENTS:
+				for f_v in (UnsoundedSite.FRAGMENTS[kind_v] as Array):
+					var frag := String(f_v)
+					if line.contains(frag) or frag.contains(line):
+						frag_hit = "%s <-> %s" % [String(kind_v), line.left(40)]
+	var clause := String((Beacon.DIRECTIVE_PAGES[0]
+		as Dictionary)["clause"]).to_upper()
+	var quoted := false
+	for b3_v in Induction.BEATS:
+		for ln3_v in ((b3_v as Dictionary)["lines"] as Array):
+			if String(ln3_v).contains(clause):
+				quoted = true
+	var frag_count := 0
+	for kc_v in UnsoundedSite.FRAGMENTS:
+		frag_count += (UnsoundedSite.FRAGMENTS[kc_v] as Array).size()
+	print("[title] THE INDUCTION QUOTES NO FRAGMENT %d fragment sentences checked, collision: %s; the one public clause quoted verbatim=%s -> %s" % [
+		frag_count, frag_hit if frag_hit != "" else "none",
+		str(quoted), "PASS" if frag_hit == "" and quoted else "FAIL"])
+
+	# 7. SKIP LEAVES NO TRACE. The scene owns no state by design; this is the
+	#    leg that keeps it true after somebody adds a feature to it. Walked in
+	#    REPLAY mode so the finished signal does not start a game, snapshotted
+	#    across everything a cutscene could plausibly touch.
+	var snap := str([GameState.salvage, GameState.cargo, GameState.ledger,
+		GameState.tutorial_step, GameState.colonies, GameState.skills,
+		GameState.stations_seen])
+	var walked := 0
+	induction.open(true)
+	while induction.is_running() and walked < 12:
+		if shots != "" and induction.beat_index() >= 0:
+			await _shot(shots, "induction_b%d.png" % induction.beat_index())
+		walked += 1
+		induction.advance_beat()
+		await get_tree().process_frame
+	var trace_ok := snap == str([GameState.salvage, GameState.cargo,
+		GameState.ledger, GameState.tutorial_step, GameState.colonies,
+		GameState.skills, GameState.stations_seen])
+	print("[title] SKIP LEAVES NO TRACE %d beat(s) walked to the end, closed=%s, state byte-identical=%s -> %s" % [
+		walked, str(not induction.is_running()), str(trace_ok),
+		"PASS" if not induction.is_running() and trace_ok
+			and walked == Induction.BEATS.size() else "FAIL"])
+
+	# 8. REDUCE MOTION HAS A PATH. The flag on, the film still opens, advances
+	#    and closes -- UIKit's own rule that the accommodation is the end state,
+	#    not a variant that can rot separately. Restored after, because a leg
+	#    that edits a DEVICE preference and keeps it is class 2 with a file.
+	var rm_was := bool(GameState.setting("reduce_motion"))
+	GameState.set_setting("reduce_motion", true)
+	induction.open(true)
+	var rm_guard := 0
+	while induction.is_running() and rm_guard < 12:
+		rm_guard += 1
+		induction.advance_beat()
+		await get_tree().process_frame
+	var rm_done := not induction.is_running()
+	GameState.set_setting("reduce_motion", rm_was)
+	print("[title] REDUCE MOTION HAS A PATH opened, %d advance(s), closed=%s, pref restored=%s -> %s" % [
+		rm_guard, str(rm_done),
+		str(bool(GameState.setting("reduce_motion")) == rm_was),
+		"PASS" if rm_done
+			and bool(GameState.setting("reduce_motion")) == rm_was else "FAIL"])
+
+	# 9. §134. THE COPY DOES NOT STACK, and this leg exists because the bug it
+	#    checks for SHIPPED. The copy column was anchored top and bottom at the
+	#    same fraction with no offsets -- a rect zero pixels tall -- so every
+	#    line of every beat drew on one baseline, four sentences over each
+	#    other. All eight legs above stayed green, because each of them asks
+	#    what the film SAYS and not one asks where it puts it.
+	#
+	#    THE LESSON IS THE ASSERTION'S SHAPE. A screenshot cannot be a verdict,
+	#    so the scene hands over the rects the engine produced and this checks
+	#    the two things stacking breaks: every line has real height, and every
+	#    line clears the one above it. Walked over ALL five beats, because the
+	#    longest copy is beat IV's and a single-beat check would have passed on
+	#    beat V while the Directive card was still broken.
+	# §136. SAMPLED AFTER THE REVEAL SETTLES, and the first draft of this leg
+	# was not -- it waited two frames, and the reveal runs for
+	# T_STAGGER x lines + T_REVEAL, about a third of a second. So it would have
+	# read the container's layout in the window BEFORE the tweens yanked every
+	# label to (0,0), and gone green on the exact build the owner photographed.
+	# A leg that samples before the animation settles measures a moment nobody
+	# sees. The wait is derived from UIKit's own constants, so a retune there
+	# cannot leave this reading early again.
+	var settle := UIKit.T_STAGGER * 5.0 + UIKit.T_REVEAL + 0.1
+	induction.open(true)
+	await get_tree().create_timer(settle).timeout
+	var stack_bad := ""
+	var lines_seen := 0
+	var tightest := 1.0e9
+	for bi in range(Induction.BEATS.size()):
+		var rects: Array = induction.copy_rects()
+		var want: int = ((Induction.BEATS[bi] as Dictionary)["lines"] as Array).size()
+		if rects.size() != want:
+			stack_bad = "beat %d laid out %d of %d lines" % [bi, rects.size(), want]
+		for ri in range(rects.size()):
+			var r: Dictionary = rects[ri]
+			lines_seen += 1
+			if float(r["h"]) < 6.0:
+				stack_bad = "beat %d line %d is %.1fpx tall" % [bi, ri, float(r["h"])]
+			if ri == 0:
+				continue
+			var prev: Dictionary = rects[ri - 1]
+			var gap := float(r["y"]) - (float(prev["y"]) + float(prev["h"]))
+			tightest = minf(tightest, gap)
+			if gap < 0.0:
+				stack_bad = "beat %d line %d overlaps the line above by %.1fpx" % [
+					bi, ri, -gap]
+		induction.advance_beat()
+		await get_tree().create_timer(settle).timeout
+	print("[title] THE COPY DOES NOT STACK %d line(s) across %d beats, tightest gap %.1fpx, %s -> %s" % [
+		lines_seen, Induction.BEATS.size(), tightest,
+		stack_bad if stack_bad != "" else "every line has height and clears the one above it",
+		"PASS" if stack_bad == "" and lines_seen > 0 else "FAIL"])
+
+	# 10. §135. THE REPLAY HIDES THE DOOR, in both directions and through the
+	#     SIGNAL rather than by calling the scene -- what is being asserted is
+	#     that the wiring restores the furniture, and a leg that hid and showed
+	#     it by hand would assert only that two setters work.
+	#
+	#     The layer's own `visible` is checked to STAY TRUE throughout: the
+	#     title is still open behind the film, and conflating "drawn" with
+	#     "open" is the defect this API was shaped to avoid.
+	var door_before := title_screen.chrome_visible()
+	title_screen.induction_pressed.emit()
+	await get_tree().process_frame
+	var door_during := title_screen.chrome_visible()
+	var open_during := title_screen.visible
+	var idx_guard := 0
+	while induction.is_running() and idx_guard < 12:
+		idx_guard += 1
+		induction.advance_beat()
+		await get_tree().process_frame
+	var door_after := title_screen.chrome_visible()
+	print("[title] THE REPLAY HIDES THE DOOR chrome %s -> %s -> %s, and the title stayed open behind it=%s -> %s" % [
+		str(door_before), str(door_during), str(door_after), str(open_during),
+		"PASS" if door_before and not door_during and door_after
+			and open_during else "FAIL"])
+
 	# 4. NEW SURVEY HANDS OVER TO THE TUTORIAL. Four clauses, and the last is the
 	#    one with history: start_new_game calls tutorial.arm() BEFORE _load_system
 	#    precisely so the builder leaves the garrison out, and that ordering is
@@ -14565,6 +15371,42 @@ func _run_input_test() -> void:
 	var pause_on: bool = get_tree().paused and pause_menu.is_open
 	await _press_key(KEY_P)
 	var pause_off: bool = not get_tree().paused and not pause_menu.is_open
+	# §150. AND NO TWO ACTIONS SHARE A KEY, which nothing checked and which cost
+	# a sweep. §142 bound `level_view` to C without reading the map; `chart` was
+	# already on C; CameraRig's elif chain tests level_view FIRST, so it ate the
+	# event and THE CHART KEY OBEYS THE LOCK went red on a key that simply no
+	# longer opened anything.
+	#
+	# GameState.rebind has conflict logic for what a PLAYER binds at runtime.
+	# Nothing had ever checked what SHIPS in project.godot -- the defaults were
+	# assumed correct because they were written by hand, which is the assumption
+	# every entry in DEFECTS class 5 is about.
+	#
+	# Walked off the live InputMap rather than a typed list, so an action added
+	# later is covered without this leg being touched. Godot's own ui_* actions
+	# are excluded: they legitimately overlap the project's (ui_accept is on
+	# Space beside `ability`) and are not ours to arbitrate.
+	var key_owner := {}
+	var key_clash := ""
+	for act_v in InputMap.get_actions():
+		var act := String(act_v)
+		if act.begins_with("ui_"):
+			continue
+		for ev in InputMap.action_get_events(act):
+			var k := ev as InputEventKey
+			if k == null:
+				continue
+			var code := int(k.physical_keycode)
+			if key_owner.has(code):
+				key_clash = "%s and %s both on keycode %d" % [
+					String(key_owner[code]), act, code]
+			else:
+				key_owner[code] = act
+	print("[input] NO TWO ACTIONS SHARE A KEY %d binding(s) across %d action(s), %s -> %s" % [
+		key_owner.size(), InputMap.get_actions().size(),
+		key_clash if key_clash != "" else "every key belongs to one action",
+		"PASS" if key_clash == "" and key_owner.size() > 0 else "FAIL"])
+
 	print("[input] PAUSE IS ONE KEY p pauses=%s, p unpauses from the same key=%s -> %s" % [
 		str(pause_on), str(pause_off), "PASS" if pause_on and pause_off else "FAIL"])
 	get_tree().quit()
@@ -20768,6 +21610,131 @@ func _run_feel_test() -> void:
 	print("[feel] MOTION GATE off:shake+punch silent=%s  on:both fire=%s -> %s" % [
 		str(shake_off), str(shake_on), "PASS" if shake_off and shake_on else "FAIL"])
 
+	# --- 2b. the view turns, and everything downstream of it follows (§142) ---
+	# THE ORBIT IS CLAMPED AND THE YAW WRAPS. Driven with absurd drags, because
+	# the failure this guards is a pitch that walked past the plane the game is
+	# drawn on -- at which point the starfield stops sitting behind anything and
+	# the world reads as a sheet of paper seen edge-on. Asserted against the
+	# constants rather than against numbers typed here, so a re-tuned range moves
+	# the bound with it.
+	rig.level_view()
+	# WAITED ON THE CLOCK, NOT ON A FRAME COUNT. The unwind is exponential in
+	# WALL TIME (that is the whole point of Smoothing), so a fixed number of
+	# process frames measures a different amount of easing on every machine the
+	# harness runs on -- and this suite's own first leg is about exactly that.
+	await get_tree().create_timer(1.0).timeout
+	var start_yaw := rig.view_yaw()
+	var start_pitch := rig.view_pitch()
+	for od in range(40):
+		rig._orbit(Vector2(400.0, 400.0))
+	var pitch_hi := rig.view_pitch()
+	for od2 in range(80):
+		rig._orbit(Vector2(-400.0, -400.0))
+	var pitch_lo := rig.view_pitch()
+	var yaw_sane := rig.view_yaw() >= 0.0 and rig.view_yaw() < 360.0 \
+		and is_finite(rig.view_yaw())
+	print("[feel] THE ORBIT IS CLAMPED pitch drove to %.1f and %.1f inside [%.0f, %.0f]; yaw %.1f wrapped into 0..360=%s (from %.1f/%.1f) -> %s" % [
+		pitch_hi, pitch_lo, CameraRig.PITCH_MIN, CameraRig.PITCH_MAX,
+		rig.view_yaw(), str(yaw_sane), start_yaw, start_pitch,
+		"PASS" if yaw_sane and pitch_hi <= CameraRig.PITCH_MAX + 0.001
+			and pitch_lo >= CameraRig.PITCH_MIN - 0.001
+			and pitch_hi > pitch_lo else "FAIL"])
+
+	# AND THE PAN GOES WHERE THE FINGER GOES. _pan maps screen motion to world
+	# motion, and it was world-space -- indistinguishable from view-space while
+	# the yaw was nailed to zero. Turned a quarter turn, an unrotated pan walks
+	# the camera along the wrong world axis while the player watches it go
+	# diagonally across the screen. Measured as the ANGLE BETWEEN two pans a
+	# quarter turn apart, which is the one number that cannot be right by
+	# accident: it has to be the yaw.
+	rig.level_view()
+	await get_tree().create_timer(1.0).timeout
+	var was_leash_f := rig.leash_enabled
+	rig.leash_enabled = false
+	var pan_from := rig.global_position
+	rig._pan(Vector2(100.0, 0.0))
+	var pan_level := rig.global_position - pan_from
+	rig._orbit(Vector2(-90.0 / CameraRig.ORBIT_YAW_PER_PX, 0.0))
+	pan_from = rig.global_position
+	rig._pan(Vector2(100.0, 0.0))
+	var pan_turned := rig.global_position - pan_from
+	rig.leash_enabled = was_leash_f
+	var pan_deg := rad_to_deg(Vector2(pan_level.x, pan_level.z).angle_to(
+		Vector2(pan_turned.x, pan_turned.z)))
+	print("[feel] AND THE PAN TURNS WITH IT the same drag a quarter turn later moves the rig %.1f° round from where it did before -> %s" % [
+		pan_deg, "PASS" if absf(absf(pan_deg) - 90.0) < 1.0 else "FAIL"])
+
+	# AND LEVELLING PUTS IT BACK. The unwind is the only way home from a turned
+	# view on either device, so a spring that stalled short would strand a
+	# player at an angle with no gesture left. Asserted to land EXACTLY on the
+	# defaults rather than near them: the easing is asymptotic, so "close
+	# enough" is what a snap-to at the end of it is for, and without that snap
+	# the flag would never clear.
+	rig._orbit(Vector2(700.0, 300.0))
+	rig.level_view()
+	# Two seconds against a unwind that reaches its snap threshold in about
+	# 1.1s from the worst turn this leg can produce -- margin, because a leg
+	# that measures an easing has to outlast it on the slowest frame rate the
+	# harness will ever see, not on the one it was written against.
+	await get_tree().create_timer(2.0).timeout
+	var levelled: bool = absf(rig.view_yaw()) < 0.0001 \
+		and absf(rig.view_pitch() - CameraRig.PITCH_DEG) < 0.0001 \
+		and not rig.is_levelling()
+	print("[feel] AND LEVELLING PUTS IT BACK yaw %.4f, pitch %.4f (default %.1f), still unwinding=%s -> %s" % [
+		rig.view_yaw(), rig.view_pitch(), CameraRig.PITCH_DEG,
+		str(rig.is_levelling()), "PASS" if levelled else "FAIL"])
+
+	# AND A TAP STILL LANDS ON A TURNED VIEW, which is the clause that would
+	# catch anything caching a screen position. _pick unprojects through the LIVE
+	# lens, so a turn should cost it nothing -- and §141 has just widened what it
+	# reaches with, off `_camera.global_transform.basis.x`, which is exactly the
+	# vector a yaw moves. Tapped at the projected anchor of a real node, before
+	# and after a turn.
+	# get_NODES_in_group, plural. The first draft indexed the SINGULAR getter
+	# -- get_first_node_in_group(...)[0] -- which returns one Node, and
+	# indexing a Node is a parse error outright. One character, and it took the
+	# whole capture pass down. Rule 9 now catches it.
+	var feel_hypers := get_tree().get_nodes_in_group("hyper")
+	var feel_mon: Node3D = feel_hypers[0] if not feel_hypers.is_empty() else null
+	var hit_level := false
+	var hit_turned := false
+	if feel_mon != null:
+		# §150. IT BUILDS ITS OWN PRECONDITION, which the first version did not.
+		# It inherited whatever position the PAN leg above left the rig in, and
+		# a hyper structure sits 1,600 to 4,200 units out -- so the anchor was
+		# BEHIND THE LENS, §141's is_position_behind guard correctly skipped it,
+		# and the level case failed while the turned one passed because 120
+		# degrees of yaw brought the thing round to the front.
+		#
+		# §116's rule, quoted in COLONYTEST this same session and not applied
+		# here: a precondition a leg needs is a precondition that leg states.
+		# RE-PINNED BEFORE EVERY PICK, not just once. Turning the leash off stops
+		# _leash dragging the rig back, but _follow is a SECOND writer of the
+		# same position and it is not gated by the leash -- at FOLLOW_SPEED it
+		# eats about 4% of the distance to the player per frame, and the player
+		# is thousands of units away from a hyper structure. Two awaits would
+		# have walked the camera ~8% of the way home before the shutter opened.
+		# DEFECTS 2b, met in a leg rather than in the game.
+		var was_leash_t := rig.leash_enabled
+		rig.leash_enabled = false
+		rig.global_position = feel_mon.global_position
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var cam_f := get_viewport().get_camera_3d()
+		rig.global_position = feel_mon.global_position
+		hit_level = rig._pick(cam_f.unproject_position(feel_mon.global_position),
+			"hyper") == feel_mon
+		rig._orbit(Vector2(-120.0 / CameraRig.ORBIT_YAW_PER_PX, 0.0))
+		await get_tree().process_frame
+		rig.global_position = feel_mon.global_position
+		hit_turned = rig._pick(cam_f.unproject_position(feel_mon.global_position),
+			"hyper") == feel_mon
+		rig.leash_enabled = was_leash_t
+		rig.level_view()
+	print("[feel] AND A TAP STILL LANDS ON A TURNED VIEW level=%s, a third of a turn round=%s -> %s" % [
+		str(hit_level), str(hit_turned),
+		"PASS" if hit_level and hit_turned else "FAIL"])
+
 	# --- 3. loop lengths, in frames rather than in bytes ----------------------
 	# `data.size() / 2` assumed uncompressed 16-bit frames; the importer writes
 	# QOA. Asserting the two disagree is what keeps this honest: if the import
@@ -22400,6 +23367,15 @@ func _find_world_env(n: Node) -> WorldEnvironment:
 
 # --- mining ------------------------------------------------------------------
 
+# §130. THE WINDOW'S HALF-WIDTH, named because a second reader now needs it.
+# `THE TILT CANNOT MOVE THE CONTROL` derives the deepest point this hash can
+# reach from this constant, DeepSpace.CELL and the shallowest authored bounds,
+# and asserts that it lands in a band below DeepPortDB.TILT_MIN_BAND. Typed
+# twice, that proof would be one edit away from being a story about a window
+# that had moved.
+const FINGERPRINT_SPAN := 5
+
+
 func _world_fingerprint() -> String:
 	# Everything plan_cell produces EXCEPT seams, hashed over a fixed block of
 	# cells. This exists to prove one thing: that appending the seam roll did not
@@ -22413,8 +23389,8 @@ func _world_fingerprint() -> String:
 	# The constant it is compared against was recorded BEFORE seams existed. A
 	# fingerprint taken afterwards would agree with whatever it was given.
 	var acc := ""
-	for cx in range(-5, 6):
-		for cz in range(-5, 6):
+	for cx in range(-FINGERPRINT_SPAN, FINGERPRINT_SPAN + 1):
+		for cz in range(-FINGERPRINT_SPAN, FINGERPRINT_SPAN + 1):
 			var plan := deep_space.plan_cell(cx, cz)
 			acc += "%d,%d|" % [cx, cz]
 			for r_v in (plan["rocks"] as Array):
@@ -26746,6 +27722,72 @@ func _run_colony_test() -> void:
 	print("[colony] THE MONUMENT ANSWERS A TAP unclaimed says '%s'; claimed says '%s'; both name themselves and their verb -> %s" % [
 		tap_text, claimed_text, "PASS" if tap_ok else "FAIL"])
 
+	# --- K2. AND THE TAP CAN REACH IT (§141) ---------------------------------
+	# §88 gave the instruments a rung on both tap ladders after a playtest said
+	# "no way to interact". A playtest said it AGAIN, and leg K above stayed
+	# green throughout -- because K calls on_tapped() directly and never asks
+	# whether a finger could have got there. The ladder was never the thing
+	# refusing; _pick was, at sixty pixels around a single anchor point on an
+	# object 140 units across whose centre is off frame at claim range.
+	#
+	# THIS IS THE CLAUSE K WAS MISSING, and it is worth naming as a shape: a leg
+	# that drives a verb through its own function tests the verb, not the reach.
+	# DEFECTS class 9 survived a green assertion for two horizons that way.
+	var rig_h := get_tree().get_first_node_in_group("camera_rig") as CameraRig
+	var hplayer: PlayerShip = get_tree().get_first_node_in_group("player")
+	var span_px := 0.0
+	var off_px := 0.0
+	var wide_hit := false
+	var mon: HyperStructure = open_mon if open_mon != null else claimed_mon
+	if rig_h != null and hplayer != null and mon != null:
+		# Parked at claim range with the leash off, which is the exact geometry
+		# the report came from: standing among the arms with the centre nowhere
+		# near where a finger lands.
+		var was_leash := rig_h.leash_enabled
+		rig_h.leash_enabled = false
+		hplayer.teleport_to(mon.global_position
+			+ Vector3(0.0, 0.0, HyperStructure.CLAIM_RANGE))
+		rig_h.global_position = mon.global_position
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var cam_h := get_viewport().get_camera_3d()
+		var mid_px := cam_h.unproject_position(mon.pick_anchor())
+		var edge_px := cam_h.unproject_position(mon.pick_anchor()
+			+ cam_h.global_transform.basis.x * mon.pick_radius())
+		span_px = mid_px.distance_to(edge_px)
+		# 0.7 of the half-span: comfortably ON the object and comfortably
+		# OUTSIDE the old sixty-pixel circle, so this cannot pass by accident on
+		# a rig that happens to be zoomed out.
+		off_px = span_px * 0.7
+		wide_hit = rig_h._pick(mid_px + Vector2(off_px, 0.0), "hyper") == mon
+		rig_h.leash_enabled = was_leash
+	print("[colony] AND THE TAP CAN REACH IT the instrument covers %.0fpx at claim range; a tap %.0fpx off its centre (against PICK_PX %.0f) lands on it=%s -> %s" % [
+		span_px, off_px, CameraRig.PICK_PX, str(wide_hit),
+		"PASS" if wide_hit and off_px > CameraRig.PICK_PX else "FAIL"])
+
+	# AND NOTHING ELSE WIDENED, which is the clause that protects the rest of
+	# the game rather than this object. A world radius is only safe because both
+	# ladders ask `hyper` near-last, so a contested tap resolves to the smaller,
+	# more specific thing first -- and that argument holds for exactly as long as
+	# `hyper` is the ONLY group claiming one. The moment a second does, the
+	# ordering has to be re-argued, and this is what says so.
+	#
+	# The list IS the ladders' own order, typed out because there is no single
+	# declaration of it to read; a group added to _select and _try_begin_hold
+	# and not to this line is a group this clause does not cover, which is the
+	# §96 lesson (both ladders in the same commit) asked of a third list.
+	var radius_groups: Array = []
+	for grp_v in ["hostiles", "crackable", "mineable", "dockable", "beacon",
+			"hyper", "unsounded", "farmark", "legend"]:
+		var grp := String(grp_v)
+		for gn_v in get_tree().get_nodes_in_group(grp):
+			if (gn_v as Node).has_method("pick_radius") \
+					and not radius_groups.has(grp):
+				radius_groups.append(grp)
+	print("[colony] AND NOTHING ELSE WIDENED %s claim(s) a world pick radius -> %s" % [
+		str(radius_groups) if not radius_groups.is_empty() else "nothing",
+		"PASS" if radius_groups == ["hyper"] else "FAIL"])
+
 	# --- §112. THE SOUNDED GROUND ---------------------------------------------
 
 	# WORKS ARE GATES, AND THE INVESTMENT IS A SINK. One purchase of each work
@@ -26754,7 +27796,16 @@ func _run_colony_test() -> void:
 	GameState.colonies = {}
 	GameState.colony_works = {}
 	GameState.skills = {}
-	GameState.salvage = 30000
+	# §126. THE PURSE IS DERIVED FROM THE PRICES, not typed beside them. This
+	# read 30,000 against a ladder that totalled 28,000, so the re-pricing to
+	# 101,000 would have reddened this leg with "a work refused" -- a pricing
+	# change reported as a mechanism failure, which is the worst kind of red
+	# because it sends the next reader to the wrong file. A fixture sized off
+	# the thing it exercises cannot go stale.
+	var works_want := 0
+	for wp_v in GameState.COLONY_WORKS:
+		works_want += int((GameState.COLONY_WORKS[wp_v] as Dictionary)["price"])
+	GameState.salvage = works_want * 2
 	GameState.claim_colony("pyx01:7", 2000.0, 0.0)
 	var wcell := DeepSpace.cell_of(Vector3(2000.0, 0.0, 0.0))
 	GameState.note_survey_worked(DeepSpace.cell_key("pyx01", wcell.x, wcell.y))
@@ -26767,12 +27818,19 @@ func _run_colony_test() -> void:
 	var wplayer: PlayerShip = get_tree().get_first_node_in_group("player")
 	if wplayer != null:
 		wplayer.global_position = Vector3(2000.0, 0.0, 0.0)
+	# §127. SUMMED, NOT OVERWRITTEN. This loop assigned each manifest over the
+	# last, which was invisible while exactly one work had goods. THE YARD is
+	# the second, and it wants alloys too -- so the repeater's twelve would have
+	# been clobbered by the yard's twenty, the repeater would have eaten them,
+	# and the yard would have refused a hold eight short. A green leg turning
+	# red on a data addition it should not care about.
 	GameState.cargo = {}
 	for wneed_v in GameState.COLONY_WORKS:
 		var wneed: Dictionary = (GameState.COLONY_WORKS[wneed_v]
 			as Dictionary).get("goods", {})
 		for g3_v in wneed:
-			GameState.cargo[String(g3_v)] = int(wneed[g3_v])
+			var g3 := String(g3_v)
+			GameState.cargo[g3] = int(GameState.cargo.get(g3, 0)) + int(wneed[g3_v])
 	var stats_before := GameState.stats.duplicate(true)
 	var spent_total := 0
 	var works_ok := true
@@ -26784,9 +27842,7 @@ func _run_colony_test() -> void:
 		spent_total += before_w - GameState.salvage
 		if not GameState.has_work("pyx01:7", wid):
 			works_ok = false
-	var want_total := 0
-	for w2_v in GameState.COLONY_WORKS:
-		want_total += int((GameState.COLONY_WORKS[w2_v] as Dictionary)["price"])
+	var want_total := works_want
 	var stats_same := str(stats_before) == str(GameState.stats)
 	var re_buy := buy_colony_work("pyx01:7", "relay")
 	# AND THE MANIFEST LEFT THE HOLD. A work that took the credits and not the
@@ -26797,6 +27853,157 @@ func _run_colony_test() -> void:
 		str(hold_emptied), str(stats_same), str(not re_buy),
 		"PASS" if works_ok and spent_total == want_total and stats_same
 			and hold_emptied and not re_buy else "FAIL"])
+
+	# §126. THE LADDER STANDS. The prereq is a GATE, so it is asserted in both
+	# directions -- a gate that always refused would satisfy half of this and be
+	# useless, which is NO ORDER WITHOUT THE READ's own posture.
+	#
+	# 1. WITHOUT THE MAST IT REFUSES, on a fresh colony with a purse that could
+	#    pay twice over and a hold carrying the whole manifest, so the only
+	#    thing missing is the rung below.
+	#
+	#    ITS OWN COLONY AND ONLY ITS OWN KEY: `colony_works = {}` here would
+	#    clear the works `THE DOCK IS TIME, NOT POWER` is built on eighty lines
+	#    below -- the precise defect that leg's own comment records §116
+	#    committing, and the reason it now rebuilds its own precondition.
+	GameState.colony_works.erase("pyx01:9")
+	GameState.claim_colony("pyx01:9", 2400.0, 0.0)
+	var lcell := DeepSpace.cell_of(Vector3(2400.0, 0.0, 0.0))
+	GameState.note_survey_worked(DeepSpace.cell_key("pyx01", lcell.x, lcell.y))
+	var lplayer: PlayerShip = get_tree().get_first_node_in_group("player")
+	if lplayer != null:
+		lplayer.global_position = Vector3(2400.0, 0.0, 0.0)
+	GameState.cargo = {}
+	var lwant: Dictionary = (GameState.COLONY_WORKS["repeater"]
+		as Dictionary).get("goods", {})
+	for lg_v in lwant:
+		GameState.cargo[String(lg_v)] = int(lwant[lg_v])
+	GameState.salvage = works_want * 2
+	var purse_before := GameState.salvage
+	var cargo_before := GameState.cargo.duplicate(true)
+	var barred := not buy_colony_work("pyx01:9", "repeater")
+	# AND THE REFUSAL IS FREE, §110's rule: nothing spent, nothing unloaded.
+	# Compared as a whole hold rather than one line of it, so an empty manifest
+	# on some future work cannot index past the end of its own keys array.
+	var barred_free := GameState.salvage == purse_before \
+		and str(cargo_before) == str(GameState.cargo)
+	# CAPTURED HERE, not re-asked in the print. The state below this line moves
+	# twice, and a figure printed from a later state while claiming to describe
+	# this one is §124's whole subject.
+	var barred_says := GameState.work_prereq_missing("pyx01:9", "repeater")
+	var prereq_named := barred_says == "relay"
+	# 2. WITH THE MAST IT PASSES. Same colony, same hold, same purse.
+	var mast := buy_colony_work("pyx01:9", "relay")
+	var freed := buy_colony_work("pyx01:9", "repeater")
+	# 3. AND THE DECLARATION ORDER SATISFIES EVERY PREREQ. This test and the
+	#    chart both walk COLONY_WORKS in declaration order, so a work declared
+	#    BEFORE the one it requires would fail as a pricing bug here and show a
+	#    pilot a rung above its own prerequisite there. Derived, so it holds for
+	#    works nobody has written yet.
+	var order_ok := true
+	var seen_works: Array = []
+	for wo_v in GameState.COLONY_WORKS:
+		var wo := String(wo_v)
+		var wneed_id := String((GameState.COLONY_WORKS[wo] as Dictionary)
+			.get("requires", ""))
+		if wneed_id != "" and not seen_works.has(wneed_id):
+			order_ok = false
+		seen_works.append(wo)
+	# 4. AND STAGING NEVER UN-BUILDS. A v28 save written before this commit can
+	#    hold a repeater with no mast under it -- legal when it was written,
+	#    unreachable now. The gate is on RAISING a work and must never become a
+	#    validity rule for one already standing, or shipping a prereq would
+	#    silently demolish what a pilot already paid for.
+	#
+	#    ASSERTED ON THE STATE RATHER THAN THROUGH THE LOADER, deliberately: the
+	#    loader's filter (`COLONY_WORKS.has(wid)`) keeps any known key and asks
+	#    nothing about order, so a round-trip would only re-test that filter. What
+	#    is actually at risk is every READER downstream of it, so this builds the
+	#    orphan state the loader would produce and asks whether the work still
+	#    stands AND still grants.
+	#
+	#    ASKED OF THE STORE, not of Main: Main's half would refuse this at the
+	#    delivery gate (clause 2 just ate the manifest) and pass the assertion
+	#    for a reason that has nothing to do with the ladder. GameState's half
+	#    checks `has_work` before anything else, so an "already standing" is the
+	#    only refusal it can be.
+	#
+	#    AND IN AN EMPTY SYSTEM, because the grant half of this is system-scoped.
+	#    Run in pyx01 it would read true off the repeater `WORKS ARE A SINK`
+	#    raised at pyx01:7 -- the clause passing whether or not the orphan
+	#    granted anything, which is the same shape as three clauses passing off
+	#    the ladder in the delivery leg below. pyx02 has no colony until this
+	#    line makes one, so the only thing that can answer is the orphan.
+	GameState.claim_colony("pyx02:4", 900.0, 0.0)
+	GameState.colony_works["pyx02:4"] = ["repeater"]
+	var legacy_kept := GameState.has_work("pyx02:4", "repeater") \
+		and GameState.work_stands_in_system("pyx02", "repeater") \
+		and not GameState.buy_colony_work("pyx02:4", "repeater")
+	print("[colony] THE LADDER STANDS repeater without a mast: refused=%s (free=%s, names '%s'); with one: mast=%s repeater=%s; declaration order safe=%s; a legacy save keeps an orphan rung=%s -> %s" % [
+		str(barred), str(barred_free), barred_says,
+		str(mast), str(freed), str(order_ok), str(legacy_kept),
+		"PASS" if barred and barred_free and prereq_named and mast and freed
+			and order_ok and legacy_kept else "FAIL"])
+
+	# §132. THE ARCHIVE KEEPS WHAT YOU FOUND, and the clauses are the five ways
+	# this could be wrong rather than five ways of asking whether it works.
+	GameState.stations_seen = {}
+	# 1. THE FILE FILLS WITHOUT THE WORK. The finding is the pilot's and the work
+	#    buys reading it back; one that only recorded after purchase would be
+	#    selling the finding instead of the file, which is the version §128
+	#    killed wearing a different hat.
+	var filed_deep := GameState.note_station_seen("pyx01:9:9", 6000.0)
+	var filed_near := GameState.note_station_seen("pyx01:2:0", 900.0)
+	var refiled := GameState.note_station_seen("pyx01:9:9", 6000.0)
+	# 2. AND ONLY A DEEP BAY KEY. A charted port id carries no colon and a colony
+	#    key carries one; a check that only looked FOR a colon would file both,
+	#    which is the defect §127 found in `_bay_key_is_real` from the other end.
+	var not_a_port := not GameState.note_station_seen("anchor", 100.0)
+	var not_a_colony := not GameState.note_station_seen("pyx01:7", 100.0)
+	# 3. DEEPEST FIRST, which is the order the file exists to be read in.
+	var arch_rows := GameState.stations_filed_in("pyx01")
+	var ordered := arch_rows.size() == 2 \
+		and String((arch_rows[0] as Dictionary)["key"]) == "pyx01:9:9"
+	# 4. AND THE CAP EVICTS THE SHALLOWEST. Overfilled with MID-depth entries so
+	#    a cap that dropped the oldest or the newest would still land on twelve
+	#    and quietly lose the 6,000u counter this whole work exists for.
+	for i in range(GameState.ARCHIVE_CAP + 4):
+		GameState.note_station_seen("pyx01:%d:5" % i, 1000.0 + float(i))
+	var capped := GameState.stations_filed_in("pyx01")
+	var kept_deep := GameState.stations_seen.has("pyx01:9:9")
+	var dropped_shallow := not GameState.stations_seen.has("pyx01:2:0")
+	# 5. THE WORK GATES ACCESS, NOT FACTS. Raised AFTER everything above was
+	#    filed, and the file must be byte-identical across the purchase -- an
+	#    archive that granted knowledge rather than access would be intel for
+	#    money, which is a different game and one §72 already refused.
+	#
+	#    IN PYX-02, because `WORKS ARE A SINK` raised every work on pyx01:7
+	#    eighty lines above -- including this one. Asked there, `read_before`
+	#    would already be true and the clause would assert nothing, which is the
+	#    same shape as §127's own clause 4 and the reason that one moved too.
+	#    Through the STORE half: what is being tested is access, and the journey
+	#    is `THE TRIP IS THE COST`'s business one leg down.
+	GameState.note_station_seen("pyx02:4:4", 3000.0)
+	var before_buy := str(GameState.stations_seen)
+	var read_before := GameState.work_stands_in_system("pyx02", "archive")
+	GameState.cargo = {}
+	var awant: Dictionary = (GameState.COLONY_WORKS["archive"]
+		as Dictionary).get("goods", {})
+	for ag_v in awant:
+		GameState.cargo[String(ag_v)] = int(awant[ag_v])
+	GameState.salvage = works_want * 2
+	GameState.buy_colony_work("pyx02:4", "archive")
+	var read_after := GameState.work_stands_in_system("pyx02", "archive")
+	var file_untouched := str(GameState.stations_seen) == before_buy
+	print("[colony] THE ARCHIVE KEEPS WHAT YOU FOUND filed without the work=%s/%s (a re-file is not a second entry=%s); a port id and a colony key both refused=%s/%s; deepest first=%s; %d filed against a cap of %d, the 6,000u counter kept=%s and the shallowest dropped=%s; readable %s->%s across the purchase with the file unchanged=%s -> %s" % [
+		str(filed_deep), str(filed_near), str(not refiled),
+		str(not_a_port), str(not_a_colony), str(ordered),
+		capped.size(), GameState.ARCHIVE_CAP, str(kept_deep), str(dropped_shallow),
+		str(read_before), str(read_after), str(file_untouched),
+		"PASS" if filed_deep and filed_near and not refiled and not_a_port
+			and not_a_colony and ordered and capped.size() == GameState.ARCHIVE_CAP
+			and kept_deep and dropped_shallow and not read_before and read_after
+			and file_untouched else "FAIL"])
 
 	# §116. THE TRIP IS THE COST, and this is the leg that says the gate is a
 	# JOURNEY and not just a manifest. Three refusals, each isolated: the goods
@@ -26822,12 +28029,27 @@ func _run_colony_test() -> void:
 	GameState.claim_colony(deliver_key, deliver_at.x, deliver_at.z)
 	var dcell := DeepSpace.cell_of(deliver_at)
 	GameState.note_survey_worked(DeepSpace.cell_key("pyx01", dcell.x, dcell.y))
-	GameState.salvage = 30000
 	var deliver_id := ""
 	for wd_v in GameState.COLONY_WORKS:
 		if not (GameState.COLONY_WORKS[wd_v] as Dictionary).get("goods", {}).is_empty():
 			deliver_id = String(wd_v)
 			break
+	# §126. EVERY OTHER GATE SATISFIED FIRST, or this leg measures the wrong
+	# refusal. The delivery work is the repeater and the repeater now REQUIRES a
+	# mast, so on a fresh colony all three clauses below would go green off the
+	# LADDER while the delivery gate went untested and `bought` failed -- three
+	# assertions passing for a reason that has nothing to do with what they are
+	# named after. Derived from `requires` rather than naming the relay, so a
+	# re-staged ladder does not quietly reintroduce it.
+	#
+	# And the purse is sized off the price for §126's other reason: a fixture
+	# holding a number typed beside the thing it pays for goes stale the first
+	# time that thing is re-priced, and reports it as a mechanism failure.
+	var deliver_need := String((GameState.COLONY_WORKS.get(deliver_id, {})
+		as Dictionary).get("requires", ""))
+	GameState.salvage = works_want * 2
+	if deliver_need != "":
+		GameState.buy_colony_work(deliver_key, deliver_need)
 	var manifest: Dictionary = (GameState.COLONY_WORKS.get(deliver_id, {})
 		as Dictionary).get("goods", {})
 	GameState.cargo = {}
@@ -26913,8 +28135,181 @@ func _run_colony_test() -> void:
 		str(near_aura), str(far_aura),
 		"PASS" if near_aura and not far_aura else "FAIL"])
 
+	# §140. THE ROADS DRAWS WATER NO SHEET HAS, which is the whole grant stated
+	# as a set relation: what the chart knows is the FILED SHEETS union the
+	# ROADS REACHES, and the roads has to add something to that union or it is
+	# 26,000 for a ring on a map.
+	#
+	# BUILT FROM THE SAME TWO CALLS THE CHART MAKES, deliberately -- the plot
+	# collects `known` from sheets_filed and supercells_within and then asks
+	# set_at per block, and this asks the identical pair. A leg that re-derived
+	# the reach with its own arithmetic would agree with itself and not with the
+	# picture.
+	#
+	# IT STAGES EVERY GATE ITSELF, which is §116's own lesson written into the
+	# leg that came after it: the ground sounded, the manifest DERIVED from the
+	# table rather than typed, the hull standing alongside, the purse sized off
+	# the price. A leg that inherits any of those measures whichever earlier
+	# block last happened to set them.
+	GameState.sheets_filed = {}
+	var roads_at := Vector3(2200.0, 0.0, 0.0)
+	GameState.claim_colony("pyx01:6", roads_at.x, roads_at.z)
+	var roads_cell := DeepSpace.cell_of(roads_at)
+	GameState.note_survey_worked(DeepSpace.cell_key("pyx01", roads_cell.x,
+		roads_cell.y))
+	if not GameState.has_work("pyx01:6", "roads"):
+		GameState.cargo = {}
+		var rwant: Dictionary = (GameState.COLONY_WORKS["roads"]
+			as Dictionary).get("goods", {})
+		for rg_v in rwant:
+			GameState.cargo[String(rg_v)] = int(rwant[rg_v])
+		if wplayer != null:
+			wplayer.global_position = roads_at
+		GameState.salvage = works_want * 2
+		buy_colony_work("pyx01:6", "roads")
+	var roads_up := GameState.has_work("pyx01:6", "roads")
+	var roads_reach: Array = DeepSpace.supercells_within(2200.0, 0.0,
+		GameState.ROADS_RANGE)
+	var roads_tides := 0
+	var roads_unfiled := 0
+	var reach_bad := ""
+	for rb_v in roads_reach:
+		var rb: Vector2i = rb_v
+		# EVERY BLOCK IT RETURNS IS ACTUALLY IN REACH. The picture is drawn from
+		# this list, so a list that over-reaches would chart water a pilot never
+		# bought and nothing else would notice.
+		var rc := DeepSpace.supercell_centre(rb.x, rb.y)
+		if Vector2(rc.x - 2200.0, rc.y).length() > GameState.ROADS_RANGE + 0.001:
+			reach_bad = "block (%d,%d) is outside the reach" % [rb.x, rb.y]
+		if Tide.set_at("pyx01", rb.x, rb.y) == Vector2.ZERO:
+			continue
+		roads_tides += 1
+		if not GameState.sheets_filed.has(DeepSpace.sheet_key("pyx01", rb.x, rb.y)):
+			roads_unfiled += 1
+	print("[colony] THE ROADS DRAWS WATER NO SHEET HAS raised=%s, %d block(s) in a %du reach, %d carrying water, %d of them with no sheet filed, %s -> %s" % [
+		str(roads_up), roads_reach.size(), int(GameState.ROADS_RANGE),
+		roads_tides, roads_unfiled,
+		reach_bad if reach_bad != "" else "every block returned is inside it",
+		"PASS" if roads_up and reach_bad == "" and roads_unfiled > 0 else "FAIL"])
+
+	# AND IT MINTS NOTHING, which is §51 and §26 asked as one question. The
+	# roads pays in INFORMATION: it may not add a surveyed cell, may not file a
+	# sheet, and may not touch the water the hull feels. The first two are
+	# measured across the purchase; the third is read off the SOURCE, because
+	# the tide is a pure function and the only way it could learn about a work
+	# is by naming one.
+	var mint_at := Vector3(2600.0, 0.0, 600.0)
+	GameState.claim_colony("pyx01:4", mint_at.x, mint_at.z)
+	var mint_cell := DeepSpace.cell_of(mint_at)
+	# SOUNDED BEFORE THE COUNT IS TAKEN, not after: note_survey_worked adds a
+	# coverage entry, and taking the baseline first would have measured the
+	# leg's own staging as the roads minting a cell.
+	GameState.note_survey_worked(DeepSpace.cell_key("pyx01", mint_cell.x,
+		mint_cell.y))
+	GameState.cargo = {}
+	var mwant: Dictionary = (GameState.COLONY_WORKS["roads"]
+		as Dictionary).get("goods", {})
+	for mg_v in mwant:
+		GameState.cargo[String(mg_v)] = int(mwant[mg_v])
+	if wplayer != null:
+		wplayer.global_position = mint_at
+	GameState.salvage = works_want * 2
+	var mint_cov := GameState.survey_coverage.size()
+	var mint_sheets := GameState.sheets_filed.size()
+	var mint_raised := buy_colony_work("pyx01:4", "roads")
+	var minted := GameState.survey_coverage.size() != mint_cov \
+		or GameState.sheets_filed.size() != mint_sheets
+	var tide_src_c := FileAccess.get_file_as_string("res://scripts/tide.gd")
+	var tide_knows := tide_src_c.contains("roads") or tide_src_c.contains("ROADS")
+	# `mint_raised` is in the verdict on purpose: a purchase that was REFUSED
+	# also mints nothing, and would pass this leg while measuring a work that
+	# never went up.
+	print("[colony] THE ROADS MINTS NOTHING raised=%s; coverage %d->%d, sheets %d->%d across it; tide.gd names the work=%s (%d chars read) -> %s" % [
+		str(mint_raised), mint_cov, GameState.survey_coverage.size(), mint_sheets,
+		GameState.sheets_filed.size(), str(tide_knows), tide_src_c.length(),
+		"PASS" if mint_raised and not minted and not tide_knows
+			and tide_src_c.length() > 0 else "FAIL"])
+
+	# §127. THE YARD DEEPENS THE SAME AURA. Four things, and the third is the
+	# one an ordering mistake would break silently: a yard colony ALSO has a
+	# dock (the prereq), so a multiplier asked in the wrong order would cap every
+	# yard in the game at the dock's two and nothing would ever say so.
+	#
+	# And the fourth is the reason the constant is six rather than a feeling:
+	# past the point where regen takes less than SHIELD_CALM_DELAY, the
+	# multiplier buys nothing at all, because what is left to wait for is a
+	# combat rule. Reported as a measurement, asserted as the LAW that the yard
+	# reaches it -- so a regen retune that made six too slow reddens here.
+	if not GameState.has_work("pyx01:7", "yard"):
+		GameState.cargo = {}
+		var ywant: Dictionary = (GameState.COLONY_WORKS["yard"]
+			as Dictionary).get("goods", {})
+		for yg_v in ywant:
+			GameState.cargo[String(yg_v)] = int(ywant[yg_v])
+		if wplayer != null:
+			wplayer.global_position = Vector3(2000.0, 0.0, 0.0)
+		GameState.salvage = works_want * 2
+		buy_colony_work("pyx01:7", "yard")
+	var yard_mult := GameState.repair_aura_mult_at(2000.0, 0.0)
+	var off_mult := GameState.repair_aura_mult_at(2000.0, 500.0)
+	# A dock WITHOUT a yard still reads two: pyx01:9 got a relay and a repeater
+	# in the ladder leg and no dock at all, so this builds the one it measures.
+	if not GameState.has_work("pyx01:9", "dock"):
+		GameState.salvage = works_want * 2
+		GameState.buy_colony_work("pyx01:9", "dock")
+	var dock_only := GameState.repair_aura_mult_at(2400.0, 0.0)
+	var regen := float(GameState.stats.get("shield_regen", 6.0))
+	var full_at_yard := 100.0 / maxf(regen * GameState.YARD_AURA_MULT, 0.001)
+	print("[colony] THE YARD MENDS FASTER THAN THE WAIT alongside=%.1fx, 500u off=%.1fx, a dock with no yard=%.1fx; 100 shield at %.0f/s takes %.1fs against a %.1fs calm delay -> %s" % [
+		yard_mult, off_mult, dock_only, regen, full_at_yard,
+		PlayerShip.SHIELD_CALM_DELAY,
+		"PASS" if is_equal_approx(yard_mult, GameState.YARD_AURA_MULT)
+			and is_equal_approx(off_mult, 1.0)
+			and is_equal_approx(dock_only, GameState.DOCK_AURA_MULT)
+			and full_at_yard < PlayerShip.SHIELD_CALM_DELAY else "FAIL"])
+
+	# §127. THE VAULT SURVIVES ITS OWN LOADER, and it is two findings in one leg
+	# because the second is what made the first worth asserting.
+	#
+	# 1. THE ANNEX BAY HAS BEEN DELETED ON EVERY LOAD SINCE §112.
+	#    `_bay_key_is_real` split a key on ":" and demanded THREE parts (a deep
+	#    cell); a colony key has TWO, so the loader dropped it and everything a
+	#    pilot stowed in an annex vanished. Found by asking whether it was safe
+	#    to double that bay.
+	# 2. AND THE KEYED CAP MAKES THE LOADER ORDER-CRITICAL. The over-capacity
+	#    trimmer now asks `warehouse_space_of`, which asks `has_work` -- so
+	#    `colony_works` loaded AFTER `_load_warehouse` would trim a 120-space
+	#    vault against 60 and delete sixty space of goods. It is safe only
+	#    because load_game populates colonies and works immediately before, and
+	#    this asserts that rather than trusting it.
+	GameState.warehouse = {}
+	GameState.salvage = works_want * 2
+	if not GameState.has_work("pyx01:7", "vaults"):
+		GameState.buy_colony_work("pyx01:7", "vaults")
+	var vault_cap := GameState.warehouse_space_of("pyx01:7")
+	var counter_cap := GameState.warehouse_space_of("anchor")
+	# A full vault, in the one good the bonded set and the space maths agree on.
+	var vault_units := vault_cap / maxi(CommodityDB.space_of("plate_ablative"), 1)
+	var saved_bay := {"pyx01:7": {"plate_ablative": vault_units}}
+	GameState._load_warehouse(saved_bay)
+	var vault_kept := GameState.warehouse_used("pyx01:7")
+	# AND A COUNTER IS STILL SIXTY. The amendment is that a cap varies by a WORK,
+	# never by a port def, so an unvaulted key reading anything but 60 is the
+	# refusal this replaced coming back.
+	print("[colony] THE VAULT SURVIVES ITS OWN LOADER vault %d vs counter %d; %d space stowed reloads as %d; an annex key is a real bay=%s -> %s" % [
+		vault_cap, counter_cap, vault_cap, vault_kept,
+		str(GameState.warehouse.has("pyx01:7")),
+		"PASS" if vault_cap == GameState.WAREHOUSE_SPACE_VAULTED
+			and counter_cap == GameState.WAREHOUSE_SPACE
+			and vault_kept == vault_cap else "FAIL"])
+	# AND IT PUTS THE BAY BACK. `THE ANNEX IS BONDED` stows into this very key
+	# twenty lines below, and a bay left full at its cap would refuse it -- the
+	# blast-radius rule the delivery leg states, owed by the leg that fills a
+	# vault to the brim to prove it can.
+	GameState.warehouse = {}
+
 	# THE ANNEX IS THE WAREHOUSE'S OWN LAW. Storables in, the bonded set only,
-	# and back out -- through store_cargo/withdraw_cargo, so the 60-space bay
+	# and back out -- through store_cargo/withdraw_cargo, so the bay's cap
 	# and can_store == no_retail hold here exactly as at a dock.
 	GameState.cargo = {}
 	GameState.load_cargo("plate_ablative", 3)
@@ -29479,3 +30874,587 @@ func _run_storm_test() -> void:
 			and GameState.SAVE_VERSION >= 20 and storm_src.length() > 0 else "FAIL"])
 
 	get_tree().quit()
+
+
+# --- the tide ----------------------------------------------------------------
+
+func _run_tide_test() -> void:
+	# §139. A SUITE OF ITS OWN, for STORMTEST's stated reason: the derivation is
+	# a data suite but the promise is a PHYSICS one, and the whole design rests
+	# on what the tether channel does with a hull that is not agreeing with the
+	# water. That cannot be asserted off a table.
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	await get_tree().create_timer(0.4).timeout
+	_wave_timer = 1.0e9
+	_rift_timer = 1.0e9
+	_storm_timer = 1.0e9
+	player.invulnerable = true
+
+	# --- the derivation ------------------------------------------------------
+	# Swept over every supercell the middle bands can hold. The window is
+	# derived from the band edge rather than typed: band 5 ends at 5,200 and a
+	# supercell is 256u, so 22 blocks clears it with room, and a retune of
+	# either constant widens this sweep instead of silently under-sampling it.
+	var bounds := SystemDB.bounds_of(system_id)
+	var span := float(DeepSpace.SUPERCELL) * DeepSpace.CELL
+	var reach := int(ceilf((float(DeepSpace.BAND_EDGES[DeepSpace.BAND_EDGES.size() - 1])
+		+ bounds) / span)) + 2
+	var worst_along := 0.0
+	var hands := {}
+	var hand_bad := ""
+	var band_bad := ""
+	var n_mid := 0
+	var n_tide := 0
+	for sx in range(-reach, reach + 1):
+		for sz in range(-reach, reach + 1):
+			var centre := DeepSpace.supercell_centre(sx, sz)
+			var b := DeepSpace.band_of(centre.length())
+			var v := Tide.set_at(system_id, sx, sz)
+			if Tide.band_carries(b):
+				n_mid += 1
+			elif v != Vector2.ZERO:
+				band_bad = "band %d carried a tide" % b
+			if v == Vector2.ZERO:
+				continue
+			n_tide += 1
+			# THE ONE THAT MATTERS. Depth is radius out here, so the outward
+			# normal IS the depth gradient: a tide with a large component along
+			# it would be a slide outward, which is the complaint this horizon
+			# opened on rather than an answer to it.
+			var out := centre.normalized()
+			worst_along = maxf(worst_along, absf(out.dot(v)))
+			# Cross product in the plane. Its SIGN is which way round the water
+			# goes, and the twist is bounded well under 90 degrees precisely so
+			# that the sign cannot flip inside a band.
+			var hand := signf(out.x * v.y - out.y * v.x)
+			if hands.has(b) and absf(float(hands[b]) - hand) > 0.001:
+				hand_bad = "band %d runs both ways" % b
+			hands[b] = hand
+
+	var twist_ceiling := sin(deg_to_rad(Tide.TWIST_DEG))
+	print("[tide] THE TIDE RUNS ACROSS THE DEPTH, NEVER ALONG IT worst |along the gradient| %.3f against a %.0f° twist ceiling of %.3f, over %d block(s) -> %s" % [
+		worst_along, Tide.TWIST_DEG, twist_ceiling, n_tide,
+		"PASS" if n_tide > 0 and worst_along <= twist_ceiling + 0.001 else "FAIL"])
+
+	print("[tide] AND IT GOES ONE WAY ROUND IN A BAND %d band(s) carry water, %s -> %s" % [
+		hands.size(), hand_bad if hand_bad != "" else "each turns one way only",
+		"PASS" if hand_bad == "" and hands.size() == Tide.BAND_HI - Tide.BAND_LO + 1
+			else "FAIL"])
+
+	# THE MIDDLE ONLY, and asserted from both ends: nothing outside bands 4-5
+	# carries water, and the bands that do are the bands the constants name.
+	# Band 6 already has weather and the complaint was 1,000 to 5,000 -- a tide
+	# everywhere would be a global speed buff wearing a bearing.
+	var carried_bands: Array = hands.keys()
+	carried_bands.sort()
+	print("[tide] IT LIVES ONLY IN THE MIDDLE bands %s carry it, %s -> %s" % [
+		str(carried_bands), band_bad if band_bad != "" else "nothing outside them does",
+		"PASS" if band_bad == "" and carried_bands == [Tide.BAND_LO, Tide.BAND_HI]
+			else "FAIL"])
+
+	# THE DENSITY IS WHAT THE CONSTANT SAYS. Measured over the whole middle
+	# rather than sampled, so this is the real fraction and not an estimate --
+	# and it is the number that decides how often a crossing meets water, which
+	# is the difference between a feature and a rumour.
+	var density := float(n_tide) / maxf(float(n_mid), 1.0)
+	# Tolerance 0.05, which is deliberately loose. Around 1,240 middle blocks put
+	# one sigma at 0.013, so a 0.03 window would be 2.2 sigma -- a leg that goes
+	# red on one seed in forty for being CORRECT. What this is here to catch is
+	# a constant that stopped meaning what it says, not the uniformity of
+	# randf().
+	print("[tide] ONE BLOCK IN THREE CARRIES WATER measured %.3f of %d middle block(s) against DENSITY %.2f -> %s" % [
+		density, n_mid, Tide.DENSITY,
+		"PASS" if absf(density - Tide.DENSITY) < 0.05 else "FAIL"])
+
+	# --- the promise ---------------------------------------------------------
+	# Find real water on the axis to stand in. Searched rather than assumed: at
+	# DENSITY 0.34 a hard-coded block would be a coin flip against the seed --
+	# and every clause below is asserted against water that is actually there,
+	# which a fixed block could not promise.
+	# Swept in two dimensions rather than along one row: a single row through the
+	# middle offers about sixteen blocks, and at DENSITY 0.34 that is a one-in-
+	# six-hundred chance of finding nothing and failing three legs for a reason
+	# that has nothing to do with what they measure. Five rows makes it nil.
+	var block := Vector2i(0, 0)
+	var flow := Vector2.ZERO
+	for sz in [0, 1, -1, 2, -2]:
+		for sx in range(1, reach + 1):
+			var v := Tide.set_at(system_id, sx, int(sz))
+			if v != Vector2.ZERO:
+				block = Vector2i(sx, int(sz))
+				flow = v
+				break
+		if flow != Vector2.ZERO:
+			break
+
+	# DERIVED, SALTED AND PURE, and asserted on the found block rather than a
+	# typed-in one: two thirds of blocks answer ZERO, and ZERO twice is a
+	# purity leg that agrees with itself about nothing. Two calls to the same
+	# block agree ACROSS an interleaved call to another, which is the clause
+	# that would catch a shared RNG.
+	#
+	# The fingerprint is protected by construction rather than by this leg:
+	# set_at hashes its own key, and WORLD_FINGERPRINT_BEFORE_SEAMS covers
+	# plan_cell's rolls, which this never enters.
+	var pure_a := Tide.set_at(system_id, block.x, block.y)
+	var _other := Tide.set_at(system_id, block.x + 3, block.y + 11)
+	var pure_b := Tide.set_at(system_id, block.x, block.y)
+	var elsewhere := Tide.set_at("pyx-not-a-system", block.x, block.y)
+	print("[tide] THE WATER IS DERIVED, NOT ROLLED block (%d,%d) twice=%s across another call, set %.3f,%.3f, another system differs=%s -> %s" % [
+		block.x, block.y, str(pure_a.is_equal_approx(pure_b)), pure_a.x, pure_a.y,
+		str(not elsewhere.is_equal_approx(pure_a)),
+		"PASS" if pure_a != Vector2.ZERO and pure_a.is_equal_approx(pure_b)
+			else "FAIL"])
+	var centre2 := DeepSpace.supercell_centre(block.x, block.y)
+	var stand := Vector3(centre2.x, 0.0, centre2.y)
+	var along := Vector3(flow.x, 0.0, flow.y)
+	var across := Vector3(-flow.y, 0.0, flow.x)
+
+	# Held in the block rather than flown through it, and velocity written each
+	# frame rather than commanded: what is being measured is the channel, and a
+	# hull that flew out of a 256u block mid-measurement would be measuring the
+	# neighbouring block's emptiness instead. STORMTEST reads _tether_vel the
+	# same way and for the same reason -- it is the only place the answer is.
+	#
+	# Written as a plain loop rather than a lambda on purpose: an `await` inside
+	# a Callable makes it a coroutine, and a coroutine called without an await
+	# fails at RUNTIME rather than at parse -- which is DEFECTS class 10's
+	# shape, a wrong call form the static checker cannot see, and this file has
+	# already paid for that once this horizon.
+	var rode: Array = []
+	# §145. The telemetry clock, sampled per run off the same three passes.
+	var rode_clock: Array = []
+	for heading_v in [along, -along, across]:
+		var heading: Vector3 = heading_v
+		player.teleport_to(stand)
+		player.clear_tether()
+		player.has_move_target = false
+		var clock_was := GameState.tide_seconds
+		# 120 frames is two seconds. PUSH is 0.62 u/s/s against a DRIFT of 0.9,
+		# so terminal arrives at 1.45s -- the margin is there so this measures
+		# the CLAMP rather than the ramp, and a slower push goes red instead of
+		# reading low.
+		for f in range(120):
+			player.global_position = stand
+			player.velocity = heading * 3.0
+			await get_tree().physics_frame
+		rode.append((player._tether_vel as Vector3).length())
+		rode_clock.append(GameState.tide_seconds - clock_was)
+
+	var with_it := float(rode[0])
+	var against_it := float(rode[1])
+	var athwart := float(rode[2])
+
+	# THE WHOLE PROMISE, IN THREE NUMBERS. Riding pays the flat drift; crossing
+	# and fighting pay nothing at all. There is no escape arithmetic in this
+	# suite because there is nothing to escape -- the tide has no way to reach
+	# the channel unless the hull is already agreeing with it.
+	# §145. AND THE CLOCK ONLY RUNS WHILE IT IS CARRYING YOU. The playtest
+	# instrument, asserted where the fixture already exists: the three runs
+	# above rode, crossed and fought the same water for two seconds each, so
+	# the accumulator has to have moved for exactly the first one.
+	#
+	# A COUNTER THAT RAN ALWAYS WOULD BE WORSE THAN NO COUNTER -- it would
+	# report every session as tide-heavy and answer §139's open question with a
+	# confident lie, which is §144's whole subject.
+	# float() on every read: rode_clock is an untyped Array, so its elements are
+	# Variants, a Variant comparison is a Variant, and `:=` has nothing to infer
+	# from. DEFECTS class 1 in a shape rule 6 did not cover -- it knew about
+	# untyped CONSTS, and a harness leg's buckets are locals. Rule 10 now does.
+	var tide_clock_ok := float(rode_clock[0]) > 1.0 \
+		and float(rode_clock[1]) < 0.05 and float(rode_clock[2]) < 0.05
+	print("[tide] AND THE CLOCK ONLY RUNS WHILE IT CARRIES YOU riding %.2fs, athwart %.2fs, against %.2fs over 2s each -> %s" % [
+		rode_clock[0], rode_clock[2], rode_clock[1],
+		"PASS" if tide_clock_ok else "FAIL"])
+
+	print("[tide] IT GIVES AND IT NEVER TAKES riding %.3f (DRIFT %.2f), athwart %.3f, against %.3f -> %s" % [
+		with_it, Tide.DRIFT, athwart, against_it,
+		"PASS" if absf(with_it - Tide.DRIFT) < 0.05 and athwart < 0.05
+			and against_it < 0.05 else "FAIL"])
+
+	# AND IT STANDS DOWN INSIDE A STORM. DEFECTS class 2b: apply_tether
+	# re-clamps to the LAST caller's cap, so two drivers in one frame settle the
+	# question by node order. Asserted with a real storm on top of real water,
+	# because the guard reads the storm GROUP and a mocked flag would not.
+	var storm := Storm.new()
+	system_root.add_child(storm)
+	# Half a pull radius off, not on top: at zero distance _pull returns early
+	# and _tick_eye starts an EMP and a damage clock, so a storm parked on the
+	# hull would be measuring the eye rather than the contention this leg is
+	# about.
+	storm.global_position = stand + Vector3(Storm.PULL_RADIUS * 0.5, 0.0, 0.0)
+	player.teleport_to(stand)
+	player.clear_tether()
+	player.has_move_target = false
+	for f in range(30):
+		player.global_position = stand
+		player.velocity = along * 3.0
+		await get_tree().physics_frame
+	var yielded: int = (tide.tide_deg() if tide.is_riding() else -1) \
+		if tide != null else -1
+	var storm_holds := storm.has_player(player)
+	storm.queue_free()
+	await get_tree().process_frame
+	print("[tide] IT STANDS DOWN INSIDE A STORM storm holds the hull=%s, tide reports %d (-1 is stood down) -> %s" % [
+		str(storm_holds), yielded,
+		"PASS" if storm_holds and yielded < 0 else "FAIL"])
+
+	# --- the two instruments -------------------------------------------------
+	# ONE VECTOR, TWO READOUTS. The cockpit suffix and the chart arrow both come
+	# off set_at, so the only way they can disagree is if the bearing helper
+	# does -- which is what this measures, against a set whose answer is known
+	# by construction.
+	var north := Tide.set_deg(Vector2(0.0, -1.0))
+	var east := Tide.set_deg(Vector2(1.0, 0.0))
+	var south := Tide.set_deg(Vector2(0.0, 1.0))
+	var west := Tide.set_deg(Vector2(-1.0, 0.0))
+	var none := Tide.set_deg(Vector2.ZERO)
+	print("[tide] THE BEARING IS THE CHART'S OWN UP -Z=%d +X=%d +Z=%d -X=%d, no water=%d -> %s" % [
+		north, east, south, west, none,
+		"PASS" if north == 0 and east == 90 and south == 180 and west == 270
+			and none == -1 else "FAIL"])
+
+	# AND THE COCKPIT SAYS IT. Zero-padded, because a bearing is three digits or
+	# it is not a bearing -- and read off the live label rather than off the
+	# format string, so a suffix appended in the wrong branch goes red.
+	hud.set_deep_tag("THE QUIET", 2000.0, false, false, 43, true)
+	var lit := hud._system_label.text
+	hud.set_deep_tag("THE QUIET", 2000.0, false, false, 43, false)
+	var near := hud._system_label.text
+	hud.set_deep_tag("THE QUIET", 2000.0, false, false, -1, false)
+	var dark := hud._system_label.text
+	# §143. THREE STATES, and the middle one is the fix. A cockpit that only
+	# spoke while riding taught a playtester that the tide vanishes when you
+	# stop -- so PRESENT has to read differently from RIDING and both have to
+	# read differently from nothing at all.
+	print("[tide] THE COCKPIT NAMES THE SET riding=\"%s\", present=\"%s\", no water=\"%s\" -> %s" % [
+		lit, near, dark,
+		"PASS" if lit.contains("TIDE 043") and near.contains("TIDE 043")
+			and lit != near and not dark.contains("TIDE") else "FAIL"])
+
+	# §143. AND THE WATER CAN ACTUALLY BE SEEN, which is the leg this suite
+	# should have had from the day it shipped. TIDETEST went 10 for 10 while the
+	# tide's entire visual tell was a CPUParticles3D with no mesh on it: every
+	# leg measured the derivation or the physics, and NOTHING IN THIS REPO CAN
+	# SEE A RENDERER. This is as close as a headless run gets -- the three
+	# properties whose absence means "draws nothing", plus the emission rate,
+	# which was 2.6 a second and needed no renderer to be wrong either.
+	var mote_ok := false
+	var mote_rate := 0.0
+	var mote_has_mesh := false
+	var mote_has_mat := false
+	if tide != null:
+		var mn := tide._motes as CPUParticles3D
+		if mn != null:
+			mote_has_mesh = mn.mesh != null
+			mote_has_mat = mn.mesh != null and mn.mesh.material != null
+			mote_rate = float(mn.amount) / maxf(mn.lifetime, 0.001)
+			mote_ok = mote_has_mesh and mote_has_mat and mote_rate >= 20.0 \
+				and mn.emission_box_extents.x > 0.0
+	print("[tide] AND THE WATER CAN BE SEEN motes carry a mesh=%s and a material=%s, emitting %.1f a second (a null mesh draws nothing, and the first version managed 2.6) -> %s" % [
+		str(mote_has_mesh), str(mote_has_mat), mote_rate,
+		"PASS" if mote_ok else "FAIL"])
+
+	# AND IT COSTS THE SAVE NOTHING. The tide is a pure function of a key it
+	# hashes itself, so there is no store to write and no version to move --
+	# read off the SOURCE, the way STORMTEST proves the same thing about weather
+	# that already shipped.
+	var tide_src := FileAccess.get_file_as_string("res://scripts/tide.gd")
+	var writes := tide_src.contains("GameState.note_log(") \
+		or tide_src.contains("GameState.note_ledger(") \
+		or tide_src.contains("_queue_save(") or tide_src.contains("save_game(")
+	print("[tide] THE TIDE IS DERIVED WEATHER tide.gd logs or saves=%s, %d character(s) read, format still v%d -> %s" % [
+		str(writes), tide_src.length(), GameState.SAVE_VERSION,
+		"PASS" if not writes and tide_src.length() > 0 else "FAIL"])
+
+	get_tree().quit()
+
+
+# --- the contact sheet -------------------------------------------------------
+
+func _run_surfaces() -> void:
+	# §146. EVERY DRAWN SURFACE, ONCE, AS A PNG.
+	#
+	# THE REASON THIS EXISTS IS A SCOREBOARD. Of the six defects that have ever
+	# reached a player, ZERO were found by an assertion: §88 and §141 by
+	# playtest, §134 and §136 by screenshots, §143 by a playtest against a
+	# harness that was 10 for 10 at the time. Against 866 legs. The instrument
+	# outweighs the game four to one and has never once been first.
+	#
+	# What they have in common is that they are all things a person SEES: a
+	# column with no height, a tween fighting its container, a tap that cannot
+	# land, a particle system with no mesh. Nothing here can see a renderer, so
+	# nothing here could have caught any of them -- and the answer is not a
+	# cleverer assertion, it is a contact sheet somebody looks at.
+	#
+	# IT CARRIES NO VERDICTS ON PURPOSE, and joins DEEPSHOTS, DEMO, ECONDEMO and
+	# WORLDTOUR in the cannot-fail family rather than the sweep. A PASS line
+	# here would be a lie: this harness cannot tell a good frame from a bad one,
+	# and pretending otherwise is exactly the "green that measured nothing" §77
+	# names. The verdict is a human's, and the frames are how they reach it.
+	#
+	# NEEDS A REAL WINDOW. Rendering is the thing being captured, so this cannot
+	# run --headless -- _run_phase2_shots' own constraint.
+	# §149. IT DEFAULTS SOMEWHERE FINDABLE AND DURABLE. The other capture suites
+	# require PYXIS_SHOTS and write nowhere without it, which is right for a
+	# one-off composition pass. This one is meant to be OPENED, possibly across
+	# several sittings, so a missing variable must not mean a missing sheet --
+	# and the /tmp the §146 instructions suggested was wrong twice over: macOS
+	# hides it from Finder (a symlink to /private/tmp) and macOS PURGES it.
+	# A contact sheet in a directory the OS deletes is a contact sheet with a
+	# clock on it.
+	var shots: String = OS.get_environment("PYXIS_SHOTS")
+	if shots == "":
+		shots = "user://surfaces"
+	var player: PlayerShip = get_tree().get_first_node_in_group("player")
+	var rig := get_tree().get_first_node_in_group("camera_rig") as CameraRig
+	get_window().size = Vector2i(720, 1280)
+	player.invulnerable = true
+	_wave_timer = 1.0e9
+	_rift_timer = 1.0e9
+	_storm_timer = 1.0e9
+	_apex_wake_timer = -1.0
+	GameState.mark_breached("pyx01")
+	GameState.mark_breached("pyx02")
+	GameState.salvage = 400000
+	var wrote: Array = []
+	var failed: Array = []
+	await get_tree().create_timer(0.6).timeout
+
+	# --- 1. THE COCKPIT, STATE BY STATE ------------------------------------
+	# THE SUFFIXES ARE STAGED, NOT FLOWN, and main._process is stopped while
+	# they are. That loop rewrites the deep tag from live values EVERY FRAME, so
+	# a staged string would be overwritten before the shutter opened -- and
+	# flying a hull into a carrier wash and a tide at once, on purpose, is not a
+	# thing a capture pass can arrange. set_process(false) is the honest way to
+	# hold one frame still.
+	_load_system("pyx01")
+	await get_tree().create_timer(0.8).timeout
+	player.global_position = Vector3(0.0, 0.0, 6.0)
+	rig.global_position = player.global_position
+	rig.zoom = 20.0
+	rig._target_zoom = 20.0
+	await get_tree().create_timer(0.6).timeout
+	await _surface_shot(shots, wrote, failed, "h01_hud_charted")
+
+	set_process(false)
+	# Each row is one readout the cockpit can show. The LAST is the reason this
+	# group exists: the jam and the tide can both be lit between 1,100 and 1,450
+	# units out, _system_label has no clip_text and no autowrap, and that string
+	# reaches roughly eighty characters. Suspected since §139 and never once
+	# looked at.
+	for spec_v in [
+		{"tag": "h02_hud_deep", "band": "THE UNFILED", "out": 2402.0,
+			"wash": false, "caught": false, "tide": -1, "riding": false},
+		{"tag": "h03_hud_jam", "band": "THE UNFILED", "out": 1300.0,
+			"wash": true, "caught": false, "tide": -1, "riding": false},
+		{"tag": "h04_hud_tide_present", "band": "THE UNFILED", "out": 2402.0,
+			"wash": false, "caught": false, "tide": 43, "riding": false},
+		{"tag": "h05_hud_tide_riding", "band": "THE UNFILED", "out": 2402.0,
+			"wash": false, "caught": false, "tide": 43, "riding": true},
+		{"tag": "h06_hud_jam_AND_tide", "band": "THE UNFILED", "out": 1300.0,
+			"wash": true, "caught": false, "tide": 317, "riding": true},
+		{"tag": "h07_hud_storm", "band": "THE UNSOUNDED", "out": 5600.0,
+			"wash": false, "caught": true, "tide": -1, "riding": false},
+	]:
+		var spec: Dictionary = spec_v
+		hud.set_deep_tag(String(spec["band"]), float(spec["out"]),
+			bool(spec["wash"]), bool(spec["caught"]), int(spec["tide"]),
+			bool(spec["riding"]))
+		await get_tree().create_timer(0.25).timeout
+		await _surface_shot(shots, wrote, failed, String(spec["tag"]))
+	set_process(true)
+
+	# The transient chrome, each on its own frame: a capture that stacked them
+	# would answer "do they overlap" and never "does each one read".
+	hud.show_toast("SHEET 3 OF 5 IN THIS BLOCK", Palette.AMBER)
+	await get_tree().create_timer(0.5).timeout
+	await _surface_shot(shots, wrote, failed, "h08_hud_toast")
+	hud.show_broadcast("SUBSPACE ADVISORY — AUTOMATED",
+		"SHEAR DETECTED · BEARING 240 · 190u OUT · IT WILL NOT HOLD",
+		Palette.band_color(2))
+	await get_tree().create_timer(0.6).timeout
+	await _surface_shot(shots, wrote, failed, "h09_hud_broadcast")
+	hud.prompt("THE ORRERY · THIRD INSTRUMENT — HOLD AT THE BASE TO CLAIM IT")
+	await get_tree().create_timer(0.5).timeout
+	await _surface_shot(shots, wrote, failed, "h10_hud_prompt")
+	hud.crack_progress(0.62, "FOUNDING")
+	await get_tree().create_timer(0.4).timeout
+	await _surface_shot(shots, wrote, failed, "h11_hud_progress")
+	hud.crack_progress(-1.0)
+	hud.clear_prompt()
+	# Far enough out that the system's own objects are all off screen, which is
+	# the only condition under which the ring has anything to say.
+	player.global_position = Vector3(0.0, 0.0, 120.0)
+	rig.global_position = player.global_position
+	await get_tree().create_timer(1.0).timeout
+	print("[surfaces] radar markers on screen: %d" % hud.radar_markers().size())
+	await _surface_shot(shots, wrote, failed, "h12_hud_radar")
+
+	# --- 2. THE CHART, ACROSS ITS ZOOM RANGE --------------------------------
+	# Three zooms because §139's arrows and §140's ring are WORLD-sized and the
+	# coverage squares under them are too -- so the question "does this read as
+	# water or as clutter" has a different answer at each end, and no frame has
+	# ever been taken at either.
+	GameState.claim_colony("pyx01:3", 2200.0, 0.0)
+	var scell := DeepSpace.cell_of(Vector3(2200.0, 0.0, 0.0))
+	GameState.note_survey_worked(DeepSpace.cell_key("pyx01", scell.x, scell.y))
+	GameState.colony_works["pyx01:3"] = ["roads", "dock"]
+	for sx in range(6, 14):
+		GameState.sheets_filed[DeepSpace.sheet_key("pyx01", sx, 0)] = 5
+		GameState.note_survey_worked(DeepSpace.cell_key("pyx01", sx * 4, 0))
+	chart_panel.open()
+	await get_tree().create_timer(0.9).timeout
+	await _surface_shot(shots, wrote, failed, "c01_chart_rows")
+	for zspec_v in [{"z": 0.9, "tag": "c02_chart_wide"},
+			{"z": 2.6, "tag": "c03_chart_mid"},
+			{"z": 6.5, "tag": "c04_chart_near"}]:
+		var zspec: Dictionary = zspec_v
+		chart_panel._zoom = float(zspec["z"])
+		chart_panel._refresh_plot()
+		await get_tree().create_timer(0.5).timeout
+		await _surface_shot(shots, wrote, failed, String(zspec["tag"]))
+	chart_panel.close_panel()
+	await get_tree().create_timer(0.4).timeout
+
+	# --- 3. THE PORT, TAB BY TAB --------------------------------------------
+	var cantina: Port = null
+	for n in get_tree().get_nodes_in_group("dockable"):
+		if (n as Port).port_id == "cantina":
+			cantina = n
+	if cantina != null:
+		player.global_position = cantina.dock_point
+		_complete_dock(cantina)
+		await get_tree().create_timer(0.9).timeout
+		await _surface_shot(shots, wrote, failed, "p01_port_arrival")
+		# DERIVED FROM THE PORT, never typed. `services()` is the same list
+		# _build_tabs walks, so this captures exactly the tabs a pilot can see
+		# here and a service added later is captured without touching this file.
+		#
+		# The first draft typed ["contracts", "paint", "skills"] and "skills" is
+		# not a tab this game has -- _on_tab would have set an unknown key,
+		# _refresh would have drawn an empty sheet, and the frame would have
+		# gone in the contact sheet looking like a real screen with nothing on
+		# it. A capture pass inventing its own inputs is §110's forge hint with
+		# a camera.
+		for tab_v in port_panel.services():
+			var tab := String(tab_v)
+			if tab == "depart" or not PortPanel.TAB_LABELS.has(tab):
+				continue
+			port_panel._on_tab(tab)
+			await get_tree().create_timer(0.5).timeout
+			await _surface_shot(shots, wrote, failed, "p02_port_%s" % tab)
+		port_panel.close_panel()
+		undock()
+		await get_tree().create_timer(0.4).timeout
+
+	# --- 4. THE SHIP'S OWN SHEETS -------------------------------------------
+	refit_panel.open()
+	await get_tree().create_timer(0.7).timeout
+	await _surface_shot(shots, wrote, failed, "s01_refit")
+	refit_panel.close_panel()
+	await get_tree().create_timer(0.3).timeout
+	GameState.cargo = {"alloys": 6, "isotopes": 3, "chart_quiet": 4}
+	hold_screen.open()
+	await get_tree().create_timer(0.7).timeout
+	await _surface_shot(shots, wrote, failed, "s02_hold")
+	hold_screen.close_panel()
+	await get_tree().create_timer(0.3).timeout
+	damage_screen.open()
+	await get_tree().create_timer(0.7).timeout
+	await _surface_shot(shots, wrote, failed, "s03_damage")
+	damage_screen.close_panel()
+	await get_tree().create_timer(0.3).timeout
+
+	# --- 5. THE MANUAL, EVERY PAGE ------------------------------------------
+	# Walked off ManualScreen.PAGES rather than a typed list, so a page added
+	# later is captured without this file being touched -- the §126 shape.
+	manual_screen.open()
+	await get_tree().create_timer(0.6).timeout
+	await _surface_shot(shots, wrote, failed, "m00_manual_contents")
+	for page_v in ManualScreen.PAGES:
+		var page: Dictionary = page_v
+		manual_screen._page = String(page["id"])
+		manual_screen._refresh()
+		await get_tree().create_timer(0.45).timeout
+		await _surface_shot(shots, wrote, failed, "m01_manual_%s" % String(page["id"]))
+	manual_screen.close_panel()
+	await get_tree().create_timer(0.3).timeout
+
+	# --- 6. THE OVERLAYS -----------------------------------------------------
+	toggle_pause()
+	await get_tree().create_timer(0.5).timeout
+	await _surface_shot(shots, wrote, failed, "u01_pause")
+	pause_menu._page = "settings"
+	pause_menu._refresh()
+	await get_tree().create_timer(0.5).timeout
+	await _surface_shot(shots, wrote, failed, "u02_settings")
+	pause_menu.resume()
+	# The narrow suite's own belt and braces: a harness that leaves the tree
+	# paused hangs forever on the next pausable await instead of quitting.
+	get_tree().paused = false
+	await get_tree().create_timer(0.4, true, false, true).timeout
+
+	# --- 7. THE INDUCTION, BEAT BY BEAT -------------------------------------
+	# Walked with advance_beat(), the same verb a thumb uses, and bounded by the
+	# beat count rather than by a typed five -- §136's two defects both lived in
+	# these frames and neither had ever been captured by anything but a
+	# playtester's phone.
+	induction.open(true)
+	await get_tree().create_timer(0.9).timeout
+	for b in range(Induction.BEATS.size()):
+		await _surface_shot(shots, wrote, failed, "i%02d_induction_beat" % (b + 1))
+		if b < Induction.BEATS.size() - 1:
+			induction.advance_beat()
+			await get_tree().create_timer(0.9).timeout
+	induction.visible = false
+	await get_tree().create_timer(0.4).timeout
+
+	# NO ARROW IN THESE LINES, and that is not a style note. harness_legs.py
+	# reads "-> " as the marker of a VERDICT, so the first draft of this print
+	# gave SURFACES a GATE of 1 and kept it out of the CANNOT FAIL list -- the
+	# instrument contradicting the comment forty lines up that says this
+	# harness carries no verdicts. The tool was right and the prose was wrong,
+	# which is §124's outcome exactly, caught before the sweep.
+	#
+	# §148. AND IT COUNTS WHAT LANDED, NOT WHAT IT TRIED. The first run wrote
+	# zero frames -- the output directory did not exist -- and this line said
+	# "41 frame(s) written" anyway, because `wrote` was appended to before the
+	# shot rather than after it. A harness built to stop unverified claims made
+	# one on its first outing.
+	# GLOBALIZED, so the line is a path the owner can paste rather than the
+	# string they already typed. Echoing `shots` back told them nothing they did
+	# not know, and told them nothing at all when it was a user:// URI.
+	var shots_abs := ProjectSettings.globalize_path(shots)
+	print("[surfaces] %d frame(s) written to %s" % [wrote.size(), shots_abs])
+	print("[surfaces] open %s" % shots_abs)
+	if not wrote.is_empty():
+		print("[surfaces] %s" % ", ".join(PackedStringArray(wrote)))
+	if not failed.is_empty():
+		# LOUD, and first among the closing lines a reader sees. A capture pass
+		# that silently wrote less than it listed is the whole defect this
+		# section exists because of.
+		print("[surfaces] %d FRAME(S) DID NOT WRITE: %s"
+			% [failed.size(), ", ".join(PackedStringArray(failed))])
+		print("[surfaces] the directory may be unwritable -- nothing below is")
+		print("[surfaces] a verification, and the contact sheet is INCOMPLETE.")
+	print("[surfaces] NO VERDICTS. Open the frames -- that is the whole point;")
+	print("[surfaces] a green run nobody looks at has verified nothing.")
+	get_tree().quit()
+
+
+func _surface_shot(dir: String, wrote: Array, failed: Array, tag: String) -> void:
+	# §148. IT APPENDS ON SUCCESS, WHICH THE FIRST VERSION DID NOT.
+	#
+	# It appended and THEN shot, discarding the result, so `wrote` was a list of
+	# frames ATTEMPTED printed under the word "written". The comment here used
+	# to claim the manifest "cannot disagree with what is on disk"; it disagreed
+	# with an empty directory on the first real run.
+	#
+	# One place appends and one place shoots is still the rule -- §120 -- but
+	# the append now depends on the shot, which is what made the claim true
+	# rather than merely stated.
+	if await _shot(dir, "%s.png" % tag):
+		wrote.append(tag)
+	else:
+		failed.append(tag)

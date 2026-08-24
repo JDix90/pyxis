@@ -1,5 +1,10 @@
 class_name DeepSpace
 extends Node3D
+
+# §137. THE SHEET. Emitted when the last reading in a supercell is taken, so
+# Main can pay for it -- this node owns the world and Main owns the rules, the
+# split drop_beacon_here and charge_rescue already use.
+signal sheet_completed(sx: int, sz: int, readings: int)
 # Everything outside the charted system: the endless backdrop, and the distance
 # bands that decide how strange, how dangerous and how rewarding a place is.
 #
@@ -963,8 +968,17 @@ func plan_cell(cx: int, cz: int) -> Dictionary:
 			# v19 stage 4: the ONE edit inside plan_cell. The draw is still
 			# rng.randi(), verbatim — the index is derived from the returned
 			# uint32, and with no authored row weighted_index IS the old modulo.
-			var arch: Dictionary = kinds[weighted_index(rng.randi(), kinds.size(),
-				(_deep.get("station_weights", {}) as Dictionary).get(band, []))]
+			# §130. AN AUTHORED ROW WINS; OTHERWISE THE TILT. The row is taken
+			# first and only replaced when it cannot be used -- absent, or the
+			# wrong width, which is the silent case weighted_index's own comment
+			# warns about and which used to fall all the way to a uniform draw.
+			# Below TILT_MIN_BAND distance_weights returns empty and that
+			# uniform draw is exactly what still happens, byte for byte.
+			var st_w: Array = (_deep.get("station_weights", {})
+				as Dictionary).get(band, [])
+			if st_w.size() != kinds.size():
+				st_w = DeepPortDB.distance_weights(band, kinds)
+			var arch: Dictionary = kinds[weighted_index(rng.randi(), kinds.size(), st_w)]
 			var sp := base + Vector3(rng.randf_range(STATION_INSET, CELL - STATION_INSET), 0.0,
 				rng.randf_range(STATION_INSET, CELL - STATION_INSET))
 			if depth_at(sp) >= CONTENT_MIN_DEPTH:
@@ -1446,6 +1460,94 @@ static func supercell_of(cx: int, cz: int) -> Vector2i:
 	# cells either side of the origin in the same supercell, which would double
 	# the landmark density in exactly the region the player crosses first.
 	return Vector2i(floori(float(cx) / float(SUPERCELL)), floori(float(cz) / float(SUPERCELL)))
+
+
+static func supercell_centre(sx: int, sz: int) -> Vector2:
+	# The middle of a 4x4 block in world XZ. Vector2 rather than cell_centre's
+	# Vector3 on purpose: cell_centre feeds world PLACEMENT and needs a height,
+	# while every reader of this one -- the tide's set, the roads' reach, the
+	# chart's arrow -- works in the plane and would only throw the y away.
+	#
+	# §140 moved it here from Tide. It is a fact about the GRID, and the grid
+	# lives in this file; leaving it on the one system that happened to need it
+	# first is how a second copy gets written by the second.
+	var span := float(SUPERCELL) * CELL
+	return Vector2(float(sx) * span + span * 0.5, float(sz) * span + span * 0.5)
+
+
+static func supercells_within(x: float, z: float, radius: float) -> Array:
+	# §140, THE ROADS' REACH, as a block list. Measured CENTRE to centre, one
+	# rule: a block is in reach or it is not, and the arrow on the chart, the
+	# tally in the rows and any leg that asks all get the same answer from the
+	# same walk. A rule about overlap instead would have to decide what a corner
+	# clipping the circle means, and three readers would each decide it.
+	#
+	# Bounded by the box the circle sits in rather than swept: at the roads'
+	# 1,050u that is nine blocks square, and the alternative is a walk whose
+	# cost depends on how far from the origin the colony happens to sit.
+	var span := float(SUPERCELL) * CELL
+	var out: Array = []
+	for sx in range(floori((x - radius) / span), floori((x + radius) / span) + 1):
+		for sz in range(floori((z - radius) / span), floori((z + radius) / span) + 1):
+			var c := supercell_centre(sx, sz)
+			if Vector2(c.x - x, c.y - z).length() <= radius:
+				out.append(Vector2i(sx, sz))
+	return out
+
+
+static func sheet_key(id: String, sx: int, sz: int) -> String:
+	# §137. "system:sx:sz" -- THREE parts, deliberately the same shape as a deep
+	# bay key, because §127 found what happens when a two-part key meets a
+	# three-part validator. A sheet key is a cell key one grid up.
+	return "%s:%d:%d" % [id, sx, sz]
+
+
+func sheet_readings(sx: int, sz: int) -> int:
+	# §137. HOW MANY READINGS THIS SHEET HOLDS, derived rather than stored --
+	# the expanse is a pure function (§17), so a supercell's contents are the
+	# same answer forever and cost zero bytes to know.
+	#
+	# A CELL IS READABLE ONLY IF SOMETHING IN IT CAN BE READ, and that is the
+	# finding that shaped this whole feature: a survey mast rides on a DERELICT
+	# and a berth charts itself on docking, so at band 4 barely a third of cells
+	# hold anything at all. "Survey every cell in the block" is not a hard goal,
+	# it is an impossible one -- roughly five of sixteen cells can be read.
+	#
+	# AND IT RISES WITH DEPTH: ~4.0 readings a sheet in the Reaches against
+	# ~6.6 in the Unsounded, because hulks and berths both thicken outward. A
+	# sheet is therefore MORE work the deeper it sits, which is a counter-
+	# gradient bought without moving one number in a value table -- RICHER
+	# OUTWARD is untouched and stays untouched.
+	var n := 0
+	for cx in range(sx * SUPERCELL, sx * SUPERCELL + SUPERCELL):
+		for cz in range(sz * SUPERCELL, sz * SUPERCELL + SUPERCELL):
+			if _cell_is_readable(cx, cz):
+				n += 1
+	return n
+
+
+func sheet_read(sx: int, sz: int) -> int:
+	# §137. How many of them this pilot has taken. The progress half is DERIVED
+	# too -- it is `survey_coverage` filtered to the block, so there is no
+	# progress counter anywhere that could disagree with the coverage store it
+	# is supposed to summarise.
+	var n := 0
+	for cx in range(sx * SUPERCELL, sx * SUPERCELL + SUPERCELL):
+		for cz in range(sz * SUPERCELL, sz * SUPERCELL + SUPERCELL):
+			if _cell_is_readable(cx, cz) and is_surveyed(Vector2i(cx, cz)):
+				n += 1
+	return n
+
+
+func _cell_is_readable(cx: int, cz: int) -> bool:
+	# The two things that grant coverage, asked of the PLAN rather than of the
+	# scene: a hulk (which carries the mast) and a deep berth (which charts its
+	# own cell on the first dock). Asking the plan means a sheet can be counted
+	# from anywhere in the game, including cells the player has never streamed.
+	var plan := plan_cell(cx, cz)
+	if not (plan["hulk"] as Dictionary).is_empty():
+		return true
+	return not (plan["station"] as Dictionary).is_empty()
 
 
 static func landmark_cell(id: String, sx: int, sz: int) -> Vector2i:
@@ -2157,6 +2259,18 @@ func note_surveyed(key: Vector2i) -> void:
 	if absi(key.x) > 1 << 20 or absi(key.y) > 1 << 20:
 		return
 	GameState.note_survey_worked(cell_key(_id, key.x, key.y))
+	# §137. AND THE SHEET IS CHECKED AT THE ONE DOOR. Three call sites grant
+	# coverage (a mast, a berth, a founded colony) and every one of them comes
+	# through here, so completion is detected once rather than three times --
+	# the shape `mark_skill` uses for the same reason.
+	#
+	# The signal carries the answer rather than Main re-deriving it: a reading
+	# that completes a sheet is a fact this line already knows, and re-asking
+	# would be two walks of sixteen cells to agree with each other.
+	var sc := supercell_of(key.x, key.y)
+	var want := sheet_readings(sc.x, sc.y)
+	if want > 0 and sheet_read(sc.x, sc.y) >= want:
+		sheet_completed.emit(sc.x, sc.y, want)
 
 
 func is_surveyed(key: Vector2i) -> bool:

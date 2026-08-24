@@ -58,6 +58,11 @@ const DEFAULT_SETTINGS := {
 	# transition in the game to stop moving. Merging the two would silently
 	# reinterpret a preference they already expressed.
 	"reduce_motion": false,
+	# §133. Whether THIS DEVICE has watched the induction. A preference rather
+	# than a save key on purpose: NEW SURVEY resets the save, and a returning
+	# player starting a second pilot has not un-watched the film. Main writes it
+	# on the finished signal; the scene itself owns no state.
+	"seen_induction": false,
 	# OFF by default, and it stays off unless someone deliberately turns it on.
 	# The file never leaves the device and nothing in the game reads it -- see
 	# scripts/telemetry.gd -- but a recorder running because the player never
@@ -92,6 +97,10 @@ const DEFAULT_LEDGER := {
 	# volume, this measures FIRSTS. A new key in this dict needs no save bump:
 	# the load-side merge is defaults-based.
 	"cells_filed": 0,
+	# §137. Sheets completed -- 4x4 blocks whose every readable cell was read.
+	# A new key in this dict needs no save bump: the load-side merge is
+	# defaults-based, which is what the comment above it says and why.
+	"sheets_filed": 0,
 	# §118. THE LEDGER'S FIRST LOSS COLUMN. Every other key here counts
 	# something the pilot DID; this counts something taken off them while they
 	# were somewhere else, and it is the only number in the game that does.
@@ -214,6 +223,14 @@ var run_seed := 0
 # v4: the economy.
 var cargo := {}                # good id -> units held
 var played_seconds := 0.0      # drives market drift; never wall-clock
+# §145. Seconds this RUN has spent actually carried by a tide. Written by Main
+# where the HUD already asks, read by nothing in the game -- it exists so a
+# playtest can answer "was the tide used?" with a number instead of a memory,
+# which is the one question §139's whole design rests on and no assertion can
+# reach. Cumulative per run and persisted, matching played_seconds, so the
+# telemetry row it feeds means the same kind of thing the `minutes` beside it
+# does. Rides v28 on defaults-not-branches, §137's precedent.
+var tide_seconds := 0.0
 var docked_at := ""            # port id, so a reload resumes docked
 var market_pressure := {}      # "port|good" -> -0.25..0.25
 # v27. THE SHELF. "<counter>|good" -> {d: units the player has taken, t: the
@@ -380,12 +397,36 @@ const FILING_REACH_MULT := 1.5      # come alongside from further out
 # alternative is the one to reach for instead: "if a structure takes time to
 # become something, the time is spent flying to it with what it needs -- the
 # trip is the cost."
+# §126. RE-PRICED AS A FAMILY, AND SCOPE IS NOW DATA.
+#
+# THE SCOPE KEY WAS ALREADY AUTHORED -- IN THE BLURBS. "OUT TO THIS SYSTEM"
+# against "ALONGSIDE THIS COLONY" and "A BONDED BAY OF ITS OWN": two of these
+# four are SYSTEM infrastructure and two are COLONY infrastructure, the
+# consumers have always behaved that way, and nothing said so anywhere a second
+# reader could find it. `scope` promotes that sentence to a key, and the key is
+# load-bearing rather than decorative -- work_stands_in_system reads it, the
+# chart's two hand-written any-in-system loops are gone, and the sink table
+# derives the whole channel's size from it.
+#
+# AND THAT IS WHAT RE-PRICED THEM. A system-scoped work has a HARD CAP OF THREE
+# useful copies in the entire game (one per authored system, because the chart
+# asks "any colony in this system") -- so raising the relay's price does not
+# deepen the sink, it just makes the three copies anybody would buy dearer. A
+# colony-scoped work multiplies by every colony a pilot cares to develop. The
+# two are different products and cannot share one price curve, which the old
+# flat 4/6/8/10 ladder assumed they could.
+#
+# THE FIGURES ARE LOOP FRACTIONS (§124's rule), against the 11,236 the sweep
+# measures: relay ~1.0, dock ~1.5, annex ~2.5, repeater ~4.0. One colony's four
+# is 101,000 -- nine loops, about seventy minutes -- against 28,000 and under
+# twenty minutes before. THE WORKS AT THEIR CEILING is the leg that prices the
+# channel rather than the menu.
 const COLONY_WORKS := {
-	"relay": {"name": "RELAY MAST", "price": 4000,
+	"relay": {"name": "RELAY MAST", "price": 11000, "scope": "system",
 		"blurb": "THE CHART CARRIES THE CHARTED MARKETS' WEATHER OUT TO THIS SYSTEM"},
-	"dock": {"name": "DRY DOCK", "price": 6000,
+	"dock": {"name": "DRY DOCK", "price": 17000, "scope": "colony",
 		"blurb": "YOUR SHIELD MENDS AT TWICE THE PACE ALONGSIDE THIS COLONY"},
-	"annex": {"name": "BONDED ANNEX", "price": 8000,
+	"annex": {"name": "BONDED ANNEX", "price": 28000, "scope": "colony",
 		"blurb": "A BONDED BAY OF ITS OWN — HOLD AT THE COLONY TO USE IT"},
 	# v28 (§116). THE FIRST WORK THAT TAKES A DELIVERY, and §5 wrote the shape
 	# of it on 2026-08-04: "if a structure takes time to become something, the
@@ -404,12 +445,172 @@ const COLONY_WORKS := {
 	# horizon's, taken in the open with that table in hand. Pricing this one
 	# work to the new rule would be making that decision on one row, invisibly.
 	# So it sits at the top of the family it belongs to and moves when they do.
-	"repeater": {"name": "DEEP REPEATER", "price": 10000,
-		"goods": {"alloys": 12},
+	# §126. AND IT REQUIRES THE MAST, which its own blurb has said since §116 --
+	# "the way the relay carries the chart's". The repeater is the relay's
+	# deeper sibling and there is nothing for it to repeat through without one.
+	#
+	# THE ONLY PREREQ IN THE LADDER, and the reason is arithmetic rather than
+	# taste. A prereq that forces a purchase you did not want is a PRICE wearing
+	# a gate's clothes, which is §72 read backwards. Staging the colony-scoped
+	# works behind the relay would do exactly that: a pilot who wants twelve
+	# annexes would be made to raise twelve masts, and NINE OF THEM WOULD DO
+	# NOTHING AT ALL -- the chart only ever asks whether ANY colony in the
+	# system has one. This prereq costs nothing extra by construction, because
+	# the mast it demands is the same single per-system mast the repeater's own
+	# grant already depends on.
+	"repeater": {"name": "DEEP REPEATER", "price": 45000, "scope": "system",
+		"goods": {"alloys": 12}, "requires": "relay",
 		"blurb": "THE CHART CARRIES THE DEEP STATIONS' WEATHER, THE WAY THE RELAY CARRIES THE CHART'S"},
+	# §127. BOTH OF THESE UPGRADE A RUNG RATHER THAN ADDING ONE, which is what
+	# makes their prereqs legal under §126's test. That test asks whether the
+	# gate forces a purchase you did not want; here the thing required IS the
+	# thing being improved, so a pilot who wants the vault wants the annex by
+	# definition and a pilot who wants the yard wants the dock.
+	#
+	# It is also why neither obsoletes what it stands on. The vault does not
+	# replace the annex's bay, it doubles it; the yard does not replace the
+	# dock's aura, it deepens the same one.
+	"vaults": {"name": "EXPANDED VAULTS", "price": 39000, "scope": "colony",
+		"requires": "annex",
+		"blurb": "THE BONDED BAY AT THIS COLONY HOLDS TWICE WHAT ANY COUNTER WILL"},
+	"yard": {"name": "THE YARD", "price": 34000, "scope": "colony",
+		"goods": {"alloys": 20, "isotopes": 8}, "requires": "dock",
+		"blurb": "ALONGSIDE THIS COLONY YOUR SHIELD MENDS FASTER THAN IT CAN BE WAITED FOR"},
+	# §128. NO PREREQ, and that is the §126 test answered rather than skipped: a
+	# gate is legal when the thing it demands is the thing being improved, and
+	# this improves nothing that stands. It is a new grant, so it stands alone
+	# like the mast, the dock and the annex do.
+	#
+	# PRICED BELOW THE YARD because it is situational where the yard is not. The
+	# yard removes a wait after every fight; the light saves a hold only when a
+	# death happens inside its reach. Two loops against the yard's three.
+	"light": {"name": "THE LIGHT", "price": 22000, "scope": "colony",
+		"goods": {"volatiles": 10},
+		"blurb": "WHAT LIES ADRIFT INSIDE THIS COLONY'S REACH, NOBODY ELSE TAKES"},
+	# §132. THE ARCHIVE, reshaped. Its first draft displayed the run's record and
+	# died on contact with `PILOT'S LEDGER` and `CAPTAIN'S LOG`, which show that
+	# free (§128). This one files the thing the game has never remembered: the
+	# deep counters this pilot has actually stood at. `stations_seen` fills
+	# whether or not an archive stands, so the work buys ACCESS to a file the
+	# pilot already wrote -- which is exactly the sense in which a record is not
+	# a purchase.
+	#
+	# SYSTEM-SCOPED, like the other two information works, because the chart it
+	# draws on is one system at a time. Three useful copies, priced at the top of
+	# that family: it is the work that makes the Fathoms somewhere a pilot lives
+	# rather than somewhere they sweep, and §130 is what makes it worth having --
+	# the deepest counters are now the likeliest thing out there, and this is
+	# what stops finding one being a thing you have to do twice.
+	#
+	# AND NO PREREQ, which is §126's test honestly applied rather than argued
+	# around. The repeater is the obvious candidate -- deep information, same
+	# chart section -- but an archive works perfectly well without deep market
+	# weather, so demanding one would force 45,000 of purchase a pilot may not
+	# want. That is a price in a gate's clothes, and the test says no.
+	#
+	# ITS MANIFEST IS A COMPONENT, the first in the game, and the fiction was
+	# written two years before the work: a Data Lattice is "one layer of an
+	# archive core, prised out intact". Every other manifest is bulk and measures
+	# a TRIP (§116's yardstick); this one measures a READ, so the gate is
+	# ARCHEOLOGY's own output and the only work in the game that asks what you
+	# have understood rather than what you have hauled. `NO ORDER WITHOUT THE
+	# READ` already means a pilot cannot order one without having read one, so
+	# the desk is an alternative to the salvage and never a way around it.
+	"archive": {"name": "THE ARCHIVE", "price": 56000, "scope": "system",
+		"goods": {"lattice_data": 4},
+		"blurb": "EVERY DEEP COUNTER YOU HAVE STOOD AT IN THIS SYSTEM, KEPT"},
+	# §140. THE ROADS -- Horizon 14 commit 3, and the one that makes a colony a
+	# CENTRE rather than a destination. Every work before it faces the deep or
+	# faces the colony itself; the light is the only one that reaches into the
+	# water at all, and its reach is 350u. This one is about the water.
+	#
+	# WHAT IT GRANTS IS INFORMATION AND NOTHING ELSE, which is what makes it
+	# legal under both of the rules the horizon's research named. §26: works pay
+	# in time, choice, access and information -- never credits, and the roads
+	# pays no credits at any rate. §51: only the player depletes the world, and
+	# drawing a tide that was already there mints no coverage, no salvage and no
+	# seam. The one thing a pilot could not previously get without filing every
+	# sheet in a region is the SHAPE of the water, and this sells exactly that,
+	# for one colony's reach, at a price that is never cheaper than the filing.
+	#
+	# COLONY-SCOPED, obviously: a system-scoped roads would chart every band at
+	# once and the whole point is that it charts YOURS.
+	#
+	# NO PREREQ, §126's test honestly applied. The gate is legal when the thing
+	# it demands is the thing being improved; the roads improves nothing that
+	# stands, so it stands alone the way the mast, the dock, the annex and the
+	# light do.
+	#
+	# ITS MANIFEST IS THE READINGS THEMSELVES, and it is the only manifest in
+	# the game the work is literally made of: a road is drawn from surveys, and
+	# these are surveys of the two bands the tide runs in. Twelve space, half
+	# §116's starter-hold yardstick, and a gate on having worked BOTH halves of
+	# the middle -- which is the behaviour this whole horizon is trying to
+	# reward, asked for once at the desk instead of assumed.
+	#
+	# AND BOTH ARE `no_retail`, which is what makes that a real gate rather than
+	# a shopping list: chart data cannot be bought at any counter in the game,
+	# only surveyed. Every other manifest can be topped up with credits at the
+	# nearest port; this one can only be flown for. Stated here because it is a
+	# property of the GOODS rather than of the work, and a future retune that
+	# made survey data purchasable would quietly turn this gate back into a
+	# price -- §72 read backwards, which is the mistake §126 named.
+	"roads": {"name": "THE ROADS", "price": 26000, "scope": "colony",
+		"goods": {"chart_quiet": 6, "chart_fathom": 6},
+		"blurb": "THE WATER OFF THIS COLONY IS CHARTED — ITS TIDES DRAWN WITHOUT FILING A SHEET"},
 }
 const DOCK_AURA_RANGE := 30.0
 const DOCK_AURA_MULT := 2.0
+# §127, THE YARD. Six rather than two, and the figure is DERIVED from the thing
+# it competes with rather than chosen for feel. A hundred points of shield at
+# the base 6/s is 16.7 seconds; the dock halves that to 8.3; six times takes it
+# to 2.8 -- under SHIELD_CALM_DELAY's four seconds, at which point the REGEN IS
+# NO LONGER THE WAIT and the calm delay is. Past six the multiplier buys
+# nothing, because what is left is a combat rule rather than a repair one.
+#
+# That is also why the yard is not a paid instant repair. Charging per use would
+# put a meter on the one work that has one, break §26 (works pay in time,
+# choice, access and information -- never credits), and land on a price
+# PACINGTEST is structurally blind to: the measured loop runs `invulnerable` and
+# never pays a repair, which is §123's own recorded reason for leaving
+# REPAIR_FULL_PRICE alone. The one-time price IS the cost, and what it buys is
+# the end of the wait at a place the pilot made.
+const YARD_AURA_MULT := 6.0
+# §128, THE LIGHT. Its own radius, and it is DERIVED from the one distance the
+# world already guarantees: SystemDB.MIN_HYPER_SEPARATION is how far apart any
+# two structures must stand, so half of it is the largest reach a light can have
+# and still never overlap another. NO TWO LIGHTS OVERLAP is the invariant, and
+# it is what stops a pilot blanketing a system by founding colonies in a huddle
+# -- each light is its own place, and coverage is bought one colony at a time.
+#
+# Deliberately far wider than DOCK_AURA_RANGE's thirty, because these two auras
+# answer different questions. The dock asks "are you parked at the yard"; the
+# light asks "did you die within this colony's reach", and a death happens where
+# the fight was. At 350u it is a reason to work the ground near your own colony,
+# which is the same thing the dock's aura buys and the whole of what a colony is
+# supposed to become.
+const LIGHT_AURA_RANGE := SystemDB.MIN_HYPER_SEPARATION * 0.5
+# §140, THE ROADS. Derived from the same one distance the world guarantees, and
+# THREE TIMES the light's, which is the opposite decision to the light's own and
+# taken for the light's own stated reason: these auras answer different
+# questions. The light asks "did you die inside this colony's reach", so it must
+# never overlap another -- a wreck has exactly one owner. The roads asks "is
+# this your water", and water is a REGION rather than a yard: a colony whose
+# roads reached 350u would chart six blocks, of which two carry a tide, and two
+# arrows is not a region.
+#
+# OVERLAP IS THEREFORE FINE HERE, and it is worth saying why rather than
+# letting a reader assume the light's invariant was forgotten. A tide drawn
+# twice is drawn once; nothing is owned, nothing is consumed, and two colonies
+# close enough to share water genuinely do share it.
+#
+# At 1,050u this covers about 53 blocks. For a colony sitting well inside the
+# tide bands that is roughly 18 carrying water; for one near the band-4 floor,
+# whose disc reaches inward past 1,100u into water that has none, nearer a
+# dozen. Either way it is a DISC OF ARROWS around your own colony, which is the
+# whole feature -- and the variation is itself a reason to care where you
+# founded.
+const ROADS_RANGE := SystemDB.MIN_HYPER_SEPARATION * 1.5
 
 const REQ_MAX_OPEN := 3
 # Five played minutes. Long enough that ordering is a decision made on the way
@@ -551,6 +752,58 @@ var deep_logs := {}
 # most PER_SYSTEM per system, so this is bounded at fifteen entries across the
 # whole game. Asserted against the generator rather than hoped.
 var marks_seen := {}
+# §132 (THE ARCHIVE). DEEP COUNTERS THIS PILOT HAS STOOD AT, keyed by the bay
+# key DeepSpace sets ("system:cx:cz") -> the cell's depth. structures_seen's
+# shape one shelf further out again, and for the reason its comment already
+# gives: "the search stays hard; the answer stops evaporating."
+#
+# IT IS THE ONE FOUND PLACE THE GAME DID NOT REMEMBER. A hyper-structure is in
+# structures_seen, a sounding mark in marks_seen, an unsounded fragment in
+# deep_logs -- but a pilot who found the Far Lantern at 6,200u, bought what they
+# could afford and flew home had no record of it at all, and the only counter
+# selling a Reactor Mk V went back to being a 13.5%-per-cell search.
+#
+# FILLED WHETHER OR NOT AN ARCHIVE STANDS, and that is the whole of "a record is
+# not a purchase": the finding is the pilot's, done before any work was raised.
+# What the work buys is ACCESS to the file (§26's currency), never the facts in
+# it -- so an archive raised late still reads everything its system already
+# knows, and nothing it does not.
+#
+# THE DEPTH IS STORED RATHER THAN DERIVED, which is §39's rule paying a small
+# price: this autoload references no world class, so it cannot ask DeepSpace
+# where a cell is. Main hands it the depth, exactly as it hands claim_colony an
+# x and a z.
+#
+# AND IT NEEDS A CAP, unlike every store above it. structures_seen, marks_seen
+# and deep_logs are all generator-bounded -- at most fifteen, fifteen and four
+# across the whole game. Deep counters are rolled PER CELL out of an expanse
+# with no edge, so this one is bounded by nothing at all and would grow for as
+# long as somebody kept flying.
+var stations_seen := {}
+# §137. SHEETS FILED, keyed "system:sx:sz" -> the reading count that completed
+# it. A sheet is a 4x4 block of cells (DeepSpace.SUPERCELL, 256u square) whose
+# every readable cell this pilot has read.
+#
+# ITS OWN STORE, AND IT HAS TO BE. Completion is derivable from coverage --
+# until it is not: `survey_coverage` is a 400-cell WINDOW that evicts, so a
+# sheet finished a thousand cells ago would silently un-finish itself and pay
+# its premium a second time. That is §11's printer with a geometry, and the
+# only defence is to record the sheet as a fact about the SHEET.
+#
+# The value is the reading count rather than `true`, §96's lesson paid forward:
+# a store that holds a literal is a store that costs a version bump the day it
+# needs to hold anything else.
+var sheets_filed := {}
+# §132's cap and §132's eviction, for §132's reason -- sheets are rolled out of
+# an expanse with no edge, so this is bounded by nothing. The DEEPEST are kept:
+# a pilot who fills the file has been working outward, and the shallow sheets
+# are the ones they finished first and care about least.
+const SHEET_CAP := 24
+# Per system, and the eviction is the feature rather than a compromise: when the
+# file is full the SHALLOWEST entry goes. An archive of the deep that forgets
+# the near stuff first is the record a pilot actually wants, and it means the
+# cap can never cost them the Lantern to keep a Relay.
+const ARCHIVE_CAP := 12
 # v26 (§106). THE NURSERY, HELD. Keyed by MARK key ("system:index") and kept in
 # its OWN store rather than in `colonies`, which the research pass found is not
 # a choice but a requirement:
@@ -665,7 +918,22 @@ var warehouse := {}
 # key: a cap that VARIES turns storage capacity into a thing you shop for and
 # compare across stations, which is a second budget with its own shopping trip —
 # and 9 rule 1 allows exactly one.
+#
+# [TASTE, §131] -- and §127 amended it, which is what a TASTE refusal is for.
+#
+# §127 AMENDS THAT, AND THE BOUNDARY THAT SURVIVES IS THE WHOLE OF IT. The
+# refusal above names its mechanism exactly: a cap authored PER STATION is a
+# thing you shop for. EXPANDED VAULTS is not authored and cannot be shopped for
+# — it is a work the pilot RAISED, at a colony the pilot FOUNDED, and every
+# charted and deep station in the game is still 60. "Identical at every station"
+# stays literally true; what varies is a place you made, which is what this
+# horizon is about.
+#
+# So the line that replaces the refusal is narrower than it and does the same
+# job: A CAP NEVER VARIES BY PORT DEF. `CAP` still sweeps every def and every
+# archetype for a `warehouse_space` key and reddens on the first one.
 const WAREHOUSE_SPACE := 60
+const WAREHOUSE_SPACE_VAULTED := 120
 var market_events: Array = []  # [{kind, port, good, mult, remaining}]
 
 # v5: front door and first run.
@@ -1234,7 +1502,14 @@ func shake_enabled() -> bool:
 # omission cannot survive a sweep either -- but the conflict loop is the reason
 # that assertion is worth having.
 const REBINDABLE := ["move_up", "move_down", "move_left", "move_right",
-	"ability", "cycle_target", "toggle_hold", "chart", "drop_beacon", "pause"]
+	"ability", "cycle_target", "toggle_hold", "chart", "drop_beacon", "pause",
+	# §142. THE VIEW KEY IS REBINDABLE LIKE EVERY OTHER, and it is listed in the
+	# same commit that added the action -- §96's rule, which this project has
+	# paid for twice: a verb wired into one list and not its sibling is a verb
+	# half the players cannot reach. Here the second list is the settings page,
+	# and the manual reads binding_name off the live InputMap either way, so all
+	# three agree by construction.
+	"level_view"]
 
 
 func _live_keys(action: String) -> Array:
@@ -1410,6 +1685,7 @@ func reset_to_starter() -> void:
 	apex_down = []
 	cargo = {}
 	played_seconds = 0.0
+	tide_seconds = 0.0
 	docked_at = ""
 	market_pressure = {}
 	market_stock = {}
@@ -1432,6 +1708,8 @@ func reset_to_starter() -> void:
 	structures_seen = {}
 	deep_logs = {}
 	marks_seen = {}
+	stations_seen = {}
+	sheets_filed = {}
 	nursery = {}
 	apex_intel = {}
 	beacons = {}
@@ -2885,10 +3163,22 @@ func _load_warehouse(saved: Dictionary) -> void:
 	# Over-capacity bays shed cheapest-first, so a reload is idempotent. Same
 	# posture as a fit over its power budget falling back to STARTER_FIT: 16
 	# refuses an invalid state rather than tolerating it.
+	# §127. AND IT READS THE KEYED CAP, WHICH MAKES THIS BLOCK LOAD-ORDER
+	# CRITICAL. `warehouse_space_of` asks `has_work`, so if `colony_works` were
+	# ever loaded AFTER this, a vaulted annex holding 120 space would be trimmed
+	# against 60 and SIXTY SPACE OF A PILOT'S GOODS WOULD BE DELETED on load --
+	# 16's "nothing may vanish", broken silently and permanently.
+	#
+	# It is safe today because load_game populates colony_works immediately
+	# before calling _load_warehouse, and that is luck until it is written down:
+	# the comment beside colony_works' own loader records this repo already
+	# shipping one load-order defect of exactly this shape. `THE VAULT SURVIVES
+	# ITS OWN LOADER` is the assertion, so a reorder reddens instead of eating
+	# cargo.
 	for key in warehouse.keys():
 		for g_v in _stashable_order():
 			var g := String(g_v)
-			while warehouse_used(String(key)) > WAREHOUSE_SPACE \
+			while warehouse_used(String(key)) > warehouse_space_of(String(key)) \
 					and warehouse_count(String(key), g) > 0:
 				var bay2: Dictionary = warehouse[key]
 				bay2[g] = int(bay2[g]) - 1
@@ -2909,6 +3199,23 @@ func _bay_key_is_real(key: String) -> bool:
 		var pdef := SystemDB.port_def_by_id(key)
 		return not pdef.is_empty() and port_has_bay(pdef)
 	var parts := key.split(":")
+	# §127. A COLONY KEY IS TWO PARTS, AND THIS FUNCTION HAS BEEN DELETING THEM
+	# SINCE §112. The BONDED ANNEX stores under `claim_key()` -- colony_key's
+	# "system:index", TWO segments -- and every branch below assumed a `:` meant
+	# a deep cell's "system:x:y". So `parts.size() != 3` returned false, the
+	# loader dropped the key, and everything a pilot ever stowed in an annex
+	# vanished on the next load. 16's "nothing may vanish", broken silently for
+	# two horizons, and found by §127 asking whether it was safe to DOUBLE that
+	# bay: doubling a bay whose contents evaporate would have sold nothing.
+	#
+	# THE COLONY EXISTING IS THE WHOLE TEST, deliberately weaker than "and it has
+	# an annex". A work cannot be un-built, so a bay without one is unreachable
+	# rather than illegal -- and a validity rule strict enough to be wrong is how
+	# this function got here. The place must exist; that is what the deep branch
+	# below asks too.
+	if parts.size() == 2:
+		return parts[1].lstrip("-").is_valid_int() \
+			and colonies.has(key)
 	if parts.size() != 3:
 		return false
 	if not SystemDB.exists(parts[0]):
@@ -2964,8 +3271,18 @@ func warehouse_used(key: String) -> int:
 	return used
 
 
+func warehouse_space_of(key: String) -> int:
+	# §127. THE ONE PLACE THE CAP IS DECIDED. A bay key is a port id, a deep
+	# cell, or a COLONY key -- and only the last can carry a work. Asked of
+	# has_work directly rather than of the key's shape, so a key format that
+	# changes cannot make this quietly answer 60 for a vault somebody paid for.
+	if has_work(key, "vaults"):
+		return WAREHOUSE_SPACE_VAULTED
+	return WAREHOUSE_SPACE
+
+
 func warehouse_free(key: String) -> int:
-	return maxi(0, WAREHOUSE_SPACE - warehouse_used(key))
+	return maxi(0, warehouse_space_of(key) - warehouse_used(key))
 
 
 func warehouse_count(key: String, good: String) -> int:
@@ -3749,6 +4066,202 @@ func has_work(key: String, work: String) -> bool:
 	return (colony_works.get(key, []) as Array).has(work)
 
 
+func work_scope(work: String) -> String:
+	# §126. "system" or "colony", authored on the work. Defaults to "colony" --
+	# the narrower reading -- so a work added without the key grants only where
+	# it stands rather than silently across a whole system.
+	return String((COLONY_WORKS.get(work, {}) as Dictionary).get("scope", "colony"))
+
+
+func work_stands_in_system(system_id: String, work: String) -> bool:
+	# §126. THE ANY-IN-SYSTEM QUESTION, asked in ONE place. The chart carried
+	# two hand-written copies of this loop (one for the relay, one for the
+	# repeater) and a third was going to arrive with every system-scoped work
+	# after them -- the shape §114's own comment calls out: a fact typed twice
+	# is a rename away from a lie.
+	#
+	# A colony-scoped work is never "in the system"; ask has_work about the
+	# colony it stands at. Answering true here for a dock would hand a whole
+	# system the aura of one yard.
+	if work_scope(work) != "system":
+		return false
+	for c_v in colonies_in(system_id):
+		if has_work(String((c_v as Dictionary)["key"]), work):
+			return true
+	return false
+
+
+func note_sheet_filed(sheet_key: String, readings: int, depth: float) -> bool:
+	# §137. True the FIRST time a sheet is completed, and the caller pays its
+	# premium on true and nothing on false -- `note_survey_filed`'s own contract,
+	# and the reason the premium cannot be farmed by re-reading a cell.
+	var parts := sheet_key.split(":")
+	if parts.size() != 3 or readings <= 0 or not is_finite(depth):
+		return false
+	if sheets_filed.has(sheet_key):
+		return false
+	sheets_filed[sheet_key] = readings
+	_evict_shallowest_sheet(String(parts[0]), depth)
+	note_log("SHEET FILED — %s" % sheet_key)
+	_queue_save()
+	return true
+
+
+func _evict_shallowest_sheet(system_id: String, _depth: float) -> void:
+	# §137. Bounded per SYSTEM, §132's shape. The keys carry supercell
+	# coordinates rather than a depth, so "shallowest" is derived from the key
+	# itself: a supercell's distance from the origin IS its depth, up to the
+	# system's bounds, which every sheet in one system shares.
+	while true:
+		var mine: Array = []
+		for k_v in sheets_filed:
+			if String(k_v).begins_with(system_id + ":"):
+				mine.append(String(k_v))
+		if mine.size() <= SHEET_CAP:
+			return
+		var nearest := String(mine[0])
+		for k2_v in mine:
+			if _sheet_radius(String(k2_v)) < _sheet_radius(nearest):
+				nearest = String(k2_v)
+		sheets_filed.erase(nearest)
+
+
+func _sheet_radius(sheet_key: String) -> float:
+	# Cells from the origin, squared-free and unit-free: only the ORDER matters,
+	# so this never needs to know DeepSpace.CELL and this autoload keeps §39's
+	# rule that it references no world class.
+	var parts := sheet_key.split(":")
+	if parts.size() != 3:
+		return 0.0
+	var sx := float(String(parts[1]).to_int())
+	var sz := float(String(parts[2]).to_int())
+	return sqrt(sx * sx + sz * sz)
+
+
+func sheets_filed_in(system_id: String) -> int:
+	var n := 0
+	for k_v in sheets_filed:
+		if String(k_v).begins_with(system_id + ":"):
+			n += 1
+	return n
+
+
+func _load_sheets_filed(saved: Dictionary) -> void:
+	# §137. Validated the way stations_seen is, and RIDES v28 WITH NO BUMP --
+	# defaults-not-branches: a file written before this existed has no key and
+	# loads as a pilot who has completed nothing, true of every pilot before it.
+	sheets_filed = {}
+	var systems: Dictionary = {}
+	for k_v in saved:
+		var k := String(k_v)
+		var parts := k.split(":")
+		if parts.size() != 3:
+			continue
+		if not SystemDB.exists(String(parts[0])):
+			continue
+		if not parts[1].lstrip("-").is_valid_int() \
+				or not parts[2].lstrip("-").is_valid_int():
+			continue
+		var n := int(saved[k_v])
+		if n <= 0:
+			continue
+		sheets_filed[k] = n
+		systems[String(parts[0])] = true
+	for sid_v in systems:
+		_evict_shallowest_sheet(String(sid_v), 0.0)
+
+
+func note_station_seen(bay_key: String, depth: float) -> bool:
+	# §132. True the first time a counter is filed. Bay keys are "system:cx:cz"
+	# -- three parts -- so a charted port id (no colon) and a colony key (two)
+	# are both refused here rather than quietly filed as deep counters.
+	var parts := bay_key.split(":")
+	if parts.size() != 3 or not is_finite(depth):
+		return false
+	if stations_seen.has(bay_key):
+		return false
+	stations_seen[bay_key] = maxf(depth, 0.0)
+	_evict_shallowest(String(parts[0]))
+	note_log("COUNTER FILED — %s" % bay_key)
+	_queue_save()
+	return true
+
+
+func _evict_shallowest(system_id: String) -> void:
+	# §132. The cap is per SYSTEM, so a pilot who works one Pyx hard cannot
+	# crowd out another's file. Walked rather than sorted: twelve entries make a
+	# sort a ceremony, and the loop below is the same shape _load_warehouse's
+	# over-capacity trimmer uses -- shed one, re-measure, shed again.
+	while true:
+		var mine: Array = []
+		for k_v in stations_seen:
+			if String(k_v).begins_with(system_id + ":"):
+				mine.append(String(k_v))
+		if mine.size() <= ARCHIVE_CAP:
+			return
+		var shallowest := String(mine[0])
+		for k2_v in mine:
+			if float(stations_seen[k2_v]) < float(stations_seen[shallowest]):
+				shallowest = String(k2_v)
+		stations_seen.erase(shallowest)
+
+
+func stations_filed_in(system_id: String) -> Array:
+	# §132. [{key, depth}] for one system, DEEPEST FIRST -- the order the file is
+	# for. Pure and exposed so the chart can draw it and a leg can ask without
+	# opening a panel, work_delivery_met's own split.
+	var out: Array = []
+	for k_v in stations_seen:
+		var k := String(k_v)
+		if k.begins_with(system_id + ":"):
+			out.append({"key": k, "depth": float(stations_seen[k])})
+	out.sort_custom(func(a, b): return float(a["depth"]) > float(b["depth"]))
+	return out
+
+
+func _load_stations_seen(saved: Dictionary) -> void:
+	# §132. Validated the way marks_seen is, and RIDES v28 WITH NO BUMP --
+	# defaults-not-branches: a file written before this existed has no key, gets
+	# {}, and loads as a pilot who has filed nothing. True of every pilot before
+	# the Archive.
+	stations_seen = {}
+	var systems: Dictionary = {}
+	for k_v in saved:
+		var k := String(k_v)
+		var parts := k.split(":")
+		if parts.size() != 3:
+			continue                       # 1. a deep bay key or nothing
+		if not SystemDB.exists(String(parts[0])):
+			continue                       # 2. naming a system this build has
+		if not parts[1].lstrip("-").is_valid_int() \
+				or not parts[2].lstrip("-").is_valid_int():
+			continue                       # 3. on real cell coordinates
+		var d := float(saved[k_v])
+		if not is_finite(d) or d < 0.0:
+			continue                       # 4. at a depth that is a number
+		stations_seen[k] = d
+		systems[String(parts[0])] = true
+	# 5. And the cap holds on the way IN as well as on the way out -- a
+	#    hand-edited save must not hand anybody a forty-entry file.
+	for sid_v in systems:
+		_evict_shallowest(String(sid_v))
+
+
+func work_prereq_missing(key: String, work: String) -> String:
+	# §126. The work this one requires and this colony does not have, or "".
+	# Pure and exposed for the same two reasons work_delivery_met is: the chart
+	# row has to state its own terms (§58), and a leg has to be able to ask the
+	# question without performing the purchase.
+	#
+	# ONE LEVEL, NOT A CHAIN. There is exactly one prereq in the ladder and the
+	# comment at `repeater` argues why there should not be more; a transitive
+	# walk here would be machinery for a shape this design refuses.
+	var need := String((COLONY_WORKS.get(work, {}) as Dictionary).get("requires", ""))
+	if need == "" or has_work(key, need):
+		return ""
+	return need
+
+
 func buy_colony_work(key: String, work: String) -> bool:
 	# PURE STORE RULES: a real colony, a known work, not already built, and the
 	# credits in hand. The one gate this cannot ask -- is the colony's ground
@@ -3758,6 +4271,12 @@ func buy_colony_work(key: String, work: String) -> bool:
 	if not colonies.has(key) or not COLONY_WORKS.has(work):
 		return false
 	if has_work(key, work):
+		return false
+	# §126. THE LADDER, and it belongs HERE rather than in Main's half: "does
+	# this colony already have the mast" is answerable from colony_works alone,
+	# and the split this function's own comment documents is that Main owns only
+	# the questions the store CANNOT ask.
+	if work_prereq_missing(key, work) != "":
 		return false
 	# v28. THE GOODS ARE CHECKED BEFORE ANYTHING IS SPENT, which is this
 	# function's existing posture (the refusal is free) and §110's rule for
@@ -3784,20 +4303,45 @@ func buy_colony_work(key: String, work: String) -> bool:
 	return true
 
 
+func light_aura_at(x: float, z: float) -> bool:
+	# §128. The radius is bound HERE, once. work_aura_at defaults to the dock's
+	# thirty, so a caller that passed the work and forgot the range would get a
+	# light with a twelfth of its reach and no error anywhere.
+	return work_aura_at(x, z, "light", LIGHT_AURA_RANGE)
+
+
+func work_aura_at(x: float, z: float, work: String, radius := DOCK_AURA_RANGE) -> bool:
+	# §127. dock_aura_at's walk, keyed by work, because the yard needs the same
+	# question asked about a different key and a second copy of this loop is the
+	# defect §126 removed from the chart.
+	for c_v in colonies_in(current_system):
+		var c: Dictionary = c_v
+		if not has_work(String(c["key"]), work):
+			continue
+		var dx := float(c["x"]) - x
+		var dz := float(c["z"]) - z
+		if sqrt(dx * dx + dz * dz) <= radius:
+			return true
+	return false
+
+
+func repair_aura_mult_at(x: float, z: float) -> float:
+	# §127. THE DEEPER YARD WINS, and it is asked first because a yard REQUIRES a
+	# dock: every yard colony also answers dock_aura_at true, so asking in the
+	# other order would cap every yard in the game at the dock's two.
+	if work_aura_at(x, z, "yard"):
+		return YARD_AURA_MULT
+	if work_aura_at(x, z, "dock"):
+		return DOCK_AURA_MULT
+	return 1.0
+
+
 func dock_aura_at(x: float, z: float) -> bool:
 	# §112, THE DRY DOCK. True within DOCK_AURA_RANGE of any owned colony that
 	# built one, in the current system. TIME, not power: out of combat the
 	# shield mends free anyway -- alongside your own yard it mends at twice the
 	# pace, and in combat this reads false by the caller's own calm-delay gate.
-	for c_v in colonies_in(current_system):
-		var c: Dictionary = c_v
-		if not has_work(String(c["key"]), "dock"):
-			continue
-		var dx := float(c["x"]) - x
-		var dz := float(c["z"]) - z
-		if sqrt(dx * dx + dz * dz) <= DOCK_AURA_RANGE:
-			return true
-	return false
+	return work_aura_at(x, z, "dock")
 
 
 func note_read(component: String) -> void:
@@ -4287,6 +4831,7 @@ func save_dict() -> Dictionary:
 		"run_seed": run_seed,
 		"cargo": cargo,
 		"played_seconds": played_seconds,
+		"tide_seconds": tide_seconds,
 		"docked_at": docked_at,
 		"market_pressure": market_pressure,
 		"market_stock": market_stock,
@@ -4321,6 +4866,8 @@ func save_dict() -> Dictionary:
 		"structures_seen": structures_seen,
 		"deep_logs": deep_logs,
 		"marks_seen": marks_seen,
+		"stations_seen": stations_seen,
+		"sheets_filed": sheets_filed,
 		"nursery": nursery,
 		"apex_intel": apex_intel,
 		"beacons": beacons,
@@ -4597,6 +5144,7 @@ func load_game() -> bool:
 		if CommodityDB.exists(id):
 			cargo[id] = int(data["cargo"][good])
 	played_seconds = float(data.get("played_seconds", 0.0))
+	tide_seconds = float(data.get("tide_seconds", 0.0))
 	docked_at = str(data.get("docked_at", ""))
 	market_pressure = {}
 	for k in data.get("market_pressure", {}):
@@ -4711,6 +5259,8 @@ func load_game() -> bool:
 	# 98. Rides v25 with no bump: a file from either earlier v25 commit has no
 	# key, gets {}, and loads as a pilot who has read no marks.
 	_load_marks_seen(data.get("marks_seen", {}))
+	_load_stations_seen(data.get("stations_seen", {}))
+	_load_sheets_filed(data.get("sheets_filed", {}))
 	# v26. Defaults-not-branches, the standing rule: a v25 file has no key, gets
 	# {}, and loads as a pilot who never took the ground -- true of every pilot
 	# before the nursery existed.

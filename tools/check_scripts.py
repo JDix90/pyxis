@@ -303,6 +303,167 @@ def check_container_infer(path: str, consts):
     return out
 
 
+# --------------------------------------------------- untyped local buckets ---
+
+# A local Array/Dictionary with no element type. Three shapes, all of them
+# common in the harness legs: an explicit `: Array =`, an inferred `:= []`, and
+# the same two for dictionaries.
+UNTYPED_LOCAL = re.compile(
+    r'^\t+var\s+([A-Za-z_]\w*)\s*(?::\s*(?:Array|Dictionary)\s*=|:=\s*[\[{])')
+# `Array[int]` and friends ARE typed and must not be collected.
+TYPED_LOCAL = re.compile(r'^\t+var\s+[A-Za-z_]\w*\s*:\s*(?:Array|Dictionary)\s*\[')
+
+LOCAL_READ = re.compile(
+    r'^\s*var\s+[A-Za-z_]\w*\s*:=\s*([A-Za-z_]\w*)\s*(\[|\.get\()')
+
+# Getters that return ONE node. Indexing the result is a parse error outright:
+# "Only String or StringName can be used as index for type Node".
+ONE_NODE = re.compile(
+    r'(?:get_first_node_in_group|get_node|get_node_or_null|get_parent|find_child)'
+    r'\s*\([^()]*\)\s*\[')
+
+
+def check_local_infer(path: str):
+    """Two more ways to write a parse error the first eight rules let through.
+
+    THE NINTH AND TENTH, and both were found the same way: by Godot, on a tree
+    `check_scripts.py` had just called clean. §146's capture pass would not
+    load, and the two errors were in legs written that same day.
+
+    1. `:=` OFF AN UNTYPED LOCAL. Rule 6 collects untyped CONSTS and is exact
+       about them -- but a harness leg's buckets are locals:
+
+           var rode_clock: Array = []
+           var ok := rode_clock[0] > 1.0 and rode_clock[1] < 0.05
+
+       `rode_clock[0]` is a Variant, so the comparison is a Variant, so `and`
+       of two Variants is a Variant, and `:=` has nothing to infer from.
+       `Array[float]` is typed and is never collected here.
+
+    2. INDEXING A SINGLE-NODE GETTER. `get_first_node_in_group` returns ONE
+       node, and `[0]` on it is "Only String or StringName can be used as
+       index for type Node". It is a one-character slip from
+       `get_nodes_in_group(...)[0]` and reads as completely ordinary code --
+       which is the entire reason it is worth a rule rather than more care.
+
+    Scoped to the function, `check_shadow`'s discipline and the lesson rule 7
+    had to be taught in §142.
+    """
+    out = []
+    buckets = set()
+    for lineno, line in enumerate(open(path, encoding="utf-8"), 1):
+        if FUNC.match(line):
+            buckets = set()
+        code = line.split("#", 1)[0]
+        if ONE_NODE.search(code):
+            out.append((lineno, "indexing a getter that returns ONE Node -- "
+                        "did you mean get_nodes_in_group(...)?", line.rstrip()))
+        m = UNTYPED_LOCAL.match(code)
+        if m and not TYPED_LOCAL.match(code):
+            buckets.add(m.group(1))
+        d = LOCAL_READ.match(code)
+        if d and d.group(1) in buckets:
+            out.append((lineno, "`:=` cannot infer from `%s`, an untyped local "
+                        "%s -- wrap it (float(...), String(...)) or declare "
+                        "the local's type"
+                        % (d.group(1), "dictionary" if d.group(2) != "[" else
+                           "array"), line.rstrip()))
+    return out
+
+
+# ----------------------------------------------------------- node handles ---
+
+# A local that holds a bare, uncast Node. Every one of these lookups returns
+# `Node` -- not the concrete class -- so the parser knows only what Node
+# declares, and any member this project added is a Variant through it.
+NODE_HANDLE = re.compile(
+    r'^\t*var\s+([A-Za-z_]\w*)\s*(?::=\s*(?:get_tree\(\)\.)?'
+    r'(?:get_first_node_in_group|get_node|get_node_or_null|find_child'
+    r'|get_parent)\s*\('
+    r'|:\s*Node\s*=)')
+
+# Members Node itself declares, so a `:=` off them infers a real type. Conceded
+# on TYPE grounds rather than call-site grounds -- unlike ENGINE_STATICS below,
+# this project currently has no line that needs any of them, and the list is
+# here so the first legitimate one costs a word instead of a rule. Everything
+# not named here is reported, which is the right way round: the false positive
+# costs an annotation, the false negative costs a sweep.
+NODE_MEMBERS = {
+    "name", "owner", "visible", "position", "global_position", "get_parent",
+    "get_child", "get_child_count", "get_index", "get_path", "has_method",
+    "has_node", "is_inside_tree", "is_in_group", "get_class",
+}
+
+HANDLE_READ = re.compile(
+    r'^\s*var\s+[A-Za-z_]\w*\s*:=\s*([A-Za-z_]\w*)\.([A-Za-z_]\w*)')
+
+
+def check_handle_infer(path: str):
+    """`var x := <node handle>.<project member>` -- the same parse error again.
+
+    THE SEVENTH RULE, and the FOURTH form of one defect, which is the number
+    worth pausing on. Rules five and six catch inference off an untyped global
+    and off an untyped const. This catches inference off an untyped NODE, and
+    it reads more innocently than either:
+
+        var main := get_tree().get_first_node_in_group("main")
+        var want := main.deep_space.sheet_readings(sc.x, sc.y)
+
+    `sheet_readings()` is declared `-> int`. The call site looks typed. But
+    `get_first_node_in_group` returns Node, Node has no `deep_space`, so
+    `main.deep_space` is a Variant and a call through a Variant has no return
+    type at all -- "Cannot infer the type of \"want\"". The identical line in
+    main.gd compiles, because there `deep_space` is a typed member of the
+    class rather than a property fished off a handle.
+
+    It cost a sweep. survey_mast.gd is a leaf, so §137 passed this checker at
+    71/0, passed the main.gd pre-flight, and then failed at load with the
+    harness printing three cheerful PASS lines before the cascade -- the exact
+    failure shape rule six was written for, one substitution along.
+
+    A cast is the other fix and is not flagged: `get_first_node_in_group(...)
+    as CameraRig` supplies the type, so members resolve normally and
+    `var tapped := rig._select(px)` is legal. That guard is load-bearing --
+    without it this rule reported two lines in main.gd that compile fine, and
+    a checker that cries wolf is a checker nobody runs.
+    """
+    out = []
+    handles = set()
+    for lineno, line in enumerate(open(path, encoding="utf-8"), 1):
+        code = line.split("#", 1)[0]
+        # SCOPED TO THE FUNCTION, which check_shadow's `live` has done since it
+        # was written and this rule did not -- so a name used as an untyped
+        # handle anywhere in a file poisoned every later function that reused
+        # it, however that one had declared it.
+        #
+        # IT LAY DORMANT AND THEN CRIED WOLF ON LEGITIMATE CODE. main.gd
+        # declares `var rig := get_tree().get_first_node_in_group(...)` in five
+        # functions and `var rig: CameraRig = ...` in FEELTEST; the rule
+        # reported 0 problems for three commits and then flagged six correct
+        # lines the moment FEELTEST grew a `:=` off its properly typed local.
+        # §77's lesson, collected by the rule written to honour it: a checker
+        # that cries wolf is a checker nobody runs.
+        if FUNC.match(line):
+            handles = set()
+            continue
+        m = NODE_HANDLE.match(code)
+        # `as SomeClass` is the cast that supplies the type -- the same
+        # concession `int(ceil(...))` gets from rule five.
+        if m and " as " not in code:
+            handles.add(m.group(1))
+        if not handles:
+            continue
+        d = HANDLE_READ.match(code)
+        if not d or d.group(1) not in handles or d.group(2) in NODE_MEMBERS:
+            continue
+        out.append((lineno, "`:=` cannot infer through `%s`, which holds a "
+                    "bare Node -- `.%s` is a Variant. Declare the local's "
+                    "type (`var x: int = ...`) or cast the handle "
+                    "(`... as SomeClass`)" % (d.group(1), d.group(2)),
+                    line.rstrip()))
+    return out
+
+
 def check_shadow(path: str):
     """A `for` variable OR a `var` colliding with a local that is still in scope.
 
@@ -356,6 +517,70 @@ def check_shadow(path: str):
                             % (name, hit[-1][2]), line.strip()))
             live.append((depth, name, n))
     return bad
+
+
+# ------------------------------------------------------------- particles ---
+
+PARTICLES_NEW = re.compile(
+    r'^\s*(?:var\s+)?([A-Za-z_]\w*)\s*:?=\s*CPUParticles3D\.new\s*\(')
+
+
+def check_particles(path: str):
+    """A CPUParticles3D that is never given a mesh -- it draws NOTHING.
+
+    THE EIGHTH RULE, and the first that is not a parse error. Everything above
+    stops the tree from compiling; this stops a feature from being visible,
+    which is worse in one specific way: the harness goes green.
+
+    CPUParticles3D.mesh defaults to null and a null mesh renders nothing.
+    `color` only tints a material, so setting it on a meshless system does
+    nothing either -- and the code reads perfectly: amount, lifetime, emission
+    shape, velocities, colour, add_child, emitting. Every property a particle
+    system has, and no particles.
+
+    It shipped TWICE. storm.gd built the eye's motes this way in v20 and got
+    away with it for four horizons because a storm also has an eye, arms, a
+    ring and a shockwave to be seen by. §139's tide had ONLY the motes, so when
+    a playtester reported "no visual feedback related to the tide that I could
+    identify", there was none to identify: TIDETEST was 10 for 10 against a
+    feature that could not draw a pixel.
+
+    NOTHING IN THIS REPO CAN SEE A RENDERER, which is why this is static and
+    why it is worth the file it costs. FX.burst and FX.vortex both build a
+    BoxMesh carrying Palette.emissive and assign it; this asks every other
+    construction site to do the same.
+
+    Scoped to the function, `check_shadow`'s discipline and the one rule 7 had
+    to be taught. A system built in one function and meshed in another would be
+    reported, and the answer to that is to mesh it where it is built -- every
+    site in this project does.
+    """
+    out = []
+    pending = {}          # name -> lineno of the .new()
+    lines = open(path, encoding="utf-8").readlines()
+
+    def flush():
+        for name, lineno in pending.items():
+            out.append((lineno, "CPUParticles3D `%s` is never given a .mesh "
+                        "-- a null mesh draws NOTHING, however many other "
+                        "properties are set (see FX.burst)" % name, ""))
+        pending.clear()
+
+    for lineno, line in enumerate(lines, 1):
+        if FUNC.match(line):
+            flush()
+        code = line.split("#", 1)[0]
+        m = PARTICLES_NEW.match(code)
+        if m:
+            pending[m.group(1)] = lineno
+            continue
+        for name in list(pending):
+            if re.search(r'\b' + re.escape(name) + r'\.mesh\s*=', code):
+                del pending[name]
+    flush()
+    for i, (lineno, why, _t) in enumerate(out):
+        out[i] = (lineno, why, lines[lineno - 1].rstrip())
+    return out
 
 
 # -------------------------------------------------------------- reference ---
@@ -473,6 +698,8 @@ def main(argv):
         for lineno, why, text in check_indent(path) + check_duplicates(path) + \
                 check_shadow(path) + check_infer(path) + \
                 check_container_infer(path, consts) + \
+                check_handle_infer(path) + check_particles(path) + \
+                check_local_infer(path) + \
                 check_refs(path, members, parent, home):
             rel = os.path.relpath(path, root)
             print("%s:%d: %s\n    %s" % (rel, lineno, why, text[:88]))
@@ -480,9 +707,16 @@ def main(argv):
 
     print("--- %d file(s) checked, %d problem(s)" % (len(targets), found))
     if found:
-        print("Each of these is a parse error. Godot reports them as "
+        # §143 MADE THIS LINE A LIE AND THEN FIXED IT. Rules 1-7 are all parse
+        # errors; rule 8 is a RENDER failure -- the tree compiles perfectly and
+        # a feature is simply invisible. A footer that called it a parse error
+        # would send the next reader looking for a syntax mistake that is not
+        # there, which is DEFECTS class 7 committed by the tool that exists to
+        # catch things like it.
+        print("Most of these are parse errors: Godot reports them as "
               "'Could not parse global class' plus a few hundred lines of "
-              "cascade, so fix them here.")
+              "cascade, so fix them here. A `.mesh` report is not -- that one "
+              "compiles fine and draws nothing.")
     return 1 if found else 0
 
 

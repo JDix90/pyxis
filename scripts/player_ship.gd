@@ -1181,13 +1181,14 @@ func _tick_shield(delta: float) -> void:
 	_time_since_hit += delta
 	_since_threat += delta
 	if _time_since_hit > SHIELD_CALM_DELAY and shield < shield_max and not _warping:
-		# §112, THE DRY DOCK. Twice the pace alongside your own colony's yard.
-		# Behind the calm delay above BY POSITION, so in a fight it is nothing
-		# -- what the work sells is the wait, which is what every repair bay in
-		# the game sells, and the aura can never undercut one because it still
-		# costs the flying there.
-		var dock_mult := GameState.DOCK_AURA_MULT \
-			if GameState.dock_aura_at(global_position.x, global_position.z) else 1.0
+		# §112, THE DRY DOCK. Twice the pace alongside your own colony's yard --
+		# and §127's THE YARD, six times, at the same aura. Behind the calm
+		# delay above BY POSITION, so in a fight both are nothing: what the work
+		# sells is the wait, which is what every repair bay in the game sells,
+		# and the aura can never undercut one because it still costs the flying
+		# there.
+		var dock_mult := GameState.repair_aura_mult_at(
+			global_position.x, global_position.z)
 		shield = minf(shield + float(_stats.get("shield_regen", 6.0)) * dock_mult * delta,
 			shield_max)
 

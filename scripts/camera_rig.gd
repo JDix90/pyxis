@@ -1,12 +1,51 @@
 class_name CameraRig
 extends Node3D
-# Tilted top-down rig: drag to pan (with inertia), pinch/wheel to zoom, tap to
-# command, hold to crack. Softly follows the ship, and yields to the player for
-# a few seconds after any manual pan. Owns screen shake and zoom punch.
+# Tilted rig: drag to TURN the view, pinch/wheel to zoom, two fingers or the
+# middle button to pan (with inertia), tap to command, hold to crack. Softly
+# follows the ship, and yields to the player for a few seconds after any manual
+# pan. Owns screen shake and zoom punch.
+#
+# §142. IT USED TO BE ONE VIEW. Pitch was a constant, yaw did not exist, and the
+# zoom range was 9 to 34 -- so every object in the game was seen from the same
+# angle at roughly the same size, forever. A playtester's words: "the player is
+# forced to look at things from a single view and perspective."
+#
+# THE SHIP STAYS AT THE CENTRE OF THE ORBIT, which is why the turn needs none of
+# the machinery the pan needs. Panning can strand the ship off screen, so it has
+# inertia to bleed, a leash to catch it and a follow-lockout to yield to it;
+# turning cannot lose anything, so it has none of those and is a plain
+# assignment. Pan is untouched and keeps all three -- it simply moved to the
+# gesture each device family has spare.
 
+# The rig's own Y is the YAW and _pitch_node's X is the PITCH, which is the
+# ordinary orbit split. It matters here for one reason beyond convention: `_pan`
+# maps screen motion to world motion, so it has to be rotated by the yaw or a
+# horizontal drag walks the camera sideways in the WORLD while the player is
+# watching it go diagonally across the SCREEN.
 const PITCH_DEG := -55.0
-const ZOOM_MIN := 9.0
-const ZOOM_MAX := 34.0
+# How far the view may be tilted. Not taste: past about -25 the camera looks
+# along the plane this whole game is drawn on, the starfield stops sitting
+# behind anything, and the flat XZ world reads as a sheet of paper seen edge-on.
+# The top end stops just short of straight down, where yaw becomes unreadable
+# because nothing on screen has a side.
+const PITCH_MIN := -82.0
+const PITCH_MAX := -28.0
+const ORBIT_YAW_PER_PX := 0.34
+const ORBIT_PITCH_PER_PX := 0.22
+# How fast `level_view` unwinds. Slow enough to be a movement rather than a cut,
+# so a player who presses it can see which way the view was turned.
+const LEVEL_SPEED := 5.0
+
+# §142. 6 to 80, from 9 to 34 -- a thirteenfold range against the old under-four.
+#
+# THE CEILING IS LEGIBILITY, NOT CONTENT. At zoom 80 the lens sees about 83
+# units of world down the tall axis, and the live cell window is 5x5 of 64 =
+# 320 units across, so the world does not run out until roughly four times
+# further back than this allows. The limit is that the ship becomes a speck and
+# the game stops reading, which is a judgement -- said out loud here, because a
+# constant with no derivation behind it is one somebody will "fix" later.
+const ZOOM_MIN := 6.0
+const ZOOM_MAX := 80.0
 const ZOOM_LERP := 9.0
 const ZOOM_PUNCH_DECAY := 7.0
 const PAN_INERTIA_DECAY := 26.0
@@ -66,6 +105,23 @@ var _shake_amp := 0.0
 var _shake_t := 0.0
 var _mouse_down := false
 var _mouse_dragged := false
+# §142. The view's own two angles, and a flag for the unwind. Kept as floats
+# here rather than read back off the nodes so the clamp and the wrap have one
+# owner -- rotation_degrees is a projection of these, never the other way round.
+var _yaw := 0.0
+var _pitch := PITCH_DEG
+var _levelling := false
+# The middle button pans on desktop. Tracked separately from the left button
+# because the two gestures now MEAN different things and a shared flag would
+# make a left-drag that started while the wheel was down pan instead of turn.
+var _mid_down := false
+var _mid_dragged := false
+# §142. Two-finger tap levels the view -- the touch half of the `level_view`
+# key, and the gesture is free because a pinch that never moved is currently
+# nothing at all. Both are measured rather than assumed: a pinch is a tap only
+# if it was brief AND the fingers never travelled.
+var _pinch_start := 0.0
+var _pinch_travel := 0.0
 
 var _hold_target: Node3D = null
 
@@ -74,7 +130,7 @@ func _ready() -> void:
 	add_to_group("camera_rig")
 	_pitch_node = Node3D.new()
 	add_child(_pitch_node)
-	_pitch_node.rotation_degrees.x = PITCH_DEG
+	_pitch_node.rotation_degrees.x = _pitch
 	_camera = Camera3D.new()
 	_pitch_node.add_child(_camera)
 	_camera.position.z = zoom
@@ -91,6 +147,28 @@ func _process(delta: float) -> void:
 	zoom = Smoothing.toward(zoom, _target_zoom, ZOOM_LERP, delta)
 	_camera.position.z = zoom + _zoom_punch
 
+	# §142. The unwind, on the same exponential every other easing in this file
+	# uses, so it behaves identically at 30Hz and at 120. Yaw goes the SHORT way
+	# round: unwinding 350 degrees the long way is a full spin the player did not
+	# ask for and cannot stop.
+	if _levelling:
+		var short := wrapf(-_yaw, -180.0, 180.0)
+		_yaw = fposmod(_yaw + short * (1.0 - Smoothing.factor(LEVEL_SPEED, delta)),
+			360.0)
+		_pitch = Smoothing.toward(_pitch, PITCH_DEG, LEVEL_SPEED, delta)
+		_apply_orbit()
+		# HALF A DEGREE, and the snap is what makes the end exact. An
+		# exponential never arrives, so without a threshold `_levelling` would
+		# never clear and the rig would keep doing arithmetic forever; and a
+		# threshold tight enough to look rigorous (0.05) takes half again as
+		# long to reach from a big turn as one nobody can see the difference of.
+		if absf(wrapf(_yaw, -180.0, 180.0)) < 0.5 \
+				and absf(_pitch - PITCH_DEG) < 0.25:
+			_yaw = 0.0
+			_pitch = PITCH_DEG
+			_apply_orbit()
+			_levelling = false
+
 	if is_instance_valid(_hold_target) and _hold_target.has_method("hold_tick"):
 		_hold_target.hold_tick(delta)
 
@@ -100,7 +178,10 @@ func _process(delta: float) -> void:
 	var player_node: Node3D = get_tree().get_first_node_in_group("player")
 	if player_node and player_node.get("driving"):
 		_follow_timer = 0.0
-	if _touches.is_empty() and not _mouse_dragged:
+	# §142. `_mid_dragged` joins the guard: the middle button is now a live pan
+	# source, and inertia integrating underneath a drag that is still happening
+	# is the same double-write the left button was already excluded for.
+	if _touches.is_empty() and not _mouse_dragged and not _mid_dragged:
 		global_position += _pan_vel * delta
 		_pan_vel = _pan_vel.move_toward(Vector3.ZERO, PAN_INERTIA_DECAY * delta)
 		if _follow_timer <= 0.0 and _pan_vel.length() < 0.5:
@@ -207,14 +288,28 @@ func _unhandled_input(event: InputEvent) -> void:
 				_try_begin_hold(event.position)
 			elif _touches.size() == 2:
 				_pinch_last = _pinch_dist()
+				_pinch_start = Time.get_ticks_msec() / 1000.0
+				_pinch_travel = 0.0
 				_release_hold()
 		else:
 			var was_single := _touches.size() == 1
+			var was_pinch := _touches.size() == 2
 			_touches.erase(event.index)
 			var held := Time.get_ticks_msec() / 1000.0 - _press_time
 			_release_hold()
 			if was_single and not _dragged and held <= TAP_MAX_TIME:
 				_tap(event.position)
+			# §142. A TWO-FINGER TAP LEVELS THE VIEW -- the touch half of the
+			# `level_view` key, on a gesture that was previously nothing at all.
+			# Both halves of "tap" are measured: brief AND still. A pinch that
+			# zoomed and happened to end quickly is not a tap, and travel is
+			# accumulated over the whole gesture rather than sampled at release,
+			# because a pinch that went out and came back has still moved.
+			elif was_pinch \
+					and Time.get_ticks_msec() / 1000.0 - _pinch_start <= TAP_MAX_TIME \
+					and _pinch_travel <= TAP_MAX_PX:
+				level_view()
+				Sfx.play("tap", -10.0, 1.3)
 	elif event is InputEventScreenDrag:
 		_touches[event.index] = event.position
 		if _touches.size() == 1:
@@ -223,21 +318,47 @@ func _unhandled_input(event: InputEvent) -> void:
 					_release_hold()
 				_dragged = true
 			if _dragged:
-				_pan(event.relative)
+				# §142. ONE FINGER TURNS. This was the pan, and the pan moved to
+				# two fingers rather than being taken away -- the gesture a
+				# player tries first should do the thing they asked for, and
+				# nothing that worked yesterday should stop working.
+				_orbit(event.relative)
 		elif _touches.size() == 2:
+			_pinch_travel += event.relative.length()
 			var d := _pinch_dist()
 			if _pinch_last > 0.0 and d > 0.0:
 				_target_zoom = clampf(_target_zoom * (_pinch_last / d), ZOOM_MIN, ZOOM_MAX)
 			_pinch_last = d
+			# AND TWO FINGERS ALSO PAN, off the centroid. Halved because both
+			# fingers report their own drag event: without it a two-finger pan
+			# travels twice as far as the hands did, which reads as the camera
+			# running away from the gesture.
+			_pan(event.relative * 0.5)
 	elif event is InputEventMouseButton:
 		_mouse_button(event)
+	elif event is InputEventMouseMotion and _mid_down:
+		# §142. Checked BEFORE the left button, because a middle-drag with the
+		# left button also held is a pan, not a turn -- the more specific
+		# gesture wins, which is the pick ladder's own rule one input layer up.
+		if event.position.distance_to(_press_pos) > TAP_MAX_PX:
+			_mid_dragged = true
+		if _mid_dragged:
+			_pan(event.relative)
 	elif event is InputEventMouseMotion and _mouse_down:
 		if event.position.distance_to(_press_pos) > TAP_MAX_PX:
 			if not _mouse_dragged:
 				_release_hold()
 			_mouse_dragged = true
 		if _mouse_dragged:
-			_pan(event.relative)
+			_orbit(event.relative)
+	elif event.is_action_pressed("level_view"):
+		# §142. The desktop door onto the unwind. A plain action rather than a
+		# rung on `cancel`'s ladder: that ladder backs out one piece of MODAL
+		# state at a time -- a menu, a console, a target, a course -- and a
+		# turned camera is not modal state. Putting it there would mean Escape
+		# sometimes levelled the view instead of dropping a target, which is the
+		# one thing that ladder's comment promises never happens.
+		level_view()
 	elif event.is_action_pressed("cycle_target"):
 		_cycle_target()
 	elif event.is_action_pressed("cancel"):
@@ -319,6 +440,21 @@ func _mouse_button(event: InputEventMouseButton) -> void:
 	if event.button_index == MOUSE_BUTTON_RIGHT:
 		if event.pressed:
 			_context_menu(event.position)
+		return
+	# §142. THE MIDDLE BUTTON PANS, which is where the pan went when the left
+	# button started turning. It takes no tap meaning at all -- a middle CLICK
+	# does nothing, deliberately: browsers bind it to autoscroll and paste on
+	# different platforms, so a verb hung on it would be a verb some players
+	# never get. The pan is a drag, and a drag is never swallowed by either.
+	if event.button_index == MOUSE_BUTTON_MIDDLE:
+		if event.pressed:
+			_mid_down = true
+			_mid_dragged = false
+			_press_pos = event.position
+			_pan_vel = Vector3.ZERO
+		else:
+			_mid_down = false
+			_mid_dragged = false
 		return
 	if event.button_index != MOUSE_BUTTON_LEFT:
 		return
@@ -444,15 +580,94 @@ func _pinch_dist() -> float:
 
 func _pan(relative: Vector2) -> void:
 	var k := zoom * 0.0016
-	var motion := Vector3(-relative.x * k, 0, -relative.y * k)
+	# §142. ROTATED INTO THE VIEW'S FRAME. This used to be world-space, which was
+	# indistinguishable from view-space while the yaw was nailed to zero. With a
+	# turnable view an unrotated pan walks the camera sideways in the WORLD while
+	# the player watches it go diagonally across the SCREEN -- the drag stops
+	# meaning "move what I am looking at" and starts meaning nothing.
+	var motion := Vector3(-relative.x * k, 0, -relative.y * k) \
+		.rotated(Vector3.UP, deg_to_rad(_yaw))
 	global_position += motion
 	_pan_vel = motion * 18.0
 	_follow_timer = FOLLOW_RESUME_DELAY
 
 
+func _orbit(relative: Vector2) -> void:
+	# §142. THE TURN, and it is three lines because the ship is the centre of it.
+	# No inertia to bleed, no leash to catch it, no follow to yield to: an orbit
+	# cannot put the ship anywhere except where it already is.
+	#
+	# Drag RIGHT swings the world right, which is the direction the fingers are
+	# pushing it -- so the yaw goes the other way. Drag DOWN walks the camera
+	# down toward the plane, which is the reading that matches "pull the view
+	# down".
+	_yaw = fposmod(_yaw - relative.x * ORBIT_YAW_PER_PX, 360.0)
+	_pitch = clampf(_pitch + relative.y * ORBIT_PITCH_PER_PX, PITCH_MIN, PITCH_MAX)
+	# Any manual turn cancels an unwind in flight. A camera that kept levelling
+	# under the player's own finger is the two-writers defect (DEFECTS 2b) with
+	# a gesture on one side of it.
+	_levelling = false
+	_apply_orbit()
+
+
+func _apply_orbit() -> void:
+	rotation_degrees.y = _yaw
+	_pitch_node.rotation_degrees.x = _pitch
+
+
+func level_view() -> void:
+	# The way back. Both doors onto it -- the `level_view` key and a two-finger
+	# tap -- call this rather than assigning the angles, so there is one unwind
+	# and it looks the same however it was asked for.
+	_levelling = true
+
+
+func view_yaw() -> float:
+	return _yaw
+
+
+func view_pitch() -> float:
+	return _pitch
+
+
+func is_levelling() -> bool:
+	return _levelling
+
+
 func _pick(screen_pos: Vector2, group: String) -> Node3D:
+	# §141. A TAP LANDS ON WHAT THE PLAYER CAN SEE, WHICH USED TO MEAN A POINT.
+	#
+	# This test was PICK_PX around ONE anchor for everything in the game, which
+	# is right for a hulk, a seam, a beacon or a mark -- they are all a few
+	# units across, so a sixty-pixel circle at their centre IS the object. It is
+	# exactly wrong for the biggest object in the game. A hyper-structure spans
+	# 140u; at claim range it fills the view, and its centre is usually off
+	# frame. §88 fixed this object's LADDER after a playtest reported "no way to
+	# interact", and the tap still could not land, because the ladder was never
+	# the thing refusing it.
+	#
+	# So a node may declare a WORLD radius instead of accepting a pixel one, and
+	# the pixels are measured rather than typed: project the anchor, project a
+	# point one radius to the camera's right, and the distance between them is
+	# what that object covers on THIS screen at THIS zoom. Self-correcting, no
+	# magic number, and it means "tap anywhere on the thing" literally.
+	#
+	# FLOORED AT PICK_PX, never below: a structure seen from four thousand units
+	# projects to a couple of pixels, and a big object must not become HARDER to
+	# hit than a small one just because it is far away.
+	#
+	# IT CANNOT STEAL A TAP, and the reason is the ladder rather than care. Both
+	# ladders ask each group in turn and take the first answer, with `hyper`
+	# second-to-last in one and last-but-three in the other -- the ordering
+	# comments there already argue that a contested tap near an instrument
+	# should resolve to the smaller, more specific thing. That ordering is what
+	# makes a wide radius safe here, and it was written two horizons before
+	# anything needed it to be.
 	var best: Node3D = null
-	var best_px := PICK_PX
+	# Starts at infinity rather than at PICK_PX: the limit is now per node, so a
+	# running best that doubled as the threshold would refuse every node whose
+	# own radius is wider than the default before it was ever compared.
+	var best_px := INF
 	for node in get_tree().get_nodes_in_group(group):
 		var n := node as Node3D
 		if not is_instance_valid(n):
@@ -460,8 +675,22 @@ func _pick(screen_pos: Vector2, group: String) -> Node3D:
 		var anchor: Vector3 = n.global_position
 		if n.has_method("pick_anchor"):
 			anchor = n.pick_anchor()
+		# BEHIND THE LENS IS NOT ON THE SCREEN. unproject_position happily
+		# projects a point behind the camera and returns a mirrored one, which
+		# with a radius this wide would answer taps aimed at empty sky on the
+		# opposite side -- a false hit that only appears once the radius is
+		# large enough to reach, i.e. only on the object this commit is for.
+		if _camera.is_position_behind(anchor):
+			continue
+		var lim := PICK_PX
+		if n.has_method("pick_radius"):
+			var edge := anchor + _camera.global_transform.basis.x \
+				* float(n.pick_radius())
+			if not _camera.is_position_behind(edge):
+				lim = maxf(PICK_PX, _camera.unproject_position(anchor)
+					.distance_to(_camera.unproject_position(edge)))
 		var px := _camera.unproject_position(anchor).distance_to(screen_pos)
-		if px < best_px:
+		if px < lim and px < best_px:
 			best_px = px
 			best = n
 	return best

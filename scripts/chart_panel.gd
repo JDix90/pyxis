@@ -590,9 +590,22 @@ func _refresh_plot() -> void:
 
 
 func _draw_plot() -> void:
-	# A TOP-DOWN PICTURE OF ONE SYSTEM'S DEEP, drawn in the same orientation the
-	# radar and the world use (world +x right, world +z down), so a cone that
-	# points down-left here points down-left when you fly it.
+	# A TOP-DOWN PICTURE OF ONE SYSTEM'S DEEP, drawn in WORLD orientation (world
+	# +x right, world +z down) and pinned there.
+	#
+	# §142 MADE THAT A CHOICE RATHER THAN A COINCIDENCE, and the sentence this
+	# comment used to end on is retired with the reason. It said a cone pointing
+	# down-left here points down-left when you fly it -- true only while the
+	# camera could not turn. It can now, so screen-down and world-down are two
+	# different directions, and this plot has to pick one.
+	#
+	# It picks the WORLD, because a map that rotated under the reader would be a
+	# map you cannot remember: the whole value of a chart is that the same
+	# region looks the same every time it is opened. What makes a bearing read
+	# off it flyable is not the screen agreeing -- it is the HDG readout and
+	# this plot's own compass letters (layer 1b), which are the same figures.
+	# The instrument that DOES follow the camera is the radar, and it does so
+	# for free: every marker is unprojected through the live lens.
 	if not _plot_is_useful(_selected):
 		return
 	var s := SystemDB.get_system(_selected)
@@ -708,6 +721,83 @@ func _draw_plot() -> void:
 		elif GameState.is_survey_held(cov):
 			_plot.draw_arc(centre, HELD_RING_PX, 0.0, TAU, 14,
 				Color(cc.r, cc.g, cc.b, 0.85), 1.0, true)
+
+	# 0c. WHERE THE WATER RUNS (§139). One arrow per FILED SHEET, and the filing
+	#     is the whole gate: the tide moves whether or not you have worked the
+	#     block -- the motes show it and the cockpit tag names it -- but it is
+	#     only DRAWN on a block whose sheet is in. A tide you have not worked
+	#     for is a thing you can find; one you have is a thing you can plan
+	#     with, and that difference is what makes §137's sheet pay twice.
+	#
+	#     Iterated over sheets_filed rather than over supercells, which is both
+	#     cheap (§137 caps the store at 24 per system) and exactly the right
+	#     loop: the knowledge IS the store, so a block that is not in it cannot
+	#     be drawn by accident.
+	#
+	#     World-sized like the coverage squares under it, and drawn in the band
+	#     colour so it reads as a property OF the water rather than a thing
+	#     standing in it -- §30's rule, with the SHAPE (an arrow, the only
+	#     directional mark on this plot) carrying the distinction.
+	#     §140 gave the layer a SECOND source. A block is drawn if its sheet is
+	#     filed OR it lies inside a colony's ROADS reach -- collected into one
+	#     set first rather than drawn from two loops, so a block that is both
+	#     (the ordinary case near a developed colony) is drawn once and the two
+	#     sources cannot double-ink each other.
+	var sheet_prefix := _selected + ":"
+	var sc_span := float(DeepSpace.SUPERCELL) * DeepSpace.CELL
+	var sc_px := sc_span * scale
+	var known := {}
+	for sh_v in GameState.sheets_filed:
+		var sh := String(sh_v)
+		if not sh.begins_with(sheet_prefix):
+			continue
+		var sbits := sh.split(":")
+		if sbits.size() != 3:
+			continue
+		known[Vector2i(int(sbits[1]), int(sbits[2]))] = true
+	for rc_v in GameState.colonies_in(_selected):
+		var rc: Dictionary = rc_v
+		if not GameState.has_work(String(rc["key"]), "roads"):
+			continue
+		for rb_v in DeepSpace.supercells_within(float(rc["x"]), float(rc["z"]),
+				GameState.ROADS_RANGE):
+			known[rb_v] = true
+
+	for blk_v in known:
+		var blk: Vector2i = blk_v
+		var ssx := blk.x
+		var ssz := blk.y
+		var flow := Tide.set_at(_selected, ssx, ssz)
+		if flow == Vector2.ZERO:
+			continue
+		var wc := DeepSpace.supercell_centre(ssx, ssz)
+		var arrow_mid := to_plot.call(Vector3(wc.x, 0.0, wc.y)) as Vector2
+		if arrow_mid.x < -sc_px or arrow_mid.x > size.x + sc_px \
+				or arrow_mid.y < -sc_px or arrow_mid.y > size.y + sc_px:
+			continue
+		# The set is already a world-XZ vector and to_plot maps world XZ to plot
+		# XY unrotated, so it is drawn AS IT IS. The arrow, the cockpit bearing
+		# and the push the hull feels all come off this one vector.
+		var reach := flow * sc_px * 0.34
+		# The COLOUR takes the plot's own depth convention -- bounds subtracted,
+		# exactly as the coverage squares under it do -- while PRESENCE came
+		# from set_at, which works in raw radius. The two disagree only for a
+		# block sitting within 40u of a band edge, and only about which of two
+		# adjacent band colours to ink it: matching the squares it is drawn on
+		# top of is worth more here than matching the function that placed it.
+		var tband := DeepSpace.band_of(maxf(wc.length() - bounds, 0.0))
+		var tc := Palette.band_color(tband)
+		var ink := Color(tc.r, tc.g, tc.b, 0.55)
+		var head := arrow_mid + reach
+		_plot.draw_line(arrow_mid - reach, head, ink, 1.0, true)
+		# Two strokes, not a filled triangle: at the zoom this plot spends most
+		# of its life at the whole arrow is a dozen pixels, where a polygon is a
+		# blob and two lines are still legibly an arrow.
+		var barb := sc_px * 0.13
+		_plot.draw_line(head, head - flow.rotated(deg_to_rad(28.0)) * barb,
+			ink, 1.0, true)
+		_plot.draw_line(head, head - flow.rotated(deg_to_rad(-28.0)) * barb,
+			ink, 1.0, true)
 
 	# 1. The charted volume you started from, for scale.
 	_plot.draw_arc(mid, bounds * scale, 0.0, TAU, 48,
@@ -827,6 +917,15 @@ func _draw_plot() -> void:
 	for co_v in GameState.colonies_in(_selected):
 		var co: Dictionary = co_v
 		var cp2 := to_plot.call(Vector3(float(co["x"]), 0.0, float(co["z"]))) as Vector2
+		# §140. THE ROADS' REACH, drawn UNDER the marker as a world-sized ring,
+		# because a grant with an edge the pilot cannot see is a grant they
+		# cannot plan with -- and the arrows inside it would otherwise read as
+		# an arbitrary scatter rather than as one colony's water. World-sized
+		# (it scales with zoom) where the marker is screen-fixed, which is §30's
+		# rule doing the separating: the two only ever move apart.
+		if GameState.has_work(String(co["key"]), "roads"):
+			_plot.draw_arc(cp2, GameState.ROADS_RANGE * scale, 0.0, TAU, 64,
+				Color(accent.r, accent.g, accent.b, 0.22), 1.0, true)
 		_plot.draw_rect(Rect2(cp2 - Vector2(4.0, 4.0), Vector2(8.0, 8.0)),
 			Color(accent.r, accent.g, accent.b, 0.28), true)
 		_plot.draw_rect(Rect2(cp2 - Vector2(4.0, 4.0), Vector2(8.0, 8.0)),
@@ -1346,9 +1445,21 @@ func _refresh_colonies() -> void:
 			wb.custom_minimum_size = Vector2(0, COLONY_ROW_H)
 			wb.add_theme_font_size_override("font_size", 11)
 			var sounded: bool = bool(main.colony_ground_sounded(key))
+			var need := GameState.work_prereq_missing(key, wid)
 			if not sounded:
 				wb.text = "%s — SOUND ITS GROUND FIRST (WORK A MAST IN ITS CELL)" \
 					% String(wdef["name"])
+				wb.disabled = true
+			elif need != "":
+				# §126. THE LADDER STATES ITS RUNG. Third in the cascade on
+				# purpose, and the order is root-cause: the ground is the whole
+				# colony's question, the prereq is the ladder's, the manifest is
+				# this one trip's. Telling a pilot to bring twelve alloys for a
+				# repeater they could not buy with a full hold teaches the wrong
+				# thing -- §58's rule is that the refusal names what to DO next,
+				# and what to do next is raise the mast.
+				wb.text = "%s — RAISE %s FIRST" % [String(wdef["name"]),
+					String((GameState.COLONY_WORKS[need] as Dictionary)["name"])]
 				wb.disabled = true
 			elif not bool(main.work_delivery_met(key, wid)):
 				# §116. A work with a manifest names it, and names where. The
@@ -1372,15 +1483,12 @@ func _refresh_colonies() -> void:
 	# §112, THE RELAY MAST. With one standing anywhere in this system, the
 	# chart carries the charted markets' weather out here -- the same event
 	# list the rumour desk reads, as lines of record rather than a purchase.
-	var has_relay := false
-	for cr_v in GameState.colonies_in(_selected):
-		if GameState.has_work(String((cr_v as Dictionary)["key"]), "relay"):
-			has_relay = true
+	# §126. ASKED ONCE, IN ONE PLACE. These were two hand-written any-in-system
+	# loops; the scope key on the work is what answers it now, so a fifth
+	# system-scoped work arrives without a third copy of this walk.
+	var has_relay := GameState.work_stands_in_system(_selected, "relay")
 	# §116. AND THE REPEATER, which is the other half of the same list.
-	var has_repeater := false
-	for cr2_v in GameState.colonies_in(_selected):
-		if GameState.has_work(String((cr2_v as Dictionary)["key"]), "repeater"):
-			has_repeater = true
+	var has_repeater := GameState.work_stands_in_system(_selected, "repeater")
 	# §116. THE RELAY WAS SHOWING BOTH, and its own blurb says CHARTED MARKETS.
 	# `market_events` carries the deep's weather in the same array under a
 	# `deep` flag (§108), this loop never filtered, and the header above it read
@@ -1395,6 +1503,103 @@ func _refresh_colonies() -> void:
 	# everybody already has -- the §111 test RIFT-WORK's t2 candidate failed.
 	if has_relay or has_repeater:
 		_build_weather_rows(has_relay, has_repeater)
+
+	# §132, THE ARCHIVE. Every deep counter this pilot has stood at in this
+	# system, deepest first. Behind the work by ACCESS rather than by fact: the
+	# file fills whether or not an archive stands, and this is the only place it
+	# can be read.
+	#
+	# ABSENT RATHER THAN REFUSED when the work is not raised, the anchor rows'
+	# own rule one section down -- §58 covers verbs a pilot can reach, and a
+	# section for a work they have not bought is not one of them. The colony rows
+	# above already name THE ARCHIVE and its price, which is where a pilot learns
+	# it exists.
+	if GameState.work_stands_in_system(_selected, "archive"):
+		var filed: Array = GameState.stations_filed_in(_selected)
+		var fhead := Label.new()
+		# THE COUNT IS THE HEADER, and an empty file says so rather than
+		# printing a blank section -- the title screen's own rule.
+		fhead.text = "THE ARCHIVE — %d COUNTER%s FILED IN THIS SYSTEM" % [
+			filed.size(), "" if filed.size() == 1 else "S"] if not filed.is_empty() \
+			else "THE ARCHIVE — NOTHING FILED OUT THERE YET"
+		fhead.add_theme_font_size_override("font_size", 10)
+		fhead.add_theme_color_override("font_color", Palette.GOLD)
+		_colony_rows.add_child(fhead)
+		for f_v in filed:
+			var f: Dictionary = f_v
+			var bits := String(f["key"]).split(":")
+			if bits.size() != 3:
+				continue
+			var fcell := Vector2i(int(String(bits[1])), int(String(bits[2])))
+			var fplan: Dictionary = {}
+			if main.deep_space != null:
+				fplan = main.deep_space.plan_cell(fcell.x, fcell.y).get("station", {})
+			# THE NAME COMES FROM THE GENERATOR, not from the file. The expanse
+			# is a pure function (17), so the archetype at a cell is re-derived
+			# rather than stored -- a name written into the save is a name that
+			# can disagree with the world the next time somebody tunes a weight.
+			var fname := "A COUNTER"
+			if not fplan.is_empty():
+				fname = String(DeepPortDB.by_id(
+					String(fplan["archetype"])).get("name", fname))
+			var frow := Label.new()
+			frow.text = "   %s  ·  %du  ·  %s" % [fname, int(f["depth"]),
+				DeepSpace.band_name_in(_selected, float(f["depth"]))]
+			frow.add_theme_font_size_override("font_size", 10)
+			frow.add_theme_color_override("font_color", Palette.AMBER_DIM)
+			_colony_rows.add_child(frow)
+
+	# §140, THE ROADS. One row per colony that raised one, and the two figures
+	# are what the work is FOR: the water it draws, and the work already done in
+	# it. Absent rather than refused when nothing has one, the Archive's rule
+	# one section up.
+	#
+	# NO DENOMINATOR ON THE SHEETS, and that omission is §137's finding rather
+	# than an oversight. A sheet asks for what its block actually HOLDS, which
+	# means walking sixteen cells of plan_cell per block -- eight hundred calls
+	# to build one row of a panel -- and a cheaper denominator would be the
+	# wrong one: "4 OF 53" would name a target most of whose blocks hold nothing
+	# readable at all. An impossible goal printed confidently is worse than a
+	# figure with no goal beside it.
+	var roads_rows: Array = []
+	for rw_v in GameState.colonies_in(_selected):
+		var rw: Dictionary = rw_v
+		if not GameState.has_work(String(rw["key"]), "roads"):
+			continue
+		var reach: Array = DeepSpace.supercells_within(
+			float(rw["x"]), float(rw["z"]), GameState.ROADS_RANGE)
+		var drawn_n := 0
+		var filed_n := 0
+		for rb_v in reach:
+			var rb: Vector2i = rb_v
+			if Tide.set_at(_selected, rb.x, rb.y) != Vector2.ZERO:
+				drawn_n += 1
+			if GameState.sheets_filed.has(DeepSpace.sheet_key(_selected, rb.x, rb.y)):
+				filed_n += 1
+		# NAMED THE WAY THE JUMP ROW NAMES IT. colonies_in returns {key, x, z}
+		# and no name at all, so a label invented here would be the only place
+		# in the game a colony is called something else -- the designation comes
+		# off the key through SystemDB, exactly as the row that jumps to it does.
+		var rparts := String(rw["key"]).split(":")
+		var ridx: int = int(String(rparts[1])) if rparts.size() == 2 else 0
+		roads_rows.append({"name": SystemDB.hyper_designation(_selected, ridx),
+			"drawn": drawn_n, "filed": filed_n})
+	if not roads_rows.is_empty():
+		var rhead := Label.new()
+		rhead.text = "HOME WATERS — CHARTED %du OFF EACH ROADS" % int(GameState.ROADS_RANGE)
+		rhead.add_theme_font_size_override("font_size", 10)
+		rhead.add_theme_color_override("font_color", Palette.GOLD)
+		_colony_rows.add_child(rhead)
+		for rr_v in roads_rows:
+			var rr: Dictionary = rr_v
+			var rrow := Label.new()
+			rrow.text = "   %s  ·  %d TIDE%s DRAWN  ·  %d SHEET%s FILED IN REACH" % [
+				String(rr["name"]), int(rr["drawn"]),
+				"" if int(rr["drawn"]) == 1 else "S", int(rr["filed"]),
+				"" if int(rr["filed"]) == 1 else "S"]
+			rrow.add_theme_font_size_override("font_size", 10)
+			rrow.add_theme_color_override("font_color", Palette.AMBER_DIM)
+			_colony_rows.add_child(rrow)
 
 	# §112, FILING t3. THE HELD CELL IS AN ANCHOR: the nearest few cells the
 	# network holds, as jump rows on the beacon jump's own fee and its own cap.

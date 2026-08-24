@@ -210,6 +210,15 @@ func pick_anchor() -> Vector3:
 	return global_position
 
 
+func pick_radius() -> float:
+	# §141. HOW MUCH SCREEN THIS THING IS, in world units, so CameraRig._pick
+	# can measure the pixels instead of guessing them. Half the silhouette,
+	# which is the constant the whole "findable at 1000u" argument at the top of
+	# this file is already built on -- so the tap target and the visibility
+	# claim can never drift apart, and a re-scaled instrument moves both at once.
+	return SILHOUETTE_SPAN * 0.5
+
+
 func _player_in_range() -> bool:
 	var p := get_tree().get_first_node_in_group("player")
 	return p != null and global_position.distance_to(p.global_position) <= CLAIM_RANGE
@@ -222,7 +231,9 @@ func hold_begin() -> void:
 		# leave, what fits comes back out. One verb, and the prompt names which
 		# way it will run before the hold starts -- a gesture that guesses is
 		# the affordance problem §88 documents. Everything else -- the bonded
-		# set, the 60-space bay, NO WORMHOLE by key -- is the warehouse's own
+		# set, the bay's cap (60, or 120 with §127's EXPANDED VAULTS -- asked of
+		# warehouse_space_of, never of the constant), NO WORMHOLE by key -- is the
+		# warehouse's own
 		# law, reused: can_store == no_retail holds here exactly as at a dock,
 		# so the annex can never become the timed-arbitrage shelf STORETEST
 		# closed.
@@ -278,7 +289,7 @@ func hold_tick(delta: float) -> void:
 func _annex_transfer() -> void:
 	# Storables aboard go IN; with nothing to leave, what fits comes OUT. Counts
 	# are reported in the toast because a silent bay is a bug report -- and the
-	# whole transfer is the warehouse's own API, so every bound (60 space, the
+	# whole transfer is the warehouse's own API, so every bound (the keyed cap, the
 	# bonded set, partial moves) is enforced where it always was.
 	_holding = false
 	_annex_hold = false

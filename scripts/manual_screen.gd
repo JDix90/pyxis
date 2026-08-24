@@ -224,6 +224,12 @@ func _build_flying() -> void:
 		_body.add_child(_row("TAP A BEARING", "Fly there."))
 		_body.add_child(_row("TAP A CONTACT", "Engage it. Your mounts fire on the locked target by themselves."))
 		_body.add_child(_row("TAP OVERCHARGE", "Discharge your fitted core."))
+		# §142. THE VIEW, on the touch page. Listed with the flying verbs rather
+		# than in a settings corner because turning the camera IS a flying verb
+		# now -- a pilot who cannot see round a hull cannot judge an approach.
+		_body.add_child(_row("DRAG", "Turn the view. The ship stays at the centre of it."))
+		_body.add_child(_row("PINCH", "Zoom. Two fingers also drag the view off the ship."))
+		_body.add_child(_row("TWO-FINGER TAP", "Put the view back the way it started."))
 	else:
 		# ASKED OF THE INPUT MAP, not typed. Every key on this page used to be a
 		# hand-written literal -- "W A S D", "SPACE", "I" -- which was false for
@@ -242,6 +248,10 @@ func _build_flying() -> void:
 			"Open the manifest. The same sheet the HOLD readout opens, and it works in flight."))
 		_body.add_child(_row(GameState.binding_name("chart"),
 			"Open the chart. Shut while docked and during an apex fight, exactly like the button."))
+		_body.add_child(_row("DRAG", "Turn the view. The ship stays at the centre of it."))
+		_body.add_child(_row("WHEEL", "Zoom. The middle button drags the view off the ship."))
+		_body.add_child(_row(GameState.binding_name("level_view"),
+			"Put the view back the way it started."))
 		_body.add_child(_row(GameState.binding_name("drop_beacon"),
 			"Drop a beacon where you are standing. Deep space only, %d in stock, and holding on one takes it back." % GameState.BEACON_STOCK))
 		# v21. The two verbs the chart adds to a beacon, taught beside the one
@@ -295,6 +305,13 @@ func _build_hud() -> void:
 	_body.add_child(_legend(Palette.GOLD, "GHOST", "Where your readings agree the engine is. It is a guess, and it moves as you gather more."))
 	_body.add_child(_legend(Palette.GOLD, "BEACON", "A waypoint you dropped. %d in stock; hold on one to take it back." % GameState.BEACON_STOCK))
 	_body.add_child(_legend(Palette.band_color(DeepSpace.BAND_NAMES.size() - 1), "STORM", "Weather in the deepest band. It pulls you in and it kills drives. Fly around it, or carry a Thermal Sink through it."))
+	# §139. Derived from the constants rather than typed: the bands the water
+	# runs in, the drift it pays and the name of each band all come from the
+	# tables that decide them, so a retune moves the manual with the feature.
+	# The line the player actually needs is the LAST one -- the water is free
+	# and it never costs, which is the only fact that changes how you fly.
+	_body.add_child(_legend(Palette.band_color(Tide.BAND_LO), "TIDE", "A standing set of water in %s and %s. Fly with it and it carries you %.1f faster; cross it or fight it and it does nothing at all. It runs across the depth, never out. You can see it: the dust in the water streams along it, and it burns brighter while it is carrying you. Its arrow stays on your chart for any block whose SHEET you filed, or any water inside a colony's ROADS." % [
+		String(DeepSpace.BAND_NAMES[Tide.BAND_LO]), String(DeepSpace.BAND_NAMES[Tide.BAND_HI]), Tide.DRIFT]))
 	_body.add_child(_legend(Palette.HULL, "ODDITY", "Something only this system has, standing in its own bands. One will talk to you, one will burn you, one will give you a bearing for nothing."))
 	_body.add_child(_back())
 
