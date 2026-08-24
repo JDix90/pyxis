@@ -31238,30 +31238,69 @@ func _run_surfaces() -> void:
 	await _surface_shot(shots, wrote, failed, "h01_hud_charted")
 
 	set_process(false)
-	# Each row is one readout the cockpit can show. The LAST is the reason this
-	# group exists: the jam and the tide can both be lit between 1,100 and 1,450
-	# units out, _system_label has no clip_text and no autowrap, and that string
-	# reaches roughly eighty characters. Suspected since §139 and never once
-	# looked at.
+	# §152. THE WIDEST BAND NAME IN THE GAME, SWEPT RATHER THAN TYPED.
+	#
+	# Band names are PER SYSTEM (`SystemDB.band_name_of`, which is what
+	# production reads through `DeepSpace.band_name_in`), and band 4 is called
+	# THE UNFILED in PYX-01, THE COOLING in PYX-02 and THE STILL WATER in the
+	# Meridian. That is an eleven-character name against a fifteen-character
+	# one, on the line whose whole question is whether it fits -- so a sheet
+	# that only ever loads PYX-01 under-samples its own worst case by four
+	# characters, in a decision four characters decide.
+	#
+	# Swept, so a system added later widens this frame for free and no future
+	# edit can type a band name the game does not have. §137's discipline,
+	# missing from the one frame that most needs it.
+	var widest := ""
+	for sid_v in SystemDB.ids():
+		var sid: String = sid_v
+		var nm := SystemDB.band_name_of(sid, 4, String(DeepSpace.BAND_NAMES[4]))
+		if nm.length() > widest.length():
+			widest = nm
+	# Each row is one readout the cockpit can show. The LAST TWO are the reason
+	# this group exists: the jam and the tide can both be lit between 1,100 and
+	# 1,450 units out, _system_label has no clip_text and no autowrap, and that
+	# string reaches roughly eighty-five characters against the 694px it has
+	# before the screen edge. Suspected since §139 and never once looked at.
+	#
+	# A row WITHOUT a "band" derives it from the system actually loaded, so
+	# these read what a pilot standing there reads -- which also corrects
+	# h07, typed as THE UNSOUNDED when PYX-01 calls band 6 NO RETURN FILED.
+	# h06b is the exception on purpose: it carries the swept worst case, which
+	# belongs to a system this pass does not load.
 	for spec_v in [
-		{"tag": "h02_hud_deep", "band": "THE UNFILED", "out": 2402.0,
+		{"tag": "h02_hud_deep", "out": 2402.0,
 			"wash": false, "caught": false, "tide": -1, "riding": false},
-		{"tag": "h03_hud_jam", "band": "THE UNFILED", "out": 1300.0,
+		{"tag": "h03_hud_jam", "out": 1300.0,
 			"wash": true, "caught": false, "tide": -1, "riding": false},
-		{"tag": "h04_hud_tide_present", "band": "THE UNFILED", "out": 2402.0,
+		{"tag": "h04_hud_tide_present", "out": 2402.0,
 			"wash": false, "caught": false, "tide": 43, "riding": false},
-		{"tag": "h05_hud_tide_riding", "band": "THE UNFILED", "out": 2402.0,
+		{"tag": "h05_hud_tide_riding", "out": 2402.0,
 			"wash": false, "caught": false, "tide": 43, "riding": true},
-		{"tag": "h06_hud_jam_AND_tide", "band": "THE UNFILED", "out": 1300.0,
+		{"tag": "h06_hud_jam_AND_tide", "out": 1300.0,
 			"wash": true, "caught": false, "tide": 317, "riding": true},
-		{"tag": "h07_hud_storm", "band": "THE UNSOUNDED", "out": 5600.0,
+		# 1450 rather than 1300: the top of the jam window, so the %du field is
+		# at ITS widest too. Every field in this string is at maximum at once,
+		# which is the only frame that can answer the question outright.
+		{"tag": "h06b_hud_jam_AND_tide_widest", "band": widest, "out": 1450.0,
+			"wash": true, "caught": false, "tide": 317, "riding": true},
+		{"tag": "h07_hud_storm", "out": 5600.0,
 			"wash": false, "caught": true, "tide": -1, "riding": false},
 	]:
 		var spec: Dictionary = spec_v
-		hud.set_deep_tag(String(spec["band"]), float(spec["out"]),
+		var band_txt: String = String(spec["band"]) if spec.has("band") \
+			else DeepSpace.band_name_in(system_id, float(spec["out"]))
+		hud.set_deep_tag(band_txt, float(spec["out"]),
 			bool(spec["wash"]), bool(spec["caught"]), int(spec["tide"]),
 			bool(spec["riding"]))
 		await get_tree().create_timer(0.25).timeout
+		# THE STRING, BESIDE THE FRAME THAT SHOWS IT. A contact sheet answers
+		# "does this fit"; the log answers "fit WHAT", and the two together can
+		# be checked against each other rather than squinted at. No verdict --
+		# this pass cannot tell 694px from 700px and must not pretend to.
+		var shown := hud.system_tag_text()
+		print("[surfaces] %s · %d chars · %s"
+			% [String(spec["tag"]), shown.length(), shown])
 		await _surface_shot(shots, wrote, failed, String(spec["tag"]))
 	set_process(true)
 

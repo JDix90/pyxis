@@ -6600,8 +6600,18 @@ the first time on a clean run. The merge had been taken on a written containment
 claim — that §150's three files reached only INPUTTEST, TIDETEST and FEELTEST —
 and the other 80 runs were indeed unmoved; §151 records both that and why one
 such data point does not generalise.
+**§152 BUILT** — the contact sheet's most important frame staged PYX-01, and
+band names are PER SYSTEM: band 4 is `THE UNFILED` there and `THE STILL WATER`
+in the Meridian, so `h06_hud_jam_AND_tide` under-sampled its own question by
+four characters on a line with no `clip_text` and no autowrap and 694px to work
+in. `h06b_hud_jam_AND_tide_widest` sweeps `SystemDB.ids()` for the widest name
+at 1450u (every field at maximum at once); every other row now derives its band
+from the loaded system, which corrected `h07` from a typed `THE UNSOUNDED` to
+PYX-01's actual `NO RETURN FILED`. The estimate — 84 and 88 characters,
+~638–722px and ~669–757px — STRADDLES 694 and settles nothing, which is
+recorded as an estimate rather than a derivation.
 Remaining: a sheet-loop PACINGTEST floor (item 5) and the tide's door (item 7),
-both gated on the playtest sessions.
+both gated on the playtest sessions; the contact sheet itself is still unread.
 
 **Horizon 14 — the middle** (opened 2026-08-22 after a play session;
 researched in `docs/HORIZON-14-RESEARCH.md`, specced in
@@ -15565,3 +15575,66 @@ green is the floor holding. It is not evidence that the surface is right, and
 §146 exists precisely because those are different claims. The two things that
 would actually move that finding — the SURFACES frames, and three telemetry
 sessions — are both still unstarted.
+
+## 152. The frame that under-sampled its own worst case
+
+§146 built a contact sheet because zero of six defects that reached a player
+were first found by an assertion. Its most important frame is
+`h06_hud_jam_AND_tide` — the one that settles whether `_system_label` overflows
+when the jam and tide suffixes co-occur. **It stages PYX-01, and PYX-01 is not
+the worst case.**
+
+### What the line actually has
+
+`_system_label` (`hud.gd:758`) has **no `clip_text` and no `autowrap_mode`** —
+both are set on `_prompt_label` and `_tutorial_text` and neither is anywhere
+near this one. It is a child of a `VBoxContainer` at `position (26, -30)`, so at
+the 720-wide base it has **694 px** before the screen edge, and with neither
+clip nor wrap it simply extends past it rather than folding or truncating.
+
+### Band names are per system, and the spread is four characters
+
+`SystemDB.band_name_of` is what production reads through
+`DeepSpace.band_name_in` (`main.gd:3101`), and band 4 is named:
+
+| system | band 4 | full line |
+|---|---|---|
+| PYX-01 | `THE UNFILED` (11) | **84** chars |
+| PYX-02 | `THE COOLING` (11) | **84** chars |
+| Meridian | **`THE STILL WATER`** (15) | **88** chars |
+
+`_run_surfaces` loads `pyx01` and **typed** its band string into every spec, so
+the sheet under-sampled its own question by four characters — in a decision that
+four characters decide. §137's rule (*measured, never typed*) was missing from
+the one frame that most needed it.
+
+### The fix: swept, not typed
+
+`h06b_hud_jam_AND_tide_widest` carries the widest band-4 name found by walking
+`SystemDB.ids()`, at **1450u** — the top of the jam window, so the `%du` field
+is at its maximum too. Every field in that string is at its widest at once,
+which is the only frame that can answer the question outright. A system added
+later widens it for free, and no future edit can type a band name the game does
+not have.
+
+Every other row now **derives** its band from the system actually loaded, which
+corrected one already there: `h07_hud_storm` was typed `THE UNSOUNDED` when
+PYX-01 calls band 6 `NO RETURN FILED`.
+
+The run also prints each composed string beside its frame with a character
+count. A contact sheet answers *does this fit*; the log answers *fit what*, and
+the two can be checked against each other instead of squinted at.
+
+### What this section does NOT claim
+
+The pixel figures above are an **estimate** — roughly 7.6–8.6 px per character
+at font size 13 in Godot's default face, since this project ships no font. On
+that estimate h06 lands at **638–722 px** and h06b at **669–757 px**, against
+694 available. **Both straddle the edge, so the arithmetic settles nothing.**
+
+That is stated plainly because §144 is the entry about a number that was
+estimated and then quoted as derived. What the estimate is good for is one
+thing only: every other row in the group sits between 312 and 611 px, so these
+two are the only frames near the boundary and neither can be skipped. **The
+verdict is still a human's, looking at the frame** — which is what §146 said
+this suite is for, and it carries no assertion here either.
