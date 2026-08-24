@@ -12,9 +12,15 @@ extends Node3D
 #
 # 1. IT CANNOT SLOW YOU, PUSH YOU OFF COURSE OR CAGE YOU, and that is
 #    structural rather than tuned. The push is scaled by how well the hull's own
-#    heading ALREADY agrees with the set -- a dot product clamped at zero -- so
-#    crossing a tide gets nothing and fighting one gets nothing. There is no
-#    escape guarantee anywhere in this file because there is nothing to escape.
+#    heading ALREADY agrees with the set -- a dot product against
+#    RIDE_MIN_ALIGN -- so crossing a tide gets nothing and fighting one gets
+#    nothing. There is no escape guarantee anywhere in this file because there
+#    is nothing to escape.
+#
+#    THAT SENTENCE WAS FALSE FOR TWO COMMITS. The bar was `> 0.0`, so "crossing
+#    gets nothing" held only at exactly ninety degrees -- and in float32 even
+#    that lands POSITIVE about one time in seven, which is how TIDETEST finally
+#    caught it. §150.
 #
 #    That is the whole difference from the storm, stated as a sentence: a storm
 #    is a thing you PREPARED for, a tide is a thing you FOUND.
@@ -98,6 +104,20 @@ const PUSH := 0.62
 # Below this the ship is not going anywhere and the tide has nothing to agree
 # with. A hull parked at a seam is not riding anything.
 const UNDER_WAY := 0.6
+# §150. HOW WELL THE HULL MUST AGREE BEFORE ANY OF THIS IS TRUE. `align > 0.0`
+# called EVERY heading up to 89.99 degrees off the set "the tide is carrying
+# you" -- so a hull crossing the water dead sideways was reported as riding it,
+# and `tide_seconds`, the cockpit's ▸ and the motes' brightness all said so.
+# That is the field §145 added to answer "was the tide used?", answering it
+# wrong.
+#
+# 0.25 is about 75 degrees, and it gates the PUSH as well as the readout: ONE
+# rule with one reader, DEFECTS 2b, rather than a continuous push wearing a
+# thresholded label. The cliff a single rule introduces is affordable BECAUSE
+# the bar is low -- what vanishes at the edge is 0.9 * 0.25 = 0.22 u/s, about
+# 2% of a fast fit's speed, which is under the threshold of noticing. At a
+# stricter bar the same choice would be a wall.
+const RIDE_MIN_ALIGN := 0.25
 
 # --- what it looks like ------------------------------------------------------
 # §143. THE FIRST VERSION OF THIS COULD NOT DRAW A SINGLE PIXEL, and the three
@@ -374,7 +394,7 @@ func _physics_process(delta: float) -> void:
 	var align := 0.0
 	if vel.length() >= UNDER_WAY:
 		align = vel.normalized().dot(Vector3(_set.x, 0.0, _set.y))
-	_riding = align > 0.0
+	_riding = align >= RIDE_MIN_ALIGN
 	# ONE PLACE DECIDES AND ONE PLACE DRESSES. The riding branch used to return
 	# early from three places, so a look that depended on it had three exits to
 	# be updated from and would have been forgotten at one of them.

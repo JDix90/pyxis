@@ -15371,6 +15371,42 @@ func _run_input_test() -> void:
 	var pause_on: bool = get_tree().paused and pause_menu.is_open
 	await _press_key(KEY_P)
 	var pause_off: bool = not get_tree().paused and not pause_menu.is_open
+	# §150. AND NO TWO ACTIONS SHARE A KEY, which nothing checked and which cost
+	# a sweep. §142 bound `level_view` to C without reading the map; `chart` was
+	# already on C; CameraRig's elif chain tests level_view FIRST, so it ate the
+	# event and THE CHART KEY OBEYS THE LOCK went red on a key that simply no
+	# longer opened anything.
+	#
+	# GameState.rebind has conflict logic for what a PLAYER binds at runtime.
+	# Nothing had ever checked what SHIPS in project.godot -- the defaults were
+	# assumed correct because they were written by hand, which is the assumption
+	# every entry in DEFECTS class 5 is about.
+	#
+	# Walked off the live InputMap rather than a typed list, so an action added
+	# later is covered without this leg being touched. Godot's own ui_* actions
+	# are excluded: they legitimately overlap the project's (ui_accept is on
+	# Space beside `ability`) and are not ours to arbitrate.
+	var key_owner := {}
+	var key_clash := ""
+	for act_v in InputMap.get_actions():
+		var act := String(act_v)
+		if act.begins_with("ui_"):
+			continue
+		for ev in InputMap.action_get_events(act):
+			var k := ev as InputEventKey
+			if k == null:
+				continue
+			var code := int(k.physical_keycode)
+			if key_owner.has(code):
+				key_clash = "%s and %s both on keycode %d" % [
+					String(key_owner[code]), act, code]
+			else:
+				key_owner[code] = act
+	print("[input] NO TWO ACTIONS SHARE A KEY %d binding(s) across %d action(s), %s -> %s" % [
+		key_owner.size(), InputMap.get_actions().size(),
+		key_clash if key_clash != "" else "every key belongs to one action",
+		"PASS" if key_clash == "" and key_owner.size() > 0 else "FAIL"])
+
 	print("[input] PAUSE IS ONE KEY p pauses=%s, p unpauses from the same key=%s -> %s" % [
 		str(pause_on), str(pause_off), "PASS" if pause_on and pause_off else "FAIL"])
 	get_tree().quit()
@@ -21663,13 +21699,37 @@ func _run_feel_test() -> void:
 	var hit_level := false
 	var hit_turned := false
 	if feel_mon != null:
+		# §150. IT BUILDS ITS OWN PRECONDITION, which the first version did not.
+		# It inherited whatever position the PAN leg above left the rig in, and
+		# a hyper structure sits 1,600 to 4,200 units out -- so the anchor was
+		# BEHIND THE LENS, §141's is_position_behind guard correctly skipped it,
+		# and the level case failed while the turned one passed because 120
+		# degrees of yaw brought the thing round to the front.
+		#
+		# §116's rule, quoted in COLONYTEST this same session and not applied
+		# here: a precondition a leg needs is a precondition that leg states.
+		# RE-PINNED BEFORE EVERY PICK, not just once. Turning the leash off stops
+		# _leash dragging the rig back, but _follow is a SECOND writer of the
+		# same position and it is not gated by the leash -- at FOLLOW_SPEED it
+		# eats about 4% of the distance to the player per frame, and the player
+		# is thousands of units away from a hyper structure. Two awaits would
+		# have walked the camera ~8% of the way home before the shutter opened.
+		# DEFECTS 2b, met in a leg rather than in the game.
+		var was_leash_t := rig.leash_enabled
+		rig.leash_enabled = false
+		rig.global_position = feel_mon.global_position
+		await get_tree().process_frame
+		await get_tree().process_frame
 		var cam_f := get_viewport().get_camera_3d()
+		rig.global_position = feel_mon.global_position
 		hit_level = rig._pick(cam_f.unproject_position(feel_mon.global_position),
 			"hyper") == feel_mon
 		rig._orbit(Vector2(-120.0 / CameraRig.ORBIT_YAW_PER_PX, 0.0))
 		await get_tree().process_frame
+		rig.global_position = feel_mon.global_position
 		hit_turned = rig._pick(cam_f.unproject_position(feel_mon.global_position),
 			"hyper") == feel_mon
+		rig.leash_enabled = was_leash_t
 		rig.level_view()
 	print("[feel] AND A TAP STILL LANDS ON A TURNED VIEW level=%s, a third of a turn round=%s -> %s" % [
 		str(hit_level), str(hit_turned),

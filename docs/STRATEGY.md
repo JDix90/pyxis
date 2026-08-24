@@ -6584,8 +6584,17 @@ a `requisitions` tab I would not have guessed. **§149 BUILT** — §146's frame
 found: `/tmp` is hidden by Finder on macOS AND purged by it. `_run_surfaces` now
 defaults to `user://surfaces` and prints the GLOBALIZED path plus an `open`
 line, so the closing output is something to paste rather than the string the
-owner just typed. Remaining: a sheet-loop PACINGTEST floor (item 5) and the
-tide's door (item 7), both gated on the playtest sessions.
+owner just typed. **§150 BUILT** — the first full sweep since §141 came back 83
+runs / 865 PASS / **3 FAIL**, and §144's derived bound printed correctly on its
+first outing. Two reds were mine: `level_view` and `chart` both bound to C
+(§142; moved to V, plus a `NO TWO ACTIONS SHARE A KEY` leg walking the live
+InputMap — nothing had ever checked the SHIPPED bindings), and `_riding =
+align > 0.0` calling any heading within 89.99° "carried by the tide", which
+corrupted §145's `tide_seconds`, the cockpit `▸` and the motes alike
+(`RIDE_MIN_ALIGN := 0.25`, gating push and readout as ONE rule, both at the
+owner's call). The third was FEELTEST inheriting a camera position it never set.
+Remaining: a sheet-loop PACINGTEST floor (item 5) and the tide's door (item 7),
+both gated on the playtest sessions.
 
 **Horizon 14 — the middle** (opened 2026-08-22 after a play session;
 researched in `docs/HORIZON-14-RESEARCH.md`, specced in
@@ -15389,3 +15398,99 @@ frames existed and the review still did not happen.
 
 > **AN ARTEFACT NOBODY CAN FIND HAS THE SAME VALUE AS ONE THAT WAS NEVER
 > WRITTEN.** §148 fixed the count; this fixes the address.
+
+
+## 150. Three reds, and one of them was in the game
+
+The first full sweep since §141: **83 runs | 865 PASS | 3 FAIL | 0 errors |
+0 short**. §144's footer worked on its first outing —
+
+    derived bound: 823 verdict(s) across 57 gated tag(s), against at least 807;
+    SAVETEST adds 45 (unbounded by design)
+
+— and 0 errors with 0 short settles §147's open worry: this head parses.
+
+Two of the three reds were bugs I introduced. One was a leg that never built
+its own precondition.
+
+### A. `level_view` and `chart` were both bound to C
+
+    [input] THE CHART KEY OBEYS THE LOCK opens=false ... -> FAIL
+
+§142 gave the free look a `level_view` key and bound it to **C without reading
+the map**. `chart` was already on C. `CameraRig._unhandled_input`'s `elif` chain
+tests `level_view` first, so it consumed the event and **the chart key stopped
+opening the chart** — while `closes=true`, because the panel's own handler was
+untouched. Moved to **V**.
+
+`GameState.rebind` has conflict logic for what a *player* binds at runtime.
+**Nothing had ever checked what ships in `project.godot`** — the defaults were
+assumed correct because they were written by hand, which is the assumption every
+entry in DEFECTS class 5 is about. `NO TWO ACTIONS SHARE A KEY` now walks the
+live `InputMap` (never a typed list, so a later action is covered for free) and
+excludes Godot's `ui_*`, which legitimately overlap ours and are not ours to
+arbitrate.
+
+### B. "Riding" meant anything within 89.99°
+
+    [tide] AND THE CLOCK ONLY RUNS WHILE IT CARRIES YOU riding 2.00s,
+    athwart 2.00s, against 0.00s -> FAIL
+
+`_riding = align > 0.0`. **This one was in the game, not the test.**
+
+The harness caught it through a float32 edge: a *dead perpendicular* crossing
+reads positive about **one time in seven** in 32-bit (291 of 2,000 bearings,
+measured). But that is only how it surfaced. The real defect is the whole
+window — every heading up to 89.99° off the set was reported as *the tide is
+carrying you*, and three things believed it:
+
+| | |
+|---|---|
+| `tide_seconds` | §145's telemetry field, added to answer *"was the tide used?"* |
+| the cockpit `▸` | §143's entire PRESENT-vs-RIDING split |
+| mote brightness | the in-world tell of that same distinction |
+
+§145 shipped an instrument to answer a design question and the instrument was
+wrong in the direction that would have said *yes, the tide gets used* no matter
+what a player did.
+
+`RIDE_MIN_ALIGN := 0.25` (~75°), gating **the push as well as the readout** —
+one rule, one reader, DEFECTS 2b, rather than a continuous push wearing a
+thresholded label. The owner took both calls.
+
+> **THE CLIFF A SINGLE RULE INTRODUCES IS AFFORDABLE BECAUSE THE BAR IS LOW.**
+> What vanishes at the edge is 0.9 × 0.25 = **0.22 u/s**, about 2% of a fast
+> fit's speed, under the threshold of noticing. At a stricter bar the same
+> choice would be a wall.
+
+And the file's own header claimed *"crossing a tide gets nothing"* for two
+commits while the code did the opposite. Corrected in place rather than quietly
+— §143's lesson about prose the code stopped supporting.
+
+### C. A leg that inherited its camera
+
+    [feel] AND A TAP STILL LANDS ON A TURNED VIEW level=false,
+    a third of a turn round=true -> FAIL
+
+The tap leg never placed the rig. It used whatever the *pan* leg left behind,
+and a hyper structure sits 1,600–4,200u out — so the anchor was **behind the
+lens**, §141's `is_position_behind` guard correctly skipped it, and 120° of yaw
+brought it round to the front. `level=false, turned=true` fits exactly.
+
+§116's rule, quoted in COLONYTEST **this same session** and not applied here: *a
+precondition a leg needs is a precondition that leg states.*
+
+It now pins the rig on the structure — and **re-pins before every pick**, which
+the obvious fix would have missed: turning the leash off stops `_leash`, but
+`_follow` is a second writer of the same position and is not gated by the leash.
+At `FOLLOW_SPEED` it eats ~4% of the distance to the player per frame, and two
+awaits would have walked the camera ~8% of the way home before the shutter
+opened. DEFECTS 2b, met in a leg rather than in the game.
+
+### What the three have in common
+
+Nothing, and that is the point worth recording. A binding collision, a threshold
+that was never a threshold, and a leg missing a precondition are three unrelated
+mistakes — but all three were invisible to 865 green assertions until the one
+sweep that ran them together. **The sweep is the instrument; the checker is a
+pre-flight.** §147 said so about parsing, and this says it about behaviour.

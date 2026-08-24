@@ -277,6 +277,14 @@ and the harness printed its full manifest anyway. Two causes, both mine:
 > depends on the shot's return, which is what makes the claim true rather than
 > merely stated.
 
+**And an eighth: a threshold that was never a threshold (§150).** `Tide._riding`
+was `align > 0.0`, so every heading up to **89.99°** off the set reported as
+*the tide is carrying you* — and `tide_seconds`, the cockpit `▸` and the mote
+brightness all believed it. §145 had shipped that field one commit earlier
+specifically to answer *"was the tide used?"*, and it would have answered **yes**
+whatever a player did. A bound of zero is not a bound; it is the absence of one
+wearing a comparison operator.
+
 **Covered by:** `run_harness.sh --counts` (runs) and `--legs` (assertions), both
 derived, neither needing the Godot binary; `tree_id` on every mode so a figure
 carries its provenance; and `THE DEATH PRICE SITS IN ITS BAND`, which is what
